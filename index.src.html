@@ -94,6 +94,10 @@ Markup Shorthands: css off, markdown on
 # Conformance # {#conformance}
 
   <p>This specification defines criteria for a <dfn>conforming user agent</dfn>. A user agent MUST behave as described in this specification in order to be considered conformant. User agents MAY implement algorithms given in this specification in any way desired, so long as the end result is indistinguishable from the result that would be obtained by the specification's algorithms. A conforming FIDO Credential API user agent MUST also be a conforming implementation of the IDL fragments of this specification, as described in the “Web IDL” specification. [[!WebIDL-1]]</p>
+  
+<!-- begin from signature-format -->
+<p> The term <b>Base64url Encoding</b> refers to the base64 encoding using the URL- and filename-safe character set defined in Section 5 of [[RFC4648]], with all trailing '=' characters omitted (as permitted by Section 3.2) and without the inclusion of any line breaks, whitespace, or other additional characters. This is the same encoding as used by JSON Web Signature (JWS) [[RFC7515]].</p>
+<!-- end from signature-format -->
 
 ## Dependencies ## {#dependencies}
 
@@ -111,6 +115,7 @@ Markup Shorthands: css off, markdown on
 
       <dt>Web Cryptography API</dt>
       <dd>The <dfn interface>AlgorithmIdentifier</dfn> type and the method for normalizing an algorithm are defined in [[!WebCryptoAPI]].</dd>
+	  <dd><dfn interface>JsonWebKey</dfn>: A cryptographic key as defined in [[!WebCryptoAPI]].</dd>
     </dl>
 
 
@@ -151,7 +156,7 @@ Markup Shorthands: css off, markdown on
       <li>All input parameters accepted by the <a><code>getAssertion()</code></a> method, specified below.</li>
     </ul>
 
-    <p>When this method is invoked, the authenticator allows the user to select a credential from among the credentials associated with that Relying Party and matching the specified criteria, then obtains user consent for using that credential. The prompt for obtaining this consent may be shown by the authenticator if it has its own output capability, or by the user agent otherwise. Once a credential is selected and user consent is obtained, the authenticator computes a cryptographic signature using the credential's private key and constructs an assertion as specified in [[FIDOSignatureFormat]]. It then returns this assertion to the user agent.</p>
+    <p>When this method is invoked, the authenticator allows the user to select a credential from among the credentials associated with that Relying Party and matching the specified criteria, then obtains user consent for using that credential. The prompt for obtaining this consent may be shown by the authenticator if it has its own output capability, or by the user agent otherwise. Once a credential is selected and user consent is obtained, the authenticator computes a cryptographic signature using the credential's private key and constructs an assertion as specified in [[#signature-format]]. It then returns this assertion to the user agent.</p>
 
     <p>If the authenticator cannot find any credential corresponding to the specified Relying Party that matches the specified criteria, it terminates the operation and returns an error.</p>
 
@@ -228,6 +233,9 @@ Markup Shorthands: css off, markdown on
       readonly attribute CredentialType type; 
       readonly attribute DOMString      id; 
   };
+  
+  dictionary FIDOExtensions {
+  };
   </pre>
 
 ## <dfn interface>FIDOCredentials</dfn> Interface ## {#iface-credential}
@@ -251,7 +259,7 @@ Markup Shorthands: css off, markdown on
 
         <li>The optional <dfn>blacklist</dfn> parameter is intended for use by Relying Parties that wish to limit the creation of multiple credentials for the same account on a single authenticator. The platform is requested to return an error if the new credential would be created on an authenticator that also contains one of the credentials enumerated in this parameter.</li>
 
-        <li>The optional <dfn>credentialExtensions</dfn> parameter contains additional parameters requesting additional processing by the client and authenticator. For example, the caller may request that only authenticators with certain capabilities be used to create the credential, or that additional information be returned in the attestation statement. Alternatively, the caller may specify an additional message that they would like the authenticator to display to the user. Extensions are defined in [[!FIDOSignatureFormat]].</li>
+        <li>The optional <dfn>credentialExtensions</dfn> parameter contains additional parameters requesting additional processing by the client and authenticator. For example, the caller may request that only authenticators with certain capabilities be used to create the credential, or that additional information be returned in the attestation statement. Alternatively, the caller may specify an additional message that they would like the authenticator to display to the user. Extensions are defined in [[#signature-format]].</li>
       </ul>
 
       <p>When this method is invoked, the user agent MUST execute the following algorithm:<p>
@@ -365,7 +373,7 @@ Markup Shorthands: css off, markdown on
 
             <li>If any authenticator returns an error status, delete the corresponding entry from <var>issuedRequests</var>.</li>
 
-            <li>If any authenticator returns success, create a new <a><code>FIDOAssertion</code></a> object named <var>value</var> and populate its fields with the values returned from the authenticator. Resolve <var>promise</var> with <code>value</code> and terminate this algorithm.</li>
+            <li>If any authenticator returns success, create a new {{FIDOAssertion}} object named <var>value</var> and populate its fields with the values returned from the authenticator. Resolve <var>promise</var> with <code>value</code> and terminate this algorithm.</li>
           </ol>
         </li>
 
@@ -449,20 +457,20 @@ Markup Shorthands: css off, markdown on
       <p>A string or dictionary identifying a cryptographic algorithm and optionally a set of parameters for that algorithm. This type is defined in [[!WebCryptoAPI]].</p>
 
 
-### FIDO Assertion (interface <dfn>FIDOAssertion</dfn>) ### {#iface-assertion}
+### FIDO Assertion (interface {{FIDOAssertion}}) ### {#iface-assertion}
 
-      <p>FIDO 2.0 credentials produce a cryptographic signature that provides proof of possession of a private key as well as evidence of user consent to a specific transaction. The structure of these signatures is defined in [[!FIDOSignatureFormat]].</p>
+      <p>FIDO 2.0 credentials produce a cryptographic signature that provides proof of possession of a private key as well as evidence of user consent to a specific transaction. The structure of these signatures is defined in [[#fido-assertion]].</p>
 
 
 ### FIDO Assertion Extensions (dictionary <dfn>FIDOExtensions</dfn>) ### {#iface-assertion-extensions}
 
-      <p>This is a dictionary containing zero or more extensions as defined in [[!FIDOSignatureFormat]]. An extension is an additional parameter that can be passed to the <a>getAssertion()</a> method and triggers some additional processing by the client platform and/or the authenticator.</p>
+      <p>This is a dictionary containing zero or more extensions as defined in [[#extensions]]. An extension is an additional parameter that can be passed to the <a>getAssertion()</a> method and triggers some additional processing by the client platform and/or the authenticator.</p>
 
       <p>
         If the caller wants to pass extensions to the platform, it SHOULD do so by adding one
         entry per extension to this <code>FIDOExtensions</code> dictionary with 
         the extension identifier as the key, and the extension's value as the value
-        (see [[!FIDOSignatureFormat]] for details).  
+        (see [[#signature-format]] for details).  
       </p>
 
 
@@ -470,6 +478,779 @@ Markup Shorthands: css off, markdown on
 
       <p>FIDO 2.0 authenticators also provide some form of key attestation. The basic requirement is that the authenticator can produce, for each credential public key, attestation information that can be verified by a Relying Party. Typically this information contains a signature by an attesting key over the attested public key and a challenge, as well as a certificate or similar information providing provenance information for the attesting key, enabling a trust decision to be made. The structure of these attestation statements is defined in [[!FIDOKeyAttestation]].</p>
 
+
+<!-- Included from signature-format.html -->
+
+# Signature Format # {#signature-format}
+	  
+
+<p>FIDO 2.0 signatures are bound to various contextual data. These data are
+observed, and added at different levels of the stack as a signature request
+passes from the server to the authenticator. In verifying a signature, the
+server checks these bindings against expected values.</p>
+
+<p>The components of a system using FIDO 2.0 can be divided into three layers:</p>
+<ol>
+  <li>The relying party (RP), which uses the FIDO 2.0 services.
+  The relying party may, for
+  example, be a web-application running in a browser, or a native application
+  that runs directly on the OS platform.</li>
+  <li>The client platform, which consists of the user’s OS and device used to
+  host the RP’s client-side app. For web-applications, the browser also belongs
+  to this layer.</li>
+  <li>The authenticator itself, which provides key management and
+  cryptographic signatures.</li>
+</ol>
+
+<p>When the RP client-side application is a web-application, the interface between 1 and 2
+is the <a href="#api">FIDO Credential API</a>, but is platform specific for native applications.
+In cases where the authenticator is not tightly integrated with the platform, the interface
+between 2 and 3 is a separately-defined protocol.
+This specification defines the common signature format
+shared by all layers.  This includes how the different contextual bindings are
+encoded, signed over, and delivered to the RP.</p>
+
+<p>The goals of this design can be summarized as follows.</p>
+<ul>
+  <li>The scheme for generating signatures should accommodate cases where the
+  link between the client platform and authenticator is very limited, in
+  bandwidth and/or latency. Examples include Bluetooth Low Energy and Near-Field
+  Communication.</li>
+  <li>The data processed by the authenticator should be small and easy to
+  interpret in low-level code. In particular, authenticators should not have to
+  parse high-level encodings such as JSON.</li>
+  <li>Both the client platform and the authenticator should have the flexibility
+  to add contextual bindings as needed.</li>
+  <li>The design aims to reuse as much as possible of existing encoding formats
+  in order to aid adoption and implementation.</li>
+</ul>
+
+<p>The contextual bindings are divided in two: Those added by the RP or the
+client platform, referred to as <dfn>client data</dfn>; and those added by the
+authenticator, referred to as the <dfn>authenticator data</dfn>.  The client
+data must be signed over, but an authenticator is otherwise not interested in
+its contents. To save bandwidth and processing requirements on the
+authenticator, the client platform hashes the client data and sends only
+the result to the authenticator. The authenticator signs over the combination
+of this hash, and its own authenticator data.</p>
+
+## Client data ## {#sec-client-data}
+
+  <p>The client data represents the contextual bindings of both the RP and the
+  client platform.  It is a key-value mapping with string-valued keys. Values may be
+  any type that has a valid encoding in JSON.  It MUST contain at least the
+  following key-value pairs.</p>
+  
+  <pre class="idl">
+  dictionary ClientData {
+	  DOMString       challenge;
+	  DOMString       facet;
+	  JsonWebKey      tokenBinding;
+	  object          extensions; // optional
+	  DOMString       hashAlg;
+  };
+  </pre>
+  
+  <div dfn-for="ClientData">
+  <dl>
+    <dt>DOMString <dfn>challenge</dfn></dt>
+    <dd>
+      A base64url-encoded challenge provided by the RP.
+    </dd>
+    <dt>DOMString <dfn>facet</dfn></dt>
+    <dd>
+      A string value describing the RP identifier facet.
+      When the RP client-side app is a website, this is its fully qualified web origin,
+      using the syntax defined by [[RFC6454]]. When the client-side app is a native
+      application, this string is a platform specific identifier.
+    </dd>
+    <dt>JsonWebKey <dfn>tokenBinding</dfn></dt>
+    <dd>
+      A JsonWebKey object [[JWK]] describing the public key that this client uses for
+      the Token Binding protocol when communicating with the Relying Party.
+      This can be omitted if no Token Binding has been negotiated between the
+      client and the Relying Party.
+    </dd>
+    <dt>optional object <dfn>extensions</dfn></dt>
+    <dd>
+      An object with extension-provided authenticator data.
+      Signature extensions are detailed in Section <a href="#extensions"></a>.
+    </dd>
+    <dt>DOMString <dfn>hashAlg</dfn></dt>
+    <dd>
+      The hash algorithm used to compute clientDataHash 
+      (see <a href="#authenticator-signature"></a>).  Use "S256" for SHA-256, 
+      "S384" for SHA384, "S512" for SHA512, and "SM3" for SM3 
+      (see <a href='#iana-considerations'></a>). 
+    </dd>
+  </dl>
+  </div>
+
+  <p>The client data MAY contain additional properties.</p>
+
+  <p>Before making a request to an authenticator, the
+  client platform layer SHALL perform the following steps.</p>
+  <ol>
+    <li>Let <var>clientDataJSON</var> be the UTF-8 encoded JSON serialization
+    [[RFC7159]] of {{ClientData}}.</li>
+
+    <li>Let <var>clientDataHash</var> be the hash (computed using {{hashAlg}}) of 
+    <var>clientDataJSON</var>, as an array.</li>
+  </ol>
+
+  <p>The <var>clientDataHash</var> value is incorporated into a signature
+  by a FIDO authenticator (see <a href="#authenticator-signature"></a>).
+  It is delivered to integrated authenticators
+  in platform specific manners, and to external authenticators as a part of
+  a signature request.
+  The client platform SHOULD also preserve the exact <code>encodedClientData</code>
+  string used to create it, for embedding in a signature object sent back to
+  the RP (see <a href="#authenticator-signature"></a>).
+  This is necessary since multiple JSON encodings of the same client
+  data are possible.</p>
+  <p>The hash algorithm {{hashAlg}} used to compute <var>clientDataHash</var> is 
+    included in the {{ClientData}} object. This way it is available to the RP and 
+    it is also hashed over when computing <var>clientDataHash</var> and hence
+    anchored in the signature itself.
+  </p>
+
+
+## Authenticator data ## {#sec-authenticator-data}
+
+  <p>The authenticator data encodes contextual bindings made by the
+  authenticator itself. The authenticator data has a compact but extensible
+  encoding. This is desired since authenticators can be devices with limited
+  capabilities and low power requirements, with much simpler software stacks
+  than the client platform components.</p>
+
+  <p>The encoding of authenticator data is a byte array <code>authenticatorData</code>
+  of 5 bytes or more, as follows.</p>
+  <table style="border-collapse: collapse; border:#eee 1px solid;">
+    <tr style="background: #ddd; margin: 5px;">
+      <th style="padding: 0 10px">Byte index</th>
+      <th>Description</th>
+    </tr>
+    <tr>
+      <td>0</td>
+      <td>Flags (bit 0 is the least significant bit):
+        <ul>
+          <li>Bit 0: Test of User Presence (<code>TUP</code>) result.</li>
+          <li>Bits 1-6: Reserved for future use (<code>RFU</code>).</li>
+          <li>Bit 7: Extension data included (<code>ED</code>). Indicates if the
+          authenticator data has extensions.</li>
+        </ul>
+      </td>
+    </tr>
+    <tr style="background: #eaeaea">
+      <td>1-4</td>
+      <td>Signature counter (<code>signCount</code>), 32-bit unsigned big-endian integer.</td>
+    </tr>
+    <tr>
+      <td>5-</td>
+      <td>Extension-defined authenticator data. This is a CBOR [[RFC7049]] map with extension
+      identifiers as keys, and extension authenticator data values as values. See 
+      <a href="#extensions"></a> for details.</td>
+    </tr>
+  </table>
+
+  <p>The <code>TUP</code> flag SHALL be set if and only if the authenticator
+  detected a user through an authenticator specific gesture. The <code>RFU</code>
+  bits in the flags byte SHALL be set to zero.</p>
+
+  <p>If the authenticator does not include any extension data, it MUST set the
+  <code>ED</code> flag in the first byte to zero, and to one if extension data
+  is included.</p>
+
+  <p>The figure below shows a visual representation of the
+  authenticator data structure.</p>
+
+  <figure>
+    <img src="img/fido-signature-formats-figure1.svg"/>
+    <figcaption><code>authenticatorData</code> layout.</figcaption>
+  </figure>
+
+  <p class="note">
+  The <code>signatureData</code> describes its own length: If the ED flag is not set, it
+  is always 5 bytes long. If the ED flag is set, it is 5 bytes plus the CBOR map that follows.
+  </p>
+
+
+## Generating a signature ## {#authenticator-signature}
+
+  <p>A raw cryptographic signature must assert the integrity of both the
+  client data and the authenticator data. Thus, an authenticator SHALL
+  compute a signature over the concatenation of the <var>authenticatorData</var>
+  and the <var>clientDataHash</var>.
+  </p>
+
+  <figure id="fig-signature">
+    <img src="img/fido-signature-formats-figure2.svg"/>
+    <figcaption>Generating a signature on the authenticator.</figcaption>
+  </figure>
+
+  <p class="note">
+    A simple, undelimited concatenation, is safe to use here because the
+    <var>authenticatorData</var> describes its own length. The 
+    <var>clientDataHash</var> (which potentially has a variable length) 
+    is always the last element.
+  </p>
+
+  <p>
+    The authenticator MUST return both the <var>authenticatorData</var> and
+    the raw signature back to the client.
+  </p>
+
+## Client encoding of assertions ## {#fido-assertion}
+
+  <p>The client platform uses an authenticator assertion to construct
+  the final {{FIDO assertion}} object returned to the RP as follows.</p>
+
+  <pre class="idl">
+  interface FIDOAssertion {
+	  attribute Credential credential;
+	  attribute DOMString  clientData;
+	  attribute DOMString  authenticatorData;
+	  attribute DOMString  signature;
+  };
+  </pre>
+  
+  <div dfn-for="FIDOAssertion">
+  <dl>
+    <dt>attribute Credential <dfn>credential</dfn></dt>
+    <dd>
+    	An object representing which credential was used to generate an assertion.
+    </dd>
+    <dt>attribute DOMString <dfn>clientData</dfn></dt>
+    <dd>
+      A base64url encoding of <code><dfn>clientDataJSON</dfn></code>.
+      (See <a href="#sec-client-data"></a>)
+    </dd>
+    <dt>attribute DOMString authenticatorData</dt>
+    <dd>
+      A base64url encoding of <code><dfn>authenticatorData</dfn></code>.
+      (See <a href="#sec-authenticator-data"></a>)
+    </dd>
+    <dt>attribute DOMString <dfn>signature</dfn></dt>
+    <dd>
+      A base64url encoding of the raw signature returned from the authenticator.
+      (See <a href="#authenticator-signature"></a>)
+    </dd>
+  </dl>
+
+  <p>This assertion is delivered to the RP in either a platform specific manner, or
+  in the case of web applications, according to the FIDO Web API ([[#api]]).
+  It contains all the information that the RP's FIDO server requires to
+  reconstruct the signature base string, as well as to decode and validate
+  the bindings of both the client- and authenticator data.</p>
+
+<!-- End of include from signature-format.html -->
+
+  
+<!-- Begin of include from key-attestation.html -->
+  
+  
+<!-- End of include from key-attestation.html -->  
+  
+  
+# FIDO Extensions # {#extensions}
+<p>
+  The mechanism for generating FIDO 2.0 credentials, as well as requesting and
+  generating FIDO 2.0 assertions, as defined in [[#api]],
+  can be extended to suit particular use cases. Each case is
+  addressed by defining a <em>registration extension</em> and/or a
+  <em>signature extension</em>. Extensions can define additions to the
+  following steps and data:
+</p>
+
+<ul>
+  <li>
+    {{makeCredential()}} request parameters (see [[#api]]) for
+    registration extension.
+  </li>
+  <li>
+    {{getAssertion()}} request parameters (see [[#api]]) for
+    signature extensions.
+  </li>
+  <li>
+    Client processing, and the {{ClientData}} structure, for
+    registration extensions and signature extensions.
+  </li>
+  <li>
+    Authenticator processing, and the <var>authenticatorData</var>
+    structure, for signature extensions.
+  </li>
+</ul>
+
+<p>
+  When requesting an assertion for a FIDO 2.0 credential, an RP can list a set
+  of extensions to be used, if they are supported by the client and/or the
+  authenticator. It sends the request parameters for each extension in the
+  {{getAssertion()}} call (for signature extensions) or
+  {{makeCredential()}} call (for registration extensions) to the client
+  platform. The client platform performs additional processing for each
+  extension that it supports, and augments {{ClientData}} as required
+  by the extension. For extensions that the client platform does not support,
+  it passes the request parameters on to the authenticator when possible
+  (criteria defined below). This allows one to define extensions that affect
+  the authenticator only.
+</p>
+<p>
+  Similarly, the authenticator performs additional processing for the
+  extensions that it supports, and augments <var>authenticatorData</var> as
+  specified by the extension.
+</p>
+<p>
+  Extensions that are not supported are ignored.
+</p>
+
+## Extension identifiers ## {#extension-id}
+
+  <p>
+  Extensions are identified by a string, chosen by the extension author. Extension identifiers
+  should aim to be globally unique, e.g., by using reverse domain-name of the defining entity such
+  as <code>com.example.fido.myextension</code>.
+  </p>
+
+  <p>
+  Extensions that may exist in multiple versions should take care to include a version
+  in their identifier. In effect, different versions are thus treated as different extensions.
+  </p>
+
+  <p>
+  Standard extensions defined by FIDO in this specification use a fixed prefix of <code>fido.</code>
+  for the extension identifiers. This prefix should not be used for 3rd party extensions.
+  </p>
+
+
+## Defining extensions ## {#extension-specification}
+
+  <p>
+    A definition of an extension must specify, at minimum, an extension
+    identifier and an extension client argument sent via the
+    {{getAssertion()}} or {{makeCredential()}} call (see below).
+    Additionally, extensions may specify additional values in
+    {{ClientData}}, <code>authenticatorData</code> (in the case of
+    signature extensions), or both.
+  </p>
+
+  <p class="note">
+    An extension that does not define additions to {{ClientData}} nor
+    <code>authenticatorData</code> is possible, but should be avoided. In such
+    cases, the relying party would have no indication if the extension was
+    supported or processed by the client and/or authenticator.
+  </p>
+
+  
+## Extending request parameters ## {#extension-request-parameters}
+  
+  <p>
+    An extension defines two request arguments. The <dfn>client argument</dfn>
+    is passed from the RP to the client in the {{getAssertion()}} or
+    {{makeCredential()}} call, while the <dfn>authenticator
+    argument</dfn> is passed from the client to the authenticator during the
+    processing of these calls.
+  </p>
+  <p>
+    Extension definitions MUST specify the valid values for their client
+    argument. Clients are free to ignore extensions with an invalid client
+    argument. Specifying an authenticator argument is optional, since some
+    extensions may only affect client processing.
+  </p>
+
+  <p>
+    An RP simultaneously requests the use of an extension and sets its client
+    argument by including an entry in the {{credentialExtensions}} 
+	or {{assertionExtensions}} dictionary
+    parameters to the {{makeCredential()}} or {{getAssertion()}}
+    call. The entry key MUST be the extension identifier, and the value
+    MUST be the <a>client argument</a>.
+  </p>
+
+  <pre class="example highlight">
+  var assertionPromise = credentials.getAssertion(..., /* extensions */ {
+    "com.example.fido.foobar": 42
+  });
+  </pre>
+
+  <p>
+    Extensions that affect the behavior of the client platform can define their
+    argument to be any set of values that can be encoded in JSON. Such an
+    extension will in general (but not always) specify additional values to the
+    {{ClientData}} structure (see below). It may also specify an
+    authenticator argument that platforms implementing the extension are
+    expected to send to the authenticator. The authenticator argument should be
+    a byte string.
+  </p>
+
+  <p class="note">
+    Extensions should aim to define authenticator arguments that are as small
+    as possible. Some authenticators communicate over low-bandwidth links such
+    as Bluetooth Low-Energy or NFC.
+  </p>
+
+  <p class="note">
+    Extensions that do not need to pass any particular argument value, must
+    still define a client argument. It is recommended that the argument be
+    defined as the constant value <code>true</code> in this case.
+  </p>
+
+  <p>
+    For extensions that specify additional authenticator processing only, it is
+    desirable that the platform need not know the extension. To support this,
+    platforms SHOULD pass the client argument of unknown extension as the
+    authenticator argument unchanged, under the same extension identifier. The
+    authenticator argument should be the CBOR encoding of the client argument,
+    as specified in Section 4.2 of [[RFC7049]]. Clients SHOULD silently drop
+    unknown extensions whose client argument cannot be encoded as a CBOR
+    structure.
+  </p>
+
+## Extending client processing ## {#extension-client-processing}
+
+  <p>
+    Extensions may define additional processing requirements on the client
+    platform during the creation of credentials or the generation of an
+    assertion. In order for the RP to verify the processing took place, or if
+    the processing has a result value that the RP needs to be aware of, the
+    extension should specify a client data value to be included in the
+    {{ClientData}} structure.
+  </p>
+  <p>
+    The value may be any value that can be encoded as a JSON value. If any
+    extension processed by a client defines such a value, the client SHOULD
+    include a dictionary in {{ClientData}} with the key
+    {{ClientData/extensions}}. For each such extension, the client SHOULD add an
+    entry to this dictionary with the extension identifier as the key, and the
+    extension's client data value.
+  </p>
+
+
+## Extending authenticator processing with signature extensions ## {#extension-authenticator-processing}
+
+  <p>
+    Signature extensions that define additional authenticator processing should
+    similarly define an authenticator data value. The value may be any data
+    that can be encoded as a CBOR value. An authenticator that processes a
+    signature extension that defines such a value must include it in the
+    <code>authenticatorData</code>.
+  </p>
+
+  <p>
+    As specified in <a href="#sec-authenticator-data"></a>, the authenticator data
+    value of each processed extension is included in the extended data part of
+    the <code>authenticatorData</code>. This part is a CBOR map, with extension
+    identifiers as keys, and the authenticator data value of each extension as
+    the value.
+  </p>
+
+## Example extension ## {#sample-extensions}
+
+  <p>This section is non-normative.</p>
+  <p>
+    To illustrate the requirements above, consider a hypothetical extension
+    <em>Geo</em>. This extension, if supported, lets both clients and
+    authenticators embed their geolocation in signatures.
+  </p>
+
+  <p>
+    The extension identifier is chosen as <code>com.example.fido.geo</code>.
+    The client argument is the constant value <code>true</code>, since the
+    extension does not require the RP to pass any particular information to the
+    client, other than that it requests the use of the extension. The RP sets
+    this value in its request for an assertion:
+  </p>
+  <pre class="highlight">
+  var assertionPromise =
+      credentials.getAssertion("SGFuIFNvbG8gc2hvdCBmaXJzdC4",
+          {}, /* Empty filter */
+          { 'com.example.fido.geo': true });
+  </pre>
+
+  <p>
+  The extension defines the additional client data to be the client's location, if known,
+  as a GeoJSON [[GeoJSON]] point. The client constructs the following client data:
+  </p>
+  <pre class="highlight">
+  {
+     ...,
+     'extensions': {
+         'com.example.fido.geo': {
+             'type': 'Point',
+             'coordinates': [65.059962, -13.993041]
+         }
+     }
+  }
+  </pre>
+
+  <p>
+  The extension also requires the client to set the authenticator parameter to the fixed value
+  <code>1</code>. 
+  </p>
+
+  <p>
+  Finally, the extension requires the authenticator to specify its geolocation in the authenticator
+  data, if known. The extension e.g. specifies that the location shall be encoded as a two-element
+  array of floating point numbers, encoded with CBOR.
+  An authenticator does this by including it in the <code>authenticatorData</code>.
+  As an example, authenticator data may be as follows (notation taken from [[RFC7049]]):
+  </p>
+
+  <pre>
+  81 (hex)                      -- Flags, ED and TUP both set.
+  20 05 58 1F                   -- Signature counter
+  A1                            -- CBOR map of one element
+    68                          -- Key 1: CBOR text string of 8 bytes
+      66 69 64 6F 2E 67 65 6F   -- "fido.geo" UTF-8 string
+    82                          -- Value 1: CBOR array of two elements
+      FA 42 82 1E B3            -- Element 1: Latitude as CBOR encoded float
+      FA C1 5F E3 7F            -- Element 2: Longitude as CBOR encoded float
+  </pre>
+
+
+# Standard Extensions # {#extension-standard}
+
+  <p>
+  This section defines standard extensions defined by the FIDO Alliance.
+  </p>
+
+## Transaction authorization ## {#extension-txauth}
+
+  <p>
+    This signature extension allows for a simple form of transaction
+    authorization. A relying party can specify a prompt string, intended for
+    display on a trusted device on the authenticator.
+  </p>
+
+  <dl>
+    <dt>Extension identifier</dt>
+    <dd>
+      <code>fido.txauth.simple</code> 
+    </dd>    
+    <dt>Client argument</dt>
+    <dd>A single UTF-8 encoded string <em>prompt</em></dd>
+
+    <dt>Client processing</dt>
+    <dd>None, except default forwarding of client argument to authenticator argument.</dd>
+
+    <dt>Authenticator argument</dt>
+    <dd>The client argument encoded as a CBOR text string (major type 3).</dd>
+
+    <dt>Authenticator processing</dt>
+    <dd>The authenticator MUST display the prompt to the user before performing
+        the user verification / test of user presence. The authenticator may insert line breaks if needed.</dd>
+    
+    <dt>Authenticator data</dt>
+    <dd>A single UTF-8 string, representing the prompt <em>as displayed</em> (including any
+        eventual line breaks).</dd>
+  </dl>
+
+  The generic version of this extension allows images to be used as prints as well.  This is allows
+  authenticators without a font rendering engine to be used and also supports a richer visual appearance.
+  <dl>
+    <dt>Extension identifier</dt>
+    <dd>
+      <code>fido.txauth.generic</code> 
+    </dd>
+    
+    <dt>Client argument</dt>
+    <dd>A CBOR map with one pair of data items (CBOR tagged as 0xa1). The pair of data items consists of
+      <ol>
+	<li>one UTF-8 encoded string <dfn>contentType</dfn>, containing 
+	  the MIME-Type of the content, e.g. "image/png"</li>
+	<li>and the <dfn>content</dfn> itself, encoded as CBOR byte array.</li>
+      </ol>
+    </dd>
+
+    <dt>Client processing</dt>
+    <dd>None, except default forwarding of client argument to authenticator argument.</dd>
+
+    <dt>Authenticator argument</dt>
+    <dd>The client argument encoded as a CBOR map.</dd>
+
+    <dt>Authenticator processing</dt>
+    <dd>The authenticator MUST display the <a>content</a> to the user before performing
+        the user verification / test of user presence. The authenticator may add other information below the <a>content</a>.
+        No changes are allowed to the <a>content</a> itself, i.e. inside <a>content</a> boundary box.
+    </dd>
+    
+    <dt>Authenticator data</dt>
+    <dd>
+      The hash value of the <a>content</a> which was displayed.  
+      The authenticator MUST use the same hash algorithm as it uses for the signature itself.
+    </dd>
+  </dl>
+</section>
+
+## Authenticator Selection Extension ## {#extension-authenticator-selection}
+
+  <p>
+    This registration extension allows a Relying Party to guide the selection
+    of the authenticator that will be leveraged when creating the credential.
+    It is intended primarily for Relying Parties that wish to tightly control
+    the experience around credential creation.
+  </p>
+
+  <dl>
+    <dt>Extension identifier</dt>
+    <dd>
+      <code>fido.authn-sel</code> (only used during {{makeCredential()}})
+    </dd>
+    <dt>Client argument</dt>
+    <dd>
+      A sequence of AAGUIDs:
+      <pre class="idl highlight">
+typedef sequence < AAGUID > AuthenticatorSelectionList;
+      </pre>
+      Each AAGUID corresponds to an authenticator attestation that is
+      acceptable to the RP for this credential creation. The list is ordered by
+      decreasing preference.<br>
+      
+      An AAGUID is defined as a DOMString, and is the globally unique identifier
+      of the authenticator attestation being sought.
+      <pre class="idl highlight">
+typedef DOMString AAGUID;
+      </pre>      
+    </dd>
+
+    <dt>Client processing</dt>
+    <dd>
+      If the client supports the Authenticator Selection Extension, it MUST use
+      the first available authenticator whose AAGUID is present in the
+      {{AuthenticatorSelectionList}}. If none of the available
+      authenticators match a provided AAGUID, the client MUST select an
+      authenticator from among the available authenticators to generate the
+      credential.
+    </dd>
+
+    <dt>Authenticator argument</dt>
+    <dd>There is no authenticator argument.</dd>
+
+    <dt>Authenticator processing</dt>
+    <dd>None.</dd>
+  </dl>
+
+
+# IANA Considerations # {#iana-considerations}
+
+  This specification registers the algorithm names "S256", "S384", "S512", and "SM3" 
+  with the IANA JSON Web Algorithms registry as defined in section 
+  "Cryptographic Algorithms for Digital Signatures and MACs" in [[RFC7518]]. 
+  <p>
+    These names follow the naming strategy in 
+    <a href="https://tools.ietf.org/html/draft-ietf-oauth-spop-15">draft-ietf-oauth-spop-15</a>.
+  </p>
+
+    <p>
+      <table class="simple">
+	<tbody>
+	  <tr> <td>Algorithm Name</td>
+	       <td>"S256"</td>
+	  </tr>
+	  <tr> <td>Algorithm Description</td>
+	       <td>The SHA256 hash algorithm.</td>
+	  </tr>
+	  <tr> <td>Algorithm Usage Location(s)</td>
+	       <td>"alg", i.e. used with JWS.</td>
+	  </tr>
+	  <tr> <td>JOSE Implementation Requirements</td>
+	       <td>Optional+</td>
+	  </tr>
+	  <tr> <td>Change Controller</td>
+	       <td>FIDO Alliance, <a href='https://fidoalliance.org/contact/'>Contact Us</a></td>
+	  </tr>
+	  <tr> <td>Specification Documents</td>
+	       <td> [[!FIPS-180-4]] </td>
+	  </tr>
+	  <tr> <td>Algorithm Analysis Document(s)</td>
+	       <td>[[SP800-107r1]]</td>
+	  </tr>
+	</tbody>
+      </table>	
+    </p>
+
+    <p>
+      <table class="simple">
+	<tbody>
+	  <tr> <td>Algorithm Name</td>
+	       <td>"S384"</td>
+	  </tr>
+	  <tr> <td>Algorithm Description</td>
+	       <td>The SHA384 hash algorithm.</td>
+	  </tr>
+	  <tr> <td>Algorithm Usage Location(s)</td>
+	       <td>"alg", i.e. used with JWS.</td>
+	  </tr>
+	  <tr> <td>JOSE Implementation Requirements</td>
+	       <td>Optional</td>
+	  </tr>
+	  <tr> <td>Change Controller</td>
+	       <td>FIDO Alliance, <a href='https://fidoalliance.org/contact/'>Contact Us</a></td>
+	  </tr>
+	  <tr> <td>Specification Documents</td>
+	       <td> [[!FIPS-180-4]] </td>
+	  </tr>
+	  <tr> <td>Algorithm Analysis Document(s)</td>
+	       <td>[[SP800-107r1]]</td>
+	  </tr>
+	</tbody>
+      </table>	
+    </p>
+
+    <p>
+      <table class="simple">
+	<tbody>
+	  <tr> <td>Algorithm Name</td>
+	       <td>"S512"</td>
+	  </tr>
+	  <tr> <td>Algorithm Description</td>
+	       <td>The SHA512 hash algorithm.</td>
+	  </tr>
+	  <tr> <td>Algorithm Usage Location(s)</td>
+	       <td>"alg", i.e. used with JWS.</td>
+	  </tr>
+	  <tr> <td>JOSE Implementation Requirements</td>
+	       <td>Optional+</td>
+	  </tr>
+	  <tr> <td>Change Controller</td>
+	       <td>FIDO Alliance, <a href='https://fidoalliance.org/contact/'>Contact Us</a></td>
+	  </tr>
+	  <tr> <td>Specification Documents</td>
+	       <td> [[!FIPS-180-4]] </td>
+	  </tr>
+	  <tr> <td>Algorithm Analysis Document(s)</td>
+	       <td>[[SP800-107r1]]</td>
+	  </tr>
+	</tbody>
+      </table>	
+    </p>
+
+    <p>
+      <table class="simple">
+	<tbody>
+	  <tr> <td>Algorithm Name</td>
+	       <td>"SM3"</td>
+	  </tr>
+	  <tr> <td>Algorithm Description</td>
+	       <td>The SM3 hash algorithm.</td>
+	  </tr>
+	  <tr> <td>Algorithm Usage Location(s)</td>
+	       <td>"alg", i.e. used with JWS.</td>
+	  </tr>
+	  <tr> <td>JOSE Implementation Requirements</td>
+	       <td>Optional</td>
+	  </tr>
+	  <tr> <td>Change Controller</td>
+	       <td>FIDO Alliance, <a href='https://fidoalliance.org/contact/'>Contact Us</a></td>
+	  </tr>
+	  <tr> <td>Specification Documents</td>
+	       <td> [[!OSCCA-SM3]] </td>
+	  </tr>
+	  <tr> <td>Algorithm Analysis Document(s)</td>
+	       <td>N/A</td>
+	  </tr>
+	</tbody>
+      </table>	
+    </p>
 
 
 # Sample scenarios # {#sample-scenarios}
