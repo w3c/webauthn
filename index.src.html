@@ -1,0 +1,2457 @@
+<pre class='metadata'>
+Title: FIDO 2.0: Web API for accessing FIDO 2.0 credentials
+Status: ED
+TR: http://www.w3.org/TR/webauthn/
+ED: http://w3c.github.io/webauthn/
+Shortname: webauthnapi
+Level: 1
+Editor: Vijay Bharadwaj, Microsoft, vijay.bharadwaj@microsoft.com
+Editor: Hubert Le Van Gong, PayPal, hlevangong@paypal.com
+Editor: Dirk Balfanz, Google, balfanz@google.com
+Editor: Alexei Czeskis, Google, aczeskis@google.com
+Editor: Arnar Birgisson, Google, arnarb@google.com
+Editor: Jeff Hodges, PayPal, Jeff.Hodges@paypal.com
+Editor: Michael B. Jones, Microsoft, mbj@microsoft.com
+Editor: Rolf Lindemann, Nok Nok Labs, rolf@noknok.com
+group: webauthn
+Ignored Vars: op, current.algorithm, alg
+Abstract: This specification defines an API that enables web pages to access FIDO 2.0 compliant strong cryptographic credentials through browser script. Conceptually, credentials are stored on a FIDO 2.0 authenticator, and each credential is bound to a single Relying Party. Authenticators are responsible for ensuring that no operation is performed without the user's consent. The user agent mediates access to credentials in order to preserve user privacy. FIDO uses the concept of attestation to provide a cryptographic proof of the authenticator model to the relying party.  The relying party can derive the authenticator security characteristics from this proof.
+Boilerplate: omit conformance, omit feedback-header
+Markup Shorthands: css off, markdown on
+</pre>
+
+# Use Cases # {#use-cases}
+
+  <em>This section is not normative.</em>
+
+  <p>This specification defines an API for web pages to access FIDO 2.0 credentials through JavaScript, for the purpose of strongly authenticating a user. FIDO 2.0 credentials are always bound to a single FIDO Relying Party, and the API respects this requirement. Credentials created by a Relying Party can only be accessed by web origins belonging to that Relying Party. Additionally, privacy across Relying Parties must be maintained; scripts must not be able to detect any properties, or even the existence, of credentials belonging to other Relying Parties.</p>
+
+  <p>FIDO 2.0 credentials are located on authenticators, which can use them to perform operations subject to user consent. Broadly, authenticators are of two types:</p>
+
+  <ol>
+    <li><dfn>Embedded authenticators</dfn> have their operation managed by the same computing device (e.g., smart phone, tablet, desktop PC) as the user agent is running on. For instance, such an authenticator might consist of a Trusted Platform Module (TPM) or Secure Element (SE) integrated into the computing device, along with appropriate platform software to mediate access to this device's functionality.</li>
+    <li><dfn>External authenticators</dfn> operate autonomously from the device running the user agent, and accessed over a transport such as Universal Serial Bus (USB), Bluetooth Low Energy (BLE) or Near Field Communications (NFC).</li>
+  </ol>
+
+  <p>Note that an external authenticator may itself contain an embedded authenticator. For example, consider a smart phone that contains a FIDO 2.0 credential. The credential may be accessed by a web browser running on the phone itself. In this case the module containing the credential is functioning as an embedded authenticator. However, the credential may also be accessed over BLE by a user agent on a nearby laptop. In this latter case, the phone is functioning as an external authenticator. These modes may even be used in a single end-to-end user scenario. One such scenario is described in the remainder of this section.</p>
+
+
+## Registration (embedded authenticator mode) ## {#registration-embedded}
+
+    <ul>
+      <li>
+        On the phone:
+        <ul>
+          <li>User goes to example.com in the browser, and signs in using whatever method they have been using (possibly a pre-FIDO method such as a password).</li>
+          <li>The phone prompts, &quot;Do you want to register this device with example.com?&quot;</li>
+          <li>User agrees.</li>
+          <li>The phone prompts the user for a previously configured authorization gesture (PIN, biometric, etc.); the user provides this.</li>
+          <li>Website shows message, &quot;Registration complete.&quot;</li>
+        </ul>
+      </li>
+    </ul>
+
+
+## Authentication (external authenticator mode) ## {#authentication-external}
+
+    <ul>
+      <li>
+        On the laptop:
+        <ul>
+          <li>User goes to example.com in browser, sees an option &quot;Sign in with your phone.&quot;</li>
+          <li>User chooses this option and gets a message from the browser, &quot;Please complete this action on your phone.&quot;</li>
+        </ul>
+      </li>
+
+      <li>
+        Next, on the phone:
+        <ul>
+          <li>User sees a discreet prompt or notification, &quot;Sign in to example.com.&quot;</li>
+          <li>User selects this prompt / notification.</li>
+          <li>User is shown a list of their example.com identities, e.g., &quot;Sign in as Alice / Sign in as Bob.&quot;</li>
+          <li>User picks an identity, is prompted for an authorization gesture (PIN, biometric, etc.) and provides this.</li>
+        </ul>
+      </li>
+
+      <li>
+        Now, on the laptop:
+        <ul>
+          <li>Web page shows that the selected user is signed in, and navigates to the signed-in page.</li>
+        </ul>
+      </li>
+    </ul>
+
+
+
+## Other configurations ## {#other-configurations}
+
+    <p>A variety of additional use cases and configurations are also possible, including (but not limited to):</p>
+
+    <ul>
+      <li>User goes to example.com on their laptop, is guided through a flow to create and register a credential on their phone.</li>
+      <li>User employs a FIDO 2.0 credential as described above to authorize a single transaction, such as a payment or other financial transaction.</li>
+    </ul>
+
+
+# Conformance # {#conformance}
+
+  <p>This specification defines criteria for a <dfn>conforming user agent</dfn>. A user agent MUST behave as described in this specification in order to be considered conformant. User agents MAY implement algorithms given in this specification in any way desired, so long as the end result is indistinguishable from the result that would be obtained by the specification's algorithms. A conforming FIDO Credential API user agent MUST also be a conforming implementation of the IDL fragments of this specification, as described in the “Web IDL” specification. [[!WebIDL-1]]</p>
+  
+<!-- begin from signature-format -->
+<p> The term <b>Base64url Encoding</b> refers to the base64 encoding using the URL- and filename-safe character set defined in Section 5 of [[RFC4648]], with all trailing '=' characters omitted (as permitted by Section 3.2) and without the inclusion of any line breaks, whitespace, or other additional characters. This is the same encoding as used by JSON Web Signature (JWS) [[RFC7515]].</p>
+<!-- end from signature-format -->
+
+## Dependencies ## {#dependencies}
+
+    <p>This specification relies on several other underlying specifications.</p>
+
+    <dl>
+      <dt>HTML5</dt>
+      <dd>The concept of <dfn>origin</dfn> and the <dfn>Window</dfn> interface are defined in [[!HTML5]].</dd>
+
+      <dt>Web IDL</dt>
+      <dd>Many of the interface definitions and all of the IDL in this specification depend on [[!WebIDL-1]]. This updated version of the Web IDL standard adds support for <dfn>Promises</dfn>, which are now the preferred mechanism for asynchronous interaction in all new web APIs.</dd>
+
+      <dt>DOM</dt>
+      <dd><dfn>DOMException</dfn> and the DOMException values used in this specification are defined in [[!DOM4]].</dd>
+
+      <dt>Web Cryptography API</dt>
+      <dd>The <dfn interface>AlgorithmIdentifier</dfn> type and the method for normalizing an algorithm are defined in [[!WebCryptoAPI]].</dd>
+	  <dd><dfn interface>JsonWebKey</dfn>: A cryptographic key as defined in [[!WebCryptoAPI]].</dd>
+    </dl>
+
+
+
+# FIDO Authenticator model # {#authenticator-model}
+  
+  <p>The API defined in this specification implies a specific abstract functional model for a FIDO authenticator. This section describes the FIDO authenticator model. Client platforms may implement and expose this abstract model in any way desired. However, the behavior of the client's FIDO Credential API implementation, when operating on the embedded and external authenticators supported by that platform, MUST be indistinguishable from the behavior specified in the <a href="#api">FIDO Credential API</a> section.</p>
+  
+  <p>In this abstract model, each FIDO authenticator stores some number of FIDO credentials. Each FIDO credential has an identifier which is unique (or extremely unlikely to be duplicated) among all FIDO credentials. Each credential is also associated with a FIDO Relying Party, whose identity is represented by a Relying Party Identifier (RP ID).</p>
+  
+  <p>A client must connect to a FIDO authenticator in order to invoke any of the operations of that authenticator. This connection defines an authenticator session. A FIDO authenticator must maintain isolation between sessions. It may do this by only allowing one session to exist at any particular time, or by providing more complicated session management.</p>
+  
+  <p>The following operations can be invoked by the client in an authenticator session.</p>
+  
+## The <dfn>authenticatorMakeCredential</dfn> operation ## {#op-make-cred}
+    
+    <p>This operation must be invoked in an authenticator session which has no other operations in progress. It takes the following input parameters:</p>
+    
+    <ul>
+      <li>The web origin of the script on whose behalf the operation is being initiated, as determined by the user agent and the client.</li>
+      <li>The RP ID corresponding to the above web origin, as determined by the user agent and the client.</li>
+      <li>All input parameters accepted by the <a><code>makeCredential()</code></a> method, specified below.</li>
+    </ul>
+
+    <p>When this operation is invoked, the authenticator obtains user consent for creating a new credential. The prompt for obtaining this consent is shown by the authenticator if it has its own output capability, or by the user agent otherwise. Once user consent is obtained, the authenticator generates the appropriate cryptographic keys and creates a new credential. It then associates the credential with the specified RP ID such that it will be able to retrieve the RP ID later, given the credential ID.</p>
+    
+    <p>On successful completion of this operation, the authenticator returns the type and unique identifier of this new credential to the user agent.</p>
+
+    <p>If the user refuses consent, the authenticator returns an  appropriate error status to the client.</p>
+
+## The <dfn>authenticatorGetAssertion</dfn> operation ## {#op-get-assertion}
+
+    <p>This operation must be invoked in an authenticator session which has no other operations in progress. It takes the following input parameters:</p>
+    
+    <ul>
+      <li>The web origin of the script on whose behalf the operation is being initiated, as determined by the user agent and the client.</li>
+      <li>The RP ID corresponding to the above web origin, as determined by the user agent and the client.</li>
+      <li>All input parameters accepted by the <a><code>getAssertion()</code></a> method, specified below.</li>
+    </ul>
+
+    <p>When this method is invoked, the authenticator allows the user to select a credential from among the credentials associated with that Relying Party and matching the specified criteria, then obtains user consent for using that credential. The prompt for obtaining this consent may be shown by the authenticator if it has its own output capability, or by the user agent otherwise. Once a credential is selected and user consent is obtained, the authenticator computes a cryptographic signature using the credential's private key and constructs an assertion as specified in [[#signature-format]]. It then returns this assertion to the user agent.</p>
+
+    <p>If the authenticator cannot find any credential corresponding to the specified Relying Party that matches the specified criteria, it terminates the operation and returns an error.</p>
+
+    <p>If the user refuses consent, the authenticator returns an appropriate error status to the client.</p>
+
+## The <dfn>authenticatorCancel</dfn> operation ## {#op-cancel}
+    
+    <p>This operation takes no input parameters and returns no result.</p>
+
+    <p>When this operation is invoked by the client in an authenticator session, it has the effect of terminating any <a><code>authenticatorMakeCredential</code></a> or <a><code>authenticatorGetAssertion</code></a> operation currently in progress in that authenticator session. The authenticator stops prompting for, or accepting, any user input related to authorizing the canceled operation. The client ignores any further responses from the authenticator for the canceled operation.</p>
+    
+    <p>This operation is ignored if it is invoked in an authenticator session which does not have an <a><code>authenticatorMakeCredential</code></a> or <a><code>authenticatorGetAssertion</code></a> operation currently in progress.</p>
+
+
+
+# FIDO Credential API # {#api}
+
+  <p>This section normatively specifies the API for creating and using FIDO 2.0 credentials. Support for deleting credentials is deliberately omitted; this is expected to be done through platform-specific user interfaces rather than from a script. The basic idea is that the credentials belong to the user and are managed by the browser and underlying platform. Scripts can (with the user&apos;s consent) request the browser to create a new credential for future use by the script's origin. Scripts can also request the user’s permission to perform authentication operations with an existing credential held by the platform. However, all such operations are mediated by the browser and/or platform on the user&apos;s behalf. At no point does the script get access to the credentials themselves; it only gets information about the credentials in the form of objects.</p>
+
+  <p>User agents SHOULD only expose this API to callers in <dfn>secure contexts</dfn>, as defined in [[powerful-features]].</p>
+
+  <p>In the future, this API may be integrated into a more general Web API framework for credential management, which is being worked on in the W3C. Such integration will, most likely, create intermediate interface and dictionary types, from which the types in this specification will then inherit. However the experience of the FIDO developer and end user will not be substantially changed by this. In the meantime, this specification is maintained in a more minimal form for ease of review.</p>
+
+  <p>The API is defined by the following Web IDL fragment.</p>
+
+  <pre class="idl">
+  partial interface Window { 
+      readonly attribute FIDOCredentials fido; 
+  }; 
+   
+  interface FIDOCredentials { 
+      Promise < FIDOCredentialInfo > makeCredential ( 
+          Account                               accountInformation, 
+          sequence < FIDOCredentialParameters > cryptoParameters, 
+          DOMString                             attestationChallenge,
+          optional unsigned long                credentialTimeoutSeconds,
+          optional sequence < Credential >      blacklist,
+          optional FIDOExtensions               credentialExtensions
+      ); 
+   
+      Promise < FIDOAssertion > getAssertion ( 
+          DOMString                        assertionChallenge,
+          optional unsigned long           assertionTimeoutSeconds,
+          optional sequence < Credential > whitelist, 
+          optional FIDOExtensions          assertionExtensions 
+      ); 
+  }; 
+   
+  interface FIDOCredentialInfo { 
+      readonly attribute Credential           credential; 
+      readonly attribute AlgorithmIdentifier  algorithm; 
+      readonly attribute any                  publicKey; 
+      readonly attribute AttestationStatement attestation; 
+  }; 
+
+  dictionary Account { 
+      required DOMString rpDisplayName; 
+      required DOMString displayName; 
+      DOMString          name; 
+      DOMString          id; 
+      DOMString          imageUri; 
+  };
+   
+  dictionary FIDOCredentialParameters { 
+      required CredentialType        type; 
+      required AlgorithmIdentifier   algorithm; 
+  }; 
+
+  enum CredentialType { 
+      "FIDO" 
+  }; 
+
+  interface Credential { 
+      readonly attribute CredentialType type; 
+      readonly attribute DOMString      id; 
+  };
+  
+  dictionary FIDOExtensions {
+  };
+  </pre>
+
+## <dfn interface>FIDOCredentials</dfn> Interface ## {#iface-credential}
+
+    <p>This interface consists of the following methods.</p>
+
+### Create a new credential (<dfn method for="FIDOCredentials">makeCredential()</dfn> method) ### {#makeCredential}
+
+      <p>With this method, a script can request the user agent to create a new credential of a given type and persist it to the underlying platform, which may involve data storage managed by the browser or the OS. The user agent will prompt the user to approve this operation. On success, the promise will be resolved with a {{FIDOCredentialInfo}} object describing the newly created credential.</p>
+
+      <p>This method takes the following parameters:</p>
+
+      <ul>
+        <li>The <dfn>accountInformation</dfn> parameter specifies information about the user account for which the credential is being created. This is meant for later use by the authenticator when it needs to prompt the user to select a credential.</li>
+
+        <li>The <dfn>cryptoParameters</dfn> parameter supplies information about the desired properties of the credential to be created. The sequence is ordered from most preferred to least preferred. The platform makes a best effort to create the most preferred credential that it can.</li>
+
+        <li>The <dfn>attestationChallenge</dfn> parameter contains a challenge intended to be used for generating the attestation statement of the newly created credential.</li>
+
+        <li>The optional <dfn>credentialTimeoutSeconds</dfn> parameter specifies a time, in seconds, that the caller is willing to wait for the call to complete. This is treated as a hint, and may be overridden by the platform.</li>
+
+        <li>The optional <dfn>blacklist</dfn> parameter is intended for use by Relying Parties that wish to limit the creation of multiple credentials for the same account on a single authenticator. The platform is requested to return an error if the new credential would be created on an authenticator that also contains one of the credentials enumerated in this parameter.</li>
+
+        <li>The optional <dfn>credentialExtensions</dfn> parameter contains additional parameters requesting additional processing by the client and authenticator. For example, the caller may request that only authenticators with certain capabilities be used to create the credential, or that additional information be returned in the attestation statement. Alternatively, the caller may specify an additional message that they would like the authenticator to display to the user. Extensions are defined in [[#signature-format]].</li>
+      </ul>
+
+      <p>When this method is invoked, the user agent MUST execute the following algorithm:<p>
+
+      <ol type="1">
+
+
+        <li>If <a><code>credentialTimeoutSeconds</code></a> was specified, check if its value lies within a reasonable range as defined by the platform and if not, correct it to the closest value lying within that range. Set <var>adjustedTimeout</var> to this adjusted value. If <a><code>credentialTimeoutSeconds</code></a> was not specified then set <var>adjustedTimeout</var> to a platform-specific default.</li>
+
+        <li>Let <var>promise</var> be a new <a data-lt="Promises">Promise</a>. Return <var>promise</var> and start a timer for <var>adjustedTimeout</var> seconds. Then asynchronously continue executing the following steps.</li>
+
+        <li>Set <var>callerOrigin</var> to the <a><code>origin</code></a> of the caller. Derive the RP ID from <var>callerOrigin</var> by computing the "public suffix + 1" or "PS+1" (which is also referred to as the "Effective Top-Level Domain plus One" or "eTLD+1") part of <var>callerOrigin</var> [[PSL]]. Set <var>rpId</var> to the RP ID.</li>
+
+        <li>Initialize <var>issuedRequests</var> to an empty list.</li>
+
+        <li>
+          Process each element of <a><code>cryptoParameters</code></a> using the following steps:
+
+          <ol type="a">
+
+            <li>Let <var>current</var> be the currently selected element of <a><code>cryptoParameters</code></a>.</li>
+
+            <li>If <var>current.type</var> does not contain a {{CredentialType}} supported by this implementation, then stop processing <var>current</var> and move on to the next element in <a><code>cryptoParameters</code></a>.</li>
+
+            <li>Let <var>normalizedAlgorithm</var> be the result of normalizing an algorithm using the procedure defined in [[!WebCryptoAPI]], with <var>alg</var> set to <var>current.algorithm</var> and <var>op</var> set to &quot;generateKey&quot;. If an error occurs during this procedure, then stop processing <var>current</var> and move on to the next element in <a><code>cryptoParameters</code></a>.</li>
+          </ol>
+        </li>
+
+        <li>If <a><code>blacklist</code></a> is undefined, set it to the empty list.</li>
+
+        <li>If <a><code>credentialExtensions</code></a> was specified, process any extensions supported by this client platform, to produce the extension data that needs to be sent to the authenticator. Call this data <var>clientExtensions</var>.</li>
+
+        <li>For each embedded or external authenticator currently available on this platform: asynchronously invoke the <a><code>authenticatorMakeCredential</code></a> operation on that authenticator with <var>callerOrigin</var>, <var>rpId</var>, <a><code>accountInformation</code></a>, <var>current.type</var>, <var>normalizedAlgorithm</var>, <a><code>blacklist</code></a>, <a><code>attestationChallenge</code></a> and <var>clientExtensions</var> as parameters. Add a corresponding entry to <var>issuedRequests</var>.</li>
+
+        <li>
+          While <var>issuedRequests</var> is not empty, perform the following actions depending upon the <var>adjustedTimeout</var> timer and responses from the authenticators:
+
+          <ol type="a">
+
+            <li>If the <var>adjustedTimeout</var> timer expires, then for each entry in <var>issuedRequests</var> invoke the <a><code>authenticatorCancel</code></a> operation on that authenticator and remove its entry from the list.</li>
+
+            <li>If any authenticator returns a status indicating that the user cancelled the operation, delete that authenticator's entry from <var>issuedRequests</var>. For each remaining entry in <var>issuedRequests</var> invoke the <a><code>authenticatorCancel</code></a> operation on that authenticator and remove its entry from the list.</li>
+
+            <li>If any authenticator returns an error status, delete the corresponding entry from <var>issuedRequests</var>.</li>
+            <li>If any authenticator indicates success, create a new {{FIDOCredentialInfo}} object named <var>value</var> and populate its fields with the values returned from the authenticator. Resolve <var>promise</var> with <var>value</var> and terminate this algorithm.</li>
+          </ol>
+        </li>
+
+        <li>Resolve <var>promise</var> with a <a><code>DOMException</code></a> whose name is "<code>NotFoundError</code>", and terminate this algorithm.</li>
+
+      </ol>
+
+      <p>During the above process, the user agent SHOULD show some UI to the user to guide them in the process of selecting and authorizing an authenticator.</p>
+
+
+
+
+### Use an existing credential (<dfn method for="FIDOCredentials">getAssertion()</dfn> method) ### {#getAssertion}
+
+      <p>This method is used to discover and use an existing FIDO 2.0 credential, with the user's consent. The script optionally specifies some criteria to indicate what credentials are acceptable to it. The user agent and/or platform locates credentials matching the specified criteria, and guides the user to pick one that the script should be allowed to use. The user may choose not to provide a credential even if one is present, for example to maintain privacy.</p>
+
+      <p>This method takes the following parameters:</p>
+
+      <ul>
+        <li>The <dfn>assertionChallenge</dfn> parameter contains a string that the selected authenticator is expected to sign to produce the assertion.</li>
+
+        <li>The optional <dfn>assertionTimeoutSeconds</dfn> parameter specifies a time, in seconds, that the caller is willing to wait for the call to complete. This is treated as a hint, and may be overridden by the platform.</li>
+
+        <li>The optional <dfn>whitelist</dfn> member contains a list of credentials acceptable to the caller, in order of the caller's preference.</li>
+
+        <li>The optional <dfn>assertionExtensions</dfn> parameter contains additional parameters requesting additional processing by the client and authenticator. For example, if transaction confirmation is sought from the user, then the prompt string would be included in an extension. Extensions are defined in a companion specification.</li>
+      </ul>
+
+      <p>When this method is invoked, the user agent MUST execute the following algorithm:<p>
+
+      <ol type="1">
+
+        <li>If <a><code>assertionTimeoutSeconds</code></a> was specified, check if its value lies within a reasonable range as defined by the platform and if not, correct it to the closest value lying within that range. Set <var>adjustedTimeout</var> to this adjusted value. If <a><code>assertionTimeoutSeconds</code></a> was not specified then set <var>adjustedTimeout</var> to a platform-specific default.</li>
+
+        <li>Let <var>promise</var> be a new <a data-lt="Promises">Promise</a>. Return <var>promise</var> and start a timer for <var>adjustedTimeout</var> seconds. Then asynchronously continue executing the following steps.</li>
+
+        <li>Set <var>callerOrigin</var> to the <a><code>origin</code></a> of the caller. Derive the RP ID from <var>callerOrigin</var> by computing the "public suffix + 1" or "PS+1" (which is also referred to as the "Effective Top-Level Domain plus One" or "eTLD+1") part of <var>callerOrigin</var> [[PSL]]. Set <var>rpId</var> to the RP ID.</li>
+
+        <li>Initialize <var>issuedRequests</var> to an empty list.</li>
+
+        <li>If <a><code>assertionExtensions</code></a> was specified, process any extensions supported by this client platform, to produce the extension data that needs to be sent to the authenticator. Call this data <var>clientExtensions</var>.</li>
+
+        <li>
+          For each embedded or external authenticator currently available on this platform, perform the following steps:
+
+          <ol type="a">
+            <li>If <a><code>whitelist</code></a> is undefined or empty, let <var>credentialList</var> be a list containing a single wildcard entry.</li> <!-- TBD The wildcard syntax needs to be defined and/or referenced here. -->
+
+            <li>If <a><code>whitelist</code></a> is defined and non-empty, optionally execute a platform-specific procedure to determine which of these credentials can possibly be present on this authenticator. Set <var>credentialList</var> to this filtered list. If <var>credentialList</var> is empty, ignore this authenticator and do not perform any of the following per-authenticator steps.</li>
+
+            <li>Asynchronously invoke the <a><code>authenticatorGetAssertion</code></a> operation on this authenticator with <var>callerOrigin</var>, <var>rpId</var>, <a><code>assertionChallenge</code></a>, <var>credentialList</var>, and <var>clientExtensions</var> as parameters.</li>
+
+            <li>Add an entry to <var>issuedRequests</var>, corresponding to this request.</li>
+
+          </ol>
+        </li>
+
+        <li>
+          While <var>issuedRequests</var> is not empty, perform the following actions depending upon the <var>adjustedTimeout</var> timer and responses from the authenticators:
+
+          <ol type="a">
+
+            <li>If the timer for <var>adjustedTimeout</var> expires, then for each entry in <var>issuedRequests</var> invoke the <a><code>authenticatorCancel</code></a> operation on that authenticator and remove its entry from the list.</li>
+
+            <li>If any authenticator returns a status indicating that the user cancelled the operation, delete that authenticator's entry from <var>issuedRequests</var>. For each remaining entry in <var>issuedRequests</var> invoke the <a><code>authenticatorCancel</code></a> operation on that authenticator, and remove its entry from the list.</li>
+
+            <li>If any authenticator returns an error status, delete the corresponding entry from <var>issuedRequests</var>.</li>
+
+            <li>If any authenticator returns success, create a new {{FIDOAssertion}} object named <var>value</var> and populate its fields with the values returned from the authenticator. Resolve <var>promise</var> with <code>value</code> and terminate this algorithm.</li>
+          </ol>
+        </li>
+
+        <li>Resolve <var>promise</var> with a <a><code>DOMException</code></a> whose name is "<code>NotFoundError</code>", and terminate this algorithm.</li>
+
+      </ol>
+
+      <p>During the above process, the user agent SHOULD show some UI to the user to guide them in the process of selecting and authorizing an authenticator with which to complete the operation.</p>
+
+
+## <dfn interface>FIDOCredentialInfo</dfn> Interface ## {#iface-credentialInfo}
+
+    <div dfn-for="FIDOCredentialInfo">
+      <p>This interface represents a newly-created FIDO credential. It contains information about the credential that can be used to locate it later for use, and also contains metadata that can be used by the FIDO Relying Party to assess the strength of the credential during registration.</p>
+
+      <p>The <dfn>credential</dfn> attribute contains a unique identifier for the credential represented by this object.</p>
+
+      <p>The <dfn>algorithm</dfn> attribute contains the cryptographic algorithm associated with the credential, in the format defined in [[!WebCryptoAPI]].</p>
+
+      <p>The <dfn>publicKey</dfn> attribute contains the public key associated with the credential, represented as a JsonWebKey structure as defined in [[!WebCryptoAPI]].</p>
+
+      <p>The <dfn>attestation</dfn> attribute contains a key attestation statement returned by the authenticator. This provides information about the credential and the authenticator it is held in, such as the level of security assurance provided by the authenticator.</p>
+    </div>
+
+
+## User Account Information (dictionary <dfn dictionary>Account</dfn>) ## {#iface-account}
+
+    <div dfn-for="Account">
+      <p>This dictionary is used by the caller to specify information about the user account and Relying Party with which a credential is to be associated. It is intended to help the authenticator in providing a friendly credential selection interface for the user.</p>
+
+      <p> The <dfn>rpDisplayName</dfn> member contains the friendly name of the Relying Party, such as "Google", "Microsoft" or "PayPal".</p>
+
+      <p>The <dfn>displayName</dfn> member contains the friendly name associated with the user account by the Relying Party, such as "John P. Smith".</p>
+
+      <p>The <dfn>name</dfn> member contains a detailed name for the account, such as "john.p.smith@example.com".</p>
+
+      <p>The <dfn>id</dfn> member contains an identifier for the account, stored for the use of the Relying Party. This is not meant to be displayed to the user.</p>
+
+      <p>The <dfn>imageUri</dfn> member contains a URI that resolves to the user's account image. This may be a URL that can be used to retrieve the user's current avatar, or a data URI that contains the image data.</p>
+
+    </div>
+
+
+## Parameters for Credential Generation (dictionary <dfn dictionary>FIDOCredentialParameters</dfn>) ## {#credential-params}
+
+    <div dfn-for="FIDOCredentialParameters">
+      <p>This dictionary is used to supply additional parameters when creating a new credential.</p>
+
+      <p>The <dfn>type</dfn> member specifies the type of credential to be created.</p>
+
+      <p>The <dfn>algorithm</dfn> member specifies the cryptographic algorithm with which the newly generated credential will be used.</p> <!-- TBD This should probably say that the type of this field is AlgorithmIdentifier. -->
+    </div>
+
+
+## Supporting Data Structures ## {#supporting-data-structures}
+  
+    The FIDO credential type uses certain data structures that are specified in supporting specifications. These are as follows.
+
+### Credential Type enumeration (enum <dfn enum>CredentialType</dfn>) ### {#credentialType}
+
+      <div dfn-for="CredentialType">
+        <p>This enumeration defines the valid credential types. It is an extension point; values may be added to it in the future, as more credential types are defined. The values of this enumeration are used for versioning the FIDO assertion and attestation statement according to the type of the authenticator.</p>
+
+        <p>Currently one credential type is defined, namely &quot;<dfn>FIDO</dfn>&quot;, the FIDO 2.0 credential type.</p>
+      </div>
+
+
+### Unique Identifier for Credential (interface <dfn interface>Credential</dfn>) ### {#credential-identifier}
+
+      <p>This interface contains the attributes that are returned to the caller when a new credential is created, and can be used later by the caller to select a credential for use.</p>
+
+      <div dfn-for="Credential">
+      <p>The <dfn>type</dfn> attribute indicates the specification and version that this credential conforms to.</p> <!-- TBD Why isn't this called "version", since it's a version identifier? -->
+
+        <p>The <dfn>id</dfn> attribute contains an identifier for the credential, chosen by the platform with help from the authenticator. This identifier is used to look up credentials for use, and is therefore expected to be globally unique with high probability across all credentials of the same type. This API does not constrain the format or length of this identifier, except that it must be sufficient for the platform to uniquely select a key. For example, an authenticator without on-board storage may create identifiers that consist of the key material wrapped with a key that is burned into the authenticator.</p>
+      </div>
+
+
+### Cryptographic Algorithm Identifier (type {{AlgorithmIdentifier}}) ### {#alg-identifier}
+
+      <p>A string or dictionary identifying a cryptographic algorithm and optionally a set of parameters for that algorithm. This type is defined in [[!WebCryptoAPI]].</p>
+
+
+### FIDO Assertion (interface {{FIDOAssertion}}) ### {#iface-assertion}
+
+      <p>FIDO 2.0 credentials produce a cryptographic signature that provides proof of possession of a private key as well as evidence of user consent to a specific transaction. The structure of these signatures is defined in [[#fido-assertion]].</p>
+
+
+### FIDO Assertion Extensions (dictionary <dfn>FIDOExtensions</dfn>) ### {#iface-assertion-extensions}
+
+      <p>This is a dictionary containing zero or more extensions as defined in [[#extensions]]. An extension is an additional parameter that can be passed to the <a>getAssertion()</a> method and triggers some additional processing by the client platform and/or the authenticator.</p>
+
+      <p>
+        If the caller wants to pass extensions to the platform, it SHOULD do so by adding one
+        entry per extension to this <code>FIDOExtensions</code> dictionary with 
+        the extension identifier as the key, and the extension's value as the value
+        (see [[#signature-format]] for details).  
+      </p>
+
+
+### Key Attestation Statement (interface <dfn>AttestationStatement</dfn>) ### {#iface-attestation-statement}
+
+      <p>FIDO 2.0 authenticators also provide some form of key attestation. The basic requirement is that the authenticator can produce, for each credential public key, attestation information that can be verified by a Relying Party. Typically this information contains a signature by an attesting key over the attested public key and a challenge, as well as a certificate or similar information providing provenance information for the attesting key, enabling a trust decision to be made. The structure of these attestation statements is defined in [[#attestation]].</p>
+
+
+<!-- Included from signature-format.html -->
+
+# Signature Format # {#signature-format}
+	  
+
+<p>FIDO 2.0 signatures are bound to various contextual data. These data are
+observed, and added at different levels of the stack as a signature request
+passes from the server to the authenticator. In verifying a signature, the
+server checks these bindings against expected values.</p>
+
+<p>The components of a system using FIDO 2.0 can be divided into three layers:</p>
+<ol>
+  <li>The relying party (RP), which uses the FIDO 2.0 services.
+  The relying party may, for
+  example, be a web-application running in a browser, or a native application
+  that runs directly on the OS platform.</li>
+  <li>The client platform, which consists of the user’s OS and device used to
+  host the RP’s client-side app. For web-applications, the browser also belongs
+  to this layer.</li>
+  <li>The authenticator itself, which provides key management and
+  cryptographic signatures.</li>
+</ol>
+
+<p>When the RP client-side application is a web-application, the interface between 1 and 2
+is the <a href="#api">FIDO Credential API</a>, but is platform specific for native applications.
+In cases where the authenticator is not tightly integrated with the platform, the interface
+between 2 and 3 is a separately-defined protocol.
+This specification defines the common signature format
+shared by all layers.  This includes how the different contextual bindings are
+encoded, signed over, and delivered to the RP.</p>
+
+<p>The goals of this design can be summarized as follows.</p>
+<ul>
+  <li>The scheme for generating signatures should accommodate cases where the
+  link between the client platform and authenticator is very limited, in
+  bandwidth and/or latency. Examples include Bluetooth Low Energy and Near-Field
+  Communication.</li>
+  <li>The data processed by the authenticator should be small and easy to
+  interpret in low-level code. In particular, authenticators should not have to
+  parse high-level encodings such as JSON.</li>
+  <li>Both the client platform and the authenticator should have the flexibility
+  to add contextual bindings as needed.</li>
+  <li>The design aims to reuse as much as possible of existing encoding formats
+  in order to aid adoption and implementation.</li>
+</ul>
+
+<p>The contextual bindings are divided in two: Those added by the RP or the
+client platform, referred to as <dfn>client data</dfn>; and those added by the
+authenticator, referred to as the <dfn>authenticator data</dfn>.  The client
+data must be signed over, but an authenticator is otherwise not interested in
+its contents. To save bandwidth and processing requirements on the
+authenticator, the client platform hashes the client data and sends only
+the result to the authenticator. The authenticator signs over the combination
+of this hash, and its own authenticator data.</p>
+
+## Client data ## {#sec-client-data}
+
+  <p>The client data represents the contextual bindings of both the RP and the
+  client platform.  It is a key-value mapping with string-valued keys. Values may be
+  any type that has a valid encoding in JSON.  It MUST contain at least the
+  following key-value pairs.</p>
+  
+  <pre class="idl">
+  dictionary ClientData {
+	  DOMString       challenge;
+	  DOMString       facet;
+	  JsonWebKey      tokenBinding;
+	  object          extensions; // optional
+	  DOMString       hashAlg;
+  };
+  </pre>
+  
+  <div dfn-for="ClientData">
+  <dl>
+    <dt>DOMString <dfn>challenge</dfn></dt>
+    <dd>
+      A base64url-encoded challenge provided by the RP.
+    </dd>
+    <dt>DOMString <dfn>facet</dfn></dt>
+    <dd>
+      A string value describing the RP identifier facet.
+      When the RP client-side app is a website, this is its fully qualified web origin,
+      using the syntax defined by [[RFC6454]]. When the client-side app is a native
+      application, this string is a platform specific identifier.
+    </dd>
+    <dt>JsonWebKey <dfn>tokenBinding</dfn></dt>
+    <dd>
+      A JsonWebKey object [[JWK]] describing the public key that this client uses for
+      the Token Binding protocol when communicating with the Relying Party.
+      This can be omitted if no Token Binding has been negotiated between the
+      client and the Relying Party.
+    </dd>
+    <dt>optional object <dfn>extensions</dfn></dt>
+    <dd>
+      An object with extension-provided authenticator data.
+      Signature extensions are detailed in Section <a href="#extensions"></a>.
+    </dd>
+    <dt>DOMString <dfn>hashAlg</dfn></dt>
+    <dd>
+      The hash algorithm used to compute clientDataHash 
+      (see <a href="#authenticator-signature"></a>).  Use "S256" for SHA-256, 
+      "S384" for SHA384, "S512" for SHA512, and "SM3" for SM3 
+      (see <a href='#iana-considerations'></a>). 
+    </dd>
+  </dl>
+  </div>
+
+  <p>The client data MAY contain additional properties.</p>
+
+  <p>Before making a request to an authenticator, the
+  client platform layer SHALL perform the following steps.</p>
+  <ol>
+    <li>Let <dfn>clientDataJSON</dfn> be the UTF-8 encoded JSON serialization
+    [[RFC7159]] of {{ClientData}}.</li>
+
+    <li>Let <var>clientDataHash</var> be the hash (computed using {{hashAlg}}) of 
+    <a>clientDataJSON</a>, as an array.</li>
+  </ol>
+
+  <p>The <var>clientDataHash</var> value is incorporated into a signature
+  by a FIDO authenticator (see <a href="#authenticator-signature"></a>).
+  It is delivered to integrated authenticators
+  in platform specific manners, and to external authenticators as a part of
+  a signature request.
+  The client platform SHOULD also preserve the exact <code>encodedClientData</code>
+  string used to create it, for embedding in a signature object sent back to
+  the RP (see <a href="#authenticator-signature"></a>).
+  This is necessary since multiple JSON encodings of the same client
+  data are possible.</p>
+  <p>The hash algorithm {{hashAlg}} used to compute <var>clientDataHash</var> is 
+    included in the {{ClientData}} object. This way it is available to the RP and 
+    it is also hashed over when computing <var>clientDataHash</var> and hence
+    anchored in the signature itself.
+  </p>
+
+
+## Authenticator data ## {#sec-authenticator-data}
+
+  <p>The authenticator data encodes contextual bindings made by the
+  authenticator itself. The authenticator data has a compact but extensible
+  encoding. This is desired since authenticators can be devices with limited
+  capabilities and low power requirements, with much simpler software stacks
+  than the client platform components.</p>
+
+  <p>The encoding of authenticator data is a byte array <code>authenticatorData</code>
+  of 5 bytes or more, as follows.</p>
+  <table class="complex data longlastcol">
+    <tr>
+      <th>Byte index</th>
+      <th>Description</th>
+    </tr>
+    <tr>
+      <td>0</td>
+      <td>Flags (bit 0 is the least significant bit):
+        <ul>
+          <li>Bit 0: Test of User Presence (<code>TUP</code>) result.</li>
+          <li>Bits 1-6: Reserved for future use (<code>RFU</code>).</li>
+          <li>Bit 7: Extension data included (<code>ED</code>). Indicates if the
+          authenticator data has extensions.</li>
+        </ul>
+      </td>
+    </tr>
+    <tr>
+      <td>1-4</td>
+      <td>Signature counter (<code>signCount</code>), 32-bit unsigned big-endian integer.</td>
+    </tr>
+    <tr>
+      <td>5-</td>
+      <td>Extension-defined authenticator data. This is a CBOR [[RFC7049]] map with extension
+      identifiers as keys, and extension authenticator data values as values. See 
+      <a href="#extensions"></a> for details.</td>
+    </tr>
+  </table>
+
+  <p>The <code>TUP</code> flag SHALL be set if and only if the authenticator
+  detected a user through an authenticator specific gesture. The <code>RFU</code>
+  bits in the flags byte SHALL be set to zero.</p>
+
+  <p>If the authenticator does not include any extension data, it MUST set the
+  <code>ED</code> flag in the first byte to zero, and to one if extension data
+  is included.</p>
+
+  <p>The figure below shows a visual representation of the
+  authenticator data structure.</p>
+
+  <figure>
+    <img src="img/fido-signature-formats-figure1.svg"/>
+    <figcaption><code>authenticatorData</code> layout.</figcaption>
+  </figure>
+
+  <p class="note">
+  The <code>signatureData</code> describes its own length: If the ED flag is not set, it
+  is always 5 bytes long. If the ED flag is set, it is 5 bytes plus the CBOR map that follows.
+  </p>
+
+
+## Generating a signature ## {#authenticator-signature}
+
+  <p>A raw cryptographic signature must assert the integrity of both the
+  client data and the authenticator data. Thus, an authenticator SHALL
+  compute a signature over the concatenation of the <var>authenticatorData</var>
+  and the <var>clientDataHash</var>.
+  </p>
+
+  <figure id="fig-signature">
+    <img src="img/fido-signature-formats-figure2.svg"/>
+    <figcaption>Generating a signature on the authenticator.</figcaption>
+  </figure>
+
+  <p class="note">
+    A simple, undelimited concatenation, is safe to use here because the
+    <var>authenticatorData</var> describes its own length. The 
+    <var>clientDataHash</var> (which potentially has a variable length) 
+    is always the last element.
+  </p>
+
+  <p>
+    The authenticator MUST return both the <var>authenticatorData</var> and
+    the raw signature back to the client.
+  </p>
+
+## Client encoding of assertions ## {#fido-assertion}
+
+  <p>The client platform uses an authenticator assertion to construct
+  the final {{FIDO assertion}} object returned to the RP as follows.</p>
+
+  <pre class="idl">
+  interface FIDOAssertion {
+	  attribute Credential credential;
+	  attribute DOMString  clientData;
+	  attribute DOMString  authenticatorData;
+	  attribute DOMString  signature;
+  };
+  </pre>
+  
+  <div dfn-for="FIDOAssertion">
+  <dl>
+    <dt>attribute Credential <dfn>credential</dfn></dt>
+    <dd>
+    	An object representing which credential was used to generate an assertion.
+    </dd>
+    <dt>attribute DOMString <dfn>clientData</dfn></dt>
+    <dd>
+      A base64url encoding of <a>clientDataJSON</a>.
+      (See <a href="#sec-client-data"></a>)
+    </dd>
+    <dt>attribute DOMString authenticatorData</dt>
+    <dd>
+      A base64url encoding of {{authenticatorData}}.
+      (See <a href="#sec-authenticator-data"></a>)
+    </dd>
+    <dt>attribute DOMString <dfn>signature</dfn></dt>
+    <dd>
+      A base64url encoding of the raw signature returned from the authenticator.
+      (See <a href="#authenticator-signature"></a>)
+    </dd>
+  </dl>
+
+  <p>This assertion is delivered to the RP in either a platform specific manner, or
+  in the case of web applications, according to the FIDO Web API ([[#api]]).
+  It contains all the information that the RP's FIDO server requires to
+  reconstruct the signature base string, as well as to decode and validate
+  the bindings of both the client- and authenticator data.</p>
+<!-- End of include from signature-format.html -->
+
+  
+<!-- Begin of include from key-attestation.html -->
+  
+# Key Attestation Format # {#attestation}
+
+    This specification defines generic data structures that cover the
+	semantics of FIDO Authenticator attestation. This specification also 
+	provides a profile of these structures when a TPM [[TPM]] acts as a crypto kernel. 
+	More profiles are expected to be added as the specification
+	evolves.
+  
+## Overview ## {#attestation-overview}
+
+### Attestation Models ### {#attestation-models}
+      
+	<p>FIDO 2.0 specifies multiple attestation models:</p>
+	<dl>
+	  <dt>Full Basic Attestation</dt>
+	  <dd>In the case of full basic attestation [[UAFProtocol]], the Authenticator's attestation private key is
+	    specific to an Authenticator model.  That means that an Authenticator of the same model
+	    typically shares the same attestation private key.
+	    <p>This model is also used for FIDO UAF 1.0 and FIDO U2F 1.0.</p>
+	  </dd>
+	  <dt>Surrogate Basic Attestation</dt>
+	  <dd>In the case of surrogate basic attestation [[UAFProtocol]], the 
+	    Authenticator doesn't have any specific attestation key.  Instead it uses 
+	    the authentication key to (self-)sign the (surrogate) attestation message.  
+	    Authenticators without meaningful protection measures for an attestation private key
+	    typically use this attestation model.  
+	  </dd>
+	  <dt>Privacy CA</dt>
+	  <dd>In this case, the authenticator owns an authenticator-specific (endorsement) key.  
+	    This key is used to securely communicate with a trusted third party, 
+	    the Privacy CA.  The Authenticator can generate
+	    multiple attestation key pairs and asks the Privacy CA to issue an 
+	    attestation certificate for it. 
+	    <p>Using this approach, the Authenticator can limit the exposure of the 
+	      endorsement key (which is a global correlation handle) to Privacy CA(s).
+	      Attestation keys can be requested for each FIDO credential individually.
+	    </p>
+	    <p class="note">This concept typically leads to multiple attestation certificates.
+	      The attestation certificate requested most recently is called "active".
+	    </p>
+	  </dd>
+	  <dt>Direct Anonymous Attestation (DAA)</dt>
+	  <dd>In this case, the Authenticator receives DAA credentials from a single DAA-Issuer.
+	    These DAA credentials are used along with blinding to sign the attestation data.
+	    The concept of blinding avoids the DAA credentials being misused as global correlation handle.
+	    <p>FIDO 2.0 supports DAA using elliptic curve cryptography and bilinear pairings, 
+	      called ECDAA (see [[FIDOEcdaaAlgorithm]]) in this specification.</p>
+	  </dd>
+	</dl>
+	<p>Compliant FIDO Servers MUST support all attestation models.  
+	  Authenticators can choose what attestation model to implement.
+	</p>
+	<p class="note">Relying parties can always decide what attestation models are acceptable by policy.
+	</p>
+
+### Contextual Data ### {#attestation-contextual-data}
+
+	<p>FIDO 2.0 attestation statements are bound to various contextual data. These data are
+	  observed, and added at different levels of the stack as a signature request
+	  passes from the server to the authenticator. In verifying a signature, the
+	  server checks these bindings against expected values.</p>
+	
+	<p>These components can be divided into three layers:</p>
+	<ol>
+	  <li>The relying party (RP) consists of two subcomponents: an online
+	    service and a client-side application. The client-side app may, for
+	    example, be a web application running in a browser, or a native application
+	    that runs directly on the OS platform.</li>
+	  <li>The client platform, which consists of the user’s OS and device used to
+	    host the RP’s client-side app. For web applications, the browser also belongs
+	    to this layer.</li>
+	  <li>The authenticator itself, which provides key generation and key management and
+	    cryptographic signatures.</li>
+	</ol>
+	
+	<p>The goals of this design can be summarized as follows.
+	  <ul>
+	    <li>The scheme for generating keys and attestation statements should accommodate cases where the
+	      link between the client platform and authenticator is very limited, in
+	      bandwidth and/or latency. Examples include Bluetooth Low Energy and Near-Field
+	      Communication.</li>
+	    <li>The data processed by the authenticator should be small and easy to
+	      interpret in low-level code. In particular, authenticators should not have to
+	      parse high-level encodings such as JSON.</li>
+	    <li>Both the client platform and the authenticator should have the flexibility
+	      to add contextual bindings, as needed.</li>
+	    <li>The design aims to reuse existing encoding formats as much as possible
+	      to aid adoption and implementation.</li>
+	  </ul>
+	</p>
+	
+	<p>
+	  There are two kinds of contextual bindings:
+	  Those added by the RP or the client platform,
+	  referred to as <dfn>client data</dfn> (see [[#signature-format]])
+	  and those added by the
+	  authenticator, referred to as the <dfn>attestation data</dfn>.  The client
+	  data must be signed over, but an authenticator is otherwise not interested in
+	  its contents.  More specifically, the authenticator cannot attest to the correctness of such data.
+	  To save bandwidth and processing requirements on the
+	  authenticator, the client platform hashes the client data and sends only
+	  the hash result to the authenticator. The authenticator attestation statement includes the combination
+	  of this hash, and its own attestation data.
+	</p>
+
+### Attestation Raw Data Types ### {#attestation-raw-data-types}
+
+	<p>
+	  FIDO specifies pluggable attestation raw data types, i.e., 
+	  ways to serialize the data being attested to by the authenticator.
+	  The reason is to be able to support existing devices like TPMs and other
+	  platform-specific formats.
+	</p>
+	<p>Each attestation type provides the ability to cryptographically attest to a public key, the
+	  authenticator model, and contextual data to a remote party.
+	</p>
+	<p>Attestation raw data types are orthogonal to attestation models, i.e. 
+	  attestation raw data types in general are not restricted to a single attestation model.
+	</p>
+	
+
+## Attestation Statement ## {#attestation-statement}
+
+      <p>When an attestation statement is required for an Authenticator, the client
+	needs to ask the Authenticator to generate one. This section describes the
+	attestation statement data structures. Attestation statements
+	can also include some host and other Authenticator information.
+      </p>
+      
+      The attestation statement consists of
+      <ol>
+	<li>the <code>header</code> object, containing the signing algorithm and 
+	  additional information required to verify the attestation signature.
+	</li>
+	<li>the <code>core</code> object, containing the attested data.  This object
+	  is a container and can carry multiple, authenticator model specific, 
+	  attestation rawData types (see section [[#defined-attestation-raw-data-types]]). 
+	</li>
+	<li>the <code>signature</code> object.  This object contains the cryptographic
+	  signature computed over the <code>rawData</code> object.  
+	  The structure of this object depends on the signature algorithm.
+	</li>
+      </ol>
+
+
+## Client encoding of attestation statements ## {#attestation-client-encoding}
+
+
+	<p>The client platform uses an authenticator generated 
+	  attestation signature (<code>signature</code>) and the 
+	  authenticator generated <code>rawData</code> object to construct
+	  the final attestation statement object (which will be returned to the RP). 
+	  This attestation statement is encoded as:
+	</p>
+
+<pre class="idl">
+interface AttestationStatement {
+    readonly    attribute AttestationHeader header;
+    readonly    attribute AttestationCore   core;
+    readonly    attribute DOMString         signature;
+};
+</pre>
+
+	<dl dfn-for="AttestationStatement">
+	  <dt>readonly attribute AttestationHeader <dfn>header</dfn></dt>
+	  <dd>Attestation header, including algorithm, (optionally) the claimed AAGUID 
+	    and (optionally) the attestation certificate chain.
+	  </dd>
+	  <dt>readonly attribute AttestationCore <dfn>core</dfn></dt>
+	  <dd>AttestationCore object.  This object includes the attested <code>rawData</code> and 
+	    its <code>type</code> and <code>version</code>.</dd>
+	  <dt>readonly attribute DOMString <dfn>signature</dfn></dt>
+	  <dd>The base64url-encoded attestation signature.  The structure of this 
+	    object depends on the signature algorithm specified in the header.
+	  </dd>
+	</dl>
+	
+	<p>This attestation statement is delivered to the RP according to the Client API.
+	  It contains all the information that the RP's FIDO server requires to
+	  reconstruct the signature base string, as well as to decode and validate
+	  the bindings of both the client- and authenticator data.
+	</p>
+
+### AttestationCore ### {#sec-attestationcore}
+
+	Data attested by the Authenticator and description of its structure.
+	Different types of Authenticators might generate different object types 
+	(identified by <code>type</code> and <code>version</code>).
+
+<pre class="idl">
+interface AttestationCore {
+    readonly    attribute DOMString     type;
+    readonly    attribute unsigned long version;
+    readonly    attribute DOMString     rawData;
+    readonly    attribute DOMString     clientData;
+};	
+</pre>
+
+	<dl dfn-for="AttestationCore">
+	  <dt>readonly attribute DOMString <dfn>type</dfn></dt>
+	  <dd>
+	    The type of the rawData object. This specification defines these
+	    attestation raw data types: "tpm", "packed", and "android". Other attestation
+	    raw data types may be defined in further versions of this specification.
+	  </dd>
+	  <dt>readonly attribute unsigned long <dfn>version</dfn></dt>
+	  <dd>The version number of the rawData object.</dd>
+	  <dt>readonly attribute DOMString <dfn>rawData</dfn></dt>
+	  <dd>
+	    The rawData object (for type "android"), or the base64url-encoded rawData
+	    object (for types "tpm" and "packed"), containing the attested public key
+	    and the <code>clientDataHash</code>.
+	  </dd>
+	  <dt>readonly attribute DOMString <dfn>clientData</dfn></dt>
+	  <dd>
+	    A base64url encoding of <a>clientDataJSON</a> (see [[#signature-format]]). The
+	    exact encoding must be preserved as the hash (clientDataHash) has been
+	    computed over it.
+	  </dd>
+	</dl>
+
+#### Client data #### {#sec-attestation-client-data}
+	  <p>
+	    The client platform SHALL deliver, through the EAP API, the
+	    <code>clientDataHash</code> (see [[#signature-format]]) to the authenticator.  
+	    The client platform MUST also preserve the exact <code>encodedClientData</code> 
+	    string (see [[#signature-format]]), for embedding
+	    in a signature object sent back to the RP. This is necessary since multiple
+	    JSON encodings of the same client data are possible.
+	  </p>
+
+### AttestationHeader ### {#sec-attestation-header}
+
+	Additional data required to verify the attestation signature.  
+
+<pre class="idl">
+interface AttestationHeader {
+    readonly    attribute DOMString   claimedAAGUID;
+    readonly    attribute DOMString[] x5c;
+    readonly    attribute DOMString   alg;
+};
+</pre>
+
+	<dl dfn-for="AttestationHeader">
+	  <dt>readonly attribute DOMString <dfn>claimedAAGUID</dfn></dt>
+	  <dd>The claimed Authenticator Attestation GUID (a version 4 GUID, see [[RFC4122]]).  
+	    This value is used by the FIDO Server to 
+	    lookup the trust anchor for verifying this AttestationCore object.  
+	    If the verification succeeds, 
+	    the AAGUID related to the trust anchor is trusted.  This field MUST be present, if either no
+	    attestation certificates are used (e.g., DAA) or if the attestation 
+	    certificate doesn't contain the AAGUID value in an extension.
+	  </dd>
+	  <dt>readonly attribute DOMString[] <dfn>x5c</dfn></dt>
+	  <dd>Attestation Certificate and its certificate chain as described
+	    in [[!RFC7515]] section 4.1.6.</dd>
+	  <dt>readonly attribute DOMString <dfn>alg</dfn></dt>
+	  <dd>The name of the algorithm used to generate the attestation signature according to [[!RFC7518]].  
+	    <p>See [[#packed-attestation-signature]] for the signature algorithms 
+	      to be implemented by FIDO Servers.</p>
+	  </dd>
+	</dl>
+
+## Defined Attestation Raw Data Types ## {#defined-attestation-raw-data-types}
+	<p>
+	  Attestation Raw Data (<code>rawData</code>) is the to-be-signed object of
+	  the attestation statement. FIDO supports pluggable attestation data types.
+	  This allows support of TPM generated attestation data as well as support of
+	  other FIDO authenticators.
+	</p>
+	<p>
+	  The contents of the attestation data must be controlled (i.e., generated or
+	  at least verified) by the authenticator itself.
+	</p>
+
+### Packed Attestation ### {#packed-attestation}
+
+	  Packed attestation is a FIDO optimized format of attestation data.  It uses a very compact but 
+	  still extensible encoding method.  Encoding this format can even be implemented by authenticators
+	  with very limited resources (e.g., secure elements).
+
+#### Attestation rawData (type="packed") #### {#sec-raw-data-packed}
+
+	    <p>The attestation data encodes contextual bindings made by the
+	      authenticator itself. Unlike client data, the authenticator data has
+	      a compact but extensible encoding. This is desired since authenticators can
+	      be devices with limited capabilities and low power requirements, with much
+	      simpler software stacks than the client platform components.</p>
+
+	    <p>For this type, only version="1" is defined at this time.</p>
+
+	    <p>The field <code>rawData</code> is the <b>base64url encoding of the byte array</b>.
+	      The encoding of attestation data (for type "packed") is a byte array 
+	      of 45 bytes + length of public key + length of KeyHandle + potentially more extensions. 
+	      The first bytes before the extensions have a fixed layout as follows:</p>
+		  
+	    <table class="complex data longlastcol">
+	      <tr>
+		<th>Length (in bytes)</th>
+		<th>Description</th>
+	      </tr>
+	      <tr>
+		<td>2</td>
+		<td>0xF1D0, fixed big-endian TAG to make sure this object won't be 
+		  confused with other (non-FIDO) binary objects.</td>
+	      </tr>
+	      <tr>
+		<td>1</td>
+		<td>Flags (bit 0 is the least significant bit):
+		  <ul>
+		    <li>Bit 0: Test of User Presence (<code>TUP</code>) result.</li>
+		    <li>Bits 1-6: Reserved for future use (<code>RFU</code>).</li>
+		    <li>Bit 7: Extension data included (<code>ED</code>). Indicates whether the
+		      authenticator added extensions (see below).</li>
+		  </ul>
+		</td>
+	      </tr>
+	      <tr>
+		<td>4</td>
+		<td>Signature counter (<code>signCount</code>), 32-bit unsigned big-endian integer.</td>
+	      </tr>
+	      <tr>
+		<td>2</td>
+		<td>
+		  Public key algorithm and encoding (16-bit big-endian value).
+		  Allowed values are: 
+		  <ol>
+		    <li>0x0100. This is raw ANSI X9.62 formatted Elliptic Curve public key [[!SEC1]].
+		      <p>I.e., <code>[0x04, X (n bytes), Y (n bytes)]</code>.  Where the 
+			byte <code>0x04</code> denotes the uncompressed point compression method 
+			and n denotes the key length in bytes.</p>
+		    </li>	  
+		    <li>0x0102.  Raw encoded RSA PKCS1 or 
+		      RSASSA-PSS public key [[RFC3447]].
+		      <p>In the case of RSASSA-PSS, the default parameters according 
+			to [[RFC4055]] MUST be assumed, i.e.,
+			<ul>
+			  <li>Mask Generation Algorithm MGF1 with SHA256</li>
+			  <li>Salt Length of 32 bytes, i.e., the length of a SHA256 hash value.</li>
+			  <li>Trailer Field value of 1, which represents the trailer field with 
+			    hexadecimal value <code>0xBC</code>.
+			</ul>
+		      </p>
+		      <p>That is, <code>[modulus (256 bytes), e (m-n bytes)]</code>.  
+			Where <code>m</code> is the total length of the field.</p>
+		      <p>This total length should be taken from the object containing this key</p>
+		    </li>
+		  </ol>
+		</td>
+	      </tr>
+	      <tr>
+		<td>2</td>
+		<td>Byte length m of following public key bytes (16 bit value 
+		  with most significant byte first).
+		</td>
+	      </tr>
+	      <tr>
+		<td>(length)</td>
+		<td>The public key (m bytes) according to the encoding denoted before.</td>
+	      </tr>
+	      <tr>
+		<td>2</td>
+		<td>Byte length l of KeyHandle
+		</td>
+	      </tr>
+	      <tr>
+		<td>(length)</td>
+		<td>KeyHandle (l bytes)</td>
+	      </tr>
+	      <tr>
+		<td>2</td>
+		<td>Byte length n of clientDataHash
+		</td>
+	      </tr>
+	      <tr>
+		<td>n</td>
+		<td>clientDataHash (see [[#sec-attestation-client-data]]).  
+		  This is the hash of <code>clientData</code>.  The hash algorithm itself is stored
+		  in the <code>clientData</code> object [[#signature-format]].
+		</td>
+	      </tr>
+	      <tr>
+		<td>As defined by the extension map</td>
+		<td>Extension-defined authenticator data. This is a CBOR [[RFC7049]] map with 
+		  extension identifiers as keys, and extension authenticator data values as values. 
+		  See [[#extensions]] for a description 
+		  of the extension mechanism.
+		  See [[#sec-extensions-for-packed-attestation-rawdata]] 
+		  for pre-defined extensions.
+		</td>
+	      </tr>
+	    </table>
+	    
+	    <p>The <code>TUP</code> flag SHALL be set if and only if the authenticator
+	      detected a user through an authenticator-specific gesture. The <code>RFU</code>
+	      bits in the flags byte SHALL be cleared (i.e., zeroed).</p>
+	    
+	    <p>If the authenticator does not wish to add extensions, it MUST clear
+	      the <code>ED</code> flag in the third byte.</p>
+
+#### Extensions for Packed Attestation rawData #### {#sec-extensions-for-packed-attestation-rawdata}
+	    
+##### AAGUID Extension ##### {#aaguid-extension}
+
+	  <dl>
+		<dt>Extension identifier</dt>
+		<dd><code>fido.aaguid</code></dd>
+		
+		<dt>Client argument</dt>
+		<dd>N/A</dd>
+		
+		<dt>Client processing</dt>
+		<dd>N/A</dd>
+		
+		<dt>Authenticator argument</dt>
+		<dd>N/A</dd>
+		
+		<dt>Authenticator processing</dt>
+		<dd>This extension is added automatically by the authenticator.  This extension can be added
+		  to attestation statements and signatures.
+		</dd>
+		
+		<dt>Authenticator data</dt>
+		<dd>A 128-bit Authenticator Attestation GUID encoded as a CBOR text string (major type 3).
+		  
+		  <p>This AAGUID is used to identify the Authenticator model (Authenticator Attestation GUID).</p>
+		    <div class="note">
+		      <p>The authenticator model (identified by the AAGUID) can be derived from 
+			(a) here, or  
+			(b) from the attestation certificate (if we have an authenticator specific
+			or authenticator model specific attestation certificate), 
+			or (c) or from the claimed AAGUID in the client 
+			encoded attestation statement (if we have one attestation root certificate 
+			per authenticator model).
+		      </p>
+		      <p>In the case of DAA there is no need for an X.509 
+			attestation certificate hierarchy. 
+			Instead the trust anchor being known to the RP is 
+			the DAA root key (i.e. ECPoint2 X, Y).  This root key must be dedicated
+			to a single authenticator model.
+		      </p>
+		    </div>
+		</dd>
+	  </dl>
+
+
+##### SupportedExtensions Extension ##### {#supported-extensions-extension}
+	  <dl>
+		<dt>Extension identifier</dt>
+		<dd><code>fido.exts</code></dd>		
+		<dt>Client argument</dt>
+		<dd>N/A</dd>
+		
+		<dt>Client processing</dt>
+		<dd>N/A</dd>
+		
+		<dt>Authenticator argument</dt>
+		<dd>N/A</dd>
+		
+		<dt>Authenticator processing</dt>
+		<dd>This extension is added automatically by the authenticator.  This extension can be added
+		  to attestation statements.
+		</dd>
+		<dt>Authenticator data</dt>
+		<dd>The SupportedExtension extension is a list (CBOR array) of extension identifiers 
+		  encoded as UTF-8 Strings.
+		</dd>		
+	      </dl>
+
+##### User Verification Index (UVI) Extension ##### {#uvi-extension}
+	  <dl>
+		<dt>Extension identifier</dt>
+		<dd><code>fido.uvi</code></dd>
+		
+		<dt>Client argument</dt>
+		<dd>N/A</dd>
+		
+		<dt>Client processing</dt>
+		<dd>N/A</dd>
+		
+		<dt>Authenticator argument</dt>
+		<dd>N/A</dd>
+		
+		<dt>Authenticator processing</dt>
+		<dd>This extension is added automatically by the authenticator.  This extension can be added
+		  to attestation statements and signatures.
+		</dd>
+		
+		<dt>Authenticator data</dt>
+		<dd>The user verification index (UVI) is a value uniquely identifying 
+		  a user verification data record.  The UVI is encoded as CBOR byte string (type 0x58). 
+		    <p>Each UVI value MUST be specific to the related key (in order to provide unlinkability).  
+		      It also must contain sufficient entropy that makes guessing impractical.  
+		      UVI values MUST NOT be reused by the Authenticator (for other biometric data or users).
+		    </p>
+		    <p>The UVI data can be used by FIDO Servers to understand whether an authentication
+		      was authorized by the exact same biometric data as the initial key generation.
+		      This allows the detection and prevention of "friendly fraud".
+		    </p>
+		    <p>As an example, the UVI could be computed as SHA256(KeyID | SHA256(rawUVI)),
+		      where the rawUVI reflects (a) the biometric reference data, 
+		      (b) the related OS level user ID and (c) an identifier which changes whenever a
+		      factory reset is performed for the device, e.g. 
+		      rawUVI = biometricReferenceData | OSLevelUserID | FactoryResetCounter.
+		    </p>
+		    <p>FIDO Servers supporting UVI extensions MUST support a length of up to 32 bytes
+		      for the UVI value.
+		    </p>
+		    <p>Example for rawData containing one UVI extension</p>
+  <pre>
+  F1 D0                         -- This is a FIDO packed rawData object
+  81                            -- TUP and ED set
+  00 00 00 01                   -- (initial) signature counter
+  ...                           -- all public key alg etc.
+  A1                            -- extension: CBOR map of one element
+    68                          -- Key 1: CBOR text string of 8 bytes
+      66 69 64 6F 2E 75 76 69   -- "fido.uvi" UTF-8 string
+    58 20                       -- Value 1: CBOR byte string with 0x20 bytes
+    00 43 B8 E3 BE 27 95 8C     -- the UVI value itself
+    28 D5 74 BF 46 8A 85 CF 
+    46 9A 14 F0 E5 16 69 31 
+    DA 4B CF FF C1 BB 11 32 
+    82
+  </pre>
+		</dd>
+	  </dl>
+
+#### Signature #### {#packed-attestation-signature}
+
+	    <p>The <code>signature</code> is computed over the base64url-decoded <code>rawData</code> field.</p>
+	    The following 
+	    algorithms must be implemented by FIDO Servers: 
+	    <ol>
+	      <li>"ES256" [[!RFC7518]]</li>
+	      <li>"RS256" [[!RFC7518]]</li>
+	      <li>"PS256" [[!RFC7518]]</li>
+	      <li>"ED256" [[!FIDOEcdaaAlgorithm]]</li>  
+	    </ol>
+	    Authenticators can choose which algorithm to implement.
+
+	  
+	  
+#### Packed attestation statement certificate requirements #### {#packed-attestation-cert-requirements}
+
+	    <p class="note">In the case of DAA attestation 
+	      [[FIDOEcdaaAlgorithm]] no attestation certificate is used.
+	    </p>
+
+	    <p>The attestation certificate MUST have the following
+	      fields/extensions:
+	    </p>
+	    <ul>
+	      <li>Version must be set to 3.</li>
+	      <li>Subject field MUST be set to:
+		<dl>
+		  <dt>Subject-C</dt>
+		  <dd>Country where the Authenticator vendor is incorporated</dd>
+		  <dt>Subject-O</dt>
+		  <dd>Legal name of the Authenticator vendor</dd>
+		  <dt>Subject-OU</dt>
+		  <dd>Authenticator Attestation</dd>
+		  <dt>Subject-CN</dt>
+		  <dd>No stipulation.</dd>
+		</dl>
+	      </li>
+	      <li>If the related attestation root certificate is used for multiple authenticator 
+		models, the following extension MUST be present:
+		<p>Extension OID <code>1 3 6 1 4 1 45724 1 1 4</code>
+		(id-fido-gen-ce-aaguid) containing the AAGUID as value.
+		</p>
+	      </li>
+	      <li>The Basic Constraints extension MUST have the cA component set
+		to false
+	      </li>
+	      <li>An Authority Information Access (AIA) extension with entry <code>id-ad-ocsp</code> and 
+		a CRL Distribution Point extension [[RFC5280]] are both optional as the status of attestation certificates is
+		available through the FIDO Metadata Service [[FIDOMetadataService]].
+	      </li>
+	    </ul>
+
+
+### TPM Attestation ### {#tpm-attestation}
+	  
+#### Attestation rawData (type="tpm") #### {#sec-raw-data-tpm}
+	    
+	    <p>
+              The value of <code>rawData</code> is the <b>base64url encoding of a binary object</b>.
+	      This binary object is either a
+              TPM_CERTIFY_INFO or a TPM_CERTIFY_INFO2 structure [[TPMv1-2-Part2]]
+              sections 11.1 and 11.2, if
+              <code>attestationStatement.core.version</code> equals 1. Else, if
+              <code>attestationStatement.core.version</code> equals 2, it MUST be
+              the base64url encoding of a TPMS_ATTEST structure as defined in
+              [[TPMv2-Part2]] sections 10.12.9.
+	    </p>
+	    <p>
+	      The field "extraData" (in the case of TPMS_ATTEST) or the field "data" 
+	      (in the case of TPM_CERTIFY_INFO or TPM_CERTIFY_INFO2) MUST contain 
+	      the <code>clientDataHash</code> (see [[#signature-format]).
+	    </p>
+
+#### Signature #### {#tpm-attestation-signature}
+
+	    <p>
+              If <code>attestationStatement.core.version</code> equals 1, (i.e., for
+              TPM 1.2), RSASSA-PKCS1-v1_5 signature algorithm (section 8.2 of
+              [[RFC3447]]) can be used by FIDO Authenticators (i.e.
+              <code>attestationStatement.header.alg</code>="RS256").
+	    </p>
+	    <p>
+              If <code>attestationStatement.core.version</code> equals 2, the
+              following algorithms can be used by FIDO Authenticators:
+	    </p>
+		
+	    <ol>
+	      <li>TPM_ALG_RSASSA (0x14).  This is the same algorithm RSASSA-PKCS1-v1_5 
+		as for version 1 but for use with TPMv2. <code>attestationStatement.header.alg</code>="RS256".</li>
+	      <li>TPM_ALG_RSAPSS (0x16); <code>attestationStatement.header.alg</code>="PS256".</li>
+	      <li>TPM_ALG_ECDSA (0x18); <code>attestationStatement.header.alg</code>="ES256".</li>
+	      <li>TPM_ALG_ECDAA (0x1A); <code>attestationStatement.header.alg</code>="ED256".</li>
+	      <li>TPM_ALG_SM2 (0x1B); <code>attestationStatement.header.alg</code>="SM256".</li>
+	    </ol>
+	      
+	    <p>The <code>signature</code> is computed over the base64url-decoded <code>rawData</code> field</p>
+	    <p>See [[#packed-attestation-signature]] for the signature algorithms 
+	      to be implemented by FIDO Servers.
+	    </p>
+
+
+#### TPM attestation statement certificate requirements #### {#tpm-cert-requirements}
+	    
+	    <p>TPM attestation certificate MUST have the following
+	      fields/extensions:
+	    </p>
+	    <ul>
+	      <li>Version must be set to 3.</li>
+	      <li>Subject field MUST be set to empty.</li>
+	      <li>The Subject Alternative Name extension must be set as defined in
+		[[TPMv2-EK-Profile]] section 3.2.9 if "version" equals 2 and
+		[[TPMv1-2-Credential-Profiles]] section 3.2.9 if "version" equals 1.
+	      </li>
+	      <li>The Extended Key Usage extension MUST contain the
+		"joint-iso-itu-t(2) internationalorganizations(23) 133
+		tcg-kp(8) tcg-kp-AIKCertificate(3)" OID.
+	      </li>
+	      <li>The Basic Constraints extension MUST have the CA component set
+		to false
+	      </li>
+	      <li>An Authority Information Access (AIA) extension with entry <code>id-ad-ocsp</code> and 
+		a CRL Distribution Point extension [[RFC5280]] are both optional as the status of attestation certificates is
+		available through the FIDO Metadata Service [[FIDOMetadataService]].
+	      </li>
+	    </ul>
+
+### Android Attestation ### {#android-attestation}
+
+    <p>
+       When the Authenticator in question is a platform-provided
+       Authenticator on the Android platform, the attestation statement is
+       based on the <a href='https://developer.android.com/training/safetynet/index.html#compat-check-response'>
+	   SafetyNet API</a>.
+    </p>
+	
+	<p>Android attestation statement MUST always be used in conjunction with the more 
+	  specific <code>AndroidAttestationClientData</code> (see [[#sec-android-attestationclientdata]])
+	  in order to let the RP App store the public key in the attestation object.
+	</p>
+
+#### Attestation rawData (type="android") #### {#sec-attestation-android}
+
+	  <p>
+	    Android SafetyNet returns a JWS [[RFC7515]] object (see 
+	    <a href='https://developer.android.com/training/safetynet/index.html#compat-check-response'>
+	      SafetyNet online documentation</a>) in Compact
+	    Serialization. A JWS in Compact Serialization consists of three segments
+	    (each a base64url-encoded string) separated by a dot ("."). The
+	    <code>rawData</code> object is the concatenation of:    
+	  </p>
+	  <ol>
+	    <li>the first segment (a base64url encoding of the UTF-8 encoded JWS Protected Header)</li>
+	    <li>a dot "."</li>
+	    <li>the second segment (a base64url encoding of the UTF-8 encoded JWS Payload).</li>
+	  </ol>
+	  <p>
+	    In contrast to the "packed" and "tpm" attestation types, for the
+	    "android" attestation type, the <code>rawData</code> field and the
+	    <code>rawData</code> object are the same string. (In the "packed" and
+	    "tpm" attestation types the <code>rawData</code> field is the
+	    base64url-encoding of the <code>rawData</code> object.)
+	  </p>
+
+#### Signature #### {#sec-android-attestation-signature}
+
+	  <p>
+	    The signature is directly computed over the <code>rawData</code> field, as
+	    defined above (see [[RFC7515]] for more details). The third segment of the
+	    JWS returned by SafetyNet is the base64url encoding of this signature,
+	    and also becomes the <code>AttestationStatement.signature</code>.
+	  </p>
+
+
+#### Converting SafetyNet response to attestationStatement #### {#safetynet-conversion}
+
+	  <p>
+	    The Authenticator and/or platform SHOULD use the steps outlined below to
+	    create an attestationStatement from an Android SafetyNet response. It MAY
+	    use a different algorithm, as long as the results are the same.
+	  </p>
+	  
+	  <ol>
+	    <li>create clientDataJSON with type AndroidAttestationClientData (see below) and 
+	      compute clientData as base64url-encoded clientDataJSON.</li>
+	    <li>provide the clientDataHash computed as the hash value of clientData 
+	      as Nonce value when requesting the SafetyNet attestation.</li>
+	    <li>take SafetyNet response <var>snr</var>.  This is a JWS object ([[RFC7515]]).</li>
+	    <li>extract the base64url-encoded Protected Header <var>hdr</var> from <var>snr</var> (see [[RFC7515]])</li>
+	    <li>extract the base64url-encoded payload <var>p</var> from <var>snr</var></li>
+	    <li>extract the base64url-encoded signature <var>s</var> from <var>snr</var></li>
+	    <li>set <code>AttestationStatement.core.rawData</code> = <var>hdr</var> | "." | <var>p</var></li>
+	    <li>set <code>AttestationStatement.signature</code> = <var>s</var></li>
+	    <li>base64url-decode <var>hdr</var> into <var>hdr-d</var></li>
+	    <li>set <code>AttestationStatement.header.alg</code> = <var>hdr-d</var>.alg</li>
+	    <li>if <var>hdr-d</var>.x5c is present, then set 
+	      <code>AttestationStatement.header.x5c</code> = <var>hdr-d</var>.x5c</li>
+	    <li>
+	      if <var>hdr-d</var>.x5u is present, then resolve the URL and add the 
+	      retrieved certificate chain to <code>AttestationStatement.header.x5c</code>
+	    </li>
+	    <li>set <code>AttestationStatement.core.type</code> = "android"</li>
+	    <li>set <code>AttestationStatement.core.version</code> to the 
+	      version number of Google Play Services responsible for providing the SafetyNet API</li>
+	  </ol>	    	  
+	
+#### AndroidAttestationClientData #### {#sec-android-attestationclientdata}	  
+
+      <p>
+         The ClientData dictionary is extended in the following way:
+      </p>
+
+<pre class="idl">
+dictionary AndroidAttestationClientData : ClientData {
+             JsonWebKey             publicKey;
+             boolean                isInsideSecureHardware;
+             DOMString              userAuthentication;
+             unsigned long userAuthenticationValidityDurationSeconds; // optional
+};	
+</pre>
+
+	  <dl dfn-for="AndroidAttestationClientData">
+	    <dt>JsonWebKey <dfn>publicKey</dfn></dt>
+            <dd>
+              The public key generated by the Authenticator, as a JsonWebKey object (see [[!WebCryptoAPI]]).
+            </dd>
+	    
+	    <dt>boolean <dfn>isInsideSecureHardware</dfn></dt>
+            <dd>
+              <code>true</code> if the key resides inside secure hardware (e.g.,
+              Trusted Execution Environment (TEE) or Secure Element (SE)).
+            </dd>
+	    
+	    <dt>DOMString <dfn>userAuthentication</dfn></dt>
+            <dd>
+              One of "none", "keyguard", or "fingerprint". <em>none</em> means
+              that the user has not enrolled a fingerprint, or set up a secure
+              lock screen, and that therefore the key has not been linked to user
+              authentication. <em>keyguard</em> means that the generated key only
+              be used after the user unlocks a secure lock screen.
+              <em>fingerprint</em> means that each operation involving the
+              generated key must be individually authorized by the user by
+              presenting a fingerprint.
+            </dd>
+	    
+	    <dt>optional unsigned long <dfn>userAuthenticationValidityDurationSeconds</dfn></dt>
+            <dd>
+              If the <code>userAuthentication</code> is set to "keyguard", then
+              this parameter specifies the duration of time (seconds) for which
+              this key is authorized to be used after the user is successfully
+              authenticated.
+            </dd>
+	  </dl>
+
+
+          
+#### Verifying AndroidClientData specific contextual bindings #### {#verifying-android-contextual-bindings}
+
+	    <p>
+              A relying party shall verify the clientData contextual bindings (see step 4 
+	      in [[#verifying-an-attestation-statement]]) as follows:
+	    </p>
+	    <ul>
+              <li>
+		Check that <code>AndroidAttestationClientData.challenge</code> equals the
+		attestationChallenge that was passed into the
+		{{makeCredential()}} call.
+              </li>
+              <li>
+		Check that the <code>facet</code> and <code>tokenBinding</code>
+		parameters in the <code>AndroidAttestationClientData</code> match the
+		RP App.
+              </li>
+              <li>
+		Check that <code>AndroidAttestationClientData.publicKey</code> is the same key as the one
+		returned in the <code>FIDOCredentialInfo</code> by the
+		<code>makeCredential</code> call.
+              </li>
+              <li>
+		Check that the hash of the clientDataJSON matches the
+		<code>nonce</code> attribute in the payload of the
+		<code>safetynetResponse</code> JWS.
+              </li>
+              <li>
+		Check that the <code>ctsProfileMatch</code> attribute in the payload
+		of the <code>safetynetResponse</code> is true.
+              </li>
+              <li>
+		Check that the <code>apkPackageName</code> attribute in the payload of the
+		<code>safetynetResponse</code> matches package name of the application calling 
+		SafetyNet API.
+              </li>
+              <li>
+		Check that the <code>apkDigestSha256</code> attribute in the
+		payload of the <code>safetynetResponse</code> matches the package hash 
+		of the application calling SafetyNet API.
+              </li>        
+              <li>
+		Check that the <code>apkCertificateDigestSha256</code> attribute in the
+		payload of the <code>safetynetResponse</code> matches the hash of the signing certificate 
+		of the application calling SafetyNet API.
+              </li>        
+	    </ul>      
+
+## Verifying an Attestation Statement ## {#verifying-an-attestation-statement}
+
+	<p>This section outlines the recommended algorithm for verifying an
+	  attestation statement, independent of attestation type.
+	</p>
+	<p>Upon receiving an attestation statement, the relying party
+	  shall:
+	</p>
+	<ol>
+	  <li>Verify that the attestation statement is properly formatted</li>
+	  <li>If <code>attestationSignature.alg</code> is not ECDAA (e.g., not "ED256" and not "ED512"): 
+	    <ol>
+	      <li>Lookup the attestation root certificate from a trusted source.  
+		The FIDO Metadata Service [[FIDOMetadataService]]
+		provides an easy way to access such information.
+		The <code>header.claimedAAGUID</code>
+		can be used for this lookup.
+	      </li>
+	      <li>Verify that 
+		the attestation certificate chain is valid and
+		chains up to a trusted root (following [[RFC5280]]).
+	      </li>
+	      <li>Verify that the attestation certificate has the right Extended Key Usage (EKU) based
+		on the FIDO Authenticator type (as denoted by the <code>header.type</code> member). In case of a
+		type="tpm", this EKU shall be OID "2.23.133.8.3".
+	      </li>
+	      <li>If the attestation type is "android", verify that the attestation certificate is issued 
+	          to the hostname "attest.android.com" (see 
+		<a href='https://developer.android.com/training/safetynet/index.html#compat-check-response'>
+	          SafetyNet online documentation</a>).
+	      </li>
+	      <li>Verify that all issuing CA certificates in the chain are valid
+		and not revoked.
+	      </li>
+	      <li>
+		Verify the <code>signature</code> on <code>core.rawData</code> using the
+		attestation certificate public key and algorithm as identified by <code>header.alg</code>.
+	      </li>
+	      <li>
+		Verify <code>core.rawData</code> syntax and that it doesn't contradict the signing 
+		algorithm specified in <code>header.alg</code>.
+	      </li>
+	      <li>If the attestation certificate contains an extension with 
+		OID <code>1 3 6 1 4 1 45724 1 1 4</code>
+		(id-fido-gen-ce-aaguid) verify that the value of this extension matches 
+		<code>header.claimedAAGUID</code>.  This identifies the Authenticator model.
+	      </li>
+	      <li>If such extension doesn't exist, 
+		the attestation root certificate is dedicated to a single Authenticator model.
+	      </li>
+	    </ol>
+	  </li>
+	  <li>If <code>attestationSignature.alg</code> is ECDAA (e.g., "ED256", "ED512"):
+	    <ol>
+	      <li>Lookup the DAA 
+		root key from a trusted source.  The FIDO Metadata Service [[FIDOMetadataService]]
+		provides an easy way to access such information.
+		The <code>header.claimedAAGUID</code>
+		can be used for this lookup.	    
+	      </li>
+	      <li>Perform DAA-Verify on <code>signature</code> 
+		for <code>core.rawData</code> (see [[!FIDOEcdaaAlgorithm]]).</li>
+	      <li>
+		Verify <code>core.rawData</code> syntax and that it doesn't contradict the signing 
+		algorithm specified in <code>header.alg</code>.
+	      </li>
+	      <li>The DAA root key is dedicated to a single Authenticator model.</li>
+	    </ol>
+	  </li>
+	  <li>Verify the contextual bindings (e.g., channel binding) from the 
+	    clientData (see [[#sec-attestation-client-data]]).
+	  </li>
+	  <li>
+	    Verify that user verification method and other authenticator characteristics 
+	    related to this authenticator model, match the relying party policy.
+	    The FIDO Metadata Service [[FIDOMetadataService]]
+	    provides an easy way to access the authenticator characteristics.
+	  </li>
+	</ol>
+
+	The relying party MAY take any of the below actions when
+	verification of an attestation statement fails:
+	<ul>
+	  <li>
+	    Reject the request, such as a registration request, associated
+	    with the attestation statement.
+	  </li>
+	  <li>
+	    Accept the request associated with the attestation statement but
+	    treat the attested FIDO Credential as one with surrogate basic 
+	    attestation (see [[#attestation-models]]), if policy allows it.
+	    If doing so, there is no cryptographic proof that the FIDO Credential 
+	    has been generated by a particular Authenticator model.  
+	    See [[FIDOSecRef]] and [[UAFProtocol]] for more details on the relevance on attestation.
+	  </li>
+	</ul>
+	<p>Verification of attestation statements requires that the relying
+	  party trusts the root of the attestation certificate chain.
+	  Also, the relying party must have access to certificate status
+	  information for the intermediate CA certificates. The relying
+	  party must also be able to build the attestation certificate
+	  chain if the client didn't provide this chain in the
+	  attestation information.
+	</p>
+
+## Security Considerations ## {#sec-attestation-security-considerations}
+
+### Privacy ### {#sec-attestation-privacy}
+	
+	<p>Attestation keys may be used to track users or link
+	  various online identities of the same user together. This may
+	  be mitigated in several ways, including:
+	</p>
+	<ul>
+	  <li>A FIDO Authenticator manufacturer may choose to ship all of their devices with
+	    the same (or a fixed number of) attestation key(s) (called Full Basic Attestation). This will
+	    anonymize the user at the risk of not being able to revoke a
+	    particular attestation key should its FIDO Authenticator be compromised.
+	  </li>
+	  <li>A FIDO Authenticator may be capable of dynamically generating different attestation keys
+	    (and requesting related certificates) per origin (following the Privacy CA model). 
+	    For example, a FIDO Authenticator can ship with a master 
+	    attestation key (and certificate), and
+	    combined with a cloud operated privacy CA, can dynamically generate per origin
+	    attestation keys and attestation certificates.
+	  </li>
+	  <li>A FIDO Authenticator can implement direct anonymous 
+	    attestation (see [[FIDOEcdaaAlgorithm]]).  Using this scheme the authenticator
+	    generates a blinded attestation signature.  This allows the relying party to verify 
+	    the signature using the DAA root key, but the attestation signature doesn't 
+	    serve as a global correlation handle.
+	  </li>
+	</ul>
+
+### Attestation Certificate and Attestation Certificate CA Compromise ### {#ca-compromise}
+
+	<p>When an intermediate CA or a root CA used for issuing attestation
+	  certificates is compromised, FIDO Authenticator attestation keys are still
+	  safe although their certificates can no longer be trusted. A
+	  FIDO Authenticator manufacturer that has recorded the public attestation keys
+	  for their devices can issue new attestation certificates for
+	  these keys from a new intermediate CA or from a new root CA.
+	  If the root CA changes, the relying parties must update their trusted 
+	  root certificates accordingly.
+	</p>
+	<p>A FIDO Authenticator attestation certificate must be revoked by the issuing CA
+	  if its key has been compromised. A FIDO Authenticator manufacturer may need to
+	  ship a firmware update and inject new attestation keys and
+	  certificates into already manufactured FIDO Authenticators, if
+	  the exposure was due to a firmware flaw.
+	  (The process by which this happens is out of scope for this specification.)
+	  No further valid
+	  attestation statements can be made by the affected FIDO Authenticators unless
+	  the FIDO Authenticator manufacturer has this capability.
+	</p>
+	<p>If attestation certificate validation fails due to a revoked
+	  intermediate attestation CA certificate, and relying party policy requires rejecting
+	  the registration/authentication request in these situations,
+	  then it is recommended that the relying party also un-registers
+	  (or marks as "surrogate attestation" (see <a href='#attestation-models'></a>), policy permitting) 
+	  FIDO credentials that were registered post the CA compromise date using an attestation
+	  certificate chaining up to the same intermediate CA. It is thus
+	  recommended that relying parties remember intermediate attestation CA certificates
+	  during Authenticator registration in order to un-register related FIDO Credentials if 
+	  the registration was performed after revocation of such certificates.
+	</p>
+	
+	<p>If a DAA attestation key has been compromised, it can be added to the
+	  RogueList (i.e., the list of revoked authenticators) maintained by the related DAA-Issuer.
+	  The relying party should verify whether an authenticator belongs to the
+	  RogueList when performing DAA-Verify.  The FIDO Metadata Service [[FIDOMetadataService]]
+	  provides an easy way to access such information.
+	</p>
+
+### Attestation Certificate Hierarchy ### {#cert-hierarchy}
+
+	<p>A 3 tier hierarchy for attestation certificates is recommended 
+	  (i.e., Attestation Root, Attestation Issuing CA, Attestation Certificate). 
+	  It is also recommended that
+	  for each FIDO Authenticator device line (i.e., model), a separate issuing CA is used to help
+	  facilitate isolating problems with a specific version of a device.
+	</p>
+	<p>If the attestation root certificate is <em>not</em> dedicated 
+	  to a single FIDO Authenticator device line (i.e., AAGUID),
+	  the AAGUID must be specified either in the attestation certificate itself or 
+	  as an extension in the <code>core.rawData</code>.
+	</p>
+  
+<!-- End of include from key-attestation.html -->  
+  
+  
+# FIDO Extensions # {#extensions}
+<p>
+  The mechanism for generating FIDO 2.0 credentials, as well as requesting and
+  generating FIDO 2.0 assertions, as defined in [[#api]],
+  can be extended to suit particular use cases. Each case is
+  addressed by defining a <em>registration extension</em> and/or a
+  <em>signature extension</em>. Extensions can define additions to the
+  following steps and data:
+</p>
+
+<ul>
+  <li>
+    {{makeCredential()}} request parameters (see [[#api]]) for
+    registration extension.
+  </li>
+  <li>
+    {{getAssertion()}} request parameters (see [[#api]]) for
+    signature extensions.
+  </li>
+  <li>
+    Client processing, and the {{ClientData}} structure, for
+    registration extensions and signature extensions.
+  </li>
+  <li>
+    Authenticator processing, and the <var>authenticatorData</var>
+    structure, for signature extensions.
+  </li>
+</ul>
+
+<p>
+  When requesting an assertion for a FIDO 2.0 credential, an RP can list a set
+  of extensions to be used, if they are supported by the client and/or the
+  authenticator. It sends the request parameters for each extension in the
+  {{getAssertion()}} call (for signature extensions) or
+  {{makeCredential()}} call (for registration extensions) to the client
+  platform. The client platform performs additional processing for each
+  extension that it supports, and augments {{ClientData}} as required
+  by the extension. For extensions that the client platform does not support,
+  it passes the request parameters on to the authenticator when possible
+  (criteria defined below). This allows one to define extensions that affect
+  the authenticator only.
+</p>
+<p>
+  Similarly, the authenticator performs additional processing for the
+  extensions that it supports, and augments <var>authenticatorData</var> as
+  specified by the extension.
+</p>
+<p>
+  Extensions that are not supported are ignored.
+</p>
+
+## Extension identifiers ## {#extension-id}
+
+  <p>
+  Extensions are identified by a string, chosen by the extension author. Extension identifiers
+  should aim to be globally unique, e.g., by using reverse domain-name of the defining entity such
+  as <code>com.example.fido.myextension</code>.
+  </p>
+
+  <p>
+  Extensions that may exist in multiple versions should take care to include a version
+  in their identifier. In effect, different versions are thus treated as different extensions.
+  </p>
+
+  <p>
+  Standard extensions defined by FIDO in this specification use a fixed prefix of <code>fido.</code>
+  for the extension identifiers. This prefix should not be used for 3rd party extensions.
+  </p>
+
+
+## Defining extensions ## {#extension-specification}
+
+  <p>
+    A definition of an extension must specify, at minimum, an extension
+    identifier and an extension client argument sent via the
+    {{getAssertion()}} or {{makeCredential()}} call (see below).
+    Additionally, extensions may specify additional values in
+    {{ClientData}}, <code>authenticatorData</code> (in the case of
+    signature extensions), or both.
+  </p>
+
+  <p class="note">
+    An extension that does not define additions to {{ClientData}} nor
+    <code>authenticatorData</code> is possible, but should be avoided. In such
+    cases, the relying party would have no indication if the extension was
+    supported or processed by the client and/or authenticator.
+  </p>
+
+  
+## Extending request parameters ## {#extension-request-parameters}
+  
+  <p>
+    An extension defines two request arguments. The <dfn>client argument</dfn>
+    is passed from the RP to the client in the {{getAssertion()}} or
+    {{makeCredential()}} call, while the <dfn>authenticator
+    argument</dfn> is passed from the client to the authenticator during the
+    processing of these calls.
+  </p>
+  <p>
+    Extension definitions MUST specify the valid values for their client
+    argument. Clients are free to ignore extensions with an invalid client
+    argument. Specifying an authenticator argument is optional, since some
+    extensions may only affect client processing.
+  </p>
+
+  <p>
+    An RP simultaneously requests the use of an extension and sets its client
+    argument by including an entry in the {{credentialExtensions}} 
+	or {{assertionExtensions}} dictionary
+    parameters to the {{makeCredential()}} or {{getAssertion()}}
+    call. The entry key MUST be the extension identifier, and the value
+    MUST be the <a>client argument</a>.
+  </p>
+
+  <pre class="example highlight">
+  var assertionPromise = credentials.getAssertion(..., /* extensions */ {
+    "com.example.fido.foobar": 42
+  });
+  </pre>
+
+  <p>
+    Extensions that affect the behavior of the client platform can define their
+    argument to be any set of values that can be encoded in JSON. Such an
+    extension will in general (but not always) specify additional values to the
+    {{ClientData}} structure (see below). It may also specify an
+    authenticator argument that platforms implementing the extension are
+    expected to send to the authenticator. The authenticator argument should be
+    a byte string.
+  </p>
+
+  <p class="note">
+    Extensions should aim to define authenticator arguments that are as small
+    as possible. Some authenticators communicate over low-bandwidth links such
+    as Bluetooth Low-Energy or NFC.
+  </p>
+
+  <p class="note">
+    Extensions that do not need to pass any particular argument value, must
+    still define a client argument. It is recommended that the argument be
+    defined as the constant value <code>true</code> in this case.
+  </p>
+
+  <p>
+    For extensions that specify additional authenticator processing only, it is
+    desirable that the platform need not know the extension. To support this,
+    platforms SHOULD pass the client argument of unknown extension as the
+    authenticator argument unchanged, under the same extension identifier. The
+    authenticator argument should be the CBOR encoding of the client argument,
+    as specified in Section 4.2 of [[RFC7049]]. Clients SHOULD silently drop
+    unknown extensions whose client argument cannot be encoded as a CBOR
+    structure.
+  </p>
+
+## Extending client processing ## {#extension-client-processing}
+
+  <p>
+    Extensions may define additional processing requirements on the client
+    platform during the creation of credentials or the generation of an
+    assertion. In order for the RP to verify the processing took place, or if
+    the processing has a result value that the RP needs to be aware of, the
+    extension should specify a client data value to be included in the
+    {{ClientData}} structure.
+  </p>
+  <p>
+    The value may be any value that can be encoded as a JSON value. If any
+    extension processed by a client defines such a value, the client SHOULD
+    include a dictionary in {{ClientData}} with the key
+    {{ClientData/extensions}}. For each such extension, the client SHOULD add an
+    entry to this dictionary with the extension identifier as the key, and the
+    extension's client data value.
+  </p>
+
+
+## Extending authenticator processing with signature extensions ## {#extension-authenticator-processing}
+
+  <p>
+    Signature extensions that define additional authenticator processing should
+    similarly define an authenticator data value. The value may be any data
+    that can be encoded as a CBOR value. An authenticator that processes a
+    signature extension that defines such a value must include it in the
+    <code>authenticatorData</code>.
+  </p>
+
+  <p>
+    As specified in <a href="#sec-authenticator-data"></a>, the authenticator data
+    value of each processed extension is included in the extended data part of
+    the <code>authenticatorData</code>. This part is a CBOR map, with extension
+    identifiers as keys, and the authenticator data value of each extension as
+    the value.
+  </p>
+
+## Example extension ## {#sample-extensions}
+
+  <p>This section is non-normative.</p>
+  <p>
+    To illustrate the requirements above, consider a hypothetical extension
+    <em>Geo</em>. This extension, if supported, lets both clients and
+    authenticators embed their geolocation in signatures.
+  </p>
+
+  <p>
+    The extension identifier is chosen as <code>com.example.fido.geo</code>.
+    The client argument is the constant value <code>true</code>, since the
+    extension does not require the RP to pass any particular information to the
+    client, other than that it requests the use of the extension. The RP sets
+    this value in its request for an assertion:
+  </p>
+  <pre class="highlight">
+  var assertionPromise =
+      credentials.getAssertion("SGFuIFNvbG8gc2hvdCBmaXJzdC4",
+          {}, /* Empty filter */
+          { 'com.example.fido.geo': true });
+  </pre>
+
+  <p>
+  The extension defines the additional client data to be the client's location, if known,
+  as a GeoJSON [[GeoJSON]] point. The client constructs the following client data:
+  </p>
+  <pre class="highlight">
+  {
+     ...,
+     'extensions': {
+         'com.example.fido.geo': {
+             'type': 'Point',
+             'coordinates': [65.059962, -13.993041]
+         }
+     }
+  }
+  </pre>
+
+  <p>
+  The extension also requires the client to set the authenticator parameter to the fixed value
+  <code>1</code>. 
+  </p>
+
+  <p>
+  Finally, the extension requires the authenticator to specify its geolocation in the authenticator
+  data, if known. The extension e.g. specifies that the location shall be encoded as a two-element
+  array of floating point numbers, encoded with CBOR.
+  An authenticator does this by including it in the <code>authenticatorData</code>.
+  As an example, authenticator data may be as follows (notation taken from [[RFC7049]]):
+  </p>
+
+  <pre>
+  81 (hex)                      -- Flags, ED and TUP both set.
+  20 05 58 1F                   -- Signature counter
+  A1                            -- CBOR map of one element
+    68                          -- Key 1: CBOR text string of 8 bytes
+      66 69 64 6F 2E 67 65 6F   -- "fido.geo" UTF-8 string
+    82                          -- Value 1: CBOR array of two elements
+      FA 42 82 1E B3            -- Element 1: Latitude as CBOR encoded float
+      FA C1 5F E3 7F            -- Element 2: Longitude as CBOR encoded float
+  </pre>
+
+
+# Standard Extensions # {#extension-standard}
+
+  <p>
+  This section defines standard extensions defined by the FIDO Alliance.
+  </p>
+
+## Transaction authorization ## {#extension-txauth}
+
+  <p>
+    This signature extension allows for a simple form of transaction
+    authorization. A relying party can specify a prompt string, intended for
+    display on a trusted device on the authenticator.
+  </p>
+
+  <dl>
+    <dt>Extension identifier</dt>
+    <dd>
+      <code>fido.txauth.simple</code> 
+    </dd>    
+    <dt>Client argument</dt>
+    <dd>A single UTF-8 encoded string <em>prompt</em></dd>
+
+    <dt>Client processing</dt>
+    <dd>None, except default forwarding of client argument to authenticator argument.</dd>
+
+    <dt>Authenticator argument</dt>
+    <dd>The client argument encoded as a CBOR text string (major type 3).</dd>
+
+    <dt>Authenticator processing</dt>
+    <dd>The authenticator MUST display the prompt to the user before performing
+        the user verification / test of user presence. The authenticator may insert line breaks if needed.</dd>
+    
+    <dt>Authenticator data</dt>
+    <dd>A single UTF-8 string, representing the prompt <em>as displayed</em> (including any
+        eventual line breaks).</dd>
+  </dl>
+
+  The generic version of this extension allows images to be used as prints as well.  This is allows
+  authenticators without a font rendering engine to be used and also supports a richer visual appearance.
+  <dl>
+    <dt>Extension identifier</dt>
+    <dd>
+      <code>fido.txauth.generic</code> 
+    </dd>
+    
+    <dt>Client argument</dt>
+    <dd>A CBOR map with one pair of data items (CBOR tagged as 0xa1). The pair of data items consists of
+      <ol>
+	<li>one UTF-8 encoded string <dfn>contentType</dfn>, containing 
+	  the MIME-Type of the content, e.g. "image/png"</li>
+	<li>and the <dfn>content</dfn> itself, encoded as CBOR byte array.</li>
+      </ol>
+    </dd>
+
+    <dt>Client processing</dt>
+    <dd>None, except default forwarding of client argument to authenticator argument.</dd>
+
+    <dt>Authenticator argument</dt>
+    <dd>The client argument encoded as a CBOR map.</dd>
+
+    <dt>Authenticator processing</dt>
+    <dd>The authenticator MUST display the <a>content</a> to the user before performing
+        the user verification / test of user presence. The authenticator may add other information below the <a>content</a>.
+        No changes are allowed to the <a>content</a> itself, i.e. inside <a>content</a> boundary box.
+    </dd>
+    
+    <dt>Authenticator data</dt>
+    <dd>
+      The hash value of the <a>content</a> which was displayed.  
+      The authenticator MUST use the same hash algorithm as it uses for the signature itself.
+    </dd>
+  </dl>
+</section>
+
+## Authenticator Selection Extension ## {#extension-authenticator-selection}
+
+  <p>
+    This registration extension allows a Relying Party to guide the selection
+    of the authenticator that will be leveraged when creating the credential.
+    It is intended primarily for Relying Parties that wish to tightly control
+    the experience around credential creation.
+  </p>
+
+  <dl>
+    <dt>Extension identifier</dt>
+    <dd>
+      <code>fido.authn-sel</code> (only used during {{makeCredential()}})
+    </dd>
+    <dt>Client argument</dt>
+    <dd>
+      A sequence of AAGUIDs:
+      <pre class="idl highlight">
+typedef sequence < AAGUID > AuthenticatorSelectionList;
+      </pre>
+      Each AAGUID corresponds to an authenticator attestation that is
+      acceptable to the RP for this credential creation. The list is ordered by
+      decreasing preference.<br>
+      
+      An AAGUID is defined as a DOMString, and is the globally unique identifier
+      of the authenticator attestation being sought.
+      <pre class="idl highlight">
+typedef DOMString AAGUID;
+      </pre>      
+    </dd>
+
+    <dt>Client processing</dt>
+    <dd>
+      If the client supports the Authenticator Selection Extension, it MUST use
+      the first available authenticator whose AAGUID is present in the
+      {{AuthenticatorSelectionList}}. If none of the available
+      authenticators match a provided AAGUID, the client MUST select an
+      authenticator from among the available authenticators to generate the
+      credential.
+    </dd>
+
+    <dt>Authenticator argument</dt>
+    <dd>There is no authenticator argument.</dd>
+
+    <dt>Authenticator processing</dt>
+    <dd>None.</dd>
+  </dl>
+
+
+# IANA Considerations # {#iana-considerations}
+
+  This specification registers the algorithm names "S256", "S384", "S512", and "SM3" 
+  with the IANA JSON Web Algorithms registry as defined in section 
+  "Cryptographic Algorithms for Digital Signatures and MACs" in [[RFC7518]]. 
+  <p>
+    These names follow the naming strategy in 
+    <a href="https://tools.ietf.org/html/draft-ietf-oauth-spop-15">draft-ietf-oauth-spop-15</a>.
+  </p>
+
+    <p>
+      <table class="def">
+	<tbody>
+	  <tr> <td>Algorithm Name</td>
+	       <td>"S256"</td>
+	  </tr>
+	  <tr> <td>Algorithm Description</td>
+	       <td>The SHA256 hash algorithm.</td>
+	  </tr>
+	  <tr> <td>Algorithm Usage Location(s)</td>
+	       <td>"alg", i.e. used with JWS.</td>
+	  </tr>
+	  <tr> <td>JOSE Implementation Requirements</td>
+	       <td>Optional+</td>
+	  </tr>
+	  <tr> <td>Change Controller</td>
+	       <td>FIDO Alliance, <a href='https://fidoalliance.org/contact/'>Contact Us</a></td>
+	  </tr>
+	  <tr> <td>Specification Documents</td>
+	       <td> [[!FIPS-180-4]] </td>
+	  </tr>
+	  <tr> <td>Algorithm Analysis Document(s)</td>
+	       <td>[[SP800-107r1]]</td>
+	  </tr>
+	</tbody>
+      </table>	
+    </p>
+
+    <p>
+      <table class="def">
+	<tbody>
+	  <tr> <td>Algorithm Name</td>
+	       <td>"S384"</td>
+	  </tr>
+	  <tr> <td>Algorithm Description</td>
+	       <td>The SHA384 hash algorithm.</td>
+	  </tr>
+	  <tr> <td>Algorithm Usage Location(s)</td>
+	       <td>"alg", i.e. used with JWS.</td>
+	  </tr>
+	  <tr> <td>JOSE Implementation Requirements</td>
+	       <td>Optional</td>
+	  </tr>
+	  <tr> <td>Change Controller</td>
+	       <td>FIDO Alliance, <a href='https://fidoalliance.org/contact/'>Contact Us</a></td>
+	  </tr>
+	  <tr> <td>Specification Documents</td>
+	       <td> [[!FIPS-180-4]] </td>
+	  </tr>
+	  <tr> <td>Algorithm Analysis Document(s)</td>
+	       <td>[[SP800-107r1]]</td>
+	  </tr>
+	</tbody>
+      </table>	
+    </p>
+
+    <p>
+      <table class="def">
+	<tbody>
+	  <tr> <td>Algorithm Name</td>
+	       <td>"S512"</td>
+	  </tr>
+	  <tr> <td>Algorithm Description</td>
+	       <td>The SHA512 hash algorithm.</td>
+	  </tr>
+	  <tr> <td>Algorithm Usage Location(s)</td>
+	       <td>"alg", i.e. used with JWS.</td>
+	  </tr>
+	  <tr> <td>JOSE Implementation Requirements</td>
+	       <td>Optional+</td>
+	  </tr>
+	  <tr> <td>Change Controller</td>
+	       <td>FIDO Alliance, <a href='https://fidoalliance.org/contact/'>Contact Us</a></td>
+	  </tr>
+	  <tr> <td>Specification Documents</td>
+	       <td> [[!FIPS-180-4]] </td>
+	  </tr>
+	  <tr> <td>Algorithm Analysis Document(s)</td>
+	       <td>[[SP800-107r1]]</td>
+	  </tr>
+	</tbody>
+      </table>	
+    </p>
+
+    <p>
+      <table class="def">
+	<tbody>
+	  <tr> <td>Algorithm Name</td>
+	       <td>"SM3"</td>
+	  </tr>
+	  <tr> <td>Algorithm Description</td>
+	       <td>The SM3 hash algorithm.</td>
+	  </tr>
+	  <tr> <td>Algorithm Usage Location(s)</td>
+	       <td>"alg", i.e. used with JWS.</td>
+	  </tr>
+	  <tr> <td>JOSE Implementation Requirements</td>
+	       <td>Optional</td>
+	  </tr>
+	  <tr> <td>Change Controller</td>
+	       <td>FIDO Alliance, <a href='https://fidoalliance.org/contact/'>Contact Us</a></td>
+	  </tr>
+	  <tr> <td>Specification Documents</td>
+	       <td> [[!OSCCA-SM3]] </td>
+	  </tr>
+	  <tr> <td>Algorithm Analysis Document(s)</td>
+	       <td>N/A</td>
+	  </tr>
+	</tbody>
+      </table>	
+    </p>
+
+
+# Sample scenarios # {#sample-scenarios}
+
+  <em>This section is not normative.</em>
+
+  <p>In this section, we walk through some events in the lifecycle of a FIDO 2.0 credential, along with the corresponding sample code for using this API. Note that this is an example flow, and does not limit the scope of how the API can be used.</p>
+
+  <p>As was the case in earlier sections, this flow focuses on a use case involving an external first-factor authenticator with its own display. One example of such an authenticator would be a smart phone. Other authenticator types are also supported by this API, subject to implementation by the platform. For instance, this flow also works without modification for the case of an authenticator that is embedded in the client platform. The flow also works for the case of an external authenticator without its own display (similar to a smart card) subject to specific implementation considerations. Specifically, the client platform needs to display any prompts that would otherwise be shown by the authenticator, and the authenticator needs to allow the client platform to enumerate all the authenticator's credentials so that the client can have information to show appropriate prompts.</p>
+
+## Registration ## {#sample-registration}
+
+    <p>This is the first time flow, when a new credential is created and registered with the server.
+    </p>
+
+    <ol type="1">
+      <li>The user visits example.com, which serves up a script. At this point, the user must already be logged in using a legacy username and password, or additional authenticator, or other means acceptable to the Relying Party.</li>
+      <li>The Relying Party script runs the code snippet below.
+      <li>The client platform searches for and locates the external authenticator.</li>
+      <li>The client platform connects to the external authenticator, performing any pairing actions if necessary.</li>
+      <li>The external authenticator shows appropriate UI for the user to select the authenticator on which the new credential will be created, and obtains a biometric or other authorization gesture from the user.</li>
+      <li>The external authenticator returns a response to the client platform, which in turn returns a response to the RP script. If the user declined to select an authenticator or provide authorization, an appropriate error is returned.</li>
+      <li>If a new credential was created,
+      <ol type="a">
+        <li>The RP script sends the newly generated public key to the server, along with additional information about public key such as attestation that it is held in trusted hardware.</li>
+        <li>The server stores the public key in its database and associates it with the user as well as with the strength of authentication indicated by attestation, also storing a friendly name for later use.</li>
+        <li>The script may store data such as the credential ID in local storage, to improve future UX by narrowing the choice of credential for the user.</li>
+      </ol>
+      </li>
+    </ol>
+
+    <p>The sample code for generating and registering a new key follows:</p>
+
+
+    <pre class="example highlight">
+    var fidoAPI = window.fido;
+
+    if (!fidoAPI) { /* Platform not capable. Handle error. */ }
+
+    var userAccountInformation = {
+      rpDisplayName: "PayPal",
+      displayName: "John P. Smith",
+      name: "johnpsmith@gmail.com",
+      id: "1098237235409872";
+      imageUri: "https://pics.paypal.com/00/p/aBjjjpqPb.png"
+    };
+
+    // This RP will accept either an ES256 or RS256 credential, but 
+    // prefers an ES256 credential.
+    var cryptoParams = [
+      { 
+        type: "FIDO",
+        algorithm: "ES256",
+      },
+      {
+        type: "FIDO",
+        algorithm: "RS256",
+      }
+    ];
+    var challenge = "Y2xpbWIgYSBtb3VudGFpbg";
+    var timeoutSeconds = 300;  // 5 minutes
+    var blacklist = [];  // No blacklist
+    var extensions = {"fido.location": true};  // Include location information 
+                                               // in attestation
+
+
+    // Note: The following call will cause the authenticator to display UI.
+    fidoAPI.makeCredential(userAccountInformation, cryptoParams, challenge,
+                           timeoutSeconds, blacklist, extensions)
+      .then(function (newCredentialInfo) {
+        // Send new credential info to server for verification and registration.
+    }).catch(function (err) {
+        // No acceptable authenticator or user refused consent. Handle appropriately.
+    });
+    </pre>
+
+## Authentication ## {#sample-authentication}
+
+    <p>This is the flow when a user with an already registered credential visits a website and wants to authenticate using the credential.</p>
+
+    <ol type ="1">
+      <li>The user visits example.com, which serves up a script.</li>
+      <li>The script asks the client platform for a FIDO identity assertion, providing as much information as possible to narrow the choice of acceptable credentials for the user. This may be obtained from the data that was stored locally after registration, or by other means such as prompting the user for a username.</li>
+      <li>The Relying Party script runs one of the code snippets below.</li>
+      <li>The client platform searches for and locates the external authenticator.</li>
+      <li>The client platform connects to the external authenticator, performing any pairing actions if necessary.</li>
+      <li>The external authenticator presents the user with a notification that their attention is required. On opening the notification, the user is shown a friendly selection menu of acceptable credentials using the account information provided when creating the credentials, along with some information on the origin that is requesting these keys.</li>
+      <li>The authenticator obtains a biometric or other authorization gesture from the user.</li>
+      <li>The external authenticator returns a response to the client platform, which in turn returns a response to the RP script. If the user declined to select a credential or provide an authorization, an appropriate error is returned.</li>
+      <li>If an assertion was successfully generated and returned,
+      <ol type="a">
+        <li>The script sends the assertion to the server.</li>
+        <li>The server examines the assertion and validates that it was correctly generated. If so, it looks up the identity associated with the associated public key; that identity is now authenticated. If the public key is not recognized by the server (e.g., deregistered by server due to inactivity) then the authentication has failed; each Relying Party will handle this in its own way.</li>
+        <li>The server now does whatever it would otherwise do upon successful authentication &mdash; return a success page, set authentication cookies, etc.</li>
+      </ol>
+      </li>
+    </ol>
+
+
+    <p>If the Relying Party script does not have any hints available (e.g., from locally stored data) to help it narrow the list of credentials, then the sample code for performing such an authentication might look like this:</p>
+
+    <pre class="example highlight">
+    var fidoAPI = window.fido;
+
+    if (!fidoAPI) { /* Platform not capable. Handle error. */ }
+
+    var challenge = "Y2xpbWIgYSBtb3VudGFpbg";
+    var timeoutSeconds = 300;  // 5 minutes
+    var whitelist = [{ type: "FIDO" }];
+
+    fidoAPI.getAssertion(challenge, timeoutSeconds, whitelist)
+      .then(function (assertion) {
+        // Send assertion to server for verification
+    }).catch(function (err) {
+        // No acceptable credential or user refused consent. Handle appropriately.
+    });
+    </pre>
+
+    <p>On the other hand, if the Relying Party script has some hints to help it narrow the list of credentials, then the sample code for performing such an authentication might look like the following. Note that this sample also demonstrates how to use the extension for transaction authorization.</p>
+
+    <pre class="example highlight">
+    var fidoAPI = window.fido;
+
+    if (!fidoAPI) { /* Platform not capable. Handle error. */ }
+
+    var challenge = "Y2xpbWIgYSBtb3VudGFpbg";
+    var timeoutSeconds = 300;  // 5 minutes
+    var acceptableCredential1 = {
+      type: "FIDO",
+      id: "ISEhISEhIWhpIHRoZXJlISEhISEhIQo=",
+    };
+    var acceptableCredential2 = {
+      type: "FIDO",
+      id: "cm9zZXMgYXJlIHJlZCwgdmlvbGV0cyBhcmUgYmx1ZQo=",
+    };
+    var whitelist = [acceptableCredential1, acceptableCredential2];
+    var extensions = { 'fido.txauth.simple': 
+                       "Wave your hands in the air like you just don't care" };
+            
+    fidoAPI.getAssertion(challenge, timeoutSeconds, whitelist, extensions)
+      .then(function (assertion) {
+        // Send assertion to server for verification
+    }).catch(function (err) {
+        // No acceptable credential or user refused consent. Handle appropriately.
+    });
+    </pre>
+
+
+## Decommissioning ## {#sample-decommissioning}
+
+    <p>The following are possible situations in which decommissioning a credential might be desired. Note that all of these are handled on the server side and do not need support from the API specified here.</p>
+
+    <ul>
+      <li>
+        Possibility #1 &mdash; user reports the credential as lost.
+        <ul>
+          <li>User goes to server.example.net, authenticates and follows a link to report a lost/stolen device.</li>
+          <li>Server returns a page showing the list of registered credentials with friendly names as configured during registration.</li>
+          <li>User selects a credential and the server deletes it from its database.</li>
+          <li>In future, Relying Party script does not specify this credential in any list of acceptable credentials, and assertions signed by this credential are rejected.</li>
+        </ul>
+      </li>
+
+      <li>
+        Possibility #2 &mdash; server deregisters the credential due to inactivity.
+        <ul>
+          <li>Server deletes credential from its database during maintenance activity.</li>
+          <li>In the future, the Relying Party script does not specify this credential in any list of acceptable credentials, and assertions signed by this credential are rejected.</li>
+        </ul>
+      </li>
+
+      <li>
+        Possibility #3 &mdash; user deletes the credential from the device.
+        <ul>
+          <li>User employs a device-specific method (e.g., device settings UI) to delete a credential from their device.</li>
+          <li>From this point on, this credential will not appear in any selection prompts, and no assertions can be generated with it.</li>
+          <li>Sometime later, the server deregisters this credential due to inactivity.</li>
+        </ul>
+      </li>
+    </ul>
+
+
+# Acknowledgements # {#acknowledgements}
+  <p>We would like to thank the following for their contributions to, and thorough review of, this specification: Jing Jin, Michael B. Jones, Rolf Lindemann.
+  </p>
