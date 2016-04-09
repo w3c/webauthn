@@ -27,7 +27,7 @@ endif
 endif
 
 .PHONY: ghpages
-ghpages: index.html
+ghpages: index.html img
 ifneq (true,$(CI))
 	@git show-ref refs/heads/gh-pages >/dev/null 2>&1 || \
 	  (git show-ref refs/remotes/origin/gh-pages >/dev/null 2>&1 && \
@@ -36,7 +36,7 @@ ifneq (true,$(CI))
 endif
 ifeq (true,$(PUSH_GHPAGES))
 	mkdir $(GHPAGES_TMP)
-	cp -f $^ $(GHPAGES_TMP)
+	cp -R $^ $(GHPAGES_TMP)
 	git clean -qfdX
 ifeq (true,$(CI))
 	git config user.email "ci-bot@example.com"
@@ -52,7 +52,7 @@ endif
 ifneq (,$(TARGET_DIR))
 	mkdir -p $(CURDIR)/$(TARGET_DIR)
 endif
-	mv -f $(GHPAGES_TMP)/* $(CURDIR)/$(TARGET_DIR)
+	cp -R $(GHPAGES_TMP)/* $(CURDIR)/$(TARGET_DIR)
 	git add -f $(addprefix $(TARGET_DIR),$^)
 	if test `git status --porcelain | grep '^[A-Z]' | wc -l` -gt 0; then \
 	  git commit -m "Script updating gh-pages. [ci skip]"; fi
