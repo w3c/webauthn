@@ -12,7 +12,19 @@ CI_REPO = $(word 2,$(subst /, ,$(TRAVIS_REPO_SLUG)))$(CIRCLE_PROJECT_REPONAME)
 ifeq (true,$(CI))
 CI_REPO_FULL = $(CI_USER)/$(CI_REPO)
 endif
-CI_IS_PR = $(if $(CI_PULL_REQUESTS),true,$(if $(TRAVIS_PULL_REQUEST),$(TRAVIS_PULL_REQUEST),false))
+
+ifeq (true, $(CI_PULL_REQUESTS))
+# If CI_PULL_REQUESTS is true, always treat as a PR.
+CI_IS_PR = true
+else
+ifeq (false, $(TRAVIS_PULL_REQUEST))
+# If $TRAVIS_PULL_REQUEST is the word 'false', it's a branch build.
+CI_IS_PR = false
+else
+# Otherwise, this is a PR and $TRAVIS_PULL_REQUEST is the PR number
+CI_IS_PR = true
+endif
+endif
 
 # Github guesses
 ifndef CI_REPO_FULL
