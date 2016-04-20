@@ -15,7 +15,7 @@ Editor: Michael B. Jones, Microsoft, mbj@microsoft.com
 Editor: Rolf Lindemann, Nok Nok Labs, rolf@noknok.com
 group: webauthn
 Ignored Vars: op, current.algorithm, alg
-Abstract: This specification defines an API that enables web pages to access WebAuthn compliant strong cryptographic credentials through browser script. Conceptually, credentials are stored on an authenticator, and each credential is bound to a single <a>Relying Party</a>. Authenticators are responsible for ensuring that no operation is performed without the user's consent. The user agent mediates access to credentials in order to preserve user privacy. Web Authentication uses the concept of attestation to provide a cryptographic proof of the authenticator model to the relying party.  The relying party can derive the authenticator security characteristics from this proof.
+Abstract: This specification defines an API that enables web pages to access WebAuthn compliant strong cryptographic credentials through browser script. Conceptually, one or more credentials are stored on an authenticator, and each credential is scoped to a single <a>Relying Party</a>. Authenticators are responsible for ensuring that no operation is performed without the user's consent. The user agent mediates access to credentials in order to preserve user privacy. Authenticators use attestation to provide cryptographic proof of their properties to the relying party. This specification also describes a functional model of a WebAuthn compliant authenticator, including its signature and attestation functionality.
 Boilerplate: omit conformance, omit feedback-header
 Markup Shorthands: css off, markdown on
 </pre>
@@ -24,7 +24,7 @@ Markup Shorthands: css off, markdown on
 
   <em>This section is not normative.</em>
 
-  <p>This specification defines an API for web pages to access scoped credentials through JavaScript, for the purpose of strongly authenticating a user. Scoped credentials are always scoped to a single <a>WebAuthn Relying Party</a>, and the API respects this requirement. Credentials created by a Relying Party can only be accessed by web origins belonging to that Relying Party. Additionally, privacy across Relying Parties must be maintained; scripts must not be able to detect any properties, or even the existence, of credentials belonging to other Relying Parties.</p>
+  <p>This specification defines an API for web pages to access scoped credentials through JavaScript, for the purpose of strongly authenticating a user. Scoped credentials are always scoped to a single <a>WebAuthn Relying Party</a>. This scoping is enforced jointly by the User Agent implementing the Web Authentication API and the authenticator that holds the credential, by constraining the availabilty and usage of credentials. Scoped credentials created by a Relying Party can only be accessed by web origins belonging to that Relying Party. Additionally, privacy across Relying Parties must be maintained; scripts must not be able to detect any properties, or even the existence, of scoped credentials belonging to other Relying Parties.</p>
 
   <p>Scoped credentials are located on <a>authenticators</a>, which can use them to perform operations subject to user consent. Broadly, authenticators are of two types:</p>
 
@@ -97,9 +97,7 @@ Markup Shorthands: css off, markdown on
 
   <p>This specification defines criteria for a <a>Conforming User Agent</a>. A User Agent MUST behave as described in this specification in order to be considered conformant. User Agents MAY implement algorithms given in this specification in any way desired, so long as the end result is indistinguishable from the result that would be obtained by the specification's algorithms. A conforming Web Authentication API User Agent MUST also be a conforming implementation of the IDL fragments of this specification, as described in the “Web IDL” specification. [[!WebIDL-1]]</p>
 
-<!-- begin from signature-format -->
-<p> The term <b>Base64url Encoding</b> refers to the base64 encoding using the URL- and filename-safe character set defined in Section 5 of [[RFC4648]], with all trailing '=' characters omitted (as permitted by Section 3.2) and without the inclusion of any line breaks, whitespace, or other additional characters. This is the same encoding as used by JSON Web Signature (JWS) [[RFC7515]].</p>
-<!-- end from signature-format -->
+  <p>This specification also defines a model of a Web Authentication compliant authenticator. This is a set of functional and security requirements for an authenticator to be usable by a User Agent that implements the Web Authentication API. As described in [[#use-cases]], the authenticator itself may be implemented in the operating system underlying the User Agent, or in external hardware, or a combination of both.</p>
 
 ## Dependencies ## {#dependencies}
 
@@ -117,59 +115,13 @@ Markup Shorthands: css off, markdown on
 
       <dt>Web Cryptography API</dt>
       <dd>The <dfn interface>AlgorithmIdentifier</dfn> type and the method for normalizing an algorithm are defined in [[!WebCryptoAPI]].</dd>
-	  <dd><dfn interface>JsonWebKey</dfn>: A cryptographic key as defined in [[!WebCryptoAPI]].</dd>
+	  <dd><dfn interface>JsonWebKey</dfn>: A cryptographic key as defined in [[!WebCryptoAPI]], in [[WebCryptoAPI#JsonWebKey-dictionary]].</dd>
+	  
+	  <dt>Base64url encoding</dt>
+	  <!-- begin from signature-format -->
+	  <dd> The term <dfn>Base64url Encoding</dfn> refers to the base64 encoding using the URL- and filename-safe character set defined in Section 5 of [[!RFC4648]], with all trailing '=' characters omitted (as permitted by Section 3.2) and without the inclusion of any line breaks, whitespace, or other additional characters. This is the same encoding as used by JSON Web Signature (JWS) [[RFC7515]].</dd>
+	  <!-- end from signature-format -->
     </dl>
-
-
-# WebAuthn Authenticator model # {#authenticator-model}
-
-  <p>The API defined in this specification implies a specific abstract functional model for an <a>authenticator</a>. This section describes the authenticator model. Client platforms may implement and expose this abstract model in any way desired. However, the behavior of the client's Web Authentication API implementation, when operating on the embedded and external authenticators supported by that platform, MUST be indistinguishable from the behavior specified in the <a href="#api">Web Authentication API</a> section.</p>
-
-  <p>In this abstract model, each authenticator stores some number of scoped credentials. Each scoped credential has an identifier which is unique (or extremely unlikely to be duplicated) among all scoped credentials. Each credential is also associated with a <a>WebAuthn Relying Party</a>, whose identity is represented by a <dfn>Relying Party Identifier</dfn> (RP ID).</p>
-
-  <p>A client must connect to an authenticator in order to invoke any of the operations of that authenticator. This connection defines an authenticator session. An authenticator must maintain isolation between sessions. It may do this by only allowing one session to exist at any particular time, or by providing more complicated session management.</p>
-
-  <p>The following operations can be invoked by the client in an authenticator session.</p>
-
-## The <dfn>authenticatorMakeCredential</dfn> operation ## {#op-make-cred}
-
-    <p>This operation must be invoked in an authenticator session which has no other operations in progress. It takes the following input parameters:</p>
-
-    <ul>
-      <li>The web origin of the script on whose behalf the operation is being initiated, as determined by the user agent and the client.</li>
-      <li>The RP ID corresponding to the above web origin, as determined by the user agent and the client.</li>
-      <li>All input parameters accepted by the <a><code>makeCredential()</code></a> method, specified below.</li>
-    </ul>
-
-    <p>When this operation is invoked, the authenticator obtains user consent for creating a new credential. The prompt for obtaining this consent is shown by the authenticator if it has its own output capability, or by the user agent otherwise. Once user consent is obtained, the authenticator generates the appropriate cryptographic keys and creates a new credential. It then associates the credential with the specified RP ID such that it will be able to retrieve the RP ID later, given the credential ID.</p>
-
-    <p>On successful completion of this operation, the authenticator returns the type and unique identifier of this new credential to the user agent.</p>
-
-    <p>If the user refuses consent, the authenticator returns an appropriate error status to the client.</p>
-
-## The <dfn>authenticatorGetAssertion</dfn> operation ## {#op-get-assertion}
-
-    <p>This operation must be invoked in an authenticator session which has no other operations in progress. It takes the following input parameters:</p>
-
-    <ul>
-      <li>The web origin of the script on whose behalf the operation is being initiated, as determined by the user agent and the client.</li>
-      <li>The RP ID corresponding to the above web origin, as determined by the user agent and the client.</li>
-      <li>All input parameters accepted by the <a><code>getAssertion()</code></a> method, specified below.</li>
-    </ul>
-
-    <p>When this method is invoked, the authenticator allows the user to select a credential from among the credentials associated with that Relying Party and matching the specified criteria, then obtains user consent for using that credential. The prompt for obtaining this consent may be shown by the authenticator if it has its own output capability, or by the user agent otherwise. Once a credential is selected and user consent is obtained, the authenticator computes a cryptographic signature using the credential's private key and constructs an assertion as specified in [[#signature-format]]. It then returns this assertion to the user agent.</p>
-
-    <p>If the authenticator cannot find any credential corresponding to the specified Relying Party that matches the specified criteria, it terminates the operation and returns an error.</p>
-
-    <p>If the user refuses consent, the authenticator returns an appropriate error status to the client.</p>
-
-## The <dfn>authenticatorCancel</dfn> operation ## {#op-cancel}
-
-    <p>This operation takes no input parameters and returns no result.</p>
-
-    <p>When this operation is invoked by the client in an authenticator session, it has the effect of terminating any <a><code>authenticatorMakeCredential</code></a> or <a><code>authenticatorGetAssertion</code></a> operation currently in progress in that authenticator session. The authenticator stops prompting for, or accepting, any user input related to authorizing the canceled operation. The client ignores any further responses from the authenticator for the canceled operation.</p>
-
-    <p>This operation is ignored if it is invoked in an authenticator session which does not have an <a><code>authenticatorMakeCredential</code></a> or <a><code>authenticatorGetAssertion</code></a> operation currently in progress.</p>
 
 
 
@@ -223,6 +175,43 @@ Markup Shorthands: css off, markdown on
       required AlgorithmIdentifier   algorithm;
   };
 
+  interface WebAuthnAssertion {
+	  readonly attribute Credential credential;
+	  readonly attribute DOMString  clientData;
+	  readonly attribute DOMString  authenticatorData;
+	  readonly attribute DOMString  signature;
+  };
+
+  dictionary ClientData {
+	  required DOMString       challenge;
+	  required DOMString       facet;
+	  required JsonWebKey      tokenBinding;
+	  required AlgorithmIdentifier hashAlg;
+	  WebAuthnExtensions          extensions;
+  };
+
+  dictionary WebAuthnExtensions {
+  };
+  
+	interface AttestationStatement {
+		readonly    attribute AttestationHeader header;
+		readonly    attribute AttestationCore   core;
+		readonly    attribute DOMString         signature;
+	};
+
+	interface AttestationCore {
+		readonly    attribute DOMString     type;
+		readonly    attribute unsigned long version;
+		readonly    attribute DOMString     rawData;
+		readonly    attribute DOMString     clientData;
+	};
+
+	interface AttestationHeader {
+		readonly    attribute DOMString   claimedAAGUID;
+		readonly    attribute DOMString[] x5c;
+		readonly    attribute DOMString   alg;
+	};
+
   enum CredentialType {
       "ScopedCred"
   };
@@ -230,9 +219,6 @@ Markup Shorthands: css off, markdown on
   interface Credential {
       readonly attribute CredentialType type;
       readonly attribute DOMString      id;
-  };
-
-  dictionary WebAuthnExtensions {
   };
   </pre>
 
@@ -389,7 +375,7 @@ Markup Shorthands: css off, markdown on
 
       <p>The <dfn>credential</dfn> attribute contains a unique identifier for the credential represented by this object.</p>
 
-      <p>The <dfn>publicKey</dfn> attribute contains the public key associated with the credential, represented as a JsonWebKey structure as defined in [[!WebCryptoAPI]].</p>
+      <p>The <dfn>publicKey</dfn> attribute contains the public key associated with the credential, represented as a JsonWebKey structure as defined in [[WebCryptoAPI#JsonWebKey-dictionary]].</p>
 
       <p>The <dfn>attestation</dfn> attribute contains a key attestation statement returned by the authenticator. This provides information about the credential and the authenticator it is held in, such as the level of security assurance provided by the authenticator.</p>
     </div>
@@ -424,6 +410,135 @@ Markup Shorthands: css off, markdown on
     </div>
 
 
+## WebAuthn Assertion (interface <dfn interface>WebAuthnAssertion</dfn>) ## {#iface-assertion}
+
+    <p>Scoped credentials produce a cryptographic signature that provides proof of possession of a private key as well as evidence of user consent to a specific transaction. The structure of these signatures is defined as follows.</p>
+	  
+	<div dfn-for="WebAuthnAssertion">
+		<p>The <dfn>credential</dfn> member represents the credential that was used to generate this assertion.</p>
+
+		<p>The <dfn>clientData</dfn> member contains the base64url encoding of the parameters sent to the authenticator by the client. (See <a>clientDataJSON</a> in <a href="#sec-client-data"></a>)</p>
+
+		<p>The <dfn>authenticatorData</dfn> member contains the base64url encoding of the data returned by the authenticator. (See <a href="#sec-authenticator-data"></a>)</p>
+
+		<p>The <dfn>signature</dfn> member contains the base64url encoding of the raw signature returned from the authenticator. (See <a href="#authenticator-signature"></a>)</p>
+	</div>
+
+## Client data used in assertion (dictionary <dfn dictionary>ClientData</dfn>) ## {#sec-client-data}
+
+  <p>The client data represents the contextual bindings of both the WebAuthn Relying Party and the
+  client platform.  It is a key-value mapping with string-valued keys. Values may be
+  any type that has a valid encoding in JSON.  It MUST contain at least the
+  following key-value pairs.</p>
+
+  <div dfn-for="ClientData">
+	<p>The <dfn>challenge</dfn> member contains the base64url-encoded challenge provided by the RP.</p>
+
+    <p>The <dfn>facet</dfn> member contains a string value describing the RP identifier facet.
+      When the WebAuthn Relying Party client-side app is a website, this is its fully qualified web origin,
+      using the syntax defined by [[RFC6454]]. When the client-side app is a native
+      application, this string is a platform specific identifier.
+    </p>
+	
+    <p>The <dfn>tokenBinding</dfn> member contains a JsonWebKey object as defined by [[WebCryptoAPI#JsonWebKey-dictionary]] describing the public key that this client uses for
+      the Token Binding protocol when communicating with the WebAuthn Relying Party.
+      This can be omitted if no Token Binding has been negotiated between the
+      client and the Relying Party.
+    </p>
+	
+	<p>The <dfn>hashAlg</dfn> member specifies the hash algorithm used to compute clientDataHash 
+      (see [[#authenticator-signature]]).  Use "S256" for SHA-256, 
+      "S384" for SHA384, "S512" for SHA512, and "SM3" for SM3 
+      (see [[#iana-considerations]]). 
+    </p>
+
+    <p>The optional <dfn>extensions</dfn> member contains the extension-provided authenticator data.
+      Signature extensions are detailed in Section <a href="#extensions"></a>.
+    </p>	
+  </div>
+
+## WebAuthn Assertion Extensions (dictionary <dfn>WebAuthExtensions</dfn>) ## {#iface-assertion-extensions}
+
+      <p>This is a dictionary containing zero or more extensions as defined in [[#extensions]]. An extension is an additional parameter that can be passed to the <a>getAssertion()</a> method and triggers some additional processing by the client platform and/or the authenticator.</p>
+
+      <p>
+        If the caller wants to pass extensions to the platform, it SHOULD do so by adding one
+        entry per extension to this <code>WebAuthExtensions</code> dictionary with
+        the extension identifier as the key, and the extension's value as the value
+        (see [[#signature-format]] for details).
+      </p>
+
+
+## Key Attestation Statement (interface <dfn>AttestationStatement</dfn>) ## {#iface-attestation-statement}
+
+      <p>Authenticators also provide some form of key attestation. The basic requirement is that the authenticator can produce, for each credential public key, attestation information that can be verified by a <a>WebAuthn Relying Party</a>. Typically this information contains a signature by an attesting key over the attested public key and a challenge, as well as a certificate or similar information providing provenance information for the attesting key, enabling a trust decision to be made.</p>
+
+	<div dfn-for="AttestationStatement">
+	  <p>
+	  The <dfn>header</dfn> element contains the attestation header, including algorithm, (optionally) the claimed AAGUID 
+	    and (optionally) the attestation certificate chain.
+	  </p>
+
+	  <p>The <dfn>core</dfn> element describes the data that is being attested to, and its type.</p>
+
+	  <p>The <dfn>signature</dfn> element contains the base64url-encoded attestation signature.  The structure of this 
+	    object depends on the signature algorithm specified in the header.
+	  </p>
+	</div>
+
+	<p>This attestation statement is delivered to the <a>WebAuthn Relying Party</a> according to the Client API.
+	  It contains all the information that the Relying Party's server requires to
+	  reconstruct the signature base string, as well as to decode and validate
+	  the bindings of both the client- and authenticator data.
+	</p>
+
+## Credential Attestation Header (interface <dfn>AttestationHeader</dfn>) ## {#sec-attestation-header}
+
+	This structure contains additional data required to verify the attestation signature. 
+
+	<div dfn-for="AttestationHeader">
+	  <p>The <dfn>claimedAAGUID</dfn> element contains the claimed Authenticator Attestation GUID (a version 4 GUID, see [[RFC4122]]).
+	    This value is used by the <a>WebAuthn Relying Party</a> to
+	    lookup the trust anchor for verifying the following <a>AttestationCore</a> object.
+	    If the verification succeeds,
+	    the AAGUID related to the trust anchor is trusted.  This field MUST be present, if either no
+	    attestation certificates are used (e.g., DAA) or if the attestation
+	    certificate doesn't contain the AAGUID value in an extension.
+	  </p>
+
+	  <p>The <dfn>x5c</dfn> attribute contains the attestation certificate and its certificate chain as described
+	    in [[!RFC7515]] section 4.1.6.</p>
+
+	  <p>The <dfn>alg</dfn> element contains the name of the algorithm used to generate the attestation signature according to [[!RFC7518]].
+	    See [[#packed-attestation-signature]] for the signature algorithms
+	      to be implemented by servers.</p>
+	</div>
+
+## Attestation core data (interface <dfn>AttestationCore</dfn>) ## {#sec-attestationcore}
+
+	This structure contains the data attested by the Authenticator and a description of its structure.
+	Different types of Authenticators might generate different object types
+	(identified by <code>type</code> and <code>version</code>).
+
+	<div dfn-for="AttestationCore">
+	  <p>The <dfn>type</dfn> member specifies the type of the rawData object. This specification defines a number of
+	    attestation raw data types, in [[#defined-attestation-raw-data-types]]. Other attestation
+	    raw data types may be defined in further versions of this specification.
+	  </p>
+	  
+	  <p>The <dfn>version</dfn> member specifies the version number of the rawData object.</p>
+
+	  <p>The <dfn>rawData</dfn> object contains the attested public key
+	    and the <code>clientDataHash</code>.
+	  </p>
+
+	  <p>The <dfn>clientData</dfn> member contains the base64url encoding of <a>clientDataJSON</a> (see [[#signature-format]]). The
+	    exact encoding must be preserved as the hash (clientDataHash) has been
+	    computed over it.
+	  </p>
+	</div>
+
+
 ## Supporting Data Structures ## {#supporting-data-structures}
 
     The scoped credential type uses certain data structures that are specified in supporting specifications. These are as follows.
@@ -452,32 +567,63 @@ Markup Shorthands: css off, markdown on
 
       <p>A string or dictionary identifying a cryptographic algorithm and optionally a set of parameters for that algorithm. This type is defined in [[!WebCryptoAPI]].</p>
 
+	  
+# WebAuthn Authenticator model # {#authenticator-model}
 
-### WebAuthn Assertion (interface {{WebAuthnAssertion}}) ### {#iface-assertion}
+  <p>The API defined in this specification implies a specific abstract functional model for an <a>authenticator</a>. This section describes the authenticator model. Client platforms may implement and expose this abstract model in any way desired. However, the behavior of the client's Web Authentication API implementation, when operating on the embedded and external authenticators supported by that platform, MUST be indistinguishable from the behavior specified in the <a href="#api">Web Authentication API</a> section.</p>
 
-      <p>Scoped credentials produce a cryptographic signature that provides proof of possession of a private key as well as evidence of user consent to a specific transaction. The structure of these signatures is defined in [[#webauthn-assertion]].</p>
+  <p>In this abstract model, each authenticator stores some number of scoped credentials. Each scoped credential has an identifier which is unique (or extremely unlikely to be duplicated) among all scoped credentials. Each credential is also associated with a <a>WebAuthn Relying Party</a>, whose identity is represented by a <dfn>Relying Party Identifier</dfn> (RP ID).</p>
 
+## Authenticator operations ## {#authenticator-ops}
+  
+  <p>A client must connect to an authenticator in order to invoke any of the operations of that authenticator. This connection defines an authenticator session. An authenticator must maintain isolation between sessions. It may do this by only allowing one session to exist at any particular time, or by providing more complicated session management.</p>
 
-### WebAuthn Assertion Extensions (dictionary <dfn>WebAuthExtensions</dfn>) ### {#iface-assertion-extensions}
+  <p>The following operations can be invoked by the client in an authenticator session.</p>
 
-      <p>This is a dictionary containing zero or more extensions as defined in [[#extensions]]. An extension is an additional parameter that can be passed to the <a>getAssertion()</a> method and triggers some additional processing by the client platform and/or the authenticator.</p>
+### The <dfn>authenticatorMakeCredential</dfn> operation ### {#op-make-cred}
 
-      <p>
-        If the caller wants to pass extensions to the platform, it SHOULD do so by adding one
-        entry per extension to this <code>WebAuthExtensions</code> dictionary with
-        the extension identifier as the key, and the extension's value as the value
-        (see [[#signature-format]] for details).
-      </p>
+    <p>This operation must be invoked in an authenticator session which has no other operations in progress. It takes the following input parameters:</p>
 
+    <ul>
+      <li>The web origin of the script on whose behalf the operation is being initiated, as determined by the user agent and the client.</li>
+      <li>The RP ID corresponding to the above web origin, as determined by the user agent and the client.</li>
+      <li>All input parameters accepted by the <a><code>makeCredential()</code></a> method, specified below.</li>
+    </ul>
 
-### Key Attestation Statement (interface <dfn>AttestationStatement</dfn>) ### {#iface-attestation-statement}
+    <p>When this operation is invoked, the authenticator obtains user consent for creating a new credential. The prompt for obtaining this consent is shown by the authenticator if it has its own output capability, or by the user agent otherwise. Once user consent is obtained, the authenticator generates the appropriate cryptographic keys and creates a new credential. It then associates the credential with the specified RP ID such that it will be able to retrieve the RP ID later, given the credential ID.</p>
 
-      <p>Authenticators also provide some form of key attestation. The basic requirement is that the authenticator can produce, for each credential public key, attestation information that can be verified by a <a>WebAuthn Relying Party</a>. Typically this information contains a signature by an attesting key over the attested public key and a challenge, as well as a certificate or similar information providing provenance information for the attesting key, enabling a trust decision to be made. The structure of these attestation statements is defined in [[#attestation]].</p>
+    <p>On successful completion of this operation, the authenticator returns the type and unique identifier of this new credential to the user agent.</p>
+
+    <p>If the user refuses consent, the authenticator returns an appropriate error status to the client.</p>
+
+### The <dfn>authenticatorGetAssertion</dfn> operation ### {#op-get-assertion}
+
+    <p>This operation must be invoked in an authenticator session which has no other operations in progress. It takes the following input parameters:</p>
+
+    <ul>
+      <li>The web origin of the script on whose behalf the operation is being initiated, as determined by the user agent and the client.</li>
+      <li>The RP ID corresponding to the above web origin, as determined by the user agent and the client.</li>
+      <li>All input parameters accepted by the <a><code>getAssertion()</code></a> method, specified below.</li>
+    </ul>
+
+    <p>When this method is invoked, the authenticator allows the user to select a credential from among the credentials associated with that Relying Party and matching the specified criteria, then obtains user consent for using that credential. The prompt for obtaining this consent may be shown by the authenticator if it has its own output capability, or by the user agent otherwise. Once a credential is selected and user consent is obtained, the authenticator computes a cryptographic signature using the credential's private key and constructs an assertion as specified in [[#signature-format]]. It then returns this assertion to the user agent.</p>
+
+    <p>If the authenticator cannot find any credential corresponding to the specified Relying Party that matches the specified criteria, it terminates the operation and returns an error.</p>
+
+    <p>If the user refuses consent, the authenticator returns an appropriate error status to the client.</p>
+
+### The <dfn>authenticatorCancel</dfn> operation ### {#op-cancel}
+
+    <p>This operation takes no input parameters and returns no result.</p>
+
+    <p>When this operation is invoked by the client in an authenticator session, it has the effect of terminating any <a><code>authenticatorMakeCredential</code></a> or <a><code>authenticatorGetAssertion</code></a> operation currently in progress in that authenticator session. The authenticator stops prompting for, or accepting, any user input related to authorizing the canceled operation. The client ignores any further responses from the authenticator for the canceled operation.</p>
+
+    <p>This operation is ignored if it is invoked in an authenticator session which does not have an <a><code>authenticatorMakeCredential</code></a> or <a><code>authenticatorGetAssertion</code></a> operation currently in progress.</p>
 
 
 <!-- Included from signature-format.html -->
 
-# Signature Format # {#signature-format}
+## Signature Format ## {#signature-format}
 
 
 <p>WebAuthn signatures are bound to various contextual data. These data are
@@ -521,96 +667,16 @@ encoded, signed over, and delivered to the RP.</p>
 </ul>
 
 <p>The contextual bindings are divided in two: Those added by the RP or the
-client platform, referred to as <dfn>client data</dfn>; and those added by the
-authenticator, referred to as the <dfn>authenticator data</dfn>.  The client
+client platform, referred to as client data; and those added by the
+authenticator, referred to as the authenticator data.  The client
 data must be signed over, but an authenticator is otherwise not interested in
 its contents. To save bandwidth and processing requirements on the
 authenticator, the client platform hashes the client data and sends only
 the result to the authenticator. The authenticator signs over the combination
 of this hash, and its own authenticator data.</p>
 
-## Client data ## {#sec-client-data}
 
-  <p>The client data represents the contextual bindings of both the WebAuthn Relying Party and the
-  client platform.  It is a key-value mapping with string-valued keys. Values may be
-  any type that has a valid encoding in JSON.  It MUST contain at least the
-  following key-value pairs.</p>
-
-  <pre class="idl">
-  dictionary ClientData {
-	  DOMString       challenge;
-	  DOMString       facet;
-	  JsonWebKey      tokenBinding;
-	  object          extensions; // optional
-	  DOMString       hashAlg;
-  };
-  </pre>
-
-  <div dfn-for="ClientData">
-  <dl>
-    <dt>DOMString <dfn>challenge</dfn></dt>
-    <dd>
-      A base64url-encoded challenge provided by the RP.
-    </dd>
-    <dt>DOMString <dfn>facet</dfn></dt>
-    <dd>
-      A string value describing the RP identifier facet.
-      When the WebAuthn Relying Party client-side app is a website, this is its fully qualified web origin,
-      using the syntax defined by [[RFC6454]]. When the client-side app is a native
-      application, this string is a platform specific identifier.
-    </dd>
-    <dt>JsonWebKey <dfn>tokenBinding</dfn></dt>
-    <dd>
-      A JsonWebKey object [[JWK]] describing the public key that this client uses for
-      the Token Binding protocol when communicating with the WebAuthn Relying Party.
-      This can be omitted if no Token Binding has been negotiated between the
-      client and the Relying Party.
-    </dd>
-    <dt>optional object <dfn>extensions</dfn></dt>
-    <dd>
-      An object with extension-provided authenticator data.
-      Signature extensions are detailed in Section <a href="#extensions"></a>.
-    </dd>
-    <dt>DOMString <dfn>hashAlg</dfn></dt>
-    <dd>
-      The hash algorithm used to compute clientDataHash 
-      (see <a href="#authenticator-signature"></a>).  Use "S256" for SHA-256, 
-      "S384" for SHA384, "S512" for SHA512, and "SM3" for SM3 
-      (see <a href='#iana-considerations'></a>). 
-    </dd>
-  </dl>
-  </div>
-
-  <p>The client data MAY contain additional properties.</p>
-
-  <p>Before making a request to an authenticator, the
-  client platform layer SHALL perform the following steps.</p>
-  <ol>
-    <li>Let <dfn>clientDataJSON</dfn> be the UTF-8 encoded JSON serialization
-    [[RFC7159]] of {{ClientData}}.</li>
-
-    <li>Let <var>clientDataHash</var> be the hash (computed using {{hashAlg}}) of
-    <a>clientDataJSON</a>, as an array.</li>
-  </ol>
-
-  <p>The <var>clientDataHash</var> value is incorporated into a signature
-  by an authenticator (see <a href="#authenticator-signature"></a>).
-  It is delivered to integrated authenticators
-  in platform specific manners, and to external authenticators as a part of
-  a signature request.
-  The client platform SHOULD also preserve the exact <code>encodedClientData</code>
-  string used to create it, for embedding in a signature object sent back to
-  the WebAuthn Relying Party (see <a href="#authenticator-signature"></a>).
-  This is necessary since multiple JSON encodings of the same client
-  data are possible.</p>
-  <p>The hash algorithm {{hashAlg}} used to compute <var>clientDataHash</var> is
-    included in the {{ClientData}} object. This way it is available to the Relying Party and
-    it is also hashed over when computing <var>clientDataHash</var> and hence
-    anchored in the signature itself.
-  </p>
-
-
-## Authenticator data ## {#sec-authenticator-data}
+### Authenticator data ### {#sec-authenticator-data}
 
   <p>The authenticator data encodes contextual bindings made by the
   <a>authenticator</a> itself. The authenticator data has a compact but extensible
@@ -618,7 +684,7 @@ of this hash, and its own authenticator data.</p>
   capabilities and low power requirements, with much simpler software stacks
   than the client platform components.</p>
 
-  <p>The encoding of authenticator data is a byte array <code>authenticatorData</code>
+  <p>The encoding of authenticator data is a byte array <code>#JsonWebKey-dictionary</code>
   of 5 bytes or more, as follows.</p>
   <table class="complex data longlastcol">
     <tr>
@@ -670,7 +736,34 @@ of this hash, and its own authenticator data.</p>
   </p>
 
 
-## Generating a signature ## {#authenticator-signature}
+### Generating a signature ### {#authenticator-signature}
+
+  <p>Before making a request to an authenticator, the
+  client platform layer SHALL perform the following steps.</p>
+  <ol>
+    <li>Let <dfn>clientDataJSON</dfn> be the UTF-8 encoded JSON serialization
+    [[RFC7159]] of {{ClientData}}.</li>
+
+    <li>Let <var>clientDataHash</var> be the hash (computed using <a>hashAlg</a>) of
+    <a>clientDataJSON</a>, as an array.</li>
+  </ol>
+
+  <p>The <var>clientDataHash</var> value is incorporated into a signature
+  by an authenticator (see <a href="#authenticator-signature"></a>).
+  It is delivered to integrated authenticators
+  in platform specific manners, and to external authenticators as a part of
+  a signature request.
+  The client platform SHOULD also preserve the exact <code>encodedClientData</code>
+  string used to create it, for embedding in a signature object sent back to
+  the WebAuthn Relying Party (see <a href="#authenticator-signature"></a>).
+  This is necessary since multiple JSON encodings of the same client
+  data are possible.</p>
+
+  <p>The hash algorithm <a>hashAlg</a> used to compute <var>clientDataHash</var> is
+    included in the {{ClientData}} object. This way it is available to the Relying Party and
+    it is also hashed over when computing <var>clientDataHash</var> and hence
+    anchored in the signature itself.
+  </p>
 
   <p>A raw cryptographic signature must assert the integrity of both the
   client data and the authenticator data. Thus, an <a>authenticator</a> SHALL
@@ -695,64 +788,29 @@ of this hash, and its own authenticator data.</p>
     the raw signature back to the client.
   </p>
 
-## Client encoding of assertions ## {#webauthn-assertion}
-
-  <p>The client platform uses an <a>authenticator</a> assertion to construct
-  the final {{WebAuthnAssertion}} object returned to the Relying Party as follows.</p>
-
-  <pre class="idl">
-  interface WebAuthnAssertion {
-	  attribute Credential credential;
-	  attribute DOMString  clientData;
-	  attribute DOMString  authenticatorData;
-	  attribute DOMString  signature;
-  };
-  </pre>
-
-  <div dfn-for="WebAuthnAssertion">
-  <dl>
-    <dt>attribute Credential <dfn>credential</dfn></dt>
-    <dd>
-    	An object representing which credential was used to generate an assertion.
-    </dd>
-    <dt>attribute DOMString <dfn>clientData</dfn></dt>
-    <dd>
-      A base64url encoding of <a>clientDataJSON</a>.
-      (See <a href="#sec-client-data"></a>)
-    </dd>
-    <dt>attribute DOMString authenticatorData</dt>
-    <dd>
-      A base64url encoding of {{authenticatorData}}.
-      (See <a href="#sec-authenticator-data"></a>)
-    </dd>
-    <dt>attribute DOMString <dfn>signature</dfn></dt>
-    <dd>
-      A base64url encoding of the raw signature returned from the authenticator.
-      (See <a href="#authenticator-signature"></a>)
-    </dd>
-  </dl>
-
-  <p>This assertion is delivered to the <a>WebAuthn Relying Party</a> in either a platform specific manner, or
-  in the case of web applications, according to the Web Authentication API ([[#api]]).
-  It contains all the information that the Relying Party's server requires to
-  reconstruct the signature base string, as well as to decode and validate
-  the bindings of both the client- and authenticator data.</p>
 <!-- End of include from signature-format.html -->
 
 
 <!-- Begin of include from key-attestation.html -->
 
-# Key Attestation Format # {#attestation}
+## Key Attestation Format ## {#attestation}
 
-    This specification defines generic data structures that cover the
-	semantics of authenticator attestation. This specification also
-	provides a profile of these structures when a TPM [[TPM]] acts as a crypto kernel.
+An attestation statement is a specific type of signature, which contains
+statements about a credential itself and the authenticator that holds it.
+Therefore, the format of attestation statements and the procedures for
+generating them closely parallel those for generating WebAuthn assertions
+as described in [[#signature-format]], though the semantics of the
+contextual bindings are quite different. 
+
+The general structure of an attestation statement is specified in [[#iface-attestation-statement]].
+    This section 
+	provides a profile of these structures when different types of hardware act as the crypto kernel.
 	More profiles are expected to be added as the specification
 	evolves.
 
-## Overview ## {#attestation-overview}
+### Overview ### {#attestation-overview}
 
-### Attestation Models ### {#attestation-models}
+#### Attestation Models #### {#attestation-models}
 
 	<p>WebAuthn supports multiple attestation models:</p>
 	<dl>
@@ -797,56 +855,8 @@ of this hash, and its own authenticator data.</p>
 	<p class="note">WebAuthn Relying Parties can always decide what attestation models are acceptable by policy.
 	</p>
 
-### Contextual Data ### {#attestation-contextual-data}
 
-	<p>WebAuthn attestation statements are bound to various contextual data. These data are
-	  observed, and added at different levels of the stack as a signature request
-	  passes from the server to the authenticator. In verifying a signature, the
-	  server checks these bindings against expected values.</p>
-
-	<p>These components can be divided into three layers:</p>
-	<ol>
-	  <li>The <a>WebAuthn Relying Party</a> (RP) consists of two subcomponents: an online
-	    service and a client-side application. The client-side app may, for
-	    example, be a web application running in a browser, or a native application
-	    that runs directly on the OS platform.</li>
-	  <li>The <a>WebAuthn Client</a> platform, which consists of the user’s OS and device used to
-	    host the RP’s client-side app. The <a>Conforming User Agent</a> belongs to this layer.</li>
-	  <li>The <a>Authenticator</a> itself, which provides key generation and key management and
-	    cryptographic signatures.</li>
-	</ol>
-
-	<p>The goals of this design can be summarized as follows.
-	  <ul>
-	    <li>The scheme for generating keys and attestation statements should accommodate cases where the
-	      link between the client platform and authenticator is very limited, in
-	      bandwidth and/or latency. Examples include Bluetooth Low Energy and Near-Field
-	      Communication.</li>
-	    <li>The data processed by the authenticator should be small and easy to
-	      interpret in low-level code. In particular, authenticators should not have to
-	      parse high-level encodings such as JSON.</li>
-	    <li>Both the client platform and the authenticator should have the flexibility
-	      to add contextual bindings, as needed.</li>
-	    <li>The design aims to reuse existing encoding formats as much as possible
-	      to aid adoption and implementation.</li>
-	  </ul>
-	</p>
-
-	<p>
-	  There are two kinds of contextual bindings:
-	  Those added by the Relying Party or the client platform,
-	  referred to as <dfn>client data</dfn> (see [[#signature-format]])
-	  and those added by the
-	  authenticator, referred to as the <dfn>attestation data</dfn>.  The client
-	  data must be signed over, but an authenticator is otherwise not interested in
-	  its contents.  More specifically, the authenticator cannot attest to the correctness of such data.
-	  To save bandwidth and processing requirements on the
-	  authenticator, the client platform hashes the client data and sends only
-	  the hash result to the authenticator. The authenticator attestation statement includes the combination
-	  of this hash, and its own attestation data.
-	</p>
-
-### Attestation Raw Data Types ### {#attestation-raw-data-types}
+#### Attestation Raw Data Types #### {#attestation-raw-data-types}
 
 	<p>
 	  WebAuthn supports pluggable attestation raw data types, i.e.,
@@ -862,149 +872,7 @@ of this hash, and its own authenticator data.</p>
 	</p>
 
 
-## Attestation Statement ## {#attestation-statement}
-
-      <p>When an attestation statement is required for an <a>Authenticator</a>, the client
-	needs to ask the Authenticator to generate one. This section describes the
-	attestation statement data structures. Attestation statements
-	can also include some host and other Authenticator information.
-      </p>
-
-      The attestation statement consists of
-      <ol>
-	<li>the <code>header</code> object, containing the signing algorithm and
-	  additional information required to verify the attestation signature.
-	</li>
-	<li>the <code>core</code> object, containing the attested data.  This object
-	  is a container and can carry multiple, authenticator model specific,
-	  attestation rawData types (see section [[#defined-attestation-raw-data-types]]).
-	</li>
-	<li>the <code>signature</code> object.  This object contains the cryptographic
-	  signature computed over the <code>rawData</code> object. 
-	  The structure of this object depends on the signature algorithm.
-	</li>
-      </ol>
-
-
-## Client encoding of attestation statements ## {#attestation-client-encoding}
-
-
-	<p>The client platform uses an authenticator generated
-	  attestation signature (<code>signature</code>) and the
-	  authenticator generated <code>rawData</code> object to construct
-	  the final attestation statement object (which will be returned to the RP).
-	  This attestation statement is encoded as:
-	</p>
-
-<pre class="idl">
-interface AttestationStatement {
-    readonly    attribute AttestationHeader header;
-    readonly    attribute AttestationCore   core;
-    readonly    attribute DOMString         signature;
-};
-</pre>
-
-	<dl dfn-for="AttestationStatement">
-	  <dt>readonly attribute AttestationHeader <dfn>header</dfn></dt>
-	  <dd>Attestation header, including algorithm, (optionally) the claimed AAGUID 
-	    and (optionally) the attestation certificate chain.
-	  </dd>
-	  <dt>readonly attribute AttestationCore <dfn>core</dfn></dt>
-	  <dd>AttestationCore object.  This object includes the attested <code>rawData</code> and
-	    its <code>type</code> and <code>version</code>.</dd>
-	  <dt>readonly attribute DOMString <dfn>signature</dfn></dt>
-	  <dd>The base64url-encoded attestation signature.  The structure of this 
-	    object depends on the signature algorithm specified in the header.
-	  </dd>
-	</dl>
-
-	<p>This attestation statement is delivered to the <a>WebAuthn Relying Party</a> according to the Client API.
-	  It contains all the information that the Relying Party's server requires to
-	  reconstruct the signature base string, as well as to decode and validate
-	  the bindings of both the client- and authenticator data.
-	</p>
-
-### AttestationCore ### {#sec-attestationcore}
-
-	Data attested by the Authenticator and description of its structure.
-	Different types of Authenticators might generate different object types
-	(identified by <code>type</code> and <code>version</code>).
-
-<pre class="idl">
-interface AttestationCore {
-    readonly    attribute DOMString     type;
-    readonly    attribute unsigned long version;
-    readonly    attribute DOMString     rawData;
-    readonly    attribute DOMString     clientData;
-};
-</pre>
-
-	<dl dfn-for="AttestationCore">
-	  <dt>readonly attribute DOMString <dfn>type</dfn></dt>
-	  <dd>
-	    The type of the rawData object. This specification defines these
-	    attestation raw data types: "tpm", "packed", and "android". Other attestation
-	    raw data types may be defined in further versions of this specification.
-	  </dd>
-	  <dt>readonly attribute unsigned long <dfn>version</dfn></dt>
-	  <dd>The version number of the rawData object.</dd>
-	  <dt>readonly attribute DOMString <dfn>rawData</dfn></dt>
-	  <dd>
-	    The rawData object (for type "android"), or the base64url-encoded rawData
-	    object (for types "tpm" and "packed"), containing the attested public key
-	    and the <code>clientDataHash</code>.
-	  </dd>
-	  <dt>readonly attribute DOMString <dfn>clientData</dfn></dt>
-	  <dd>
-	    A base64url encoding of <a>clientDataJSON</a> (see [[#signature-format]]). The
-	    exact encoding must be preserved as the hash (clientDataHash) has been
-	    computed over it.
-	  </dd>
-	</dl>
-
-#### Client data #### {#sec-attestation-client-data}
-	  <p>
-	    The client platform SHALL deliver, through the EAP API, the
-	    <code>clientDataHash</code> (see [[#signature-format]]) to the authenticator.  
-	    The client platform MUST also preserve the exact <code>encodedClientData</code> 
-	    string (see [[#signature-format]]), for embedding
-	    in a signature object sent back to the RP. This is necessary since multiple
-	    JSON encodings of the same client data are possible.
-	  </p>
-
-### AttestationHeader ### {#sec-attestation-header}
-
-	Additional data required to verify the attestation signature. 
-
-<pre class="idl">
-interface AttestationHeader {
-    readonly    attribute DOMString   claimedAAGUID;
-    readonly    attribute DOMString[] x5c;
-    readonly    attribute DOMString   alg;
-};
-</pre>
-
-	<dl dfn-for="AttestationHeader">
-	  <dt>readonly attribute DOMString <dfn>claimedAAGUID</dfn></dt>
-	  <dd>The claimed Authenticator Attestation GUID (a version 4 GUID, see [[RFC4122]]).
-	    This value is used by the <a>WebAuthn Relying Party</a> to
-	    lookup the trust anchor for verifying this AttestationCore object.
-	    If the verification succeeds,
-	    the AAGUID related to the trust anchor is trusted.  This field MUST be present, if either no
-	    attestation certificates are used (e.g., DAA) or if the attestation
-	    certificate doesn't contain the AAGUID value in an extension.
-	  </dd>
-	  <dt>readonly attribute DOMString[] <dfn>x5c</dfn></dt>
-	  <dd>Attestation Certificate and its certificate chain as described
-	    in [[!RFC7515]] section 4.1.6.</dd>
-	  <dt>readonly attribute DOMString <dfn>alg</dfn></dt>
-	  <dd>The name of the algorithm used to generate the attestation signature according to [[!RFC7518]].
-	    <p>See [[#packed-attestation-signature]] for the signature algorithms
-	      to be implemented by servers.</p>
-	  </dd>
-	</dl>
-
-## Defined Attestation Raw Data Types ## {#defined-attestation-raw-data-types}
+### Defined Attestation Raw Data Types ### {#defined-attestation-raw-data-types}
 	<p>
 	  Attestation Raw Data (<code>rawData</code>) is the to-be-signed object of
 	  the attestation statement. WebAuthn supports pluggable attestation data types.
@@ -1016,13 +884,13 @@ interface AttestationHeader {
 	  at least verified) by the authenticator itself.
 	</p>
 
-### Packed Attestation ### {#packed-attestation}
+#### Packed Attestation #### {#packed-attestation}
 
 	  Packed attestation is a WebAuthn optimized format of attestation data.  It uses a very compact but
 	  still extensible encoding method.  Encoding this format can even be implemented by <a>authenticators</a>
 	  with very limited resources (e.g., secure elements).
 
-#### Attestation rawData (type="packed") #### {#sec-raw-data-packed}
+##### Attestation rawData (type="packed") ##### {#sec-raw-data-packed}
 
 	    <p>The attestation data encodes contextual bindings made by the
 	      <a>authenticator</a> itself. Unlike client data, the authenticator data has
@@ -1117,7 +985,7 @@ interface AttestationHeader {
 	      </tr>
 	      <tr>
 		<td>n</td>
-		<td>clientDataHash (see [[#sec-attestation-client-data]]).
+		<td>clientDataHash (see [[#authenticator-signature]]).
 		  This is the hash of <code>clientData</code>.  The hash algorithm itself is stored
 		  in the <code>clientData</code> object [[#signature-format]].
 		</td>
@@ -1128,7 +996,7 @@ interface AttestationHeader {
 		  extension identifiers as keys, and extension authenticator data values as values.
 		  See [[#extensions]] for a description
 		  of the extension mechanism.
-		  See [[#sec-extensions-for-packed-attestation-rawdata]]
+		  See [[#extension-standard]]
 		  for pre-defined extensions.
 		</td>
 	      </tr>
@@ -1141,134 +1009,8 @@ interface AttestationHeader {
 	    <p>If the authenticator does not wish to add extensions, it MUST clear
 	      the <code>ED</code> flag in the third byte.</p>
 
-#### Extensions for Packed Attestation rawData #### {#sec-extensions-for-packed-attestation-rawdata}
 
-##### AAGUID Extension ##### {#aaguid-extension}
-
-	  <dl>
-		<dt>Extension identifier</dt>
-		<dd><code>webauthn.aaguid</code></dd>
-
-		<dt>Client argument</dt>
-		<dd>N/A</dd>
-
-		<dt>Client processing</dt>
-		<dd>N/A</dd>
-
-		<dt>Authenticator argument</dt>
-		<dd>N/A</dd>
-
-		<dt>Authenticator processing</dt>
-		<dd>This extension is added automatically by the <a>authenticator</a>.  This extension can be added
-		  to attestation statements and signatures.
-		</dd>
-
-		<dt>Authenticator data</dt>
-		<dd>A 128-bit Authenticator Attestation GUID encoded as a CBOR text string (major type 3).
-
-		  <p>This AAGUID is used to identify the Authenticator model (Authenticator Attestation GUID).</p>
-		    <div class="note">
-		      <p>The authenticator model (identified by the AAGUID) can be derived from
-			(a) here, or
-			(b) from the attestation certificate (if we have an authenticator specific
-			or authenticator model specific attestation certificate),
-			or (c) or from the claimed AAGUID in the client
-			encoded attestation statement (if we have one attestation root certificate
-			per authenticator model).
-		      </p>
-		      <p>In the case of DAA there is no need for an X.509
-			attestation certificate hierarchy.
-			Instead the trust anchor being known to the Relying Party is
-			the DAA root key (i.e. ECPoint2 X, Y).  This root key must be dedicated
-			to a single authenticator model.
-		      </p>
-		    </div>
-		</dd>
-	  </dl>
-
-
-##### SupportedExtensions Extension ##### {#supported-extensions-extension}
-	  <dl>
-		<dt>Extension identifier</dt>
-		<dd><code>webauthn.exts</code></dd>
-		<dt>Client argument</dt>
-		<dd>N/A</dd>
-
-		<dt>Client processing</dt>
-		<dd>N/A</dd>
-
-		<dt>Authenticator argument</dt>
-		<dd>N/A</dd>
-
-		<dt>Authenticator processing</dt>
-		<dd>This extension is added automatically by the authenticator.  This extension can be added
-		  to attestation statements.
-		</dd>
-		<dt>Authenticator data</dt>
-		<dd>The SupportedExtension extension is a list (CBOR array) of extension identifiers
-		  encoded as UTF-8 Strings.
-		</dd>
-	      </dl>
-
-##### User Verification Index (UVI) Extension ##### {#uvi-extension}
-	  <dl>
-		<dt>Extension identifier</dt>
-		<dd><code>webauthn.uvi</code></dd>
-
-		<dt>Client argument</dt>
-		<dd>N/A</dd>
-
-		<dt>Client processing</dt>
-		<dd>N/A</dd>
-
-		<dt>Authenticator argument</dt>
-		<dd>N/A</dd>
-
-		<dt>Authenticator processing</dt>
-		<dd>This extension is added automatically by the authenticator.  This extension can be added
-		  to attestation statements and signatures.
-		</dd>
-
-		<dt>Authenticator data</dt>
-		<dd>The user verification index (UVI) is a value uniquely identifying
-		  a user verification data record.  The UVI is encoded as CBOR byte string (type 0x58).
-		    <p>Each UVI value MUST be specific to the related key (in order to provide unlinkability).
-		      It also must contain sufficient entropy that makes guessing impractical.
-		      UVI values MUST NOT be reused by the Authenticator (for other biometric data or users).
-		    </p>
-		    <p>The UVI data can be used by servers to understand whether an authentication
-		      was authorized by the exact same biometric data as the initial key generation.
-		      This allows the detection and prevention of "friendly fraud".
-		    </p>
-		    <p>As an example, the UVI could be computed as SHA256(KeyID | SHA256(rawUVI)),
-		      where the rawUVI reflects (a) the biometric reference data,
-		      (b) the related OS level user ID and (c) an identifier which changes whenever a
-		      factory reset is performed for the device, e.g.
-		      rawUVI = biometricReferenceData | OSLevelUserID | FactoryResetCounter.
-		    </p>
-		    <p>Servers supporting UVI extensions MUST support a length of up to 32 bytes
-		      for the UVI value.
-		    </p>
-		    <p>Example for rawData containing one UVI extension</p>
-  <pre>
-  F1 D0                                   -- This is a WebAuthn packed rawData object
-  81                                      -- TUP and ED set
-  00 00 00 01                             -- (initial) signature counter
-  ...                                     -- all public key alg etc.
-  A1                                      -- extension: CBOR map of one element
-    6C                                    -- Key 1: CBOR text string of 12 bytes
-      77 65 62 61 75 74 68 6E 2E 75 76 69 -- "webauthn.uvi" UTF-8 string
-    58 20                                 -- Value 1: CBOR byte string with 0x20 bytes
-    00 43 B8 E3 BE 27 95 8C               -- the UVI value itself
-    28 D5 74 BF 46 8A 85 CF
-    46 9A 14 F0 E5 16 69 31
-    DA 4B CF FF C1 BB 11 32
-    82
-  </pre>
-		</dd>
-	  </dl>
-
-#### Signature #### {#packed-attestation-signature}
+##### Signature ##### {#packed-attestation-signature}
 
 	    <p>The <code>signature</code> is computed over the base64url-decoded <code>rawData</code> field.</p>
 	    The following
@@ -1282,7 +1024,7 @@ interface AttestationHeader {
 	    <a>Authenticators</a> can choose which algorithm to implement.
 
 
-#### Packed attestation statement certificate requirements #### {#packed-attestation-cert-requirements}
+##### Packed attestation statement certificate requirements ##### {#packed-attestation-cert-requirements}
 
 	    <p class="note">In the case of DAA attestation
 	      [[FIDOEcdaaAlgorithm]] no <a>attestation certificate</a> is used.
@@ -1321,9 +1063,9 @@ interface AttestationHeader {
 	    </ul>
 
 
-### TPM Attestation ### {#tpm-attestation}
+#### TPM Attestation #### {#tpm-attestation}
 
-#### Attestation rawData (type="tpm") #### {#sec-raw-data-tpm}
+##### Attestation rawData (type="tpm") ##### {#sec-raw-data-tpm}
 
 	    <p>
               The value of <code>rawData</code> is the <b>base64url encoding of a binary object</b>.
@@ -1341,7 +1083,7 @@ interface AttestationHeader {
 	      the <code>clientDataHash</code> (see [[#signature-format]).
 	    </p>
 
-#### Signature #### {#tpm-attestation-signature}
+##### Signature ##### {#tpm-attestation-signature}
 
 	    <p>
               If <code>attestationStatement.core.version</code> equals 1, (i.e., for
@@ -1369,7 +1111,7 @@ interface AttestationHeader {
 	    </p>
 
 
-#### TPM attestation statement certificate requirements #### {#tpm-cert-requirements}
+##### TPM attestation statement certificate requirements ##### {#tpm-cert-requirements}
 
 	    <p>TPM <a>attestation certificate</a> MUST have the following
 	      fields/extensions:
@@ -1394,7 +1136,7 @@ interface AttestationHeader {
 	      </li>
 	    </ul>
 
-### Android Attestation ### {#android-attestation}
+#### Android Attestation #### {#android-attestation}
 
     <p>
        When the <a>Authenticator</a> in question is a platform-provided
@@ -1408,7 +1150,7 @@ interface AttestationHeader {
 	  in order to let the Relying Party App store the public key in the attestation object.
 	</p>
 
-#### Attestation rawData (type="android") #### {#sec-attestation-android}
+##### Attestation rawData (type="android") ##### {#sec-attestation-android}
 
 	  <p>
 	    Android SafetyNet returns a JWS [[RFC7515]] object (see
@@ -1431,7 +1173,7 @@ interface AttestationHeader {
 	    base64url-encoding of the <code>rawData</code> object.)
 	  </p>
 
-#### Signature #### {#sec-android-attestation-signature}
+##### Signature ##### {#sec-android-attestation-signature}
 
 	  <p>
 	    The signature is directly computed over the <code>rawData</code> field, as
@@ -1441,7 +1183,7 @@ interface AttestationHeader {
 	  </p>
 
 
-#### Converting SafetyNet response to attestationStatement #### {#safetynet-conversion}
+##### Converting SafetyNet response to attestationStatement ##### {#safetynet-conversion}
 
 	  <p>
 	    The <a>Authenticator</a> and/or platform SHOULD use the steps outlined below to
@@ -1473,7 +1215,7 @@ interface AttestationHeader {
 	      version number of Google Play Services responsible for providing the SafetyNet API</li>
 	  </ol>
 
-#### AndroidAttestationClientData #### {#sec-android-attestationclientdata}
+##### AndroidAttestationClientData ##### {#sec-android-attestationclientdata}
 
       <p>
          The ClientData dictionary is extended in the following way:
@@ -1491,7 +1233,7 @@ dictionary AndroidAttestationClientData : ClientData {
 	  <dl dfn-for="AndroidAttestationClientData">
 	    <dt>JsonWebKey <dfn>publicKey</dfn></dt>
             <dd>
-              The public key generated by the Authenticator, as a JsonWebKey object (see [[!WebCryptoAPI]]).
+              The public key generated by the Authenticator, as a JsonWebKey object (see [[WebCryptoAPI#JsonWebKey-dictionary]]).
             </dd>
 
 	    <dt>boolean <dfn>isInsideSecureHardware</dfn></dt>
@@ -1523,7 +1265,7 @@ dictionary AndroidAttestationClientData : ClientData {
 
 
 
-#### Verifying AndroidClientData specific contextual bindings #### {#verifying-android-contextual-bindings}
+##### Verifying AndroidClientData specific contextual bindings ##### {#verifying-android-contextual-bindings}
 
 	    <p>
               A relying party shall verify the clientData contextual bindings (see step 4 
@@ -1571,7 +1313,7 @@ dictionary AndroidAttestationClientData : ClientData {
               </li>
 	    </ul>
 
-## Verifying an Attestation Statement ## {#verifying-an-attestation-statement}
+### Verifying an Attestation Statement ### {#verifying-an-attestation-statement}
 
 	<p>This section outlines the recommended algorithm for verifying an
 	  attestation statement, independent of attestation type.
@@ -1641,7 +1383,7 @@ dictionary AndroidAttestationClientData : ClientData {
 	    </ol>
 	  </li>
 	  <li>Verify the contextual bindings (e.g., channel binding) from the
-	    clientData (see [[#sec-attestation-client-data]]).
+	    clientData (see [[#authenticator-signature]]).
 	  </li>
 	  <li>
 	    Verify that user verification method and other authenticator characteristics
@@ -1676,9 +1418,9 @@ dictionary AndroidAttestationClientData : ClientData {
 	  attestation information.
 	</p>
 
-## Security Considerations ## {#sec-attestation-security-considerations}
+### Security Considerations ### {#sec-attestation-security-considerations}
 
-### Privacy ### {#sec-attestation-privacy}
+#### Privacy #### {#sec-attestation-privacy}
 
 	<p>Attestation keys may be used to track users or link
 	  various online identities of the same user together. This may
@@ -1705,7 +1447,7 @@ dictionary AndroidAttestationClientData : ClientData {
 	  </li>
 	</ul>
 
-### Attestation Certificate and Attestation Certificate CA Compromise ### {#ca-compromise}
+#### Attestation Certificate and Attestation Certificate CA Compromise #### {#ca-compromise}
 
 	<p>When an intermediate CA or a root CA used for issuing attestation
 	  certificates is compromised, WebAuthn <a>Authenticator</a> attestation keys are still
@@ -1745,7 +1487,7 @@ dictionary AndroidAttestationClientData : ClientData {
 	  provides an easy way to access such information.
 	</p>
 
-### Attestation Certificate Hierarchy ### {#cert-hierarchy}
+#### Attestation Certificate Hierarchy #### {#cert-hierarchy}
 
 	<p>A 3 tier hierarchy for attestation certificates is recommended
 	  (i.e., Attestation Root, Attestation Issuing CA, Attestation Certificate).
@@ -1773,11 +1515,11 @@ dictionary AndroidAttestationClientData : ClientData {
 
 <ul>
   <li>
-    {{makeCredential()}} request parameters (see [[#api]]) for
+    {{makeCredential()}} request parameters for
     registration extension.
   </li>
   <li>
-    {{getAssertion()}} request parameters (see [[#api]]) for
+    {{getAssertion()}} request parameters for
     signature extensions.
   </li>
   <li>
@@ -1785,7 +1527,7 @@ dictionary AndroidAttestationClientData : ClientData {
     registration extensions and signature extensions.
   </li>
   <li>
-    Authenticator processing, and the <var>authenticatorData</var>
+    Authenticator processing, and the <a>authenticatorData</a>
     structure, for signature extensions.
   </li>
 </ul>
@@ -1826,8 +1568,8 @@ dictionary AndroidAttestationClientData : ClientData {
   </p>
 
   <p>
-  Standard extensions defined in this specification use a fixed prefix of <code>webauthn.</code>
-  for the extension identifiers. This prefix should not be used for 3rd party extensions.
+  Extensions defined in this specification use a fixed prefix of <code>webauthn</code>
+  for the extension identifiers. This prefix should not be used for extensions not defined by the W3C.
   </p>
 
 
@@ -1868,8 +1610,8 @@ dictionary AndroidAttestationClientData : ClientData {
 
   <p>
     A WebAuthn Relying Party simultaneously requests the use of an extension and sets its client
-    argument by including an entry in the {{credentialExtensions}}
-	or {{assertionExtensions}} dictionary
+    argument by including an entry in the <a>credentialExtensions</a>
+	or <a>assertionExtensions</a> dictionary
     parameters to the {{makeCredential()}} or {{getAssertion()}}
     call. The entry key MUST be the extension identifier, and the value
     MUST be the <a>client argument</a>.
@@ -1928,7 +1670,7 @@ dictionary AndroidAttestationClientData : ClientData {
     The value may be any value that can be encoded as a JSON value. If any
     extension processed by a client defines such a value, the client SHOULD
     include a dictionary in {{ClientData}} with the key
-    {{ClientData/extensions}}. For each such extension, the client SHOULD add an
+    <a>extensions</a>. For each such extension, the client SHOULD add an
     entry to this dictionary with the extension identifier as the key, and the
     extension's client data value.
   </p>
@@ -2016,7 +1758,7 @@ dictionary AndroidAttestationClientData : ClientData {
   </pre>
 
 
-# Standard Extensions # {#extension-standard}
+# Standard extensions # {#extension-standard}
 
   <p>
   This section defines standard extensions defined by the W3C.
@@ -2125,7 +1867,7 @@ typedef DOMString AAGUID;
     <dd>
       If the client supports the Authenticator Selection Extension, it MUST use
       the first available authenticator whose AAGUID is present in the
-      {{AuthenticatorSelectionList}}. If none of the available
+      <dfn>AuthenticatorSelectionList</dfn>. If none of the available
       authenticators match a provided AAGUID, the client MUST select an
       authenticator from among the available authenticators to generate the
       credential.
@@ -2138,7 +1880,132 @@ typedef DOMString AAGUID;
     <dd>None.</dd>
   </dl>
 
+## AAGUID Extension ## {#aaguid-extension}
 
+	  <dl>
+		<dt>Extension identifier</dt>
+		<dd><code>webauthn.aaguid</code></dd>
+
+		<dt>Client argument</dt>
+		<dd>N/A</dd>
+
+		<dt>Client processing</dt>
+		<dd>N/A</dd>
+
+		<dt>Authenticator argument</dt>
+		<dd>N/A</dd>
+
+		<dt>Authenticator processing</dt>
+		<dd>This extension is added automatically by the <a>authenticator</a>.  This extension can be added
+		  to attestation statements and signatures.
+		</dd>
+
+		<dt>Authenticator data</dt>
+		<dd>A 128-bit Authenticator Attestation GUID encoded as a CBOR text string (major type 3).
+
+		  <p>This AAGUID is used to identify the Authenticator model (Authenticator Attestation GUID).</p>
+		    <div class="note">
+		      <p>The authenticator model (identified by the AAGUID) can be derived from
+			(a) here, or
+			(b) from the attestation certificate (if we have an authenticator specific
+			or authenticator model specific attestation certificate),
+			or (c) or from the claimed AAGUID in the client
+			encoded attestation statement (if we have one attestation root certificate
+			per authenticator model).
+		      </p>
+		      <p>In the case of DAA there is no need for an X.509
+			attestation certificate hierarchy.
+			Instead the trust anchor being known to the Relying Party is
+			the DAA root key (i.e. ECPoint2 X, Y).  This root key must be dedicated
+			to a single authenticator model.
+		      </p>
+		    </div>
+		</dd>
+	  </dl>
+
+
+## SupportedExtensions Extension ## {#supported-extensions-extension}
+	  <dl>
+		<dt>Extension identifier</dt>
+		<dd><code>webauthn.exts</code></dd>
+		<dt>Client argument</dt>
+		<dd>N/A</dd>
+
+		<dt>Client processing</dt>
+		<dd>N/A</dd>
+
+		<dt>Authenticator argument</dt>
+		<dd>N/A</dd>
+
+		<dt>Authenticator processing</dt>
+		<dd>This extension is added automatically by the authenticator.  This extension can be added
+		  to attestation statements.
+		</dd>
+		<dt>Authenticator data</dt>
+		<dd>The SupportedExtension extension is a list (CBOR array) of extension identifiers
+		  encoded as UTF-8 Strings.
+		</dd>
+	      </dl>
+
+## User Verification Index (UVI) Extension ## {#uvi-extension}
+	  <dl>
+		<dt>Extension identifier</dt>
+		<dd><code>webauthn.uvi</code></dd>
+
+		<dt>Client argument</dt>
+		<dd>N/A</dd>
+
+		<dt>Client processing</dt>
+		<dd>N/A</dd>
+
+		<dt>Authenticator argument</dt>
+		<dd>N/A</dd>
+
+		<dt>Authenticator processing</dt>
+		<dd>This extension is added automatically by the authenticator.  This extension can be added
+		  to attestation statements and signatures.
+		</dd>
+
+		<dt>Authenticator data</dt>
+		<dd>The user verification index (UVI) is a value uniquely identifying
+		  a user verification data record.  The UVI is encoded as CBOR byte string (type 0x58).
+		    <p>Each UVI value MUST be specific to the related key (in order to provide unlinkability).
+		      It also must contain sufficient entropy that makes guessing impractical.
+		      UVI values MUST NOT be reused by the Authenticator (for other biometric data or users).
+		    </p>
+		    <p>The UVI data can be used by servers to understand whether an authentication
+		      was authorized by the exact same biometric data as the initial key generation.
+		      This allows the detection and prevention of "friendly fraud".
+		    </p>
+		    <p>As an example, the UVI could be computed as SHA256(KeyID | SHA256(rawUVI)),
+		      where the rawUVI reflects (a) the biometric reference data,
+		      (b) the related OS level user ID and (c) an identifier which changes whenever a
+		      factory reset is performed for the device, e.g.
+		      rawUVI = biometricReferenceData | OSLevelUserID | FactoryResetCounter.
+		    </p>
+		    <p>Servers supporting UVI extensions MUST support a length of up to 32 bytes
+		      for the UVI value.
+		    </p>
+		    <p>Example for rawData containing one UVI extension</p>
+  <pre>
+  F1 D0                                   -- This is a WebAuthn packed rawData object
+  81                                      -- TUP and ED set
+  00 00 00 01                             -- (initial) signature counter
+  ...                                     -- all public key alg etc.
+  A1                                      -- extension: CBOR map of one element
+    6C                                    -- Key 1: CBOR text string of 12 bytes
+      77 65 62 61 75 74 68 6E 2E 75 76 69 -- "webauthn.uvi" UTF-8 string
+    58 20                                 -- Value 1: CBOR byte string with 0x20 bytes
+    00 43 B8 E3 BE 27 95 8C               -- the UVI value itself
+    28 D5 74 BF 46 8A 85 CF
+    46 9A 14 F0 E5 16 69 31
+    DA 4B CF FF C1 BB 11 32
+    82
+  </pre>
+		</dd>
+	  </dl>
+
+	  
 # IANA Considerations # {#iana-considerations}
 
   This specification registers the algorithm names "S256", "S384", "S512", and "SM3"
