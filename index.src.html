@@ -161,14 +161,14 @@ The API is defined by the following Web IDL fragment.
         Promise < ScopedCredentialInfo > makeCredential (
             Account                                 accountInformation,
             sequence < ScopedCredentialParameters > cryptoParameters,
-            DOMString                               attestationChallenge,
+            BufferSource                            attestationChallenge,
             optional unsigned long                  credentialTimeoutSeconds,
             optional sequence < Credential >        blacklist,
             optional WebAuthnExtensions             credentialExtensions
         );
 
         Promise < WebAuthnAssertion > getAssertion (
-            DOMString                        assertionChallenge,
+            BufferSource                     assertionChallenge,
             optional unsigned long           assertionTimeoutSeconds,
             optional sequence < Credential > whitelist,
             optional WebAuthnExtensions      assertionExtensions
@@ -195,18 +195,10 @@ The API is defined by the following Web IDL fragment.
     };
 
     interface WebAuthnAssertion {
-        readonly attribute Credential credential;
-        readonly attribute DOMString  clientData;
-        readonly attribute DOMString  authenticatorData;
-        readonly attribute DOMString  signature;
-    };
-
-    dictionary ClientData {
-        required DOMString       challenge;
-        required DOMString       facet;
-        required JsonWebKey      tokenBinding;
-        required AlgorithmIdentifier hashAlg;
-        WebAuthnExtensions          extensions;
+        readonly attribute Credential  credential;
+        readonly attribute ArrayBuffer clientData;
+        readonly attribute ArrayBuffer authenticatorData;
+        readonly attribute ArrayBuffer signature;
     };
 
     dictionary WebAuthnExtensions {
@@ -215,18 +207,18 @@ The API is defined by the following Web IDL fragment.
     interface AttestationStatement {
         readonly    attribute AttestationHeader header;
         readonly    attribute AttestationCore   core;
-        readonly    attribute DOMString         signature;
+        readonly    attribute ArrayBuffer       signature;
     };
 
     interface AttestationCore {
         readonly    attribute DOMString     type;
         readonly    attribute unsigned long version;
-        readonly    attribute DOMString     rawData;
-        readonly    attribute DOMString     clientData;
+        readonly    attribute ArrayBuffer   rawData;
+        readonly    attribute ArrayBuffer   clientData;
     };
 
     interface AttestationHeader {
-        readonly    attribute DOMString   claimedAAGUID;
+        readonly    attribute ArrayBuffer claimedAAGUID;
         readonly    attribute DOMString[] x5c;
         readonly    attribute DOMString   alg;
     };
@@ -237,7 +229,7 @@ The API is defined by the following Web IDL fragment.
 
     interface Credential {
         readonly attribute CredentialType type;
-        readonly attribute DOMString      id;
+        readonly attribute BufferSource   id;
     };
 </pre>
 
@@ -338,8 +330,8 @@ a credential even if one is present, for example to maintain privacy.
 
 This method takes the following parameters:
 
-- The <dfn>assertionChallenge</dfn> parameter contains a string that the selected authenticator is expected to sign to produce
-    the assertion.
+- The <dfn>assertionChallenge</dfn> parameter contains a challenge that the selected authenticator is expected to sign to
+    produce the assertion.
 
 - The optional <dfn>assertionTimeoutSeconds</dfn> parameter specifies a time, in seconds, that the caller is willing to wait
     for the call to complete. This is treated as a hint, and may be overridden by the platform.
@@ -457,40 +449,14 @@ user consent to a specific transaction. The structure of these signatures is def
 <div dfn-for="WebAuthnAssertion">
     The <dfn>credential</dfn> member represents the credential that was used to generate this assertion.
 
-    The <dfn>clientData</dfn> member contains the base64url encoding of the parameters sent to the authenticator by the client.
-    (See <a>clientDataJSON</a> in [[#sec-client-data]].)
+    The <dfn>clientData</dfn> member contains the parameters sent to the authenticator by the client, in serialized form. (See
+    [[#sec-client-data]].)
 
-    The <dfn>authenticatorData</dfn> member contains the base64url encoding of the data returned by the authenticator. (See
+    The <b><em>authenticatorData</em></b> member contains the serialized data returned by the authenticator. (See
     [[#sec-authenticator-data]].)
 
-    The <dfn>signature</dfn> member contains the base64url encoding of the raw signature returned from the authenticator. (See
+    The <dfn>signature</dfn> member contains the raw signature returned from the authenticator. (See
     [[#authenticator-signature]].)
-</div>
-
-
-## Client data used in assertion (dictionary <dfn dictionary>ClientData</dfn>) ## {#sec-client-data}
-
-The client data represents the contextual bindings of both the [RP] and the client platform. It is a key-value mapping with
-string-valued keys. Values may be any type that has a valid encoding in JSON. It MUST contain at least the following key-value
-pairs.
-
-<div dfn-for="ClientData">
-    The <dfn>challenge</dfn> member contains the base64url-encoded challenge provided by the RP.
-
-    The <dfn>facet</dfn> member contains a string value describing the RP identifier facet. When the [RP] client-side app is a
-    website, this is its fully qualified web origin, using the syntax defined by [[RFC6454]]. When the client-side app is a
-    native application, this string is a platform specific identifier.
-
-    The <dfn>tokenBinding</dfn> member contains a JsonWebKey object as defined by [[WebCryptoAPI#JsonWebKey-dictionary]]
-    describing the public key that this client uses for the Token Binding protocol when communicating with the [RP]. This can be
-    omitted if no Token Binding has been negotiated between the client and the [RP].
-
-    The <dfn>hashAlg</dfn> member specifies the hash algorithm used to compute clientDataHash (see
-    [[#authenticator-signature]]). Use "S256" for SHA-256, "S384" for SHA384, "S512" for SHA512, and "SM3" for SM3 (see
-    [[#iana-considerations]]).
-
-    The optional <dfn>extensions</dfn> member contains the extension-provided authenticator data. Signature extensions are
-    detailed in Section [[#extensions]].
 </div>
 
 
@@ -517,8 +483,8 @@ providing provenance information for the attesting key, enabling a trust decisio
 
     The <dfn>core</dfn> element describes the data that is being attested to, and its type.
 
-    The <dfn>signature</dfn> element contains the base64url-encoded attestation signature. The structure of this object depends
-    on the signature algorithm specified in the header.
+    The <dfn>signature</dfn> element contains the attestation signature. The structure of this object depends on the signature
+    algorithm specified in the header.
 </div>
 
 This attestation statement is delivered to the <a>[RP]</a> according to the Client API. It contains all the information that the
@@ -559,8 +525,8 @@ Authenticators might generate different object types (identified by {{Attestatio
 
     The <dfn>rawData</dfn> object contains the attested public key and the |clientDataHash|.
 
-    The <dfn>clientData</dfn> member contains the base64url encoding of <a>clientDataJSON</a> (see [[#signature-format]]). The
-    exact encoding must be preserved as the hash (clientDataHash) has been computed over it.
+    The <dfn>clientData</dfn> member contains the <a>clientDataJSON</a> (see [[#signature-format]]). The exact JSON encoding
+    must be preserved as the hash (clientDataHash) has been computed over it.
 </div>
 
 
@@ -723,6 +689,41 @@ platform hashes the client data and sends only the result to the authenticator. 
 this hash, and its own authenticator data.
 
 
+## Client data used in WebAuthn signatures (dictionary <dfn dictionary>ClientData</dfn>) ## {#sec-client-data}
+
+The client data represents the contextual bindings of both the [RP] and the client platform. It is a key-value mapping with
+string-valued keys. Values may be any type that has a valid encoding in JSON. Its structure is defined by the following Web IDL.
+
+<pre class="idl">
+    dictionary ClientData {
+        required DOMString           challenge;
+        required DOMString           facet;
+        required AlgorithmIdentifier hashAlg;
+        JsonWebKey                   tokenBinding;
+        WebAuthnExtensions           extensions;
+    };
+</pre>
+
+<div dfn-for="ClientData">
+    The <dfn>challenge</dfn> member contains the base64url encoding of the challenge provided by the RP.
+
+    The <dfn>facet</dfn> member contains a string value describing the RP identifier facet. When the [RP] client-side app is a
+    website, this is its fully qualified web origin, using the syntax defined by [[RFC6454]]. When the client-side app is a
+    native application, this string is a platform specific identifier.
+
+    The <dfn>tokenBinding</dfn> member contains a JsonWebKey object as defined by [[WebCryptoAPI#JsonWebKey-dictionary]]
+    describing the public key that this client uses for the Token Binding protocol when communicating with the [RP]. This can be
+    omitted if no Token Binding has been negotiated between the client and the [RP].
+
+    The <dfn>hashAlg</dfn> member specifies the hash algorithm used to compute clientDataHash (see
+    [[#authenticator-signature]]). Use "S256" for SHA-256, "S384" for SHA384, "S512" for SHA512, and "SM3" for SM3 (see
+    [[#iana-considerations]]).
+
+    The optional <dfn>extensions</dfn> member contains additional parameters generated by processing the extensions passed in
+    by the [RP]. WebAuthn extensions are detailed in Section [[#extensions]].
+</div>
+
+
 ### Authenticator data ### {#sec-authenticator-data}
 
 The authenticator data encodes contextual bindings made by the <a>authenticator</a> itself. The authenticator data has a compact
@@ -768,7 +769,7 @@ The figure below shows a visual representation of the authenticator data structu
 
 <figure>
     <img src="img/fido-signature-formats-figure1.svg"/>
-    <figcaption>`authenticatorData` layout.</figcaption>
+    <figcaption><dfn>authenticatorData</dfn> layout.</figcaption>
 </figure>
 
 Note: The `signatureData` describes its own length: If the ED flag is not set, it is always 5 bytes long. If the ED flag is set,
@@ -779,18 +780,17 @@ it is 5 bytes plus the CBOR map that follows.
 
 Before making a request to an authenticator, the client platform layer SHALL perform the following steps.
 
-1. Let <dfn>clientDataJSON</dfn> be the UTF-8 encoded JSON serialization [[RFC7159]] of {{ClientData}}.
+1. Represent the parameters passed in by the RP in the form of a {{ClientData}} structure.
+ 
+2. Let <dfn>clientDataJSON</dfn> be the UTF-8 encoded JSON serialization [[RFC7159]] of this ClientData dictionary.
 
-2. Let |clientDataHash| be the hash (computed using <a>hashAlg</a>) of <a>clientDataJSON</a>, as an array.
+3. Let <dfn>clientDataHash</dfn> be the hash (computed using <a>hashAlg</a>) of <a>clientDataJSON</a>, as an array.
 
-The |clientDataHash| value is incorporated into a signature by an authenticator (see [[#authenticator-signature]]). It is
-delivered to integrated authenticators in platform specific manners, and to external authenticators as a part of a signature
-request. The client platform SHOULD also preserve the exact `encodedClientData` string used to create it, for embedding in a
-signature object sent back to the [RP] (see [[#authenticator-signature]]). This is necessary since multiple JSON encodings of
-the same client data are possible.
+The |clientDataHash| value is delivered to the authenticator.
 
-The hash algorithm <a>hashAlg</a> used to compute |clientDataHash| is included in the {{ClientData}} object. This way it is
-available to the [RP] and it is also hashed over when computing |clientDataHash| and hence anchored in the signature itself.
+The hash algorithm <a>hashAlg</a> used to compute <a>clientDataHash</a> is included in the {{ClientData}} object. This way it
+is available to the [RP] and it is also hashed over when computing <a>clientDataHash</a> and hence anchored in the signature
+itself.
 
 A raw cryptographic signature must assert the integrity of both the client data and the authenticator data. Thus, an
 <a>authenticator</a> SHALL compute a signature over the concatenation of the |authenticatorData| and the |clientDataHash|.
@@ -803,7 +803,9 @@ A raw cryptographic signature must assert the integrity of both the client data 
 Note: A simple, undelimited concatenation, is safe to use here because the |authenticatorData| describes its own length. The
     |clientDataHash| (which potentially has a variable length) is always the last element.
 
-The authenticator MUST return both the |authenticatorData| and the raw signature back to the client.
+The authenticator MUST return both the <a>authenticatorData</a> and the raw signature back to the client. The client, in turn,
+MUST return <a>clientDataJSON</a>, <a>authenticatorData</a> and the signature to the RP. The <a>clientDataJSON</a> is returned
+in the `clientData` member of the {{WebAuthnAssertion}} and {{AttestationStatement}} structures.
 
 
 ## Key Attestation Format ## {#attestation}
