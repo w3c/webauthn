@@ -762,50 +762,15 @@ in the `clientData` member of the {{WebAuthnAssertion}} and {{AttestationStateme
 ## Credential Attestation Statements ## {#attestation}
 
 An attestation statement is a specific type of signature, which contains statements about a credential itself and the
-authenticator that holds it. Therefore, the format of attestation statements and the procedures for generating them closely
-parallel those for generating WebAuthn assertions as described in [[#signature-format]], though the semantics of the contextual
-bindings are quite different.
-
-This specification defines a number of types of attestation statements. All of these types share the following format:
-
-<pre class="idl">
-    interface AttestationStatement {
-        readonly    attribute unsigned long version;
-        readonly    attribute ArrayBuffer   claimedAAGUID;
-        readonly    attribute DOMString[]   x5c;
-        readonly    attribute DOMString     alg;
-        readonly    attribute ArrayBuffer   rawData;
-        readonly    attribute ArrayBuffer   signature;
-    };
-</pre>
-
-<div dfn-for="AttestationStatement">
-    The <dfn>version</dfn> member specifies the version number of the rawData object.
-
-    The <dfn>claimedAAGUID</dfn> element contains the claimed Authenticator Attestation GUID (a version 4 GUID, see
-    [[RFC4122]]). This value is used by the <a>[RP]</a> to look up the trust anchor for verifying the following signature. If
-    the verification succeeds, the AAGUID related to the trust anchor is trusted. This field MUST be present, if either no
-    attestation certificates are used (e.g., DAA) or if the attestation certificate doesn't contain the AAGUID value in an
-    extension.
-
-    The <dfn>x5c</dfn> attribute contains the attestation certificate and its certificate chain as described in [[!RFC7515]]
-    section 4.1.6.
-
-    The <dfn>alg</dfn> element contains the name of the algorithm used to generate the attestation signature according to
-    [[!RFC7518]] section 3.1.
-
-    The <dfn>rawData</dfn> object contains the attested public key and the |clientDataHash|. The format of this object depends
-    on the attestation type.
-
-    The <dfn>signature</dfn> element contains the attestation signature.
-</div>
+authenticator that holds it. Therefore, the procedures for generating attestation statements closely parallel those for
+generating WebAuthn assertions as described in [[#signature-format]], though the semantics of the contextual bindings are quite
+different.
 
 This specification defines a number of attestation types, i.e., ways to serialize the data being attested to by the
 <a>Authenticator</a>. The reason is to be able to support existing devices like TPMs and other platform-specific formats. Each
 attestation type provides the ability to cryptographically attest to a public key, the authenticator model, and contextual data
-to a remote party. They differ in the details of how the <a>rawData</a> element of the statement is laid out, and how the
-<a link-for="AttestationStatement">signature</a> is computed from the <a>rawData</a>. The different attestation types are
-defined in [[#defined-attestation-types]].
+to a remote party. They differ in the details of how the attestation statement is laid out, and how its components are computed.
+The different attestation types are defined in [[#defined-attestation-types]].
 
 Attestation types are orthogonal to attestation models, i.e. attestation types in general are not restricted
 to a single attestation model.
@@ -850,8 +815,8 @@ Note: [RPS] can always decide what attestation models are acceptable to them by 
 ### Defined Attestation Types ### {#defined-attestation-types}
 
 WebAuthn supports pluggable attestation data types. This allows support of TPM generated attestation data as well as support of
-other WebAuthn <a>authenticators</a>. As mentioned in [[#attestation]], these differ in how the `rawData` and `signature` fields
-are populated. This section defines the behavior of these fields for the attestation types defined by this specification.
+other WebAuthn <a>authenticators</a>. As mentioned in [[#attestation]], these differ in how the attestation statement is
+computed and formatted. This section defines these details.
 
 The contents of the attestation data must be controlled (i.e., generated or at least verified) by the authenticator itself.
 
@@ -862,14 +827,46 @@ Packed attestation is a WebAuthn optimized format of attestation data. It uses a
 method. Encoding this format can even be implemented by <a>authenticators</a> with very limited resources (e.g., secure
 elements).
 
+A Packed Attestation statement has the following format:
+
+<pre class="idl">
+    interface AttestationStatement {
+        readonly    attribute unsigned long version;
+        readonly    attribute ArrayBuffer   claimedAAGUID;
+        readonly    attribute DOMString[]   x5c;
+        readonly    attribute DOMString     alg;
+        readonly    attribute ArrayBuffer   rawData;
+        readonly    attribute ArrayBuffer   signature;
+    };
+</pre>
+
+<div dfn-for="AttestationStatement">
+    The <dfn>version</dfn> member specifies the version number of the rawData object. Only version="1" is defined at this time.
+
+    The <dfn>claimedAAGUID</dfn> element contains the claimed Authenticator Attestation GUID (a version 4 GUID, see
+    [[RFC4122]]). This value is used by the <a>[RP]</a> to look up the trust anchor for verifying the following signature. If
+    the verification succeeds, the AAGUID related to the trust anchor is trusted. This field MUST be present, if either no
+    attestation certificates are used (e.g., DAA) or if the attestation certificate doesn't contain the AAGUID value in an
+    extension.
+
+    The <dfn>x5c</dfn> attribute contains the attestation certificate and its certificate chain as described in [[!RFC7515]]
+    section 4.1.6.
+
+    The <dfn>alg</dfn> element contains the name of the algorithm used to generate the attestation signature according to
+    [[!RFC7518]] section 3.1.
+
+    The <dfn>rawData</dfn> object contains the attested public key and the |clientDataHash|. See [[#sec-raw-data-packed]] for
+    details.
+
+    The <dfn>signature</dfn> element contains the attestation signature. See [[#packed-attestation-signature]] for details.
+</div>
+
 
 ##### Attestation rawData ##### {#sec-raw-data-packed}
 
 The attestation data encodes contextual bindings made by the <a>authenticator</a> itself. Unlike client data, the authenticator
 data has a compact but extensible encoding. This is desired since authenticators can be devices with limited capabilities and
 low power requirements, with much simpler software stacks than the client platform components.
-
-For this type, only version="1" is defined at this time.
 
 The field `rawData` for this type is a byte array of 45 bytes + length of public key + length of KeyHandle + potentially more 
 extensions. The first bytes before the extensions have a fixed layout as follows: 
@@ -940,8 +937,8 @@ extensions. The first bytes before the extensions have a fixed layout as follows
     <tr>
         <td>n</td>
         <td>
-            clientDataHash (see [[#authenticator-signature]]). This is the hash of `clientData`. The hash algorithm itself is
-            stored in the `clientData` object [[#signature-format]].
+            clientDataHash (see [[#authenticator-signature]]). This is the hash of `clientDataJSON`. The hash algorithm itself
+            is stored in the `clientData` object [[#signature-format]].
         </td>
     </tr>
     <tr>
@@ -1002,6 +999,9 @@ The attestation certificate MUST have the following fields/extensions:
 
 #### TPM Attestation (type="tpm") #### {#tpm-attestation}
 
+This attestation type returns an attestation statement in the same format as defined in [[#packed-attestation]]. However the
+`rawData` and `signature` fields are computed differently, as described below.
+
 
 ##### Attestation rawData ##### {#sec-raw-data-tpm}
 
@@ -1061,66 +1061,28 @@ When the <a>Authenticator</a> in question is a platform-provided Authenticator o
 statement is based on the <a href="https://developer.android.com/training/safetynet/index.html#compat-check-response">SafetyNet
 API</a>.
 
-Android attestation statement MUST always be used in conjunction with the more specific `AndroidAttestationClientData` (see
-[[#sec-android-attestationclientdata]]) in order to let the [RP] App store the public key in the attestation object.
+This type of attestation statement is formatted as follows:
 
+<pre class="idl">
+    interface AndroidAttestation {
+        readonly attribute unsigned long version;
+        readonly attribute DOMString     safetyNetResponse;
+    };
+</pre>
 
-##### Attestation rawData ##### {#sec-attestation-android}
+<div dfn-for="AndroidAttestation">
+    The <dfn>version</dfn> element is set to the version number of Google Play Services responsible for providing the SafetyNet
+    API.
 
-Android SafetyNet returns a JWS [[RFC7515]] object (see
-<a href="https://developer.android.com/training/safetynet/index.html#compat-check-response">SafetyNet online documentation</a>)
-in Compact Serialization. A JWS in Compact Serialization consists of three segments (each a base64url-encoded string) separated
-by a dot ("."). The `rawData` object is the concatenation of:
-
-1. the first segment (a base64url encoding of the UTF-8 encoded JWS Protected Header)
-
-2. a dot "."
-
-3. the second segment (a base64url encoding of the UTF-8 encoded JWS Payload).
+    The <dfn>safetyNetResponse</dfn> element contains the value returned by the above SafetyNet API. This value is a JWS
+    [[RFC7515]] object (see <a href="https://developer.android.com/training/safetynet/index.html#compat-check-response">
+    SafetyNet online documentation</a>) in Compact Serialization.
+</div>
 
 
 ##### Signature ##### {#sec-android-attestation-signature}
 
-The signature is directly computed over the `rawData` field, as defined above (see [[RFC7515]] for more details). The third
-segment of the JWS returned by SafetyNet is the base64url encoding of this signature, and is decoded into the `signature`.
-
-
-##### Converting SafetyNet response to AttestationStatement ##### {#safetynet-conversion}
-
-The <a>Authenticator</a> and/or platform SHOULD use the steps outlined below to create an AttestationStatement object from an
-Android SafetyNet response. It MAY use a different algorithm, as long as the results are the same.
-
-1. create clientDataJSON with type AndroidAttestationClientData (see below) and compute clientDataHash as the hash of
-    clientDataJSON.
-
-2. provide clientDataHash as Nonce value when requesting the SafetyNet attestation.
-
-3. take SafetyNet response |snr|.  This is a JWS object ([[RFC7515]]).
-
-4. extract the base64url-encoded Protected Header |hdr| from |snr| (see [[RFC7515]])
-
-5. extract the base64url-encoded payload |p| from |snr|
-
-6. extract the base64url-encoded signature from |snr|. Let |s| be its base64url-decoded form.
-
-7. set `rawData` = |hdr| | "." | |p|
-
-8. set `signature` = |s|
-
-9. base64url-decode |hdr| into |hdr-d|
-
-10. set `alg` = |hdr-d|.alg
-
-11. if |hdr-d|.x5c is present, then set `x5c` = |hdr-d|.x5c
-
-12. if |hdr-d|.x5u is present, then resolve the URL and add the retrieved certificate chain to `x5c`
-
-13. set `version` to the version number of Google Play Services responsible for providing the SafetyNet API
-
-
-##### AndroidAttestationClientData ##### {#sec-android-attestationclientdata}
-
-The ClientData dictionary is extended in the following way:
+For this attestation type, the ClientData dictionary is extended in the following way:
 
 <pre class="idl">
     dictionary AndroidAttestationClientData : ClientData {
@@ -1150,6 +1112,10 @@ The ClientData dictionary is extended in the following way:
     :: If the `userAuthentication` is set to "keyguard", then this parameter specifies the duration of time (seconds) for which
         this key is authorized to be used after the user is successfully authenticated.
 </div>
+
+In order to generate an attestation statement, the client MUST create clientDataJSON by UTF8-encoding a structure of type
+AndroidAttestationClientData, and compute clientDataHash as the hash of clientDataJSON. It must then provide clientDataHash as
+the Nonce value when requesting the SafetyNet attestation.
 
 
 ##### Verifying AndroidClientData specific contextual bindings ##### {#verifying-android-contextual-bindings}
@@ -1525,8 +1491,7 @@ credential. It is intended primarily for [RPS] that wish to tightly control the 
     Each AAGUID corresponds to an authenticator attestation that is acceptable to the [RP] for this credential creation. The
     list is ordered by decreasing preference.
 
-    An AAGUID is defined as an array containing the globally unique identifier of the authenticator attestation being
-    sought.
+    An AAGUID is defined as an array containing the globally unique identifier of the authenticator attestation being sought.
 
     <pre class="idl highlight">
         typedef BufferSource AAGUID;
