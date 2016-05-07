@@ -140,15 +140,30 @@ This specification relies on several other underlying specifications.
 
 # Web Authentication API # {#api}
 
-This section normatively specifies the API for creating and using scoped credentials. Support for deleting credentials is
-deliberately omitted; this is expected to be done through platform-specific user interfaces rather than from a script. The basic
-idea is that the credentials belong to the user and are managed by the browser and underlying platform. Scripts can (with the
-user's consent) request the browser to create a new credential for future use by the script's origin. Scripts can also request
-the user’s permission to perform authentication operations with an existing credential held by the platform. However, all such
-operations are mediated by the browser and/or platform on the user's behalf. At no point does the script get access to the
-credentials themselves; it only gets information about the credentials in the form of objects.
+This section normatively specifies the API for creating and using scoped credentials. Support for deleting credentials is 
+deliberately omitted; this is expected to be done through platform-specific user interfaces rather than from a script. The basic 
+idea is that the credentials belong to the user and are managed by an authenticator, with which the [RP] interacts through the 
+client (consisting of the browser and underlying OS platform). Scripts can (with the user's consent) request the browser to 
+create a new credential for future use by the [RP]. Scripts can also request the user’s permission to perform authentication 
+operations with an existing credential. All such operations are performed in the authenticator and are mediated by the browser 
+and/or platform on the user's behalf. At no point does the script get access to the credentials themselves; it only gets 
+information about the credentials in the form of objects. 
 
-User agents SHOULD only expose this API to callers in <dfn>secure contexts</dfn>, as defined in [[powerful-features]].
+The security properties of this API are provided by the client and the authenticator working together. The authenticator, which
+holds and manages credentials, ensures that all operations are scoped to a particular web origin, and cannot be replayed against
+a different origin, by incorporating the origin in its responses. Specifically, as defined in [[#signature-format]], the full
+origin of the requester is included, and signed over, in the attestation statement produced when a new credential is created as
+well as in all assertions produced by WebAuthn credentials.
+
+Additionally, to maintain user privacy and prevent malicious [RPS] from probing for the presence of credentials belonging to
+other [RPS], each credential is also associated with a Relying Party Identifier, or RP ID. This RP ID is provided by the client
+to the authenticator for all operations, and the authenticator ensures that credentials created by a [RP] can only be used in
+operations requested by the same RP ID. Separating the origin from the RP ID in this way allows the API to be used in cases
+where a single [RP] maintains multiple web origins.
+
+The client facilitates these security measures by providing correct web origins and RP IDs to the authenticator for each
+operation. Since this is an integral part of the WebAuthn security model, user agents SHOULD only expose this API to callers in
+<dfn>secure contexts</dfn>, as defined in [[powerful-features]].
 
 The API is defined by the following Web IDL fragment.
 
@@ -617,18 +632,17 @@ against expected values.
 
 The components of a system using WebAuthn can be divided into three layers:
 
-1. The <a>[RP]</a> (RP), which uses the WebAuthn services. The RP may, for example, be a web-application running in a browser,
-    or a native application that runs directly on the OS platform.
+1. The <a>[RP]</a> (RP), which uses the WebAuthn services. The RP consists of a server component and a web-application running
+    in a browser.
 
-2. The <a>WebAuthn Client</a> platform, which consists of the user’s OS and device used to host the RP’s client-side app. For
-    web-applications, the browser also belongs to this layer.
+2. The <a>WebAuthn Client</a> platform, which consists of the User Agent and the OS and device on which it executes.
 
-3. The <a>Authenticator</a> itself, which provides key management and cryptographic signatures.
-
-When the [RP] client-side application is a web-application, the interface between 1 and 2 is the [[#api]], but is platform
-specific for native applications. In cases where the authenticator is not tightly integrated with the platform, the interface
-between 2 and 3 is a separately-defined protocol. This specification defines the common signature format shared by all layers.
-This includes how the different contextual bindings are encoded, signed over, and delivered to the RP.
+3. The <a>Authenticator</a> itself, which provides key management and cryptographic signatures. This may be embedded in the
+    WebAuthn client, or houesd in a separate device entirely. In the latter case, the interface between the WebAuthn client and
+    the authenticator is a separately-defined protocol.
+    
+This specification defines the common signature format shared by all the above layers. This includes how the different 
+contextual bindings are encoded, signed over, and delivered to the RP. 
 
 The goals of this design can be summarized as follows.
 
@@ -667,9 +681,8 @@ string-valued keys. Values may be any type that has a valid encoding in JSON. It
 <div dfn-for="ClientData">
     The <dfn>challenge</dfn> member contains the base64url encoding of the challenge provided by the RP.
 
-    The <dfn>facet</dfn> member contains a string value describing the RP identifier facet. When the [RP] client-side app is a
-    website, this is its fully qualified web origin, using the syntax defined by [[RFC6454]]. When the client-side app is a
-    native application, this string is a platform specific identifier.
+    The <dfn>facet</dfn> member contains the fully qualified web origin of the requester, as provided to the authenticator by
+    the client, in the syntax defined by [[RFC6454]].
 
     The <dfn>hashAlg</dfn> member specifies the hash algorithm used to compute clientDataHash (see
     [[#authenticator-signature]]). Use "S256" for SHA-256, "S384" for SHA384, "S512" for SHA512, and "SM3" for SM3 (see
