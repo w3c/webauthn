@@ -17,7 +17,7 @@ group: webauthn
 Text Macro: RP WebAuthn Relying Party
 Text Macro: RPS WebAuthn Relying Parties
 Text Macro: INFORMATIVE <em>This section is not normative.</em>
-Ignored Vars: op, alg
+Ignored Vars: op, alg, type, algorithm
 Abstract: This specification defines an API that enables web pages to access WebAuthn compliant strong cryptographic credentials
     through browser script. Conceptually, one or more credentials are stored on an authenticator, and each credential is scoped
     to a single Relying Party. Authenticators are responsible for ensuring that no operation is performed without the user's
@@ -61,8 +61,8 @@ may even be used in a single end-to-end user scenario. One such scenario is desc
 ## Registration (<a>embedded authenticator</a> mode) ## {#registration-embedded}
 
 - On the phone:
-    * User goes to example.com in the browser, and signs in using whatever method they have been using (possibly a legacy
-        method such as a password).
+    * User goes to example.com in the browser and signs in to an existing account using whatever method they have been using
+        (possibly a legacy method such as a password), or creates a new account.
     * The phone prompts, "Do you want to register this device with example.com?"
     * User agrees.
     * The phone prompts the user for a previously configured authorization gesture (PIN, biometric, etc.); the user provides
@@ -128,7 +128,7 @@ This specification relies on several other underlying specifications.
 : Web Cryptography API
 :: The <dfn dictionary>AlgorithmIdentifier</dfn> type and the method for normalizing an algorithm are defined in
     [[WebCryptoAPI#algorithm-dictionary]].
-:: The <dfn interface>JsonWebKey</dfn> interface for representing cryptographic keys is defined in
+:: The <dfn dictionary>JsonWebKey</dfn> dictionary for representing cryptographic keys is defined in
     [[WebCryptoAPI#JsonWebKey-dictionary]].
 
 : Base64url encoding
@@ -140,15 +140,30 @@ This specification relies on several other underlying specifications.
 
 # Web Authentication API # {#api}
 
-This section normatively specifies the API for creating and using scoped credentials. Support for deleting credentials is
-deliberately omitted; this is expected to be done through platform-specific user interfaces rather than from a script. The basic
-idea is that the credentials belong to the user and are managed by the browser and underlying platform. Scripts can (with the
-user's consent) request the browser to create a new credential for future use by the script's origin. Scripts can also request
-the user’s permission to perform authentication operations with an existing credential held by the platform. However, all such
-operations are mediated by the browser and/or platform on the user's behalf. At no point does the script get access to the
-credentials themselves; it only gets information about the credentials in the form of objects.
+This section normatively specifies the API for creating and using scoped credentials. Support for deleting credentials is 
+deliberately omitted; this is expected to be done through platform-specific user interfaces rather than from a script. The basic 
+idea is that the credentials belong to the user and are managed by an authenticator, with which the [RP] interacts through the 
+client (consisting of the browser and underlying OS platform). Scripts can (with the user's consent) request the browser to 
+create a new credential for future use by the [RP]. Scripts can also request the user’s permission to perform authentication 
+operations with an existing credential. All such operations are performed in the authenticator and are mediated by the browser 
+and/or platform on the user's behalf. At no point does the script get access to the credentials themselves; it only gets 
+information about the credentials in the form of objects. 
 
-User agents SHOULD only expose this API to callers in <dfn>secure contexts</dfn>, as defined in [[powerful-features]].
+The security properties of this API are provided by the client and the authenticator working together. The authenticator, which
+holds and manages credentials, ensures that all operations are scoped to a particular web origin, and cannot be replayed against
+a different origin, by incorporating the origin in its responses. Specifically, as defined in [[#signature-format]], the full
+origin of the requester is included, and signed over, in the attestation statement produced when a new credential is created as
+well as in all assertions produced by WebAuthn credentials.
+
+Additionally, to maintain user privacy and prevent malicious [RPS] from probing for the presence of credentials belonging to
+other [RPS], each credential is also associated with a Relying Party Identifier, or RP ID. This RP ID is provided by the client
+to the authenticator for all operations, and the authenticator ensures that credentials created by a [RP] can only be used in
+operations requested by the same RP ID. Separating the origin from the RP ID in this way allows the API to be used in cases
+where a single [RP] maintains multiple web origins.
+
+The client facilitates these security measures by providing correct web origins and RP IDs to the authenticator for each
+operation. Since this is an integral part of the WebAuthn security model, user agents SHOULD only expose this API to callers in
+<dfn>secure contexts</dfn>, as defined in [[powerful-features]].
 
 The API is defined by the following Web IDL fragment.
 
@@ -273,13 +288,15 @@ When this method is invoked, the user agent MUST execute the following algorithm
 
 4. Initialize |issuedRequests| to an empty list.
 
-5. Process each element of <a>cryptoParameters</a> using the following steps:
+5. Process each element of <a>cryptoParameters</a> using the following steps, to produce a new sequence `normalizedParameters`:
     - Let |current| be the currently selected element of <a>cryptoParameters</a>.
     - If `current.type` does not contain a {{CredentialType}} supported by this implementation, then stop processing |current|
         and move on to the next element in <a>cryptoParameters</a>.
-    - Let |normalizedAlgorithm| be the result of normalizing an algorithm using the procedure defined in [[!WebCryptoAPI]],
+    - Let `normalizedAlgorithm` be the result of normalizing an algorithm using the procedure defined in [[!WebCryptoAPI]],
         with |alg| set to `current.algorithm` and |op| set to 'generateKey'. If an error occurs during this procedure, then
         stop processing |current| and move on to the next element in <a>cryptoParameters</a>.
+    - Add a new object of type {{ScopedCredentialParameters}} to `normalizedParameters`, with |type| set to `current.type` and
+        |algorithm| set to `normalizedAlgorithm`.
 
 6. If <a>blacklist</a> is undefined, set it to the empty list.
 
@@ -288,8 +305,8 @@ When this method is invoked, the user agent MUST execute the following algorithm
 
 8. For each embedded or external authenticator currently available on this platform: asynchronously invoke the
     <a>authenticatorMakeCredential</a> operation on that authenticator with |callerOrigin|, |rpId|, <a>accountInformation</a>,
-    `current.type`, |normalizedAlgorithm|, <a>blacklist</a>, <a>attestationChallenge</a> and |clientExtensions| as parameters.
-    Add a corresponding entry to |issuedRequests|.
+    `normalizedParameters`, <a>blacklist</a>, <a>attestationChallenge</a> and |clientExtensions| as parameters. Add a
+    corresponding entry to |issuedRequests|.
 
 9. While |issuedRequests| is not empty, perform the following actions depending upon the |adjustedTimeout| timer and responses
     from the authenticators:
@@ -503,14 +520,15 @@ This interface contains the attributes that are returned to the caller when a ne
 by the caller to select a credential for use.
 
 <div dfn-for="Credential">
-    The <dfn>type</dfn> attribute indicates the specification and version that this credential conforms to.
+    The <dfn>type</dfn> attribute contains a value of type {{CredentialType}}, indicating the specification and version that
+    this credential conforms to.
 
     The <dfn>id</dfn> attribute contains an identifier for the credential, chosen by the platform with help from the
     authenticator. This identifier is used to look up credentials for use, and is therefore expected to be globally unique with
-    high probability across all credentials of the same type. This API does not constrain the format or length of this
-    identifier, except that it must be sufficient for the platform to uniquely select a key. For example, an authenticator
-    without on-board storage may create identifiers that consist of the key material wrapped with a key that is burned into the
-    authenticator.
+    high probability across all credentials of the same type, across all authenticators. This API does not constrain the format
+    or length of this identifier, except that it must be sufficient for the platform to uniquely select a key. For example, an
+    authenticator without on-board storage may create identifiers that consist of the key material wrapped with a key that is
+    burned into the authenticator.
 </div>
 
 
@@ -547,16 +565,22 @@ This operation must be invoked in an authenticator session which has no other op
 input parameters:
 
 - The web origin of the script on whose behalf the operation is being initiated, as determined by the user agent and the client.
-
 - The RP ID corresponding to the above web origin, as determined by the user agent and the client.
+- The {{Account}} information provided by the [RP].
+- The {{CredentialType}} requested by the [RP].
+- The cryptographic parameters requested by the [RP], with the cryptographic algorithms normalized as per the procedure in
+    [[WebCryptoAPI#algorithm-normalization-normalize-an-algorithm]].
+- A list of {{Credential}} objects provided by the [RP] with the intention that, if any of these are known to the authenticator,
+    it should not create a new credential.
+- A challenge provided by the [RP] to assure freshness of the attestation statement of the new credential.
+- Extension data created by the client based on the extensions requested by the [RP].
 
-- All input parameters accepted by the {{makeCredential()}} method.
-
-When this operation is invoked, the authenticator obtains user consent for creating a new credential. The prompt for obtaining
-this consent is shown by the authenticator if it has its own output capability, or by the user agent otherwise. Once user
-consent is obtained, the authenticator generates the appropriate cryptographic keys and creates a new credential. It then
-associates the credential with the specified RP ID such that it will be able to retrieve the RP ID later, given the credential
-ID.
+When this operation is invoked, the authenticator obtains user consent for creating a new credential. The prompt for obtaining 
+this consent is shown by the authenticator if it has its own output capability, or by the user agent otherwise. Once user 
+consent is obtained, the authenticator generates the appropriate cryptographic keys and creates a new credential. It also 
+generates an identifier for the credential, such that this identifier is globally unique with high probability across all 
+credentials with the same type across all authenticators. It then associates the credential with the specified RP ID such that
+it will be able to retrieve the RP ID later, given the credential ID. 
 
 On successful completion of this operation, the authenticator returns the type and unique identifier of this new credential to
 the user agent.
@@ -570,10 +594,10 @@ This operation must be invoked in an authenticator session which has no other op
 input parameters:
 
 - The web origin of the script on whose behalf the operation is being initiated, as determined by the user agent and the client.
-
 - The RP ID corresponding to the above web origin, as determined by the user agent and the client.
-
-- All input parameters accepted by the {{getAssertion()}} method, specified below.
+- A challenge provided by the [RP] to assure freshness of the assertion produced.
+- A list of credentials acceptable to the [RP] (possibly filtered by the client).
+- Extension data created by the client based on the extensions requested by the [RP].
 
 When this method is invoked, the authenticator allows the user to select a credential from among the credentials associated with
 that [RP] and matching the specified criteria, then obtains user consent for using that credential. The prompt for obtaining
@@ -608,18 +632,17 @@ against expected values.
 
 The components of a system using WebAuthn can be divided into three layers:
 
-1. The <a>[RP]</a> (RP), which uses the WebAuthn services. The RP may, for example, be a web-application running in a browser,
-    or a native application that runs directly on the OS platform.
+1. The <a>[RP]</a> (RP), which uses the WebAuthn services. The RP consists of a server component and a web-application running
+    in a browser.
 
-2. The <a>WebAuthn Client</a> platform, which consists of the user’s OS and device used to host the RP’s client-side app. For
-    web-applications, the browser also belongs to this layer.
+2. The <a>WebAuthn Client</a> platform, which consists of the User Agent and the OS and device on which it executes.
 
-3. The <a>Authenticator</a> itself, which provides key management and cryptographic signatures.
-
-When the [RP] client-side application is a web-application, the interface between 1 and 2 is the [[#api]], but is platform
-specific for native applications. In cases where the authenticator is not tightly integrated with the platform, the interface
-between 2 and 3 is a separately-defined protocol. This specification defines the common signature format shared by all layers.
-This includes how the different contextual bindings are encoded, signed over, and delivered to the RP.
+3. The <a>Authenticator</a> itself, which provides key management and cryptographic signatures. This may be embedded in the
+    WebAuthn client, or houesd in a separate device entirely. In the latter case, the interface between the WebAuthn client and
+    the authenticator is a separately-defined protocol.
+    
+This specification defines the common signature format shared by all the above layers. This includes how the different 
+contextual bindings are encoded, signed over, and delivered to the RP. 
 
 The goals of this design can be summarized as follows.
 
@@ -658,9 +681,8 @@ string-valued keys. Values may be any type that has a valid encoding in JSON. It
 <div dfn-for="ClientData">
     The <dfn>challenge</dfn> member contains the base64url encoding of the challenge provided by the RP.
 
-    The <dfn>facet</dfn> member contains a string value describing the RP identifier facet. When the [RP] client-side app is a
-    website, this is its fully qualified web origin, using the syntax defined by [[RFC6454]]. When the client-side app is a
-    native application, this string is a platform specific identifier.
+    The <dfn>facet</dfn> member contains the fully qualified web origin of the requester, as provided to the authenticator by
+    the client, in the syntax defined by [[RFC6454]].
 
     The <dfn>hashAlg</dfn> member specifies the hash algorithm used to compute clientDataHash (see
     [[#authenticator-signature]]). Use "S256" for SHA-256, "S384" for SHA384, "S512" for SHA512, and "SM3" for SM3 (see
@@ -681,7 +703,7 @@ The authenticator data encodes contextual bindings made by the <a>authenticator<
 but extensible encoding. This is desired since authenticators can be devices with limited capabilities and low power
 requirements, with much simpler software stacks than the client platform components.
 
-The encoding of authenticator data is a byte array [[WebCryptoAPI#JsonWebKey-dictionary]] of 5 bytes or more, as follows.
+The encoding of authenticator data is a byte array of 5 bytes or more, as follows.
 
 <table class="complex data longlastcol">
     <tr>
@@ -772,8 +794,12 @@ attestation type provides the ability to cryptographically attest to a public ke
 to a remote party. They differ in the details of how the attestation statement is laid out, and how its components are computed.
 The different attestation types are defined in [[#defined-attestation-types]].
 
-Attestation types are orthogonal to attestation models, i.e. attestation types in general are not restricted
-to a single attestation model.
+This specification also defines a number of attestation models. These define how a [RP] establishes trust in a particular
+attestation statement, after verifying that it is cryptographically valid.
+
+Attestation types are orthogonal to attestation models, i.e. attestation types in general are not restricted to a single
+attestation model. Broadly speaking, attestation types pertain to the syntax of the attestation statement, while attestation
+models pertain to the semantics.
 
 
 ### Attestation Models ### {#attestation-models}
@@ -1280,6 +1306,11 @@ Similarly, the authenticator performs additional processing for the extensions t
 
 Extensions that are not supported are ignored.
 
+All WebAuthn extensions are optional for both clients and authenticators. Thus, any extensions requested by a [RP] may be
+ignored by the client browser or OS and not passed to the authenticator at all, or they may be ignored by the authenticator.
+Ignoring an extension is never considered a failure in the WebAuthn API, so when [RPS] include extensions with any API calls,
+they must be prepared to handle cases where some or all of those extensions are ignored.
+
 
 ## Extension identifiers ## {#extension-id}
 
@@ -1417,9 +1448,9 @@ authenticator does this by including it in the `authenticatorData`. As an exampl
 </pre>
 
 
-# Standard extensions # {#extension-standard}
+# Pre-defined extensions # {#extension-standard}
 
-This section defines standard extensions defined by the W3C.
+This section defines an initial set of extensions.
 
 
 ## Transaction authorization ## {#extension-txauth}
