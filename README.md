@@ -7,6 +7,7 @@ This is the repository for the W3C WebAuthn Working Group, producing the draft *
 * [The build history is available at Travis-CI.org](https://travis-ci.org/w3c/webauthn/builds)
 * [W3C WebAuthn Blog](https://www.w3.org/blog/webauthn/)
 * [Web platform tests repository](https://github.com/w3c/web-platform-tests/tree/master/webauthn)
+* 
 # Contributing
 
 Before submitting feedback, please familiarize yourself with [our current issues list](https://github.com/w3c/webauthn/issues) and review the [mailing list discussion](https://lists.w3.org/Archives/Public/public-webauthn/).
