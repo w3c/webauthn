@@ -1,5 +1,5 @@
 <pre class='metadata'>
-Title: Web Authentication: A Web API for accessing scoped credentials
+ Title: Web Authentication: A Web API for accessing scoped credentials
 Status: ED
 TR: http://www.w3.org/TR/webauthn/
 ED: http://w3c.github.io/webauthn/
@@ -17,95 +17,99 @@ group: webauthn
 Text Macro: RP WebAuthn Relying Party
 Text Macro: RPS WebAuthn Relying Parties
 Text Macro: INFORMATIVE <em>This section is not normative.</em>
+Text Macro: WAC WebAuthn Client
 Ignored Vars: op, alg, type, algorithm
-Abstract: This specification defines a Web API enabling the creation and use of  strong, attested, cryptographic credentials
-    by web applications. Conceptually, one or more credentials, scoped
-    to a given Relying Party, are created and stored on an <em>authenticator</em>. Authenticators are responsible for ensuring that no operation is performed without user 
-    consent. The user agent mediates access to credentials in order to preserve user privacy. Authenticators provide cryptographic proof of their properties to relying parties via <em>attestation</em>. This specification also describes the functional
+Abstract: This specification defines a Web API enabling the creation and use of  strong, attested, cryptographic, scoped credentials
+    by web applications, for the purpose of strongly authenticating users. Conceptually, one or more credentials, scoped
+    to a given Relying Party, are created and stored on an authenticator. Authenticators are responsible for ensuring that no operation is performed without user 
+    consent. The user agent mediates access to credentials in order to preserve user privacy. Authenticators provide cryptographic proof of their properties to relying parties via attestation. This specification also describes the functional
     model for WebAuthn conformant authenticators, including their signature and attestation functionality.
 Boilerplate: omit conformance, omit feedback-header
 Markup Shorthands: css off, markdown on
 </pre>
 
 
-# Use Cases # {#use-cases}
+# Introduction # {#intro}
 
 [INFORMATIVE]
 
-This specification defines an API for web pages to access scoped credentials through JavaScript, for the purpose of strongly
-authenticating a user. Scoped credentials are always scoped to a single <a>[RP]</a>. This scoping is enforced jointly by the
-User Agent implementing the Web Authentication API and the authenticator that holds the credential, by constraining the
-availability and usage of credentials. Scoped credentials created by a [RP] can only be accessed by web origins belonging to that
-[RP]. Additionally, privacy across [RPS] must be maintained; scripts must not be able to detect any properties, or even the
-existence, of scoped credentials belonging to other [RPS].
+This specification defines a Web API enabling the creation and use of strong, attested, cryptographic, <em><a>scoped credentials</a></em> by web applications, 
+for the purpose of strongly authenticating users. 
+A <a>scoped credential</a>, created and stored, subject to <em><a>user verification</a></em>, by an <em><a>authenticator</a></em> at the behest of a <em><a>[RP]</a></em>, can only be accessed by web origins belonging to that [RP]. 
+This scoping is enforced jointly by <em><a>conforming User Agents</a></em> and <em><a>authenticators</a></em>. 
+Additionally, privacy across <a>[RPS]</a> is maintained; [RPS]' browser scripts are not able to detect any properties, or even the existence, of credentials scoped to other [RPS].
 
-Scoped credentials are located on <a>authenticators</a>, which can use them to perform operations subject to user consent.
-Broadly, authenticators are of two types:
+[RPS] employ the <a>Web Authentication API</a> during two distinct, but related, <a>ceremonies</a> involving a user. The first is <a>Registration</a>, where a <a>scoped credential</a> is created on an <a>authenticator</a>, and associated by the <a>[RP]</a> with the present user's account (the account may already exist or may be created at this time). The second is <a>Authentication</a>, where a <a>[RP]</a> is presented a <em><a>WebAuthn Assertion</a></em> proving the present user is the same as the user who registered the <a>scoped credential</a> associated with the user account. Functionally, the <a>Web Authentication API</a> comprises two methods (along with associated data structures): <a>makeCredential()</a> and <a>getAssertion()</a>. The former is used during <a>Registration</a> and the latter during <a>Authentication</a>.
+
+Broadly, <a>authenticators</a> are of two types:
 
 1. <dfn>Embedded authenticators</dfn> have their operation managed by the same computing device (e.g., smart phone, tablet,
     desktop PC) as the user agent is running on. For instance, such an authenticator might consist of a Trusted Platform Module
-    (TPM) or Secure Element (SE) integrated into the computing device, along with appropriate platform software to mediate
-    access to this device's functionality.
+    (TPM) or Secure Element (SE) integrated into the computing device in conjunction with some biometric sensor (e.g., fingerprint), along with appropriate platform software to mediate
+    access to these components' functionality.
 
-2. <dfn>External authenticators</dfn> operate autonomously from the device running the user agent, and accessed over a transport
-    such as Universal Serial Bus (USB), Bluetooth Low Energy (BLE) or Near Field Communications (NFC).
+2. <dfn>External authenticators</dfn> operate autonomously from the computing device running the user agent, and are accessed over a transport
+    such as Universal Serial Bus (USB), Bluetooth Low Energy (BLE) or Near Field Communications (NFC). 
 
 Note that an external authenticator may itself contain an embedded authenticator. For example, consider a smart phone that
 contains a scoped credential. The credential may be accessed by a web browser running on the phone itself. In this case the
 module containing the credential is functioning as an embedded authenticator. However, the credential may also be accessed over
 BLE by a user agent on a nearby laptop. In this latter case, the phone is functioning as an external authenticator. These modes
-may even be used in a single end-to-end user scenario. One such scenario is described in the remainder of this section.
+may even be used in a single end-to-end user scenario. One such scenario is described among the use cases below (in [[#authentication-external]]).
 
 
-## Registration (<a>embedded authenticator</a> mode) ## {#registration-embedded}
+## Use Cases ## {#use-cases}
 
-- On the phone:
-    * User goes to example.com in the browser and signs in to an existing account using whatever method they have been using
+The below use case scenarios illustrate both <a>embedded authenticator</a> and <a>external authenticator</a> modes, as well as outline further scenarios. 
+
+### Registration (<a>embedded authenticator</a> mode) ### {#registration-embedded}
+
+- On a phone:
+    * User navigates to example.com in a browser and signs in to an existing account using whatever method they have been using
         (possibly a legacy method such as a password), or creates a new account.
     * The phone prompts, "Do you want to register this device with example.com?"
     * User agrees.
-    * The phone prompts the user for a previously configured authorization gesture (PIN, biometric, etc.); the user provides
+    * The phone prompts the user for a previously configured <a>authorization gesture</a> (PIN, biometric, etc.); the user provides
         this.
     * Website shows message, "Registration complete."
 
 
-## Authentication (<a>external authenticator</a> mode) ## {#authentication-external}
+### Authentication (<a>external authenticator</a> mode) ### {#authentication-external}
 
-- On the laptop:
-    * User goes to example.com in browser, sees an option "Sign in with your phone."
+- On a laptop:
+    * User navigates to example.com in a browser, sees an option to "Sign in with your phone."
     * User chooses this option and gets a message from the browser, "Please complete this action on your phone."
 
-- Next, on the phone:
+- Next, on their phone:
     * User sees a discreet prompt or notification, "Sign in to example.com."
     * User selects this prompt / notification.
     * User is shown a list of their example.com identities, e.g., "Sign in as Alice / Sign in as Bob."
-    * User picks an identity, is prompted for an authorization gesture (PIN, biometric, etc.) and provides this.
+    * User picks an identity, is prompted for an <a>authorization gesture</a> (PIN, biometric, etc.) and provides this.
 
-- Now, on the laptop:
-    * Web page shows that the selected user is signed in, and navigates to the signed-in page.
+- Now, back on the laptop:
+    * Web page shows that the selected user is signed-in, and navigates to the signed-in page.
 
 
-## Other configurations ## {#other-configurations}
+### Other use cases and configurations ### {#other-configurations}
 
 A variety of additional use cases and configurations are also possible, including (but not limited to):
 
-- User goes to example.com on their laptop, is guided through a flow to create and register a credential on their phone.
+- User navigates to example.com on their laptop, is guided through a flow to create and register a credential on their phone.
 
-- User employs a scoped credential as described above to authorize a single transaction, such as a payment or other financial
-    transaction.
+- A [RP] can cause a signed-in user to be prompted for their <a>authorization gesture</a> in order to authorize a single transaction, such as a payment or other financial transaction.
 
 
 # Conformance # {#conformance}
 
-This specification defines criteria for a <a>Conforming User Agent</a>. A User Agent MUST behave as described in this
-specification in order to be considered conformant. User Agents MAY implement algorithms given in this specification in any way
+This specification defines criteria for a <a>Conforming User Agent</a>: a User Agent MUST behave as described in this
+specification in order to be considered conformant. <a>Conforming User Agents</a> MAY implement algorithms given in this specification in any way
 desired, so long as the end result is indistinguishable from the result that would be obtained by the specification's
-algorithms. A conforming Web Authentication API User Agent MUST also be a conforming implementation of the IDL fragments of this
+algorithms. A conforming User Agent MUST also be a conforming implementation of the IDL fragments of this
 specification, as described in the “Web IDL” specification. [[!WebIDL-1]]
 
-This specification also defines a model of a Web Authentication compliant authenticator. This is a set of functional and
-security requirements for an authenticator to be usable by a User Agent that implements the Web Authentication API. As described
-in [[#use-cases]], the authenticator itself may be implemented in the operating system underlying the User Agent, or in external
+This specification also defines a model of a conformant Web Authentication authenticator (see [[#authenticator-model]]). This is a set of functional and
+security requirements for an authenticator to be usable by a <a>Conforming User Agent</a>. As described
+in [[#use-cases]], an authenticator may be implemented in the operating system underlying the User Agent, or in external
 hardware, or a combination of both.
 
 
@@ -136,8 +140,72 @@ This specification relies on several other underlying specifications.
     inclusion of any line breaks, whitespace, or other additional characters. This is the same encoding as used by JSON Web
     Signature (JWS) [[RFC7515]].
 
+The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL
+NOT", "SHOULD", "SHOULD NOT", "RECOMMENDED",  "MAY", and
+"OPTIONAL" in this document are to be interpreted as described in
+[[!RFC2119]].
 
-# Web Authentication API # {#api}
+
+# Terminology # {#terminology}
+
+: <dfn>Assertion</dfn>
+:: See <a>WebAuthn Assertion</a>.
+
+: <dfn>Attestation Certificate</dfn>
+:: A X.509 Certificate for a key pair used by an <a>Authenticator</a> to attest to its manufacture and capabilities. The <a>Authenticator</a> uses the attestation private key to sign the <a>[RP]</a>-specific public key (and additional data) it generates and returns upon invocation via the <a>authenticatorMakeCredential</a> operation. 
+
+: <dfn>Authentication</dfn>
+:: The <a>ceremony</a> where a user, and the user's computing device(s) (containing at least one <a>authenticator</a>) work in concert to cryptographically prove to an <a>[RP]</a> that the user controls the private key associated with a previously-registered <a>scoped credential</a> (see <a>Registration</a>). Note that this includes employing <a>user verification</a>.
+
+: <dfn>Authenticator</dfn>
+:: A cryptographic device used by a <a>[WAC]</a> to (i) generate a <a>scoped credential</a> and register it with a <a>[RP]</a>, and (ii) subsequently used to cryptographically sign and return, in the form of an <a>WebAuthn Assertion</a>, a challenge and other data presented by a <a>[RP]</a> (in concert with the <a>[WAC]</a>) in order to effect authentication. Broadly, authenticators are of two types: <a>Embedded Authenticators</a> or <a>External Authenticators</a>.
+
+: <dfn>Authorization Gesture</dfn>
+:: Essentially the same as <a>user verification</a>.
+
+: <dfn>Ceremony</dfn>
+:: The concept of a ceremony [[Ceremony]] is an extension of the concept of a network protocol, with human nodes alongside computer nodes and with communication links that include UI, human-to-human communication and transfers of physical objects that carry data. What is out-of-band to a  protocol is in-band to a ceremony. In this specification, <a>Registration</a>, <a>Authentication</a>, and <a>user verification</a> are ceremonies. 
+    
+: <dfn>Client</dfn>
+:: See <a>Conforming User Agent</a>.
+
+: <dfn>Conforming User Agent</dfn>
+:: A user agent implementing, in conjunction with the underlying platform, the <a>Web Authentication API</a> and algorithms given in this specification, and handling communication between 
+    <a>Authenticators</a> and <a>[RPS]</a>.
+
+: <dfn>eTLD+1</dfn>
+:: Also known as a <em>Registered Domain</em> [[PSL]], an eTLD+1 is an <em>effective Top-Level Domain Name</em> (eTLD), plus the next domain name label, proceding from right to left. An eTLD is also known as a <em>public suffix</em> [[RFC7719]].
+
+: <dfn>Registration</dfn>
+:: The <a>ceremony</a> where a user, a <a>[RP]</a>, and the user's computing device(s) (containing at least one <a>authenticator</a>) work in concert to create a <a>scoped credential</a> and associate it with the user's <a>[RP]</a> account.  Note that this includes employing <a>user verification</a>.
+
+: <dfn>Relying Party Identifier</dfn>
+: <dfn>RP ID</dfn>
+:: A Relying Party Identifier is derived from a <a>[RP]</a>'s web origin's hostname by computing the hostname's <a>eTLD+1</a>. 
+    
+: <dfn>Scoped Credential</dfn>
+:: Generically, a credential is data one entity presents to another in order to authenticate the former's identity [[RFC4949]]. A <em><a>scoped credential</a></em>, as defined here, is one that is cryptographically bound to a <a>[RP]</a>'s <a>RP ID</a>. Per specification, it is conveyed--i.e., registered--to only the <a>[RP]</a> instigating the credential's creation (see: <a>Registration</a>). Subsequently, only that <a>[RP]</a>, as identified by it's <a>RP ID</a> is able to employ the <a>scoped credential</a> in <a>authentication</a> ceremonies. 
+
+: <dfn>User Consent</dfn>
+:: In this specification, the term <em>user consent</em> is equivalent to <a>user verification</a>.
+
+: <dfn>User Verification</dfn>
+:: The process by which an <a>authenticator</a> <em>locally authorizes</em> the invocation of the <a>authenticatorMakeCredential</a> and <a>authenticatorGetAssertion</a> operations, for example through a touch plus pin code, a password, or a fingerprint match, or other modality. Note that invocation of said operations implies use of key material managed by the authenticator.
+
+: <dfn>WebAuthn Assertion</dfn>
+:: The cryptographically signed {{WebAuthnAssertion}} object returned by an <a>authenticator</a> as the result of a <a>authenticatorGetAssertion</a> operation.
+
+: <dfn>[WAC]</dfn>
+:: See <a>Conforming User Agent</a>.
+
+: <dfn>[RP]</dfn>
+:: The entity whose web application utilizes the <a>Web Authentication API</a> to register and authenticate users. See <a>Registration</a> and <a>Authentication</a>, respectively. 
+
+
+
+
+
+# <dfn>Web Authentication API</dfn> # {#api}
 
 This section normatively specifies the API for creating and using scoped credentials. Support for deleting credentials is 
 deliberately omitted; this is expected to be done through platform-specific user interfaces rather than from a script. The basic 
@@ -444,7 +512,7 @@ authorizing an authenticator with which to complete the operation.
 </div>
 
 
-## WebAuthn Assertion (interface <dfn interface>WebAuthnAssertion</dfn>) ## {#iface-assertion}
+## WebAuthn Assertion (interface {{WebAuthnAssertion}}) ## {#iface-assertion}
 
 Scoped credentials produce a cryptographic signature that provides proof of possession of a private key as well as evidence of
 user consent to a specific transaction. The structure of these signatures is defined as follows.
@@ -546,7 +614,7 @@ supported by that platform, MUST be indistinguishable from the behavior specifie
 
 In this abstract model, each authenticator stores some number of scoped credentials. Each scoped credential has an identifier
 which is unique (or extremely unlikely to be duplicated) among all scoped credentials. Each credential is also associated with a
-<a>[RP]</a>, whose identity is represented by a <dfn>Relying Party Identifier</dfn> (RP ID).
+<a>[RP]</a>, whose identity is represented by a <a>Relying Party Identifier</a> (<a>RP ID</a>).
 
 
 ## Authenticator operations ## {#authenticator-ops}
@@ -1902,30 +1970,101 @@ handled on the server side and do not need support from the API specified here.
     * Sometime later, the server deregisters this credential due to inactivity.
 
 
-# Terminology # {#terminology}
-
-: <dfn>Attestation Certificate</dfn>
-:: A X.509 Certificate for a key pair used by an <a>Authenticator</a> to attest to its manufacture and capabilities.
-
-: <dfn>Authenticator</dfn>
-:: The device used by the user agent to authenticate with the [RP]. These can be <a>Embedded Authenticators</a> or
-    <a>External Authenticators</a>.
-
-: <dfn>Client</dfn>
-: <dfn>WebAuthn Client</dfn>
-:: See <a>Conforming User Agent</a>.
-
-: <dfn>Conforming User Agent</dfn>
-:: A user agent which implements algorithms given in this specification, and handles communication between the
-    <a>Authenticator</a> and the <a>[RP]</a>.
-
-: <dfn>eTLD+1</dfn>
-:: The effective top-level domain, plus the first label. Also known as a Registered Domain. See [[PSL]].
-
-: <dfn>[RP]</dfn>
-:: The entity which needs to rely in the authentication provided by the WebAuthn specification. When registration concludes,
-    the [RP] has the public key that was created by the Authenticator.
 
 
 # Acknowledgements # {#acknowledgements}
-We would like to thank the following for their contributions to, and thorough review of, this specification: Jing Jin.
+We thank the following for their contributions to, and thorough review of, this specification: Jing Jin, J.C. Jones, Giridhar Mandyam.
+
+<pre class=biblio>
+{  
+  "Ceremony": {
+    "title": "Ceremony Design and Analysis",
+    "href": "https://eprint.iacr.org/2007/399.pdf",
+    "authors": ["Carl Ellison"],
+    "date": "2007"
+  },
+
+	
+  "GeoJSON": {
+    "title": "The GeoJSON Format Specification",
+    "href": "http://geojson.org/geojson-spec.html"
+  },
+  
+  "SP800-107r1": {
+    "title": "NIST Special Publication 800-107: Recommendation for Applications Using Approved Hash Algorithms",
+    "href": "http://csrc.nist.gov/publications/nistpubs/800-107-rev1/sp800-107-rev1.pdf",
+    "authors": ["Quynh Dang"],
+    "date": "August 2012"
+  },
+  
+  "OSCCA-SM3": {
+    "title": "SM3 Cryptographic Hash Algorithm",
+    "href": "http://www.oscca.gov.cn/UpFile/20101222141857786.pdf",
+    "date": "December 2010"
+  },
+  
+  "TPM": {
+    "title": "TPM Main Specification",
+    "publisher": "Trusted Computing Group",
+    "date": "Accessed March 2014",
+    "href": "http://www.trustedcomputinggroup.org/resources/tpm_main_specification"
+  },
+  
+  "UAFProtocol": {
+    "authors": ["R. Lindemann", "D. Baghdasaryan", "E. Tiffany", "D. Balfanz", "B. Hill", "J. Hodges"],
+    "title": "FIDO UAF Protocol Specification v1.0",
+    "status": "FIDO Alliance Proposed Standard",
+    "href": "https://fidoalliance.org/specs/fido-uaf-v1.1-id-20150902/fido-uaf-protocol-v1.1-id-20150902.html"
+  },
+  
+  "FIDOEcdaaAlgorithm": {
+    "title": "FIDO ECDAA Algorithm",
+    "authors": ["R. Lindemann", "A. Edgington", "R. Urian"],
+    "status": "FIDO Alliance Proposed Standard (To Be Published)"
+  },
+  
+  "SEC1": {
+    "title": "SEC1: Elliptic Curve Cryptography, Version 2.0",
+    "publisher": "Standards for Efficient Cryptography Group",
+    "href": "http://www.secg.org/sec1-v2.pdf"
+  },
+  
+  "FIDOMetadataService": {
+    "authors": ["R. Lindemann", "B. Hill", "D. Baghdasaryan"],
+    "title": "FIDO Metadata Service v1.0",
+    "href": "https://fidoalliance.org/specs/fido-uaf-v1.0-ps-20141208/fido-uaf-metadata-service-v1.0-ps-20141208.html",
+    "status": "FIDO Alliance Proposed Standard"
+  },
+  
+  "TPMv1-2-Part2": {
+    "title": "TPM Main Part 2: TPM Structures",
+    "publisher": "Trusted Computing Group",
+    "href": "http://www.trustedcomputinggroup.org/wp-content/uploads/TPM-Main-Part-2-TPM-Structures_v1.2_rev116_01032011.pdf"
+  },
+  
+  "TPMv2-Part2": {
+    "title": "Trusted Platform Module Library, Part 2: Structures",
+    "publisher": "Trusted Computing Group",
+    "href": "http://www.trustedcomputinggroup.org/wp-content/uploads/TPM-Rev-2.0-Part-2-Structures-01.16-1.pdf"
+  },
+  
+  "TPMv2-EK-Profile": {
+    "title": "TCG EK Credential Profile for TPM Family 2.0",
+    "publisher": "Trusted Computing Group",
+    "href": "http://www.trustedcomputinggroup.org/wp-content/uploads/Credential_Profile_EK_V2.0_R14_published.pdf"
+  },
+  
+  "TPMv1-2-Credential-Profiles": {
+    "title": "TCG Credential Profiles for TPM Family 1.2",
+    "publisher": "Trusted Computing Group",
+    "href": "http://www.trustedcomputinggroup.org/wp-content/uploads/Credential_Profiles_V1.2_Level2_Revision8.pdf"
+  },
+  
+  "FIDOSecRef": {
+    "authors": ["R. Lindemann", "D. Baghdasaryan", "B. Hill"],
+    "title": "FIDO Security Reference",
+    "href": "https://fidoalliance.org/specs/fido-uaf-v1.0-ps-20141208/fido-security-ref-v1.0-ps-20141208.html",
+    "status": "FIDO Alliance Proposed Standard"
+  }
+}
+</pre>
