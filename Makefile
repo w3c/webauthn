@@ -16,5 +16,5 @@ setup_bikeshed:
 force:
 	bikeshed -f spec ./index.src.html
 
-index.html: index.src.html biblio.json
+index.html: index.src.html 
 	bikeshed spec ./index.src.html
