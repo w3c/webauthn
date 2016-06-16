@@ -1393,29 +1393,38 @@ must be specified either in the attestation certificate itself or as an extensio
 
 The mechanism for generating scoped credentials, as well as requesting and generating WebAuthn assertions, as defined in
 [[#api]], can be extended to suit particular use cases. Each case is addressed by defining a registration extension and/or a
-signature extension. Extensions can define additions to the following steps and data:
+authentication extension. Extensions can define additions to the following steps and data:
 
 - {{makeCredential()}} request parameters for registration extension.
 
-- {{getAssertion()}} request parameters for signature extensions.
+- {{getAssertion()}} request parameters for authentication extensions.
 
-- Client processing, and the {{ClientData}} structure, for registration extensions and signature extensions.
+- Client processing, and the {{ClientData}} structure, for registration extensions and authentication extensions.
 
-- Authenticator processing, and the <a>authenticatorData</a> structure, for registration extensions and signature extensions.
+- Authenticator processing, and the <a>authenticatorData</a> structure, for registration extensions and authentication
+    extensions.
 
 When requesting an assertion for a scoped credential, a [RP] can list a set of extensions to be used, if they are supported by
 the client and/or the authenticator. It sends the client arguments for each extension in the {{getAssertion()}} call (for
-signature extensions) or {{makeCredential()}} call (for registration extensions) to the client platform. The client platform
-performs additional processing for each extension that it supports, and augments {{ClientData}} as required by the extension.
-In addition, the client collects the authenticator arguments for the above extensions, and passes them to the authenticator in
-the <a>authenticatorMakeCredential</a> call (for registration extensions) or <a>authenticatorGetAssertion</a> call (for
-signature extensions). The authenticator, in turn, performs additional processing for the extensions that it supports, and 
-augments |authenticatorData| as specified by the extension.
+authentication extensions) or {{makeCredential()}} call (for registration extensions) to the client platform. The client
+platform performs additional processing for each extension that it supports, and augments {{ClientData}} as required by the
+extension. In addition, the client collects the authenticator arguments for the above extensions, and passes them to the
+authenticator in the <a>authenticatorMakeCredential</a> call (for registration extensions) or <a>authenticatorGetAssertion</a>
+call (for authentication extensions). These authenticator arguments are passed as name-value pairs, with the extension
+identifier as the name, and the corresponding authenticator argument as the value. The authenticator, in turn, performs
+additional processing for the extensions that it supports, and augments |authenticatorData| as specified by the extension.
 
 All WebAuthn extensions are optional for both clients and authenticators. Thus, any extensions requested by a [RP] may be
 ignored by the client browser or OS and not passed to the authenticator at all, or they may be ignored by the authenticator.
 Ignoring an extension is never considered a failure in WebAuthn API processing, so when [RPS] include extensions with any API
 calls, they must be prepared to handle cases where some or all of those extensions are ignored.
+
+Clients wishing to support the widest possible range of extensions may choose to pass through any extensions that they do not
+recognize to authenticators, generating the authenticator argument by simply encoding the client argument in CBOR. All
+WebAuthn extensions MUST be defined in such a way that this implementation choice does not endanger the user's security or
+privacy. However, if an extension requires client processing, such a naïve pass-through may result in a semantically invalid
+authenticator argument, which in turn may result in the extension being ignored by the authenticator. Since all extensions are
+optional, this will not cause a functional failure in the API operation.
 
 
 ## Extension identifiers ## {#extension-id}
@@ -1434,13 +1443,13 @@ be used for extensions not defined by the W3C.
 
 A definition of an extension must specify, at minimum, an extension identifier and an extension client argument sent via the
 {{getAssertion()}} or {{makeCredential()}} call. Additionally, extensions may specify additional values in {{ClientData}}, 
-`authenticatorData` (in the case of signature extensions), or both. Finally, if the extension requires any authenticator 
+`authenticatorData` (in the case of authentication extensions), or both. Finally, if the extension requires any authenticator 
 processing, it must also specify an authenticator argument to be sent via the <a>authenticatorGetAssertion</a> or 
 <a>authenticatorMakeCredential</a> call.
 
-Note: Any extensions that do not define additions to {{ClientData}} nor `authenticatorData` must be defined in a way that allows
-    the [RP] to unambiguously infer, from the returned signature or attestation statement, whether the intent of the extension
-    was followed by the client and/or authenticator. See the [[#extension-authenticator-selection]] for an example.
+Any extension that requires client processing MUST specify a method of augmenting {{ClientData}} that unambiguously lets the
+[RP] know that the extension was honored by the client. Similarly, any extension that requires authenticator processing MUST
+specify a method of augmenting `authenticatorData` to let the [RP] know that the extension was honored by the authenticator.
 
 
 ## Extending request parameters ## {#extension-request-parameters}
@@ -1471,11 +1480,6 @@ passing an authenticator argument of `true` (CBOR major type 7, value 21).
 Note: Extensions should aim to define authenticator arguments that are as small as possible. Some authenticators communicate
     over low-bandwidth links such as Bluetooth Low-Energy or NFC.
 
-Some clients may choose to pass through any extensions that they do not recognize, generating the authenticator argument by
-simply encoding the client argument in CBOR. All extensions MUST be defined in such a way that this implementation choice does
-not endanger the user's security or privacy. However, if an extension requires client processing, then such pass-through may
-result in an invalid authenticator argument, which in turn may result in the extension being ignored by the authenticator.
-
 
 ## Extending client processing ## {#extension-client-processing}
 
@@ -1495,7 +1499,7 @@ the authenticator argument.
 ## Extending authenticator processing ## {#extension-authenticator-processing}
 
 Extensions that define additional authenticator processing may similarly define an authenticator data value. The value may be
-any data that can be encoded in CBOR. An authenticator that processes a signature extension that defines such a value must
+any data that can be encoded in CBOR. An authenticator that processes a authentication extension that defines such a value must
 include it in the `authenticatorData`.
 
 As specified in [[#sec-authenticator-data]], the authenticator data value of each processed extension is included in the
@@ -1508,7 +1512,7 @@ authenticator data value of each extension as the value.
 [INFORMATIVE]
 
 To illustrate the requirements above, consider a hypothetical extension "Geo". This extension, if supported, lets both clients
-and authenticators embed their geolocation in signatures.
+and authenticators embed their geolocation in assertions.
 
 The extension identifier is chosen as `com.example.webauthn.geo`. The client argument is the constant value `true`, since the
 extension does not require the <a>[RP]</a> to pass any particular information to the client, other than that it requests the use
@@ -1557,13 +1561,14 @@ authenticator does this by including it in the `authenticatorData`. As an exampl
 
 # Pre-defined extensions # {#extension-predef}
 
-This section defines an initial set of extensions.
+This section defines an initial set of extensions. These are recommended for implementation by user agents targeting broad
+interoperability.
 
 
 ## Transaction authorization ## {#extension-txauth}
 
-This signature extension allows for a simple form of transaction authorization. A [RP] can specify a prompt string, intended for
-display on a trusted device on the authenticator.
+This authentication extension allows for a simple form of transaction authorization. A [RP] can specify a prompt string,
+intended for display on a trusted device on the authenticator.
 
 : Extension identifier
 :: `webauthn.txauth.simple`
@@ -1639,7 +1644,8 @@ credential. It is intended primarily for [RPS] that wish to tightly control the 
 :: This extension can only be used during {{makeCredential()}}. If the client supports the Authenticator Selection Extension, it
     MUST use the first available authenticator whose AAGUID is present in the <dfn>AuthenticatorSelectionList</dfn>. If none of
     the available authenticators match a provided AAGUID, the client MUST select an authenticator from among the available
-    authenticators to generate the credential.
+    authenticators to generate the credential. If an authenticator was selected from {{AuthenticatorSelectionList}}, its
+    AAGUID MUST be added by the client to the ClientData as the client data value for this extension.
 
 : Authenticator argument
 :: There is no authenticator argument.
@@ -1664,7 +1670,7 @@ credential. It is intended primarily for [RPS] that wish to tightly control the 
 
 : Authenticator processing
 :: The <a>authenticator</a> adds its AAGUID to the authenticator data, as defined below. This extension can be added to
-    attestation statements and signatures.
+    attestation statements and assertions.
 
 : Authenticator data
 :: A 128-bit Authenticator Attestation GUID encoded as a CBOR byte string (major type 2). This AAGUID is used to identify the
@@ -1722,7 +1728,7 @@ credential. It is intended primarily for [RPS] that wish to tightly control the 
 
 : Authenticator processing
 :: The <a>authenticator</a> augments the authenticator data with a user verification index indicating the method used by the
-    user to authorize the operation, as defined below. This extension can be added to attestation statements and signatures.
+    user to authorize the operation, as defined below. This extension can be added to attestation statements and assertions.
 
 : Authenticator data
 :: The user verification index (UVI) is a value uniquely identifying a user verification data record. The UVI is encoded as CBOR
