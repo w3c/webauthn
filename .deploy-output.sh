@@ -2,6 +2,8 @@
 set -ev
 STATUS=`git log -1 --pretty=oneline`
 
+rm -rf out
+mkdir out
 cp index.html ./out/
 mkdir ./out/img
 cp img/* ./out/img

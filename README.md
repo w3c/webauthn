@@ -14,10 +14,16 @@ Before submitting feedback, please familiarize yourself with [our current issues
 
 # Building the Draft
 
-Formatted HTML for the draft can be built using `make` or `gmake`:
+Formatted HTML for the draft can be built using `bikeshed`:
 
 ```
-$ make
+$ bikeshed spec
+```
+
+You may also want to use the `watch` functionality to automatically regenerate as you make changes:
+
+```
+$ bikeshed watch
 ```
 
 # Installation and Setup
@@ -28,10 +34,10 @@ You will need to have the Python tools `pygments` and `bikeshed` to build the dr
 git clone --depth=1 --branch=master https://github.com/tabatkins/bikeshed.git ./bikeshed
 pip install pygments
 pip install --editable ./bikeshed
-bikeshed update
+cp -R .spec-data/* ./bikeshed/bikeshed/spec-data
 ````
 
 # Continuous Integration & Branches
 
-This repository uses a [variation](https://github.com/jcjones/bikeshed-template) on [martinthomson/i-d-template](https://github.com/martinthomson/i-d-template) to generate the Editor's Draft on the `gh-pages` branch upon every merge to `master`. In order to prevent failed merges during continuous integration, the formatted Editor's Draft should not be checked in to `master`, and it is in the `.gitignore` file.
+This repository uses `.deploy-output.sh` to generate the Editor's Draft on the `gh-pages` branch upon every merge to `master`. In order to prevent failed merges during continuous integration, the formatted Editor's Draft should not be checked in to `master`, and it is in the `.gitignore` file.
 
