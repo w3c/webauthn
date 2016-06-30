@@ -14,7 +14,7 @@ setup_bikeshed:
 	bikeshed update
 
 force:
-	bikeshed -f spec ./index.src.html
+	bikeshed -f spec ./index.bs
 
-index.html: index.src.html 
-	bikeshed spec ./index.src.html
+index.html: index.bs
+	bikeshed spec ./index.bs
