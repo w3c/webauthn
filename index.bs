@@ -127,7 +127,7 @@ or a combination of both.
 This specification relies on several other underlying specifications.
 
 : HTML5
-:: The concept of <dfn>origin</dfn> and the <dfn>Window</dfn> interface are defined in [[!HTML5]].
+:: The concept of <dfn>origin</dfn> and the <dfn>Navigator/dfn> interface are defined in [[!HTML5]].
 
 : Web IDL
 :: Many of the interface definitions and all of the IDL in this specification depend on [[!WebIDL-1]]. This updated version of
@@ -140,6 +140,8 @@ This specification relies on several other underlying specifications.
 : Web Cryptography API
 :: The <dfn dictionary>AlgorithmIdentifier</dfn> type and the method for normalizing an algorithm are defined in
     [[WebCryptoAPI#algorithm-dictionary]].
+:: The <dfn dictionary>CryptoKey</dfn> type for representing cryptographic keys is defined in
+    [[WebCryptoAPI#cryptokey-interface]].
 :: The <dfn dictionary>JsonWebKey</dfn> dictionary for representing cryptographic keys is defined in
     [[WebCryptoAPI#JsonWebKey-dictionary]].
 
@@ -274,8 +276,8 @@ operation. Since this is an integral part of the WebAuthn security model, user a
 The API is defined by the following Web IDL fragment.
 
 <pre class="idl">
-    partial interface Window {
-        readonly attribute WebAuthentication webauthn;
+    partial interface Navigator {
+        readonly attribute WebAuthentication authentication;
     };
 
     interface WebAuthentication {
@@ -294,7 +296,7 @@ The API is defined by the following Web IDL fragment.
 
     interface ScopedCredentialInfo {
         readonly attribute Credential           credential;
-        readonly attribute any                  publicKey;
+        readonly attribute CryptoKey            publicKey;
         readonly attribute WebAuthnAttestation  attestation;
     };
 
@@ -500,8 +502,8 @@ authorizing an authenticator with which to complete the operation.
 
     The <dfn>credential</dfn> attribute contains a unique identifier for the credential represented by this object.
 
-    The <dfn>publicKey</dfn> attribute contains the public key associated with the credential, represented as a JsonWebKey
-    structure as defined in [[WebCryptoAPI#JsonWebKey-dictionary]].
+    The <dfn>publicKey</dfn> attribute contains the public key associated with the credential, represented as a
+    CryptoKey object as defined in [[WebCryptoAPI#cryptokey-interface]].
 
     The <dfn>attestation</dfn> attribute contains a key attestation statement returned by the authenticator. This provides
     information about the credential and the authenticator it is held in, such as the level of security assurance provided by
@@ -1482,10 +1484,10 @@ authenticator. Since all extensions are optional, this will not cause a function
 ## Extension identifiers ## {#extension-id}
 
 Extensions are identified by a string, chosen by the extension author. Extension identifiers should aim to be globally unique,
-e.g., by using reverse domain-name of the defining entity such as `com.example.webauthn.myextension`.
+e.g., by including the defining entity such as `myCompany_extension`.
 
 Extensions that may exist in multiple versions should take care to include a version in their identifier. In effect, different
-versions are thus treated as different extensions.
+versions are thus treated as different extensions, e.g., `myCompany_extension_01`
 
 Extensions defined in this specification use a fixed prefix of `webauthn` for the extension identifiers. This prefix should not
 be used for extensions not defined by the W3C.
@@ -1516,7 +1518,7 @@ the extension identifier, and the value MUST be the <a>client argument</a>.
 
 <pre class="example highlight">
     var assertionPromise = credentials.getAssertion(..., /* extensions */ {
-        "com.example.webauthn.foobar": 42
+        "webauthnExample_foobar": 42
     });
 </pre>
 
@@ -1567,7 +1569,7 @@ authenticator data value of each extension as the value.
 To illustrate the requirements above, consider a hypothetical extension "Geo". This extension, if supported, lets both clients
 and authenticators embed their geolocation in assertions.
 
-The extension identifier is chosen as `com.example.webauthn.geo`. The client argument is the constant value `true`, since the
+The extension identifier is chosen as `webauthnExample_geo`. The client argument is the constant value `true`, since the
 extension does not require the <a>[RP]</a> to pass any particular information to the client, other than that it requests the use
 of the extension. The [RP] sets this value in its request for an assertion:
 
@@ -1575,7 +1577,7 @@ of the extension. The [RP] sets this value in its request for an assertion:
     var assertionPromise =
         credentials.getAssertion("SGFuIFNvbG8gc2hvdCBmaXJzdC4",
             {}, /* Empty filter */
-            { 'com.example.webauthn.geo': true });
+            { 'webauthnExample_geo': true });
 </pre>
 
 The extension defines the additional client data to be the client's location, if known, as a GeoJSON [[GeoJSON]] point. The
@@ -1585,7 +1587,7 @@ client constructs the following client data:
     {
         ...,
         'extensions': {
-            'com.example.webauthn.geo': {
+            'webauthnExample_geo': {
                 'type': 'Point',
                 'coordinates': [65.059962, -13.993041]
             }
@@ -1604,8 +1606,9 @@ authenticator does this by including it in the `authenticatorData`. As an exampl
     81 (hex)                                    -- Flags, ED and TUP both set.
     20 05 58 1F                                 -- Signature counter
     A1                                          -- CBOR map of one element
-        6C                                      -- Key 1: CBOR text string of 12 bytes
-            77 65 62 61 75 74 68 6E 2E 67 65 6F -- "webauthn.geo" UTF-8 string
+        73                                      -- Key 1: CBOR text string of 19 bytes
+            77 65 62 61 75 74 68 6E 45 78 61
+            6D 70 6C 65 5F 67 65 6F             -- "webauthnExample_geo" UTF-8 string
         82                                      -- Value 1: CBOR array of two elements
             FA 42 82 1E B3                      -- Element 1: Latitude as CBOR encoded float
             FA C1 5F E3 7F                      -- Element 2: Longitude as CBOR encoded float
@@ -1624,7 +1627,7 @@ This authentication extension allows for a simple form of transaction authorizat
 intended for display on a trusted device on the authenticator.
 
 : Extension identifier
-:: `webauthn.txauth.simple`
+:: `webauthn_txAuthSimple`
 
 : Client argument
 :: A single UTF-8 encoded string prompt.
@@ -1646,7 +1649,7 @@ The generic version of this extension allows images to be used as prompts as wel
 rendering engine to be used and also supports a richer visual appearance.
 
 : Extension identifier
-:: `webauthn.txauth.generic`
+:: `webauthn_txAuthGeneric`
 
 : Client argument
 :: A CBOR map with one pair of data items (CBOR tagged as 0xa1). The pair of data items consists of
@@ -1675,7 +1678,7 @@ This registration extension allows a [RP] to guide the selection of the authenti
 credential. It is intended primarily for [RPS] that wish to tightly control the experience around credential creation.
 
 : Extension identifier
-:: `webauthn.authn-sel`
+:: `webauthn_authnSel`
 
 : Client argument
 :: A sequence of AAGUIDs:
@@ -1710,7 +1713,7 @@ credential. It is intended primarily for [RPS] that wish to tightly control the 
 ## SupportedExtensions Extension ## {#supported-extensions-extension}
 
 : Extension identifier
-:: `webauthn.exts`
+:: `webauthn_exts`
 
 : Client argument
 :: The Boolean value `true` to indicate that this extension is requested by the [RP].
@@ -1732,7 +1735,7 @@ credential. It is intended primarily for [RPS] that wish to tightly control the 
 ## User Verification Index (UVI) Extension ## {#uvi-extension}
 
 : Extension identifier
-:: `webauthn.uvi`
+:: `webauthn_uvi`
 
 : Client argument
 :: The Boolean value `true` to indicate that this extension is requested by the [RP].
@@ -1769,8 +1772,8 @@ credential. It is intended primarily for [RPS] that wish to tightly control the 
         00 00 00 01                                 -- (initial) signature counter
         ...                                         -- all public key alg etc.
         A1                                          -- extension: CBOR map of one element
-            6C                                      -- Key 1: CBOR text string of 12 bytes
-                77 65 62 61 75 74 68 6E 2E 75 76 69 -- "webauthn.uvi" UTF-8 string
+            6C                                      -- Key 1: CBOR text string of 11 bytes
+                77 65 62 61 75 74 68 6E 5F 75 76 69 -- "webauthn_uvi" UTF-8 string
             58 20                                   -- Value 1: CBOR byte string with 0x20 bytes
                 00 43 B8 E3 BE 27 95 8C             -- the UVI value itself
                 28 D5 74 BF 46 8A 85 CF
@@ -1883,7 +1886,7 @@ This is the first time flow, when a new credential is created and registered wit
 The sample code for generating and registering a new key follows:
 
 <pre class="example highlight">
-    var webauthnAPI = window.webauthn;
+    var webauthnAPI = navigator.authentication;
 
     if (!webauthnAPI) { /* Platform not capable. Handle error. */ }
 
@@ -1963,7 +1966,7 @@ If the [RP] script does not have any hints available (e.g., from locally stored 
 then the sample code for performing such an authentication might look like this:
 
 <pre class="example highlight">
-    var webauthnAPI = window.webauthn;
+    var webauthnAPI = navigator.authentication;
 
     if (!webauthnAPI) { /* Platform not capable. Handle error. */ }
 
@@ -1986,7 +1989,7 @@ performing such an authentication might look like the following. Note that this 
 extension for transaction authorization.
 
 <pre class="example highlight">
-    var webauthnAPI = window.webauthn;
+    var webauthnAPI = navigator.authentication;
 
     if (!webauthnAPI) { /* Platform not capable. Handle error. */ }
 
