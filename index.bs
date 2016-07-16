@@ -281,7 +281,8 @@ The API is defined by the following Web IDL fragment.
     interface WebAuthentication {
         Promise < ScopedCredentialInfo > makeCredential (
             Account                                 accountInformation,
-            sequence < ScopedCredentialParameters > cryptoParameters,
+            sequence < CredentialType >             supportedTypes,
+            sequence < AlgorithmIdentifier >        supportedAlgorithms,
             BufferSource                            attestationChallenge,
             optional unsigned long                  credentialTimeoutSeconds,
             optional sequence < Credential >        blacklist,
@@ -308,11 +309,6 @@ The API is defined by the following Web IDL fragment.
         DOMString          name;
         DOMString          id;
         DOMString          imageURL;
-    };
-
-    dictionary ScopedCredentialParameters {
-        required CredentialType        type;
-        required AlgorithmIdentifier   algorithm;
     };
 
     interface WebAuthnAssertion {
@@ -359,8 +355,8 @@ This method takes the following parameters:
 - The <dfn>accountInformation</dfn> parameter specifies information about the user account for which the credential is being
     created. This is meant for later use by the authenticator when it needs to prompt the user to select a credential.
 
-- The <dfn>cryptoParameters</dfn> parameter supplies information about the desired properties of the credential to be created.
-    The sequence is ordered from most preferred to least preferred. The platform makes a best effort to create the most
+- The <dfn>supportedAlgorithms</dfn> and <dfn>supportedTypes</dfn> parameters supply information about the desired properties of the credential to be created.
+    The sequence is ordered from most preferred to least preferred. The platform makes a best effort to create the most logical and
     preferred credential that it can.
 
 - The <dfn>attestationChallenge</dfn> parameter contains a challenge intended to be used for generating the attestation
@@ -394,15 +390,12 @@ When this method is invoked, the user agent MUST execute the following algorithm
 
 4. Initialize |issuedRequests| to an empty list.
 
-5. Process each element of <a>cryptoParameters</a> using the following steps, to produce a new sequence `normalizedParameters`:
-    - Let |current| be the currently selected element of <a>cryptoParameters</a>.
-    - If `current.type` does not contain a {{CredentialType}} supported by this implementation, then stop processing |current|
-        and move on to the next element in <a>cryptoParameters</a>.
+5. Process each element of <a>supportedAlgorithms</a> using the following steps, to produce a new sequence `normalizedAlgorithms`:
+    - Let |currentAlgorithm| be the currently selected element of <a>supportedAlgorithms</a>.
     - Let `normalizedAlgorithm` be the result of normalizing an algorithm using the procedure defined in [[!WebCryptoAPI]],
-        with |alg| set to `current.algorithm` and |op| set to 'generateKey'. If an error occurs during this procedure, then
-        stop processing |current| and move on to the next element in <a>cryptoParameters</a>.
-    - Add a new object of type {{ScopedCredentialParameters}} to `normalizedParameters`, with |type| set to `current.type` and
-        |algorithm| set to `normalizedAlgorithm`.
+        with |alg| set to `currentAlgorithm` and |op| set to 'generateKey'. If an error occurs during this procedure, then
+        stop processing |currentAlgorithm| and move on to the next element in <a>supportedAlgorithms</a>.
+    - Add `normalizedAlgorithm` to `normalizedAlgorithms`.
 
 6. If <a>blacklist</a> is undefined, set it to the empty list.
 
@@ -411,7 +404,7 @@ When this method is invoked, the user agent MUST execute the following algorithm
 
 8. For each authenticator currently available on this platform: asynchronously invoke the
     <a>authenticatorMakeCredential</a> operation on that authenticator with |callerOrigin|, |rpId|, <a>accountInformation</a>,
-    `normalizedParameters`, <a>blacklist</a>, <a>attestationChallenge</a> and |clientExtensions| as parameters. Add a
+    <a>supportedTypes</a>, `normalizedAlgorithms`, <a>blacklist</a>, <a>attestationChallenge</a> and |clientExtensions| as parameters. Add a
     corresponding entry to |issuedRequests|.
 
 9. While |issuedRequests| is not empty, perform the following actions depending upon the |adjustedTimeout| timer and responses
@@ -536,18 +529,6 @@ authorizing an authenticator with which to complete the operation.
 
     The <dfn>imageURL</dfn> member contains a URL that resolves to the user's account image. This may be a URL that can be used
     to retrieve an image containing the user's current avatar, or a data URI that contains the image data.
-</div>
-
-
-## Parameters for Credential Generation (dictionary <dfn dictionary>ScopedCredentialParameters</dfn>) ## {#credential-params}
-
-<div dfn-for="ScopedCredentialParameters">
-    This dictionary is used to supply additional parameters when creating a new credential.
-
-    The <dfn>type</dfn> member specifies the type of credential to be created.
-
-    The <dfn>algorithm</dfn> member specifies the cryptographic algorithm with which the newly generated credential will be
-    used.
 </div>
 
 
