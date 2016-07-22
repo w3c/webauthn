@@ -68,7 +68,8 @@ Communications (NFC).
 
 ## Use Cases ## {#use-cases}
 
-The below use case scenarios illustrate use of two very different types of <a>authenticators</a>, as well as outline further scenarios. Additional scenarios, including sample code, are given later in [[#sample-scenarios]].
+The below use case scenarios illustrate use of two very different types of <a>authenticators</a>, as well as outline further
+scenarios. Additional scenarios, including sample code, are given later in [[#sample-scenarios]].
 
 ### Registration ### {#usecase-registration}
 
@@ -206,7 +207,8 @@ NOT", "SHOULD", "SHOULD NOT", "RECOMMENDED",  "MAY", and
 :: The entity whose web application utilizes the <a>Web Authentication API</a> to register and authenticate users. See
     <a>Registration</a> and <a>Authentication</a>, respectively.
 
-    Note: While the term [RP] is used in other contexts (e.g., X.509 and OAuth), an entity acting as an [RP] in one context is not necessarily an [RP] in others.
+    Note: While the term [RP] is used in other contexts (e.g., X.509 and OAuth), an entity acting as an [RP] in one context is
+        not necessarily an [RP] in others.
 
 : <dfn>Relying Party Identifier</dfn>
 : <dfn>RP ID</dfn>
@@ -283,16 +285,12 @@ The API is defined by the following Web IDL fragment.
             Account                                 accountInformation,
             sequence < ScopedCredentialParameters > cryptoParameters,
             BufferSource                            attestationChallenge,
-            optional unsigned long                  credentialTimeoutSeconds,
-            optional sequence < Credential >        blacklist,
-            optional WebAuthnExtensions             credentialExtensions
+            optional CredentialOptions              options
         );
 
         Promise < WebAuthnAssertion > getAssertion (
-            BufferSource                     assertionChallenge,
-            optional unsigned long           assertionTimeoutSeconds,
-            optional sequence < Credential > whitelist,
-            optional WebAuthnExtensions      assertionExtensions
+            BufferSource               assertionChallenge,
+            optional AssertionOptions  options
         );
     };
 
@@ -315,11 +313,23 @@ The API is defined by the following Web IDL fragment.
         required AlgorithmIdentifier   algorithm;
     };
 
+    dictionary CredentialOptions {
+        unsigned long            timeoutSeconds;
+        sequence < Credential >  excludeList;
+        WebAuthnExtensions       extensions;
+    };
+
     interface WebAuthnAssertion {
         readonly attribute Credential  credential;
         readonly attribute ArrayBuffer clientData;
         readonly attribute ArrayBuffer authenticatorData;
         readonly attribute ArrayBuffer signature;
+    };
+
+    dictionary AssertionOptions {
+        unsigned long           timeoutSeconds;
+        sequence < Credential > allowList;
+        WebAuthnExtensions      extensions;
     };
 
     dictionary WebAuthnExtensions {
@@ -366,24 +376,15 @@ This method takes the following parameters:
 - The <dfn>attestationChallenge</dfn> parameter contains a challenge intended to be used for generating the attestation
     statement of the newly created credential.
 
-- The optional <dfn>credentialTimeoutSeconds</dfn> parameter specifies a time, in seconds, that the caller is willing to wait
-    for the call to complete. This is treated as a hint, and may be overridden by the platform.
-
-- The optional <dfn>blacklist</dfn> parameter is intended for use by <a>[RPS]</a> that wish to limit the creation of multiple
-    credentials for the same account on a single authenticator. The platform is requested to return an error if the new
-    credential would be created on an authenticator that also contains one of the credentials enumerated in this parameter.
-
-- The optional <dfn>credentialExtensions</dfn> parameter contains additional parameters requesting additional processing by
-    the client and authenticator. For example, the caller may request that only authenticators with certain capabilities be
-    used to create the credential, or that additional information be returned in the attestation statement. Alternatively, the
-    caller may specify an additional message that they would like the authenticator to display to the user. Extensions are
-    defined in [[#extensions]].
+- The optional <dfn dfn-for="makeCredential()">options</dfn> parameter specifies additional options, as described in
+    [[#credential-options]].
 
 When this method is invoked, the user agent MUST execute the following algorithm:
 
-1. If <a>credentialTimeoutSeconds</a> was specified, check if its value lies within a reasonable range as defined by the
-    platform and if not, correct it to the closest value lying within that range. Set |adjustedTimeout| to this adjusted value.
-    If <a>credentialTimeoutSeconds</a> was not specified then set |adjustedTimeout| to a platform-specific default.
+1. If <a for="CredentialOptions">timeoutSeconds</a> was specified, check if its value lies within a reasonable range as defined
+    by the platform and if not, correct it to the closest value lying within that range. Set |adjustedTimeout| to this adjusted
+    value. If <a for="CredentialOptions">timeoutSeconds</a> was not specified then set |adjustedTimeout| to a platform-specific
+    default.
 
 2. Let |promise| be a new <a data-lt="Promises">Promise</a>. Return |promise| and start a timer for |adjustedTimeout| seconds.
     Then asynchronously continue executing the following steps.
@@ -405,14 +406,14 @@ When this method is invoked, the user agent MUST execute the following algorithm
     - Add a new object of type {{ScopedCredentialParameters}} to `normalizedParameters`, with |type| set to `current.type` and
         |algorithm| set to `normalizedAlgorithm`.
 
-6. If <a>blacklist</a> is undefined, set it to the empty list.
+6. If <a>excludeList</a> is undefined, set it to the empty list.
 
-7. If <a>credentialExtensions</a> was specified, process any extensions supported by this client platform, to produce the
-    extension data that needs to be sent to the authenticator. Call this data |clientExtensions|.
+7. If <a for="CredentialOptions">extensions</a> was specified, process any extensions supported by this client platform, to
+    produce the extension data that needs to be sent to the authenticator. Call this data |clientExtensions|.
 
 8. For each authenticator currently available on this platform: asynchronously invoke the
     <a>authenticatorMakeCredential</a> operation on that authenticator with |callerOrigin|, |rpIdHash|,
-    <a>accountInformation</a>, `normalizedParameters`, <a>blacklist</a>, <a>attestationChallenge</a> and |clientExtensions| as
+    <a>accountInformation</a>, `normalizedParameters`, <a>excludeList</a>, <a>attestationChallenge</a> and |clientExtensions| as
     parameters. Add a corresponding entry to |issuedRequests|.
 
 9. While |issuedRequests| is not empty, perform the following actions depending upon the |adjustedTimeout| timer and responses
@@ -444,21 +445,15 @@ This method takes the following parameters:
 - The <dfn>assertionChallenge</dfn> parameter contains a challenge that the selected authenticator is expected to sign to
     produce the assertion.
 
-- The optional <dfn>assertionTimeoutSeconds</dfn> parameter specifies a time, in seconds, that the caller is willing to wait
-    for the call to complete. This is treated as a hint, and may be overridden by the platform.
-
-- The optional <dfn>whitelist</dfn> member contains a list of credentials acceptable to the caller, in order of the caller's
-    preference.
-
-- The optional <dfn>assertionExtensions</dfn> parameter contains additional parameters requesting additional processing by the
-    client and authenticator. For example, if transaction confirmation is sought from the user, then the prompt string would be
-    included in an extension. Extensions are defined in a companion specification.
+- The optional <dfn dfn-for="getAssertion()">options</dfn> parameter specifies additional options, as described in
+    [[#assertion-options]].
 
 When this method is invoked, the user agent MUST execute the following algorithm:
 
-1. If <a>assertionTimeoutSeconds</a> was specified, check if its value lies within a reasonable range as defined by the platform
-    and if not, correct it to the closest value lying within that range. Set |adjustedTimeout| to this adjusted value. If
-    <a>assertionTimeoutSeconds</a> was not specified then set |adjustedTimeout| to a platform-specific default.
+1. If <a for="AssertionOptions">timeoutSeconds</a> was specified, check if its value lies within a reasonable range as defined
+    by the platform and if not, correct it to the closest value lying within that range. Set |adjustedTimeout| to this adjusted
+    value. If <a for="AssertionOptions">timeoutSeconds</a> was not specified then set |adjustedTimeout| to a platform-specific
+    default.
 
 2. Let |promise| be a new <a data-lt="Promises">Promise</a>. Return |promise| and start a timer for |adjustedTimeout| seconds.
     Then asynchronously continue executing the following steps.
@@ -470,15 +465,15 @@ When this method is invoked, the user agent MUST execute the following algorithm
 
 4. Initialize |issuedRequests| to an empty list.
 
-5. If <a>assertionExtensions</a> was specified, process any extensions supported by this client platform, to produce the
-    extension data that needs to be sent to the authenticator. Call this data |clientExtensions|.
+5. If <a for="AssertionOptions">extensions</a> was specified, process any extensions supported by this client platform, to
+    produce the extension data that needs to be sent to the authenticator. Call this data |clientExtensions|.
 
 6. For each authenticator currently available on this platform, perform the following steps:
-    - If <a>whitelist</a> is undefined or empty, let |credentialList| be a list containing a single wildcard entry.
+    - If <a>allowList</a> is undefined or empty, let |credentialList| be a list containing a single wildcard entry. Otherwise,
+        execute a platform-specific procedure to determine which of these credentials might be present on this authenticator,
+        and set |credentialList| to this filtered list.
     <!-- TBD The wildcard syntax needs to be defined and/or referenced here. -->
-    - If <a>whitelist</a> is defined and non-empty, optionally execute a platform-specific procedure to determine which of these
-        credentials can possibly be present on this authenticator. Set |credentialList| to this filtered list. If
-        |credentialList| is empty, ignore this authenticator and do not perform any of the following per-authenticator steps.
+    - If |credentialList| is empty, ignore this authenticator and do not perform any of the following per-authenticator steps.
     - Asynchronously invoke the <a>authenticatorGetAssertion</a> operation on this authenticator with |callerOrigin|,
         |rpIdHash|, <a>assertionChallenge</a>, |credentialList|, and |clientExtensions| as parameters.
     - Add an entry to |issuedRequests|, corresponding to this request.
@@ -553,6 +548,26 @@ authorizing an authenticator with which to complete the operation.
 </div>
 
 
+## Additional options for Credential Generation (dictionary <dfn dictionary>CredentialOptions</dfn>) ## {#credential-options}
+
+<div dfn-for="CredentialOptions">
+    This dictionary is used to supply additional options when creating a new credential. All these parameters are optional.
+
+    - The <dfn>timeoutSeconds</dfn> parameter specifies a time, in seconds, that the caller is willing to wait for the call to
+        complete. This is treated as a hint, and may be overridden by the platform.
+
+    - The <dfn>excludeList</dfn> parameter is intended for use by <a>[RPS]</a> that wish to limit the creation of multiple
+        credentials for the same account on a single authenticator. The platform is requested to return an error if the new
+        credential would be created on an authenticator that also contains one of the credentials enumerated in this parameter.
+
+    - The <dfn>extensions</dfn> parameter contains additional parameters requesting additional processing by the client and
+        authenticator. For example, the caller may request that only authenticators with certain capabilities be used to create
+        the credential, or that additional information be returned in the attestation statement. Alternatively, the caller may
+        specify an additional message that they would like the authenticator to display to the user. Extensions are defined in
+        [[#extensions]].
+</div>
+
+
 ## WebAuthn Assertion (interface <dfn interface>WebAuthnAssertion</dfn>) ## {#iface-assertion}
 
 Scoped credentials produce a cryptographic signature that provides proof of possession of a private key as well as evidence of
@@ -569,6 +584,23 @@ user consent to a specific transaction. The structure of these signatures is def
 
     The <dfn>signature</dfn> member contains the raw signature returned from the authenticator. See
     [[#authenticator-signature]].
+</div>
+
+
+## Additional options for Assertion Generation (dictionary <dfn dictionary>AssertionOptions</dfn>) ## {#assertion-options}
+
+<div dfn-for="AssertionOptions">
+    This dictionary is used to supply additional options when generating an assertion. All these parameters are optional.
+
+    - The optional <dfn>timeoutSeconds</dfn> parameter specifies a time, in seconds, that the caller is willing to wait for the
+        call to complete. This is treated as a hint, and may be overridden by the platform.
+
+    - The optional <dfn>allowList</dfn> member contains a list of credentials acceptable to the caller, in order of the caller's
+        preference.
+
+    - The optional <dfn>extensions</dfn> parameter contains additional parameters requesting additional processing by the client
+        and authenticator. For example, if transaction confirmation is sought from the user, then the prompt string would be
+        included in an extension. Extensions are defined in a companion specification.
 </div>
 
 
@@ -591,8 +623,8 @@ providing provenance information for the attesting key, enabling a trust decisio
 
 <div dfn-for="WebAuthnAttestation">
     The <dfn>type</dfn> member specifies the type of attestation statement contained in this structure. This specification
-    defines a number of attestation formats, in [[#defined-attestation-formats]]. Other attestation formats may be defined in later
-    versions of this specification.
+    defines a number of attestation formats, in [[#defined-attestation-formats]]. Other attestation formats may be defined in
+    later versions of this specification.
 
     The <dfn>clientData</dfn> member contains the <a>clientDataJSON</a> (see [[#signature-format]]). The exact JSON encoding
     must be preserved as the hash (clientDataHash) has been computed over it.
@@ -990,7 +1022,8 @@ Upon receiving an attestation statement, the [RP] shall:
         an easy way to access such information. The `claimedAAGUID` can be used for this lookup.
     - Verify that the attestation certificate chain is valid and chains up to a trusted root (following [[RFC5280]]).
     - Verify that the attestation certificate has the right Extended Key Usage (EKU) based on the WebAuthn Authenticator type
-        (as denoted by the `type` member). In case of a type="tpm", this EKU shall be OID "2.23.133.8.3". Defined attestation formats are in [[#defined-attestation-formats]].
+        (as denoted by the `type` member). In case of a type="tpm", this EKU shall be OID "2.23.133.8.3". Defined attestation
+        formats are in [[#defined-attestation-formats]].
     - If the attestation format is "android", verify that the attestation certificate is issued to the hostname
         "attest.android.com" (see <a href="https://developer.android.com/training/safetynet/index.html#compat-check-response">
         SafetyNet online documentation</a>).
@@ -1511,8 +1544,8 @@ in the {{getAssertion()}} or {{makeCredential()}} call, while the <dfn>authentic
 to the authenticator during the processing of these calls.
 
 A [RP] simultaneously requests the use of an extension and sets its client argument by including an entry in the
-<a>credentialExtensions</a> or <a>assertionExtensions</a> dictionary parameters to the {{makeCredential()}} or
-{{getAssertion()}} call. The entry key MUST be the extension identifier, and the value MUST be the <a>client argument</a>.
+<a for="CredentialOptions">extensions</a> option to the {{makeCredential()}} or {{getAssertion()}} call. The entry key MUST be
+the extension identifier, and the value MUST be the <a>client argument</a>.
 
 <pre class="example highlight">
     var assertionPromise = credentials.getAssertion(..., /* extensions */ {
@@ -1541,8 +1574,9 @@ value that the [RP] needs to be aware of, the extension should specify a client 
 structure.
 
 The client data value may be any value that can be encoded using JSON. If any extension processed by a client defines such a
-value, the client SHOULD include a dictionary in {{ClientData}} with the key <a>extensions</a>. For each such extension, the
-client SHOULD add an entry to this dictionary with the extension identifier as the key, and the extension's client data value.
+value, the client SHOULD include a dictionary in {{ClientData}} with the key <a for="ClientData">extensions</a>. For each such
+extension, the client SHOULD add an entry to this dictionary with the extension identifier as the key, and the extension's
+client data value.
 
 Extensions that require authenticator processing MUST define the process by which the client argument can be used to determine
 the authenticator argument.
@@ -1908,14 +1942,14 @@ The sample code for generating and registering a new key follows:
         }
     ];
     var challenge = "Y2xpbWIgYSBtb3VudGFpbg";
-    var timeoutSeconds = 300;  // 5 minutes
-    var blacklist = [];  // No blacklist
-    var extensions = {"webauthn.location": true};  // Include location information
+    var options = { timeoutSeconds: 300,  // 5 minutes
+                    excludeList: [],      // No excludeList
+                    extensions: {"webauthn.location": true}  // Include location information
                                                    // in attestation
+    };
 
     // Note: The following call will cause the authenticator to display UI.
-    webauthnAPI.makeCredential(userAccountInformation, cryptoParams, challenge,
-                               timeoutSeconds, blacklist, extensions)
+    webauthnAPI.makeCredential(userAccountInformation, cryptoParams, challenge, options)
         .then(function (newCredentialInfo) {
         // Send new credential info to server for verification and registration.
     }).catch(function (err) {
@@ -1968,10 +2002,12 @@ then the sample code for performing such an authentication might look like this:
     if (!webauthnAPI) { /* Platform not capable. Handle error. */ }
 
     var challenge = "Y2xpbWIgYSBtb3VudGFpbg";
-    var timeoutSeconds = 300;  // 5 minutes
-    var whitelist = [{ type: "ScopedCred" }];
+    var options = {
+                    timeoutSeconds = 300,  // 5 minutes
+                    allowList: [{ type: "ScopedCred" }]
+                  };
 
-    webauthnAPI.getAssertion(challenge, timeoutSeconds, whitelist)
+    webauthnAPI.getAssertion(challenge, options)
         .then(function (assertion) {
         // Send assertion to server for verification
     }).catch(function (err) {
@@ -1989,7 +2025,6 @@ extension for transaction authorization.
     if (!webauthnAPI) { /* Platform not capable. Handle error. */ }
 
     var challenge = "Y2xpbWIgYSBtb3VudGFpbg";
-    var timeoutSeconds = 300;  // 5 minutes
     var acceptableCredential1 = {
         type: "ScopedCred",
         id: "ISEhISEhIWhpIHRoZXJlISEhISEhIQo="
@@ -1998,11 +2033,15 @@ extension for transaction authorization.
         type: "ScopedCred",
         id: "cm9zZXMgYXJlIHJlZCwgdmlvbGV0cyBhcmUgYmx1ZQo="
     };
-    var whitelist = [acceptableCredential1, acceptableCredential2];
-    var extensions = { 'webauthn.txauth.simple':
+    
+    var options = {
+                    timeoutSeconds: 300,  // 5 minutes
+                    allowList: [acceptableCredential1, acceptableCredential2];
+                    extensions: { 'webauthn.txauth.simple':
                        "Wave your hands in the air like you just don't care" };
+                  };
 
-    webauthnAPI.getAssertion(challenge, timeoutSeconds, whitelist, extensions)
+    webauthnAPI.getAssertion(challenge, options)
         .then(function (assertion) {
         // Send assertion to server for verification
     }).catch(function (err) {
@@ -2037,8 +2076,7 @@ handled on the server side and do not need support from the API specified here.
 
 
 # Acknowledgements # {#acknowledgements}
-We thank the following for their contributions to, and thorough review of, this specification: Jing Jin, J.C. Jones, Giridhar
-Mandyam.
+We thank the following for their contributions to, and thorough review of, this specification: Jing Jin, Giridhar Mandyam.
 
 <pre class=biblio>
 {  
