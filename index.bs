@@ -1,5 +1,5 @@
 <pre class='metadata'>
- Title: Web Authentication: An API for accessing Scoped Credentials
+Title: Web Authentication: An API for accessing Scoped Credentials
 Status: ED
 TR: http://www.w3.org/TR/webauthn/
 ED: http://w3c.github.io/webauthn/
@@ -161,6 +161,12 @@ NOT", "SHOULD", "SHOULD NOT", "RECOMMENDED",  "MAY", and
 
 : <dfn>Assertion</dfn>
 :: See <a>WebAuthn Assertion</a>.
+
+: <dfn>Attestation</dfn>
+:: Generally, a statement that serves to bear witness, confirm, or authenticate. 
+    In the WebAuthn context, attestation is employed to attest to the provenance of an authenticator and the data it emits; 
+    including, for example: credential IDs, public keys, signature counters, etc. 
+    See also <a>attestation formats</a>, and <a>attestation types</a>. 
 
 : <dfn>Attestation Certificate</dfn>
 :: A X.509 Certificate for a key pair used by an <a>Authenticator</a> to attest to its manufacture and capabilities. The
@@ -645,7 +651,7 @@ providing provenance information for the attesting key, enabling a trust decisio
     must be preserved as the hash (clientDataHash) has been computed over it.
 
     The <dfn>statement</dfn> element contains the actual attestation statement. The structure of this object depends on the
-    attestation format. For more details, see [[#attestation]].
+    attestation format. For more details, see [[#cred-attestation-stmts]].
 </div>
 
 This attestation statement is delivered to the <a>[RP]</a> by the [RP]'s script running on the client, using methods outside
@@ -749,7 +755,7 @@ generates an identifier for the credential, such that this identifier is globall
 credentials with the same type across all authenticators. It then associates the credential with the specified RP ID hash such
 that it will be able to retrieve the RP ID hash later, given the credential ID. Finally, it generates an attestation statement
 that describes its own attributes as well as some attributes of the credential. For more details on attestation, see
-[[#attestation]].
+[[#cred-attestation-stmts]].
 
 On successful completion of this operation, the authenticator returns the following to the client:
 
@@ -977,21 +983,21 @@ MUST return <a>clientDataJSON</a>, <a>authenticatorData</a> and the signature to
 in the `clientData` member of the {{WebAuthnAssertion}} and {{WebAuthnAttestation}} structures.
 
 
-## Credential Attestation Statements ## {#attestation}
+## Credential Attestation Statements ## {#cred-attestation-stmts}
 
 An attestation statement is a specific type of signature, which contains statements about a credential itself and the
 authenticator that holds it. Therefore, the procedures for generating attestation statements closely parallel those for
 generating WebAuthn assertions as described in [[#signature-format]], though the semantics of the contextual bindings are quite
 different.
 
-This specification defines a number of attestation formats, i.e., ways to serialize the data being attested to by the
-<a>Authenticator</a>. The reason is to be able to support existing devices like TPMs and other platform-specific formats. Each
-attestation format provides the ability to cryptographically attest to a public key, the authenticator model, and contextual data
-to a remote party. They differ in the details of how the attestation statement is laid out, and how its components are computed.
-The different attestation formats are defined in [[#defined-attestation-formats]].
+This specification defines a number of <dfn>attestation formats</dfn>, i.e., ways to serialize the data being attested to by an
+<a>Authenticator</a>. The reason is to be able to support existing devices such as TPMs and other platform-specific formats. 
+Each attestation format provides the ability to cryptographically attest to a public key, the authenticator model, and 
+contextual data to a remote party. They differ in the details of how the attestation statement is laid out, and how its 
+components are computed. The different attestation formats are defined in [[#defined-attestation-formats]].
 
-This specification also defines a number of attestation types. These define how a [RP] establishes trust in a particular
-attestation statement, after verifying that it is cryptographically valid.
+This specification also defines a number of <dfn>attestation types</dfn>. These define how a [RP] establishes trust in a 
+particular attestation statement, after verifying that it is cryptographically valid.
 
 Attestation formats are orthogonal to attestation types, i.e. attestation formats in general are not restricted to a single
 attestation type. For example the "packed" attestation format (see below) can be used in conjunction with all attestation types.
@@ -1001,8 +1007,9 @@ The privacy, the security and the operational characteristic of attestation main
 on the attestation type while it is largely independent from the attestation format. 
 Specific privacy considerations are given in {#sec-attestation-privacy}. 
 
-
-### Attestation Types ### {#attestation-types}
+<!-- Editors Note: differentiating section IDs from non-section IDs is useful because at times we need to seperately reference
+     different things having the same nominal name, eg attestation-types-the-section, and attestation-types-the-definition -->
+### Attestation Types ### {#sctn-attestation-types}
 
 WebAuthn supports multiple attestation types:
 
@@ -1047,7 +1054,7 @@ Upon receiving an attestation statement, the [RP] shall:
 
 2. If `alg` is not ECDAA (e.g., not "ED256" and not "ED512"):
     - Look up the attestation root certificate from a trusted source. 
-    For example, the FIDO Metadata Service [[FIDOMetadataService]] provides
+        For example, the FIDO Metadata Service [[FIDOMetadataService]] provides
         one way to access such information. The `claimedAAGUID` can be used for this lookup.
     - Verify that the attestation certificate chain is valid and chains up to a trusted root (following [[RFC5280]]).
     - Verify that the attestation certificate has the right Extended Key Usage (EKU) based on the WebAuthn Authenticator type
@@ -1066,9 +1073,8 @@ Upon receiving an attestation statement, the [RP] shall:
 
 3. If `alg` is ECDAA (e.g., "ED256", "ED512"):
     - Look up the DAA root key from a trusted source.  
-      For example, the FIDO Metadata Service [[FIDOMetadataService]] provides 
-      one way to access such information. The `claimedAAGUID` can be used for 
-      this lookup.
+        For example, the FIDO Metadata Service [[FIDOMetadataService]] provides one way to access such information. 
+        The `claimedAAGUID` can be used for this lookup.
     - Perform DAA-Verify on `signature` for `rawData` (see [[!FIDOEcdaaAlgorithm]]).
     - Verify `rawData` syntax and that it doesn't contradict the signing algorithm specified in `alg`.
     - The DAA root key is dedicated to a single Authenticator model.
@@ -1076,16 +1082,17 @@ Upon receiving an attestation statement, the [RP] shall:
 4. Verify the contextual bindings (e.g., channel binding) from the clientData (see [[#authenticator-signature]]).
 
 5. Verify that user verification method and other authenticator characteristics related to this authenticator model, match the
-    [RP] policy. For example, the FIDO Metadata Service [[FIDOMetadataService]] provides one way to obtain authenticator characteristics.
+    [RP] policy. For example, the FIDO Metadata Service [[FIDOMetadataService]] provides one way to obtain authenticator 
+    characteristics.
 
 The [RP] MAY take any of the below actions when verification of an attestation statement fails:
 
 - Reject the request, such as a registration request, associated with the attestation statement.
 
 - Accept the request associated with the attestation statement but treat the attested Scoped Credential as one with surrogate
-    basic attestation (see [[#attestation-types]]), if policy allows it. If doing so, there is no cryptographic proof that the
-    Scoped Credential has been generated by a particular Authenticator model. See [[FIDOSecRef]] and [[UAFProtocol]] for more
-    details on the relevance on attestation.
+    basic attestation (see [[#sctn-attestation-types]]), if policy allows it. If doing so, there is no cryptographic proof 
+    that the Scoped Credential has been generated by a particular Authenticator model. See [[FIDOSecRef]] and [[UAFProtocol]]
+    for more details on the relevance on attestation.
 
 Verification of attestation statements requires that the relying party trusts the root of the attestation certificate chain.
 Also, the [RP] must have access to certificate status information for the intermediate CA certificates. The relying party must
@@ -1130,8 +1137,8 @@ unless the WebAuthn Authenticator manufacturer has this capability.
 
 If attestation certificate validation fails due to a revoked intermediate attestation CA certificate, and the [RP]'s policy
 requires rejecting the registration/authentication request in these situations, then it is recommended that the [RP] also
-un-registers (or marks as "surrogate attestation" (see [[#attestation-types]]), policy permitting) scoped credentials that were
-registered post the CA compromise date using an attestation certificate chaining up to the same intermediate CA. It is thus
+un-registers (or marks as "surrogate attestation" (see [[#sctn-attestation-types]]), policy permitting) scoped credentials that
+were registered post the CA compromise date using an attestation certificate chaining up to the same intermediate CA. It is thus
 recommended that [RPS] remember intermediate attestation CA certificates during Authenticator registration in order to
 un-register related Scoped Credentials if the registration was performed after revocation of such certificates.
 
@@ -1151,9 +1158,9 @@ must be specified either in the attestation certificate itself or it must be spe
 
 # Defined Attestation Formats # {#defined-attestation-formats}
 
-WebAuthn supports pluggable attestation data formats. This allows support of TPM generated attestation data as well as support of
-other WebAuthn <a>authenticators</a>. As mentioned in [[#attestation]], these differ in how the attestation statement is
-computed and formatted. This section defines these details.
+WebAuthn supports pluggable attestation data formats. This allows support of TPM generated attestation data as well as support
+of other WebAuthn <a>authenticators</a>. As mentioned in [[#cred-attestation-stmts]], these differ in how the attestation
+statement is computed and formatted. This section defines these details.
 
 The contents of the attestation data must be controlled (i.e., generated or at least verified) by the authenticator itself.
 
@@ -1411,8 +1418,8 @@ TPM <a>attestation certificate</a> MUST have the following fields/extensions:
 - The Basic Constraints extension MUST have the CA component set to false
 
 - An Authority Information Access (AIA) extension with entry `id-ad-ocsp` and a CRL Distribution Point extension [[RFC5280]] are
-    both optional as the status of many attestation certificates is available through metadata services. See, for example, the FIDO Metadata Service
-    [[FIDOMetadataService]].
+    both optional as the status of many attestation certificates is available through metadata services. 
+    See, for example, the FIDO Metadata Service [[FIDOMetadataService]].
 
 
 ## Android Attestation (type="android") ## {#android-attestation}
