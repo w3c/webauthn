@@ -1948,6 +1948,70 @@ credential. It is intended primarily for [RPS] that wish to tightly control the 
     </pre>
 
 
+## User Verification Mode (UVM) Extension ## {#uvm-extension}
+
+: Extension identifier
+:: `webauthn_uvm`
+
+: Client argument
+:: The Boolean value true to indicate that this extension is requested by the WebAuthn Relying Party.
+
+: Client processing
+:: None, except default forwarding of client argument to authenticator argument.
+
+: Authenticator argument
+:: The Boolean value `true`, encoded in CBOR (major type 7, value 21).
+
+: Authenticator processing
+:: The <a>authenticator</a> augments the authenticator data with a user verification index indicating the method used by the
+    user to authorize the operation, as defined below. This extension can be added to attestation statements and assertions.
+
+: Authenticator data
+:: Authenticators can report up to 3 different user verification methods (factors) used in a single authentication instance. 
+    To accommodate this possibility the UVM is encoded as CBOR array (major type 4) with a maximum allowed length of 3 -
+    * Type 0x81 – only 1 factor was used for authentication.
+    * Type 0x82 – 2 factors were used.
+    * Type 0x83 – 3 or more factors were used. 
+    
+    Each data item is in turn a CBOR array of length 3 (type 0x83) with the following data items:
+    - Data Item 1 – User Verification Method. This is the authentication method/factor used by the authenticator to verify 
+                    the user. Available values are defined in the FIDO Registry of Predefined Values, ‘User Verification 
+                    Methods’ section. It is encoded as a CBOR unsigned integer (Major type 0).
+    - Data Item 2 – Key Protection Type. This is the method used by the authenticator to protect the FIDO registration 
+                    private key material. Available values are defined in the FIDO Registry of Predefined Values, ‘Key 
+                    Protection Types’ section. It is encoded as a CBOR 2 byte unsigned short (Major type 0).
+    - Data Item 3 – Matcher Protection Type. This is the method used by the authenticator to protect the matcher that 
+		    performs user verification. Available values are defined in the FIDO Registry of Predefined Values, 
+		    ‘Matcher Protection Types’ section. It is encoded as a CBOR 2 byte unsigned short (Major type 0).
+
+    This is repeated for each factor used in the authentication instance.
+    
+    If >3 factors can be used in an authentication instance the authenticator vendor must select the 3 factors it believes 
+    will be most relevant to the Server to include in the UVM.
+
+    Servers supporting the UVM extension MUST support a length up to 36 bytes for a 3 factor maximum UVM value.  
+
+    Example for rawData containing one UVM extension for a multi-factor authentication instance where 2 factors were used:
+    <pre class="highlight">
+        F1 D0                  -- This is a WebAuthn packed rawData object
+        81                     -- TUP and ED set
+        00 00 00 01            -- (initial) signature counter
+        ...                    -- all public key alg etc.
+        A1                     -- extension: CBOR map of one element
+            6C                 -- Key 1: CBOR text string of 12 bytes
+                77 65 62 61 75 74 68 6E 2E 75 76 6d -- "webauthn_uvm" UTF-8 string
+            82                 -- Value 1: CBOR array of length 2 indicating two factor usage
+                83              -- Item 1: CBOR array of length 3
+                    02           -- Subitem 1: CBOR integer for User Verification Method Fingerprint 
+                    04           -- Subitem 2: CBOR short for Key Protection Type TEE
+                    02           -- Subitem 3: CBOR short for Matcher Protection Type TEE
+                83              -- Item 2: CBOR array of length 3
+                    04           -- Subitem 1: CBOR integer for User Verification Method Passcode 
+                    01           -- Subitem 2: CBOR short for Key Protection Type Software
+                    01           -- Subitem 3: CBOR short for Matcher Protection Type Software
+    </pre>
+
+
 # IANA Considerations # {#iana-considerations}
 
 This specification registers the algorithm names "S256", "S384", "S512", and "SM3" with the IANA JSON Web Algorithms registry as
