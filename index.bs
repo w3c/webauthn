@@ -18,6 +18,7 @@ Editor: Michael B. Jones, w3cid 38745, Microsoft, mbj@microsoft.com
 Editor: Rolf Lindemann, w3cid 84447, Nok Nok Labs, rolf@noknok.com
 Editor: J.C. Jones, w3cid 87240, Mozilla, jc@mozilla.com
 group: webauthn
+Issue Tracking: Github https://github.com/w3c/webauthn/issues
 Text Macro: RP Relying Party
 Text Macro: RPS Relying Parties
 Text Macro: INFORMATIVE <em>This section is not normative.</em>
@@ -130,7 +131,7 @@ or a combination of both.
 This specification relies on several other underlying specifications.
 
 : HTML5
-:: The concept of <dfn for='web'>origin</dfn> and the <dfn>Navigator/dfn> interface are defined in [[!HTML5]].
+:: The concept of <dfn for='web'>origin</dfn> and the <dfn>Navigator</dfn> interface are defined in [[!HTML5]].
 
 : Web IDL
 :: Many of the interface definitions and all of the IDL in this specification depend on [[!WebIDL-1]]. This updated version of
@@ -1013,26 +1014,26 @@ in the `clientData` member of the {{WebAuthnAssertion}} and {{WebAuthnAttestatio
 
 ## Credential Attestation Statements ## {#cred-attestation-stmts}
 
-An attestation statement is a specific type of signature, which contains statements about a credential itself and the
-authenticator that holds it. Therefore, the procedures for generating attestation statements closely parallel those for
-generating WebAuthn assertions as described in [[#signature-format]], though the semantics of the contextual bindings are quite
-different.
+An attestation statement is a specific type of signed data object, containing statements about a credential itself and the
+authenticator that created it. Therefore, the procedures for generating attestation statements closely parallel those for
+generating WebAuthn assertions, as described in [[#signature-format]], though the semantics of the contextual bindings differ.
 
-This specification defines a number of <dfn>attestation formats</dfn>, i.e., ways to serialize the data being attested to by an
-<a>Authenticator</a>. The reason is to be able to support existing devices such as TPMs and other platform-specific formats. 
-Each attestation format provides the ability to cryptographically attest to a public key, the authenticator model, and 
-contextual data to a remote party. They differ in the details of how the attestation statement is laid out, and how its 
-components are computed. The different attestation formats are defined in [[#defined-attestation-formats]].
+This specification defines several <dfn>attestation formats</dfn>&mdash;i.e., ways to serialize the data being attested to by an
+<a>Authenticator</a>&mdash;in [[#defined-attestation-formats]]. Several formats are defined in order to support existing devices
+such as TPMs and other platform-specific formats. Each attestation format provides the ability to cryptographically attest a
+public key, the authenticator model, and contextual data to a remote party. They differ in the details of how the attestation
+statement is laid out, and how its components are computed.
 
 This specification also defines a number of <dfn>attestation types</dfn>. These define how a [RP] establishes trust in a 
 particular attestation statement, after verifying that it is cryptographically valid.
 
 Attestation formats are orthogonal to attestation types, i.e. attestation formats in general are not restricted to a single
-attestation type. For example, the "packed" attestation format (see below) can be used in conjunction with all attestation types.
+attestation type. For example, the `packed` attestation format (see below) can be used in conjunction with all attestation
+types.
 Broadly speaking, attestation formats pertain to the formatting / encoding of the attestation statement
-rawData, while attestation types pertain to the semantics.
-The privacy, the security and the operational characteristic of attestation mainly depends 
-on the attestation type while it is largely independent from the attestation format. 
+rawData field, while attestation types pertain to the semantics.
+The privacy, security, and operational characteristics of attestation mainly depend 
+on the attestation type, while they are largely independent of the attestation format. 
 Specific privacy considerations are given in [[#sec-attestation-privacy]]. 
 
 <!-- Editors Note: differentiating section IDs from non-section IDs is useful because at times we need to seperately reference
@@ -1184,16 +1185,42 @@ used to help facilitate isolating problems with a specific version of a device.
 If the attestation root certificate is not dedicated to a single WebAuthn Authenticator device line (i.e., AAGUID), the AAGUID
 must be specified either in the attestation certificate itself or it must be specified in `rawData`.
 
+
+
 # Defined Attestation Formats # {#defined-attestation-formats}
 
-WebAuthn supports pluggable attestation data formats. This allows support of TPM generated attestation data as well as support
+WebAuthn supports pluggable attestation formats. This allows support of TPM-generated attestation data as well as support
 of other WebAuthn <a>authenticators</a>. As mentioned in [[#cred-attestation-stmts]], these differ in how the attestation
 statement is computed and formatted. This section defines these details.
 
 The contents of the attestation data must be controlled (i.e., generated or at least verified) by the authenticator itself.
 
+## Attestation Format Identifiers ## {#sctn-attstn-fmt-ids}
 
-## Packed Attestation ("packed") ## {#packed-attestation}
+Attestation formats are identified by a string, called a <dfn>attestation format identifier</dfn>, chosen by the attestation
+format author.
+
+Attestation format identifiers SHOULD be registered per [[WebAuthn-Registries]] "Registries for Web Authentication (WebAuthn)".
+All registered attestation format identifiers are unique amongst themselves as a matter of course.
+
+Unregistered attestation format identifiers SHOULD use reverse domain-name naming, using a domain
+name registered by the attestation type developer, in order to assure uniqueness of the identifier. 
+All attestation format identifiers MUST be a maximum of 32 octets in length and MUST
+consist only of printable USASCII characters, i.e., VCHAR as defined in [[!RFC5234]] (note: this means attestation format
+identifiers based on domain names MUST incorporate only LDH Labels [[!RFC5890]]). 
+Implementations MUST match WebAuthn attestation format identifiers in a case-insensitive fashion. 
+
+Attestation formats that may exist in multiple versions SHOULD include a version in their identifier. In effect, different
+versions are thus treated as different extensions, e.g., `packed2` as a new version of the `packed` attestation format.
+
+The following sections present a set of currently-defined and registered attestation formats and their identifiers. See the
+WebAuthn Attestation Format Identifier Registry defined in [[WebAuthn-Registries]] for an up-to-date list of registered WebAuthn
+Attestation Formats.
+
+## Packed Attestation Format ## {#packed-attestation}
+
+: Attestation format identifier:
+:: `packed`
 
 Packed attestation is a WebAuthn optimized format of attestation data. It uses a very compact but still extensible encoding
 method. Encoding this format can even be implemented by <a>authenticators</a> with very limited resources (e.g., secure
@@ -1391,11 +1418,13 @@ The attestation certificate MUST have the following fields/extensions:
     See, for example, the FIDO Metadata Service [[FIDOMetadataService]].
 
 
-## TPM Attestation ("tpm") ## {#tpm-attestation}
+## TPM Attestation Format ## {#tpm-attestation}
 
 This attestation format returns an attestation statement in the same format as defined in [[#packed-attestation]]. However, the
 `rawData` and `signature` fields are computed differently, as described below.
 
+: Attestation format identifier:
+:: `tpm`
 
 ### Attestation rawData ### {#sec-raw-data-tpm}
 
@@ -1450,11 +1479,15 @@ TPM <a>attestation certificate</a> MUST have the following fields/extensions:
     See, for example, the FIDO Metadata Service [[FIDOMetadataService]].
 
 
-## Android Attestation (type="android") ## {#android-attestation}
+## Android Attestation Format ## {#android-attestation}
 
 When the <a>Authenticator</a> in question is a platform-provided Authenticator on the Android platform, the attestation
 statement is based on the <a href="https://developer.android.com/training/safetynet/index.html#compat-check-response">SafetyNet
 API</a>.
+
+: Attestation format identifier:
+:: `android`
+
 
 This type of attestation statement is formatted as follows:
 
@@ -1578,16 +1611,28 @@ pass-through will produce a semantically invalid authenticator argument, resulti
 authenticator. Since all extensions are optional, this will not cause a functional failure in the API operation.
 
 
-## Extension identifiers ## {#extension-id}
+## Extension Identifiers ## {#extension-id}
 
-Extensions are identified by a string, chosen by the extension author. Extension identifiers should aim to be globally unique,
-e.g., by including the defining entity such as `myCompany_extension`.
+Extensions are identified by a string, called an <dfn>extension identifier</dfn>, chosen by the extension author. 
+
+Extension identifiers SHOULD be registered per [[WebAuthn-Registries]] "Registries for Web Authentication (WebAuthn)".
+All registered extension identifiers are unique amongst themselves as a matter of course.
+
+Unregistered extension identifiers should aim to be globally unique, e.g., by including the defining entity such as `myCompany_extension`.
+
+All extension identifiers MUST be a maximum of 32 octets in length and MUST
+consist only of printable USASCII characters, i.e., VCHAR as defined in [[!RFC5234]].
+Implementations MUST match WebAuthn extension identifiers in a case-insensitive fashion. 
 
 Extensions that may exist in multiple versions should take care to include a version in their identifier. In effect, different
 versions are thus treated as different extensions, e.g., `myCompany_extension_01`
 
 Extensions defined in this specification use a fixed prefix of `webauthn` for the extension identifiers. This prefix should not
 be used for extensions not defined by the W3C.
+
+[[#extension-predef]] defines an initial set of currently-defined and registered extensions their identifiers. See the WebAuthn
+Extension Identifiers Registry defined in [[WebAuthn-Registries]] for an up-to-date list of registered WebAuthn Extension
+Identifiers.
 
 
 ## Defining extensions ## {#extension-specification}
@@ -2263,6 +2308,17 @@ We thank the following for their contributions to, and thorough review of, this 
     "date": "2007"
   },
 
+  "WebAuthn-Registries": {
+    "authors": [
+        "Jeff Hodges"
+    ],
+    "date": "June 2016",
+    "href": "https://xml2rfc.tools.ietf.org/cgi-bin/xml2rfc.cgi?modeAsFormat=html/ascii&url=https://raw.githubusercontent.com/w3c/webauthn/master/draft-hodges-webauthn-registries.xml#46923110554855074732",
+    "publisher": "W3C WebAuthn Working Draft",
+    "status": "Active Internet-Draft",
+    "title": "Registries for Web Authentication (WebAuthn)",
+    "id": "WebAuthn-Registries"
+  },
 	
   "GeoJSON": {
     "title": "The GeoJSON Format Specification",
