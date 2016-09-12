@@ -324,7 +324,14 @@ created credential.
 This method takes the following parameters:
 
 - The <dfn>accountInformation</dfn> parameter specifies information about the user account for which the credential is being
-    created. This is meant for later use by the authenticator when it needs to prompt the user to select a credential.
+    created. This is meant for later use by the authenticator when it needs to prompt the user to select a credential. An
+    authenticator is only required to store one credential for any given value of {{accountInformation}}. Specifically, if an
+    authenticator already has a credential for the specified value of {{Account/id}} in {{accountInformation}}, and if this
+    credential is not listed in {{CredentialOptions/excludeList}}, then after successful execution of this method:
+    - Any calls to {{getAssertion()}} that do not specify {{AssertionOptions/allowList}} will not result in the older
+        credential being offered to the user.
+    - Any calls to {{getAssertion()}} that specify the older credential in the {{AssertionOptions/allowList}} may also not
+        result in it being offered to the user.
 
 - The <dfn>cryptoParameters</dfn> parameter supplies information about the desired properties of the credential to be created.
     The sequence is ordered from most preferred to least preferred. The platform makes a best effort to create the most
@@ -350,17 +357,17 @@ When this method is invoked, the user agent MUST execute the following algorithm
     part of |callerOrigin| [[PSL]]. Let |rpId| be the lowercase form of this RP ID. Set |rpIdHash| to the SHA-256 hash of the
     UTF-8 encoding of |rpId|.
 
-4. Process each element of <a>cryptoParameters</a> using the following steps, to produce a new sequence `normalizedParameters`:
+4. Process each element of <a>cryptoParameters</a> using the following steps, to produce a new sequence |normalizedParameters|:
     - Let |current| be the currently selected element of <a>cryptoParameters</a>.
     - If `current.type` does not contain a {{CredentialType}} supported by this implementation, then stop processing |current|
         and move on to the next element in <a>cryptoParameters</a>.
-    - Let `normalizedAlgorithm` be the result of normalizing an algorithm using the procedure defined in [[!WebCryptoAPI]],
+    - Let |normalizedAlgorithm| be the result of normalizing an algorithm using the procedure defined in [[!WebCryptoAPI]],
         with |alg| set to `current.algorithm` and |op| set to 'generateKey'. If an error occurs during this procedure, then
         stop processing |current| and move on to the next element in <a>cryptoParameters</a>.
-    - Add a new object of type {{ScopedCredentialParameters}} to `normalizedParameters`, with |type| set to `current.type` and
-        |algorithm| set to `normalizedAlgorithm`.
+    - Add a new object of type {{ScopedCredentialParameters}} to |normalizedParameters|, with |type| set to `current.type` and
+        |algorithm| set to |normalizedAlgorithm|.
 
-5. If <a>excludeList</a> is undefined, set it to the empty list.
+5. If {{CredentialOptions/excludeList}} is undefined, set it to the empty list.
 
 6. If {{CredentialOptions/extensions}} was specified, process any extensions supported by this client platform, to produce the
     extension data that needs to be sent to the authenticator. Call this data |clientExtensions|.
@@ -372,8 +379,8 @@ When this method is invoked, the user agent MUST execute the following algorithm
 8. Initialize |issuedRequests| to an empty list.
 
 9. For each authenticator currently available on this platform: asynchronously invoke the <a>authenticatorMakeCredential</a>
-    operation on that authenticator with |rpIdHash|, <a>clientDataHash</a>, <a>accountInformation</a>, `normalizedParameters`,
-    <a>excludeList</a> and |clientExtensions| as parameters. Add a corresponding entry to |issuedRequests|.
+    operation on that authenticator with |rpIdHash|, <a>clientDataHash</a>, {{accountInformation}}, |normalizedParameters|,
+    {{CredentialOptions/excludeList}} and |clientExtensions| as parameters. Add a corresponding entry to |issuedRequests|.
 
 10. While |issuedRequests| is not empty, perform the following actions depending upon the |adjustedTimeout| timer and responses
     from the authenticators:
@@ -436,10 +443,11 @@ When this method is invoked, the user agent MUST execute the following algorithm
 6. Initialize |issuedRequests| to an empty list.
 
 7. For each authenticator currently available on this platform, perform the following steps:
-    - If <a>allowList</a> is undefined or empty, let |credentialList| be an empty list. Otherwise, execute a platform-specific
-        procedure to determine which, if any, credentials listed in <a>allowList</a> might be present on this authenticator, and
-        set |credentialList| to this filtered list. If no such filtering is possible, set |credentialList| to an empty list.
-    - If the above filtering process concludes that none of the credentials on <a>allowList</a> can possibly be on this
+    - If {{AssertionOptions/allowList}} is undefined or empty, let |credentialList| be an empty list. Otherwise, execute a
+        platform-specific procedure to determine which, if any, credentials listed in {{AssertionOptions/allowList}} might be
+        present on this authenticator, and set |credentialList| to this filtered list. If no such filtering is possible, set
+        |credentialList| to an empty list.
+    - If the above filtering process concludes that none of the credentials on {{AssertionOptions/allowList}} can possibly be on this
         authenticator, do not perform any of the following steps for this authenticator, and proceed to the next authenticator
         (if any).
     - Asynchronously invoke the <a>authenticatorGetAssertion</a> operation on this authenticator with |rpIdHash|,
@@ -500,8 +508,8 @@ authorizing an authenticator with which to complete the operation.
     dictionary Account {
         required DOMString rpDisplayName;
         required DOMString displayName;
+        required DOMString id;
         DOMString          name;
-        DOMString          id;
         DOMString          imageURL;
     };
 </pre>
@@ -519,10 +527,11 @@ authorizing an authenticator with which to complete the operation.
     The <dfn>displayName</dfn> member contains the friendly name associated with the user account by the [RP], such as "John P.
     Smith".
 
-    The <dfn>name</dfn> member contains a detailed name for the account, such as "john.p.smith@example.com".
+    The <dfn>id</dfn> member contains an identifier for the account, specified by the [RP]. This is not meant to be displayed
+    to the user. It is used by the [RP] to control the number of credentials - an authenticator will never contain more than one
+    credential for a given [RP] under the same {{Account/id}}.
 
-    The <dfn>id</dfn> member contains an identifier for the account, stored for the use of the [RP]. This is not meant to be
-    displayed to the user.
+    The <dfn>name</dfn> member contains a detailed name for the account, such as "john.p.smith@example.com".
 
     The <dfn>imageURL</dfn> member contains a URL that resolves to the user's account image. This may be a URL that can be used
     to retrieve an image containing the user's current avatar, or a data URI that contains the image data.
@@ -833,10 +842,10 @@ When this operation is invoked, the authenticator obtains user consent for creat
 this consent is shown by the authenticator if it has its own output capability, or by the user agent otherwise. Once user 
 consent is obtained, the authenticator generates the appropriate cryptographic keys and creates a new credential. It also 
 generates an identifier for the credential, such that this identifier is globally unique with high probability across all 
-credentials with the same type across all authenticators. It then associates the credential with the specified RP ID hash such
-that it will be able to retrieve the RP ID hash later, given the credential ID. Finally, it generates an attestation statement
-that describes its own attributes as well as some attributes of the credential. For more details on attestation, see
-[[#cred-attestation-stmts]].
+credentials with the same type across all authenticators. It then associates the credential with the specified RP ID hash and
+the user's account {{Account/id}}. If the authenticator has an older credential with the same RP ID hash and {{Account/id}}, it
+deletes this older credential. Finally, the authenticator generates an attestation statement that describes its own attributes
+as well as some attributes of the credential. For more details on attestation, see [[#cred-attestation-stmts]].
 
 On successful completion of this operation, the authenticator returns the following to the client:
 
