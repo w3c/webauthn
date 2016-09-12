@@ -350,39 +350,45 @@ When this method is invoked, the user agent MUST execute the following algorithm
     If {{CredentialOptions/timeoutSeconds}} was not specified, then set |adjustedTimeout| to a platform-specific default.
 
 2. Let |promise| be a new <a data-lt="Promises">Promise</a>. Return |promise| and start a timer for |adjustedTimeout| seconds.
-    Then asynchronously continue executing the following steps.
+    Then asynchronously continue executing the following steps. If any fatal error is encountered in this process other than the
+    ones enumerated below, cancel the timer, reject |promise| with a DOMException whose name is "UnknownError", and terminate
+    this algorithm.
 
 3. Set |callerOrigin| to the <a link-for='web'>origin</a> of the caller. Derive the RP ID from |callerOrigin| by computing the
     "public suffix + 1" or "PS+1" (which is also referred to as the "Effective Top-Level Domain plus One" or "<a>eTLD+1</a>")
     part of |callerOrigin| [[PSL]]. Let |rpId| be the lowercase form of this RP ID. Set |rpIdHash| to the SHA-256 hash of the
     UTF-8 encoding of |rpId|.
 
-4. Process each element of <a>cryptoParameters</a> using the following steps, to produce a new sequence |normalizedParameters|:
-    - Let |current| be the currently selected element of <a>cryptoParameters</a>.
+4. Process each element of {{cryptoParameters}} using the following steps, to produce a new sequence |normalizedParameters|.
+    - Let |current| be the currently selected element of {{cryptoParameters}}.
     - If `current.type` does not contain a {{CredentialType}} supported by this implementation, then stop processing |current|
-        and move on to the next element in <a>cryptoParameters</a>.
+        and move on to the next element in {{cryptoParameters}}.
     - Let |normalizedAlgorithm| be the result of normalizing an algorithm using the procedure defined in [[!WebCryptoAPI]],
         with |alg| set to `current.algorithm` and |op| set to 'generateKey'. If an error occurs during this procedure, then
-        stop processing |current| and move on to the next element in <a>cryptoParameters</a>.
+        stop processing |current| and move on to the next element in {{cryptoParameters}}.
     - Add a new object of type {{ScopedCredentialParameters}} to |normalizedParameters|, with |type| set to `current.type` and
         |algorithm| set to |normalizedAlgorithm|.
 
-5. If {{CredentialOptions/excludeList}} is undefined, set it to the empty list.
+5. If |normalizedAlgorithm| is empty and {{cryptoParameters}} was not empty, cancel the timer started in step 2, reject
+    |promise| with a DOMException whose name is "NotSupportedError", and terminate this algorithm.
 
-6. If {{CredentialOptions/extensions}} was specified, process any extensions supported by this client platform, to produce the
-    extension data that needs to be sent to the authenticator. Call this data |clientExtensions|.
+6. If {{CredentialOptions/excludeList}} is undefined, set it to the empty list.
 
-7. Use {{attestationChallenge}}, |callerOrigin| and |rpId|, along with the token binding key associated with |callerOrigin| (if
+7. If {{CredentialOptions/extensions}} was specified, process any extensions supported by this client platform, to produce the
+    extension data that needs to be sent to the authenticator. If an error is encountered while processing an extension, skip
+    that extension and do not produce any extension data for it. Call the result of this processing |clientExtensions|.
+
+8. Use {{attestationChallenge}}, |callerOrigin| and |rpId|, along with the token binding key associated with |callerOrigin| (if
     any), to create a {{ClientData}} structure representing this request. Choose a hash algorithm for {{ClientData/hashAlg}} and
     compute the <a>clientDataJSON</a> and <a>clientDataHash</a>.
     
-8. Initialize |issuedRequests| to an empty list.
+9. Initialize |issuedRequests| to an empty list.
 
-9. For each authenticator currently available on this platform: asynchronously invoke the <a>authenticatorMakeCredential</a>
+10. For each authenticator currently available on this platform: asynchronously invoke the <a>authenticatorMakeCredential</a>
     operation on that authenticator with |rpIdHash|, <a>clientDataHash</a>, {{accountInformation}}, |normalizedParameters|,
     {{CredentialOptions/excludeList}} and |clientExtensions| as parameters. Add a corresponding entry to |issuedRequests|.
 
-10. While |issuedRequests| is not empty, perform the following actions depending upon the |adjustedTimeout| timer and responses
+11. While |issuedRequests| is not empty, perform the following actions depending upon the |adjustedTimeout| timer and responses
     from the authenticators:
     - If the |adjustedTimeout| timer expires, then for each entry in |issuedRequests| invoke the <a>authenticatorCancel</a>
         operation on that authenticator and remove its entry from the list.
@@ -398,7 +404,7 @@ When this method is invoked, the user agent MUST execute the following algorithm
             remove its entry from the list.
         - Resolve |promise| with |value| and terminate this algorithm.
 
-10. Resolve |promise| with a <a>DOMException</a> whose name is "NotFoundError", and terminate this algorithm.
+12. Reject |promise| with a <a>DOMException</a> whose name is "NotAllowedError", and terminate this algorithm.
 
 During the above process, the user agent SHOULD show some UI to the user to guide them in the process of selecting and
 authorizing an authenticator.
@@ -426,7 +432,9 @@ When this method is invoked, the user agent MUST execute the following algorithm
     If {{AssertionOptions/timeoutSeconds}} was not specified, then set |adjustedTimeout| to a platform-specific default.
 
 2. Let |promise| be a new <a data-lt="Promises">Promise</a>. Return |promise| and start a timer for |adjustedTimeout| seconds.
-    Then asynchronously continue executing the following steps.
+    Then asynchronously continue executing the following steps. If any fatal error is encountered in this process other than the
+    ones enumerated below, cancel the timer, reject |promise| with a DOMException whose name is "UnknownError", and terminate
+    this algorithm.
 
 3. Set |callerOrigin| to the <a link-for='web'>origin</a> of the caller. Derive the RP ID from |callerOrigin| by computing the
     "public suffix + 1" or "PS+1" (which is also referred to as the "Effective Top-Level Domain plus One" or "<a>eTLD+1</a>")
@@ -434,7 +442,8 @@ When this method is invoked, the user agent MUST execute the following algorithm
     UTF-8 encoding of |rpId|.
 
 4. If {{AssertionOptions/extensions}} was specified, process any extensions supported by this client platform, to produce the
-    extension data that needs to be sent to the authenticator. Call this data |clientExtensions|.
+    extension data that needs to be sent to the authenticator. If an error is encountered while processing an extension, skip
+    that extension and do not produce any extension data for it. Call the result of this processing |clientExtensions|.
 
 5. Use {{assertionChallenge}}, |callerOrigin| and |rpId|, along with the token binding key associated with |callerOrigin| (if
     any), to create a {{ClientData}} structure representing this request. Choose a hash algorithm for {{ClientData/hashAlg}} and
@@ -470,7 +479,7 @@ When this method is invoked, the user agent MUST execute the following algorithm
             remove its entry from the list.
         - Resolve |promise| with |value| and terminate this algorithm.
 
-9. Resolve |promise| with a <a>DOMException</a> whose name is "NotFoundError", and terminate this algorithm.
+9. Reject |promise| with a <a>DOMException</a> whose name is "NotAllowedError", and terminate this algorithm.
 
 During the above process, the user agent SHOULD show some UI to the user to guide them in the process of selecting and
 authorizing an authenticator with which to complete the operation.
