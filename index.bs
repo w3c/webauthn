@@ -222,19 +222,20 @@ NOT", "SHOULD", "SHOULD NOT", "RECOMMENDED",  "MAY", and
 
 : <dfn>Relying Party Identifier</dfn>
 : <dfn>RP ID</dfn>
-:: A Relying Party Identifier is derived from a <a>[RP]</a>'s web origin's hostname by computing the hostname's <a>eTLD+1</a>. 
+:: A Relying Party Identifier is derived from a <a>[RP]</a>'s web origin, and reflects the set of hosts that are allowed to
+    access a particular Scoped Credential. It is computed in one of two ways, depending on configuration. In strict mode, the RP
+    ID is equal to the RP's web origin. In relaxed mode, it is derived from the RP's hostname by computing the hostname's
+    <a>eTLD+1</a>. 
 
 : <dfn>Scoped Credential</dfn>
 :: Generically, a credential is data one entity presents to another in order to authenticate the former's identity [[RFC4949]].
-	A WebAuthn <em><a>scoped credential</a></em> is a <code>{ identifier, type }</code> pair identifying authentication
-	information established by the authenticator and the [RP], together, at <a>registration</a> time. 
-	The authentication information consists of an asymmetric key pair, where the public key portion is returned to the [RP]. who
-	stores it in conjunction with the present user's account.
-	The authenticator maps the private key to the [RP]'s <a>RP ID</a> and stores it. 
-	Subsequently, only that [RP], as identified by its <a>RP ID</a>, is able to employ the <a>scoped credential</a> in 
-	<a>authentication</a> ceremonies, via the <a>getAssertion()</a> method. 
-	The [RP] uses its copy of the stored public key to verify the resultant <a>WebAuthn Assertion</a>.
-
+    A WebAuthn <em><a>scoped credential</a></em> is a <code>{ identifier, type }</code> pair identifying authentication 
+    information established by the authenticator and the [RP], together, at <a>registration</a> time. The authentication 
+    information consists of an asymmetric key pair. The public key portion is returned to the [RP], who stores it in conjunction 
+    with the present user's account. The authenticator maps the private key to the [RP]'s <a>RP ID</a> and stores it. 
+    Subsequently, only that [RP], as identified by its <a>RP ID</a>, is able to employ the <a>scoped credential</a> in 
+    <a>authentication</a> ceremonies, via the <a>getAssertion()</a> method. The [RP] uses its copy of the stored public key to
+    verify the resultant <a>WebAuthn Assertion</a>.
 
 : <dfn>User Consent</dfn>
 :: User consent means the user agrees with what they are being asked, i.e., it encompasses reading and understanding prompts.
@@ -345,7 +346,8 @@ When this method is invoked, the user agent MUST execute the following algorithm
 2. Let |promise| be a new <a data-lt="Promises">Promise</a>. Return |promise| and start a timer for |adjustedTimeout| seconds.
     Then asynchronously continue executing the following steps.
 
-3. Set |callerOrigin| to the <a link-for='web'>origin</a> of the caller. Derive the RP ID from |callerOrigin| by computing the
+3. Set |callerOrigin| to the <a link-for='web'>origin</a> of the caller. If {{CredentialOptions/rpStrict}} was set to true or
+    not specified, then set the RP ID to |callerOrigin|. Otherwise, erive the RP ID from |callerOrigin| by computing the
     "public suffix + 1" or "PS+1" (which is also referred to as the "Effective Top-Level Domain plus One" or "<a>eTLD+1</a>")
     part of |callerOrigin| [[PSL]]. Let |rpId| be the lowercase form of this RP ID. Set |rpIdHash| to the SHA-256 hash of the
     UTF-8 encoding of |rpId|.
@@ -421,7 +423,8 @@ When this method is invoked, the user agent MUST execute the following algorithm
 2. Let |promise| be a new <a data-lt="Promises">Promise</a>. Return |promise| and start a timer for |adjustedTimeout| seconds.
     Then asynchronously continue executing the following steps.
 
-3. Set |callerOrigin| to the <a link-for='web'>origin</a> of the caller. Derive the RP ID from |callerOrigin| by computing the
+3. Set |callerOrigin| to the <a link-for='web'>origin</a> of the caller. If {{CredentialOptions/rpStrict}} was set to true or
+    not specified, then set the RP ID to |callerOrigin|. Otherwise, derive the RP ID from |callerOrigin| by computing the
     "public suffix + 1" or "PS+1" (which is also referred to as the "Effective Top-Level Domain plus One" or "<a>eTLD+1</a>")
     part of |callerOrigin| [[PSL]]. Let |rpId| be the lowercase form of this RP ID. Set |rpIdHash| to the SHA-256 hash of the
     UTF-8 encoding of |rpId|.
@@ -553,6 +556,7 @@ authorizing an authenticator with which to complete the operation.
 <pre class="idl">
     dictionary CredentialOptions {
         unsigned long                       timeoutSeconds;
+        boolean                             rpStrict;
         sequence < CredentialDescription >  excludeList;
         WebAuthnExtensions                  extensions;
     };
@@ -564,6 +568,10 @@ authorizing an authenticator with which to complete the operation.
 
     - The <dfn>timeoutSeconds</dfn> parameter specifies a time, in seconds, that the caller is willing to wait for the call to
         complete. This is treated as a hint, and may be overridden by the platform.
+
+    - The <dfn>rpStrict</dfn> parameter indicates whether the authenticator should use strict or relaxed mode when computing the
+        RP ID from the RP's origin. This determines whether the credential to be created will be accessible to all hosts in the
+        caller's registerable domain, or to that host only.
 
     - The <dfn>excludeList</dfn> parameter is intended for use by <a>[RPS]</a> that wish to limit the creation of multiple
         credentials for the same account on a single authenticator. The platform is requested to return an error if the new
@@ -610,6 +618,7 @@ user consent to a specific transaction. The structure of these signatures is def
 <pre class="idl">
     dictionary AssertionOptions {
         unsigned long                      timeoutSeconds;
+        boolean                            rpStrict;
         sequence < CredentialDescription > allowList;
         WebAuthnExtensions                 extensions;
     };
@@ -620,6 +629,10 @@ user consent to a specific transaction. The structure of these signatures is def
 
     - The optional <dfn>timeoutSeconds</dfn> parameter specifies a time, in seconds, that the caller is willing to wait for the
         call to complete. This is treated as a hint, and may be overridden by the platform.
+
+    - The <dfn>rpStrict</dfn> parameter indicates whether the authenticator should use only credentials that were created by the
+        calling origin for its exclusive use, or if it should use a credential that was created (possibly by a different origin)
+        for use by all origins within the caller's registerable domain.
 
     - The optional <dfn>allowList</dfn> member contains a list of credentials acceptable to the caller, in order of the caller's
         preference.
