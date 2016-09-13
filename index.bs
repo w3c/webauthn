@@ -815,9 +815,12 @@ defined in [[!WebCryptoAPI]].
 # WebAuthn Authenticator model # {#authenticator-model}
 
 The API defined in this specification implies a specific abstract functional model for an <a>authenticator</a>. This section
-describes the authenticator model. Client platforms may implement and expose this abstract model in any way desired. However,
-the behavior of the client's Web Authentication API implementation, when operating on the authenticators
-supported by that platform, MUST be indistinguishable from the behavior specified in [[#api]].
+describes the authenticator model. Client platforms may implement and expose this abstract model in any way desired. For
+instance, this abstract model does not define specific error codes or methods of returning them; however, it does define error
+behavior in terms of the needs of the client. Therefore, specific error codes are mentioned as a means of showing which error
+conditions must be distinguishable (or not) from each other in order to enable a compliant and secure client implementation.
+The overall requirement is that the behavior of the client's Web Authentication API implementation, when operating on the
+authenticators supported by that platform, MUST be indistinguishable from the behavior specified in [[#api]].
 
 In this abstract model, each authenticator stores some number of scoped credentials. Each scoped credential has an identifier
 which is unique (or extremely unlikely to be duplicated) among all scoped credentials. Each credential is also associated with a
@@ -847,22 +850,33 @@ input parameters:
     it should not create a new credential.
 - Extension data created by the client based on the extensions requested by the [RP].
 
-When this operation is invoked, the authenticator obtains user consent for creating a new credential. The prompt for obtaining 
-this consent is shown by the authenticator if it has its own output capability, or by the user agent otherwise. Once user 
-consent is obtained, the authenticator generates the appropriate cryptographic keys and creates a new credential. It also 
-generates an identifier for the credential, such that this identifier is globally unique with high probability across all 
-credentials with the same type across all authenticators. It then associates the credential with the specified RP ID hash and
-the user's account {{Account/id}}. If the authenticator has an older credential with the same RP ID hash and {{Account/id}}, it
-deletes this older credential. Finally, the authenticator generates an attestation statement that describes its own attributes
-as well as some attributes of the credential. For more details on attestation, see [[#cred-attestation-stmts]].
+When this operation is invoked, the authenticator must perform the following procedure:
+- Check if all the supplied parameters are syntactically well-formed and of the correct length. If not, return an error code
+    equivalent to UnknownError and terminate the operation.
+-  Check if at least one of the specified combinations of {{CredentialType}} and cryptographic parameters is supported. if not,
+    return an error code equivalent to NotSupportedError and terminate the operation.
+- Check if a credential matching any of the supplied {{Credential}} identifiers is present on this authenticator. If so, return
+    an error code equivalent to NotAllowedError and terminate the operation.
+- Prompt the user for consent to create a new credential. The prompt for obtaining this consent is shown by the authenticator
+    if it has its own output capability, or by the user agent otherwise. If the user denies consent, return an error code
+    equivalent to NotAllowedError and terminate the operation.
+- Once user consent has been obtained, generate a new credential object:
+    - Generate a set of cryptographic keys using the most preferred combination of {{CredentialType}} and cryptographic
+        parameters supported by this authenticator.
+    - Generate an identifier for this credential, such that this identifier is globally unique with high probability across all
+        credentials with the same type across all authenticators.
+    - Associate the credential with the specified RP ID hash and the user's account identifier {{Account/id}}.
+    - Delete any older credentials with the same RP ID hash and {{Account/id}} that are stored locally in the authenticator.
+- If any error occurred while creating the new credential object, return an error code equivalent to UnknownError and terminate
+    the operation.
+- Process all the supported extensions requested by the client, and generate an attestation statement. For more details on
+    attestation, see [[#cred-attestation-stmts]].
 
-On successful completion of this operation, the authenticator returns the following to the client:
+On successful completion of this operation, the authenticator must return the following to the client:
 
 - The type and unique identifier of the new credential.
 - The public key associated with the new credential.
 - The attestation statement, including information about the attestation format used.
-
-If the user refuses consent, the authenticator returns an appropriate error status to the client.
 
 
 ### The <dfn>authenticatorGetAssertion</dfn> operation ### {#op-get-assertion}
@@ -875,14 +889,23 @@ input parameters:
 - A list of credentials acceptable to the [RP] (possibly filtered by the client).
 - Extension data created by the client based on the extensions requested by the [RP].
 
-When this method is invoked, the authenticator allows the user to select a credential from among the credentials associated with
-that [RP] (as determined by an exact match of the RP ID hash) and matching the specified criteria, then obtains user consent
-for using that credential. The prompt for obtaining this consent may be shown by the authenticator if it has its own output
-capability, or by the user agent otherwise. Once a credential is selected and user consent is obtained, the authenticator
-computes a cryptographic signature using the credential's private key and constructs an assertion signature as specified in
-[[#signature-format]].
+When this method is invoked, the authenticator must perform the following procedure:
+- Check if all the supplied parameters are syntactically well-formed and of the correct length. If not, return an error code
+    equivalent to UnknownError and terminate the operation.
+- If a list of credentials was supplied by the client, filter it by removing those credentials that are not present on this
+    authenticator. If no list was supplied, create a list with all credentials stored for the caller's RP ID (as determined by
+    an exact match of the RP ID hash).
+- If the previous step resulted in an empty list, return an error code equivalent to NotAllowedError and terminate the
+    operation.
+- Prompt the user to select a credential from among the above list. Obtain user consent for using this credential. The prompt
+    for obtaining this consent may be shown by the authenticator if it has its own output capability, or by the user agent
+    otherwise.
+- Process all the supported extensions requested by the client, then generate a cryptographic signature using the private key of
+    the selected credential (as specified in [[#signature-format]]), and use it to construct an assertion.
+- If any error occurred while generating the assertion, return an error code equivalent to UnknownError and terminate the
+    operation.
 
-On successful completion, the authenticator returns to the user agent:
+On successful completion, the authenticator must return to the user agent:
 - The identifier of the credential used to generate the signature.
 - The <a>authenticatorData</a> used to generate the signature.
 - The signature itself.
