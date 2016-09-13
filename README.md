@@ -35,9 +35,20 @@ git clone --depth=1 --branch=master https://github.com/tabatkins/bikeshed.git ./
 pip install pygments
 pip install --editable ./bikeshed
 cp -R .spec-data/* ./bikeshed/bikeshed/spec-data
-````
+```
 
 # Continuous Integration & Branches
 
 This repository uses `.deploy-output.sh` to generate the Editor's Draft on the `gh-pages` branch upon every merge to `master`. In order to prevent failed merges during continuous integration, the formatted Editor's Draft should not be checked in to `master`, and it is in the `.gitignore` file.
 
+# Creating a new Working Draft
+
+To build a new WD and upload it to the W3C publishing system:
+- Make sure Bikeshed is installed locally
+- Edit the Bikeshed metadata to change the status from ED to WD (do not commit this change)
+- Build and upload the new draft with
+```
+bikeshed echidna -u USERNAME -p PASSWORD -d DECISION_URL
+```
+
+This will create a tarball of the HTML and images, and upload to Echidna. Status of the request can be tracked through the W3C API [as described in the Echidna documentation](https://github.com/w3c/echidna/wiki/How-to-use-Echidna).
