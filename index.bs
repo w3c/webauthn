@@ -588,7 +588,7 @@ authorizing an authenticator with which to complete the operation.
     interface WebAuthnAssertion {
         readonly attribute Credential  credential;
         readonly attribute ArrayBuffer clientData;
-        readonly attribute ArrayBuffer authenticatorData;
+        readonly attribute ArrayBuffer level2Data;
         readonly attribute ArrayBuffer signature;
     };
 </pre>
@@ -602,7 +602,7 @@ user consent to a specific transaction. The structure of these signatures is def
     The <dfn>clientData</dfn> member contains the parameters sent to the authenticator by the client, in serialized form. See
     [[#sec-client-data]] for the format of this parameter and how it is generated.
 
-    The <b><em>authenticatorData</em></b> member contains the serialized data returned by the authenticator. See
+    The <b><em>level2Data</em></b> member contains the serialized data returned by the authenticator. See
     [[#sec-authenticator-data]].
 
     The <dfn>signature</dfn> member contains the raw signature returned from the authenticator. See
@@ -656,8 +656,8 @@ with the extension identifier as the key, and the extension's value as the value
     interface WebAuthnAttestation {
         readonly    attribute USVString     format;
         readonly    attribute ArrayBuffer   clientData;
-        readonly    attribute ArrayBuffer   authenticatorData;
-        readonly    attribute any           statement;
+        readonly    attribute ArrayBuffer   level2Data; // was authenticatorData
+        readonly    attribute any           level1Data;  // was statement
     };
 </pre>
 
@@ -667,22 +667,22 @@ signature by an attesting key over the attested public key and a challenge, as w
 providing provenance information for the attesting key, enabling a trust decision to be made.
 
 <div dfn-for="WebAuthnAttestation">
-    The <dfn>format</dfn> member specifies the format of attestation statement contained in this structure. Attestation formats
+    The <dfn>format</dfn> member specifies the format of attestation level1Data contained in this structure. Attestation formats
     are defined in [[#attestation-formats]]. This specification supports a number of attestation formats, in
     [[#defined-attestation-formats]]. Other attestation formats may be defined in later versions of this specification.
 
     The <dfn>clientData</dfn> member contains the <a>clientDataJSON</a> (see [[#signature-format]]). The exact JSON encoding
     must be preserved as the hash (<a>clientDataHash</a>) has been computed over it.
 
-    The <b><em>authenticatorData</em></b> member contains the serialized data returned by the authenticator. See
+    The <b><em>level2Data</em></b> member contains the serialized data returned by the authenticator. See
     [[#sec-authenticator-data]].
 
-    The <dfn>statement</dfn> element contains the actual attestation statement. The structure of this object depends on the
+    The <dfn>level1Data</dfn> element contains the actual attestation statement. The structure of this object depends on the
     attestation format. For more details, see [[#cred-attestation-stmts]].
 </div>
 
 This attestation statement is delivered to the <a>[RP]</a> by the [RP]'s script running on the client, using methods outside
-the scope of this specification. It contains all the information that the [RP]'s server requires to validate the statement, as
+the scope of this specification. It contains all the information that the [RP]'s server requires to validate the level1Data, as
 well as to decode and validate the bindings of both the client and authenticator data.
 
 
@@ -881,7 +881,7 @@ computes a cryptographic signature using the credential's private key and constr
 
 On successful completion, the authenticator returns to the user agent:
 - The identifier of the credential used to generate the signature.
-- The <a>authenticatorData</a> used to generate the signature.
+- The <a>level2Data</a> used to generate the signature.
 - The signature itself.
 
 If the authenticator cannot find any credential corresponding to the specified [RP] that matches the specified criteria, it
@@ -1062,10 +1062,10 @@ The figure below shows a visual representation of the authenticator data structu
 
 <figure>
     <img src="images/fido-signature-formats-figure1.svg"/>
-    <figcaption><dfn>authenticatorData</dfn> layout.</figcaption>
+    <figcaption><dfn>level2Data</dfn> layout.</figcaption>
 </figure>
 
-Note: The `authenticatorData` describes its own length: If the AT and ED flags are not set, it is always 37 bytes long. If the
+Note: The `level2Data` describes its own length: If the AT and ED flags are not set, it is always 37 bytes long. If the
 AT flag is present, the attestation data describes its own length. If the ED flag is set, then the total length is 37 bytes plus
 the length of the attestation data, plus the length of the CBOR map that follows.
 
@@ -1073,19 +1073,19 @@ the length of the attestation data, plus the length of the CBOR map that follows
 ### Generating a signature ### {#authenticator-signature}
 
 A raw cryptographic signature must assert the integrity of both the client data and the authenticator data. Thus, an
-<a>authenticator</a> SHALL compute a signature over the concatenation of the |authenticatorData| and the <a>clientDataHash</a>.
+<a>authenticator</a> SHALL compute a signature over the concatenation of the |level2Data| and the <a>clientDataHash</a>.
 
 <figure id="fig-signature">
     <img src="images/fido-signature-formats-figure2.svg"/>
     <figcaption>Generating a signature on the authenticator.</figcaption>
 </figure>
 
-Note: A simple, undelimited concatenation is safe to use here because the |authenticatorData| describes its own length. The
+Note: A simple, undelimited concatenation is safe to use here because the |level2Data| describes its own length. The
     <a>clientDataHash</a> (which potentially has a variable length) is always the last element.
 
-The authenticator MUST return both the <a>authenticatorData</a> and the raw signature back to the client. The client, in turn,
-MUST return <a>clientDataJSON</a>, <a>authenticatorData</a> and the signature to the RP. The first two are returned in the
-`clientData` and `authenticatorData` members respectively of the {{WebAuthnAssertion}} and {{WebAuthnAttestation}} structures.
+The authenticator MUST return both the <a>level2Data</a> and the raw signature back to the client. The client, in turn,
+MUST return <a>clientDataJSON</a>, <a>level2Data</a> and the signature to the RP. The first two are returned in the
+`clientData` and `level2Data` members respectively of the {{WebAuthnAssertion}} and {{WebAuthnAttestation}} structures.
 
 
 ## Credential Attestation Statements ## {#cred-attestation-stmts}
@@ -1100,7 +1100,7 @@ authority. In order to correctly interpret an attestation statement, a [RP] need
     statement. Various existing devices and platforms (such as TPMs and the Android OS) have previously defined attestation
     formats. This specification supports a variety of such formats in an extensible way, as defined in [[#attestation-formats]].
 
-2. The <dfn>attestation type</dfn> defines the semantics of the attestation statement and its underlying trust model. It defines
+2. The <dfn>attestation type</dfn> defines the semantics of the attestation level1Data and its underlying trust model. It defines
     how a [RP] establishes trust in a particular attestation statement, after verifying that it is cryptographically valid. The
     privacy, security and operational characteristics of attestation depend mainly on the attestation type, and are largely
     independent of the attestation format.
@@ -1123,7 +1123,7 @@ set of contextual bindings. Each attestation format is defined by the following 
 
 - The set of attestation types supported by the format.
 
-- The syntax of an attestation statement produced in this format.
+- The syntax of an attestation level1Data produced in this format.
 
 - The procedure for computing an attestation statement in this format given the following:
     - The authenticator data for the attestation, created as per [[#sec-authenticator-data]]
@@ -1191,18 +1191,19 @@ Upon receiving an attestation statement in the form of a {{WebAuthnAttestation}}
 
 5. Verify that the {{ClientData/extensions}} in the {{ClientData}} is a proper subset of the extensions requested by the RP.
 
-6. Verify that the RP ID hash in the {{WebAuthnAttestation/authenticatorData}} is indeed the SHA-256 hash of the
+6. Verify that the RP ID hash in the {{WebAuthnAttestation/level2Data}} is indeed the SHA-256 hash of the
     {{ClientData/rpId}}.   
 
 7. Perform an <a>ASCII case-insensitive match</a> on {{WebAuthnAttestation/format}} to determine the attestation format.
 
 8. Look up the attestation root certificate or DAA root key from a trusted source. For example, the FIDO Metadata Service
     [[FIDOMetadataService]] provides one way to access such information. The AAGUID in the
-    {{WebAuthnAssertion/authenticatorData}} can be used for this lookup.
+    {{WebAuthnAssertion/level2Data}} can be used for this lookup.
     
 9. Using the verification process for the above attestation format, validate that the attestation
-    {{WebAuthnAttestation/statement}} is valid for the given {{WebAuthnAttestation/authenticatorData}},
+    {{WebAuthnAttestation/level1Data}} is valid for the given {{WebAuthnAttestation/level2Data}},
     {{WebAuthnAttestation/clientData}} and the above trust anchor.
+    Note: Depending on the metadata on the authenticator model, the level2Data might be controlled by the Client or by the Authenticator.
 
 The [RP] MAY take any of the below actions when verification of an attestation statement fails, according to its policy:
 
@@ -1317,7 +1318,7 @@ elements).
 :: All
 
 : Syntax
-:: A Packed Attestation statement has the following format:
+:: A Packed Attestation level1Data has the following format:
 
     <pre class="idl">
         interface PackedAttestation {
@@ -1358,14 +1359,14 @@ elements).
     - Verify that {{PackedAttestation/alg}} is "ED256" or "ED512".
     - Perform DAA-Verify on {{PackedAttestation/signature}} (see [[!FIDOEcdaaAlgorithm]]).
     - If {{PackedAttestation/x5c}} contains an extension with OID `1 3 6 1 4 1 45724 1 1 4` (id-fido-gen-ce-aaguid) verify that
-        the value of this extension matches the AAGUID in the {{WebAuthnAttestation/authenticatorData}}.
+        the value of this extension matches the AAGUID in the {{WebAuthnAttestation/level2Data}}.
     
     If neither {{PackedAttestation/x5c}} nor {{PackedAttestation/daaKey}} is present, self attestation is in use.
     - Verify the signature using the public key of the credential.
-    - Validate that {{PackedAttestation/alg}} matches the algorithm in {{WebAuthnAttestation/authenticatorData}}.
+    - Validate that {{PackedAttestation/alg}} matches the algorithm in {{WebAuthnAttestation/level2Data}}.
 
     
-### Packed attestation statement certificate requirements ### {#packed-attestation-cert-requirements}
+### Packed attestation level1Data certificate requirements ### {#packed-attestation-cert-requirements}
 
 The attestation certificate MUST have the following fields/extensions:
 
@@ -1401,7 +1402,7 @@ This attestation format is generally used by authenticators that use a Trusted P
 :: Privacy CA, DAA
 
 : Syntax
-:: A TPM Attestation statement has the following format:
+:: A TPM Attestation level1Data has the following format:
 
     <pre class="idl">
         interface TpmAttestation {
@@ -1435,7 +1436,7 @@ This attestation format is generally used by authenticators that use a Trusted P
     </div>
 
 : Signing procedure
-:: Concatenate the {{WebAuthnAttestation/authenticatorData}} and {{WebAuthnAttestation/clientData}} as specified in
+:: Concatenate the {{WebAuthnAttestation/level2Data}} and {{WebAuthnAttestation/clientData}} as specified in
     [[#authenticator-signature]]; let this be `attInput`.
     
     If using TPM version 1.2, generate a signature using the procedure specified in [[TPMv1-2-Part3]] Section 13.8 or
@@ -1452,9 +1453,9 @@ This attestation format is generally used by authenticators that use a Trusted P
         {{TpmAttestation/x5c}} with the algorithm specified in {{TpmAttestation/alg}}.
     - If {{TpmAttestation/tpmVersion}} is "1.2", verify that the {{TpmAttestation/certifyInfo}} contains a TPM_CERTIFY_INFO
         or TPM_CERTIFY_INFO2 structure with the `data` field set to the SHA-1 hash of the concatenation of
-        {{WebAuthnAttestation/authenticatorData}} and  {{WebAuthnAttestation/clientData}}. 
+        {{WebAuthnAttestation/level2Data}} and  {{WebAuthnAttestation/clientData}}. 
     - If {{TpmAttestation/tpmVersion}} is "2.0", verify that {{TpmAttestation/certifyInfo}} is a TPMS_ATTEST structure with the
-        `extraData` field set to the concatenation of {{WebAuthnAttestation/authenticatorData}} and
+        `extraData` field set to the concatenation of {{WebAuthnAttestation/level2Data}} and
         {{WebAuthnAttestation/clientData}}.
     - Verify that {{TpmAttestation/x5c}} correctly chains to the trust anchor provided.
     - Verify that {{TpmAttestation/x5c}} meets the requirements in [[#tpm-cert-requirements]].
@@ -1464,12 +1465,12 @@ This attestation format is generally used by authenticators that use a Trusted P
     - Perform DAA-Verify on {{TpmAttestation/signature}} to verify that it is over the {{TpmAttestation/certifyInfo}}
         (see [[!FIDOEcdaaAlgorithm]]). 
     - Verify that {{TpmAttestation/certifyInfo}} is a TPMS_ATTEST structure with the `extraData` field set to the concatenation
-        of {{WebAuthnAttestation/authenticatorData}} and {{WebAuthnAttestation/clientData}}.
+        of {{WebAuthnAttestation/level2Data}} and {{WebAuthnAttestation/clientData}}.
     - If {{TpmAttestation/x5c}} contains an extension with OID `1 3 6 1 4 1 45724 1 1 4` (id-fido-gen-ce-aaguid) verify that the
-        value of this extension matches the AAGUID in the {{WebAuthnAttestation/authenticatorData}}.
+        value of this extension matches the AAGUID in the {{WebAuthnAttestation/level2Data}}.
     
 
-### TPM attestation statement certificate requirements ### {#tpm-cert-requirements}
+### TPM attestation level1Data certificate requirements ### {#tpm-cert-requirements}
 
 TPM <a>attestation certificate</a> MUST have the following fields/extensions:
 
@@ -1492,18 +1493,56 @@ TPM <a>attestation certificate</a> MUST have the following fields/extensions:
 
 ## Android Attestation Format ## {#android-attestation}
 
-When the <a>Authenticator</a> in question is a platform-provided Authenticator on the Android platform, the attestation
-statement is based on the <a href="https://developer.android.com/training/safetynet/index.html#compat-check-response">SafetyNet
-API</a>.
+When the <a>Authenticator</a> in question is a platform-provided Authenticator on the Android "N" or later platform, the attestation level1Data is based on the Android key attestation <a href="https://developer.android.com/preview/api-overview.html#key_attestation">https://developer.android.com/preview/api-overview.html#key_attestation</a>.
 
 : Attestation format identifier
-:: android
+:: android-key
 
 : Attestation types supported
 :: Basic
 
 : Syntax
-:: An Android Attestation statement has the following format:
+:: An Android Attestation level1Data is a DER encoded X.509 certificate, see <a href="https://developer.android.com/training/articles/security-key-attestation.html">https://developer.android.com/training/articles/security-key-attestation.html</a>.
+
+
+: Signing procedure
+:: Concatenate the {{WebAuthnAttestation/level2Data}} and {{WebAuthnAttestation/clientData}} as specified in
+    [[#authenticator-signature]]; let this be `attInput`. Request a Android Key Attestation (i.e. calling "keyStore.getCertificateChain(myKeyUUID)") providing this as the challenge value (e.g. using "setAttestationChallenge").
+
+: Verification procedure
+:: If the attestation format is "android-key":
+    - Verify that the level2Data is issued by a valid attestation certificate being chained to a trusted attestation root certificate.
+
+    - Check that `level1Data.KeyDescription.attestationChallenge` equals the attestationChallenge that was passed into the
+        {{makeCredential()}} call.  
+
+    - Check that the {{ClientData/origin}} and {{ClientData/tokenBinding}} parameters in the `AndroidAttestationClientData` match
+        the [RP] App.
+
+    - Check that `level1Data.publicKey` is the same key as the one returned in the `ScopedCredentialInfo` by the
+        `makeCredential` call.
+
+    - Check that `level1Data.AuthorizationList.allApplications` is <em>not</em> present, since ScopedCredentials must be bound to the rpId.
+
+    - Check that `level1Data.AuthorizationList.origin == KM_TAG_GENERATED`, that `level1Data.AuthorizationList.purpose == KM_PURPOSE_SIGN`, that `level1Data.AuthorizationList.keySize` and `level1Data.AuthorizationList.digest` are acceptable, that `level1Data.authType` only contains acceptable user verification methods, that `level1Data.AuthorizationList.authTimeout == 0` or is <em>not</em> present, and that `level1Data.AuthorizationList.noAuthRequired` is <em>not</em> present.
+
+    Note: the level2Data is controlled by the Client and <i>not</i> by the authenticator.
+
+
+## Android SafetyNet Attestation Format ## {#android-safetynet-attestation}
+
+When the <a>Authenticator</a> in question is a platform-provided Authenticator on the Android platform, the attestation
+level1Data is based on the <a href="https://developer.android.com/training/safetynet/index.html#compat-check-response">SafetyNet
+API</a>.
+
+: Attestation format identifier
+:: android-safetynet
+
+: Attestation types supported
+:: Basic
+
+: Syntax
+:: An Android Attestation level1Data has the following format:
 
     <pre class="idl">
         interface AndroidAttestation {
@@ -1522,7 +1561,7 @@ API</a>.
     </div>
 
 : Signing procedure
-:: Concatenate the {{WebAuthnAttestation/authenticatorData}} and {{WebAuthnAttestation/clientData}} as specified in
+:: Concatenate the {{WebAuthnAttestation/level2Data}} and {{WebAuthnAttestation/clientData}} as specified in
     [[#authenticator-signature]]; let this be `attInput`. Request a SafetyNet attestation, providing this as the nonce value.
 
 : Verification procedure
@@ -1557,7 +1596,7 @@ an authentication extension. Extensions can define additions to the following st
 
 - Client processing, and the {{ClientData}} structure, for registration extensions and authentication extensions.
 
-- Authenticator processing, and the <a>authenticatorData</a> structure, for registration extensions and authentication
+- Authenticator processing, and the <a>level2Data</a> structure, for registration extensions and authentication
     extensions.
 
 When requesting an assertion for a scoped credential, a [RP] can list a set of extensions to be used, if they are supported by
@@ -1568,7 +1607,7 @@ extension. In addition, the client collects the authenticator arguments for the 
 authenticator in the <a>authenticatorMakeCredential</a> call (for registration extensions) or <a>authenticatorGetAssertion</a>
 call (for authentication extensions). These authenticator arguments are passed as name-value pairs, with the extension
 identifier as the name, and the corresponding authenticator argument as the value. The authenticator, in turn, performs
-additional processing for the extensions that it supports, and augments |authenticatorData| as specified by the extension.
+additional processing for the extensions that it supports, and augments |level2Data| as specified by the extension.
 
 All WebAuthn extensions are optional for both clients and authenticators. Thus, any extensions requested by a [RP] may be
 ignored by the client browser or OS and not passed to the authenticator at all, or they may be ignored by the authenticator.
@@ -1611,13 +1650,13 @@ Identifiers.
 
 A definition of an extension must specify, at minimum, an extension identifier and an extension client argument sent via the
 {{getAssertion()}} or {{makeCredential()}} call. Additionally, extensions may specify additional values in {{ClientData}}, 
-`authenticatorData` (in the case of authentication extensions), or both. Finally, if the extension requires any authenticator 
+`level2Data` (in the case of authentication extensions), or both. Finally, if the extension requires any authenticator 
 processing, it must also specify an authenticator argument to be sent via the <a>authenticatorGetAssertion</a> or 
 <a>authenticatorMakeCredential</a> call.
 
 Any extension that requires client processing MUST specify a method of augmenting {{ClientData}} that unambiguously lets the
 [RP] know that the extension was honored by the client. Similarly, any extension that requires authenticator processing MUST
-specify a method of augmenting `authenticatorData` to let the [RP] know that the extension was honored by the authenticator.
+specify a method of augmenting `level2Data` to let the [RP] know that the extension was honored by the authenticator.
 
 
 ## Extending request parameters ## {#extension-request-parameters}
@@ -1669,10 +1708,10 @@ the authenticator argument.
 
 Extensions that define additional authenticator processing may similarly define an authenticator data value. The value may be
 any data that can be encoded in CBOR. An authenticator that processes an authentication extension that defines such a value must
-include it in the `authenticatorData`.
+include it in the `level2Data`.
 
 As specified in [[#sec-authenticator-data]], the authenticator data value of each processed extension is included in the
-extended data part of the `authenticatorData`. This part is a CBOR map, with extension identifiers as keys, and the
+extended data part of the `level2Data`. This part is a CBOR map, with extension identifiers as keys, and the
 authenticator data value of each extension as the value.
 
 
@@ -1713,7 +1752,7 @@ The extension also requires the client to set the authenticator parameter to the
 
 Finally, the extension requires the authenticator to specify its geolocation in the authenticator data, if known. The extension
 e.g. specifies that the location shall be encoded as a two-element array of floating point numbers, encoded with CBOR. An
-authenticator does this by including it in the `authenticatorData`. As an example, authenticator data may be as follows
+authenticator does this by including it in the `level2Data`. As an example, authenticator data may be as follows
 (notation taken from [[RFC7049]]):
 
 <pre class="highlight">
