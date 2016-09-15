@@ -5,8 +5,8 @@ STATUS=`git log -1 --pretty=oneline`
 rm -rf out
 mkdir out
 cp index.html ./out/
-mkdir ./out/img
-cp img/* ./out/img
+mkdir ./out/images
+cp images/* ./out/images
 
 cd out
 git init
