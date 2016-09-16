@@ -493,7 +493,7 @@ authorizing an authenticator with which to complete the operation.
     The <dfn>publicKey</dfn> attribute contains the public key associated with the credential, represented as a
     CryptoKey object as defined in [[WebCryptoAPI#cryptokey-interface]].
 
-    The <dfn>attestation</dfn> attribute contains a key attestation statement returned by the authenticator. This provides
+    The <dfn>attestation</dfn> attribute contains an attestation statement returned by the authenticator. This provides
     information about the credential and the authenticator it is held in, such as the level of security assurance provided by
     the authenticator.
 </div>
@@ -582,7 +582,7 @@ authorizing an authenticator with which to complete the operation.
 </div>
 
 
-## WebAuthn Assertion (interface <dfn interface>WebAuthnAssertion</dfn>) ## {#iface-assertion}
+## Web Authentication Assertion (interface <dfn interface>WebAuthnAssertion</dfn>) ## {#iface-assertion}
 
 <pre class="idl">
     interface WebAuthnAssertion {
@@ -650,14 +650,14 @@ If the caller wants to pass extensions to the platform, it SHOULD do so by addin
 with the extension identifier as the key, and the extension's value as the value (see [[#signature-format]] for details).
 
 
-## Credential Attestation Statement (interface <dfn interface>WebAuthnAttestation</dfn>) ## {#iface-attestation}
+## Credential Attestation Structure (interface <dfn interface>WebAuthnAttestation</dfn>) ## {#iface-attestation}
 
 <pre class="idl">
     interface WebAuthnAttestation {
         readonly    attribute USVString     format;
         readonly    attribute ArrayBuffer   clientData;
         readonly    attribute ArrayBuffer   authenticatorData;
-        readonly    attribute any           statement;
+        readonly    attribute any           attestation;
     };
 </pre>
 
@@ -677,11 +677,11 @@ providing provenance information for the attesting key, enabling a trust decisio
     The <b><em>authenticatorData</em></b> member contains the serialized data returned by the authenticator. See
     [[#sec-authenticator-data]].
 
-    The <dfn>statement</dfn> element contains the actual attestation statement. The structure of this object depends on the
+    The <dfn>attestation</dfn> element contains the actual attestation statement. The structure of this object depends on the
     attestation format. For more details, see [[#cred-attestation-stmts]].
 </div>
 
-This attestation statement is delivered to the <a>[RP]</a> by the [RP]'s script running on the client, using methods outside
+This attestation structure is delivered to the <a>[RP]</a> by the [RP]'s script running on the client, using methods outside
 the scope of this specification. It contains all the information that the [RP]'s server requires to validate the statement, as
 well as to decode and validate the bindings of both the client and authenticator data.
 
@@ -747,7 +747,7 @@ This structure is used by the client to compute the following quantities:
 <div dfn-for="CredentialType">
     This enumeration defines the valid credential types. It is an extension point; values may be added to it in the future, as
     more credential types are defined. The values of this enumeration are used for versioning the WebAuthn assertion and
-    attestation statement according to the type of the authenticator.
+    attestation structures according to the type of the authenticator.
 
     Currently one credential type is defined, namely "<dfn>ScopedCred</dfn>".
 </div>
@@ -857,7 +857,7 @@ On successful completion of this operation, the authenticator returns the follow
 
 - The type and unique identifier of the new credential.
 - The public key associated with the new credential.
-- The attestation statement, including information about the attestation format used.
+- The fields of the attestation structure {{WebAuthnAttestation}}, including information about the attestation format used.
 
 If the user refuses consent, the authenticator returns an appropriate error status to the client.
 
@@ -918,7 +918,10 @@ The components of a system using WebAuthn can be divided into three layers:
 
 3. The <a>Authenticator</a> itself, which provides key management and cryptographic signatures. This may be embedded in the
     WebAuthn client, or housed in a separate device entirely. In the latter case, the interface between the WebAuthn client and
-    the authenticator is a separately-defined protocol.
+    the authenticator is a separately-defined protocol. The authenticator may itself contain a cryptographic module which
+    operates at a higher security level than the rest of the authenticator. This is particularly important for authenticators
+    that are embedded in the WebAuthn client, as in those cases this cryptographic module (which may, for example, be a TPM)
+    could be considered more trustworthy than the rest of the authenticator.
     
 This specification defines the common signature format shared by all the above layers. This includes how the different 
 contextual bindings are encoded, signed over, and delivered to the RP. 
@@ -944,11 +947,15 @@ of this <a>clientDataHash</a>, and its own authenticator data.
 
 ### Authenticator data ### {#sec-authenticator-data}
 
-The authenticator data encodes contextual bindings made by the <a>authenticator</a> itself. These bindings are controlled
-(generated or at least verified) by the authenticator itself, and derive their trust from the [RP]'s assessment of the security
-of the authenticator. The authenticator data has a compact but extensible encoding. This is desired since authenticators can be
-devices with limited capabilities and low power requirements, with much simpler software stacks than the client platform
-components.
+The <dfn lt='authenticatorData'>authenticator data</dfn> encodes contextual bindings made by the <a>authenticator</a> itself.
+These bindings are controlled by the authenticator itself, and derive their trust from the [RP]'s assessment of the security of
+the authenticator. In one extreme case, the authenticator may be embedded in the client, and its bindings may be no more
+trustworthy than the {{ClientData}}. At the other extreme, the authenticator may be a discrete entity with high-security
+hardware and software, connected to the client over a secure channel. In both cases, the [RP] receives the authenticator data in
+the same format, and uses its knowledge of the authenticator to make trust decisions.
+
+The authenticator data has a compact but extensible encoding. This is desired since authenticators can be devices with limited
+capabilities and low power requirements, with much simpler software stacks than the client platform components.
 
 The encoding of authenticator data is a byte array of 37 bytes or more, as follows.
 
@@ -980,8 +987,8 @@ The encoding of authenticator data is a byte array of 37 bytes or more, as follo
     <tr>
         <td>variable (if present)</td>
         <td>
-            Attestation data (if present). See below for details. Its length n depends on the length of the public key and
-            credential ID of the credential being attested.
+            Attestation data (if present). See [[#generating-an-attestation-statement]] for details. Its length n depends on the
+            length of the public key and credential ID of the credential being attested.
         </td>
     </tr>
     <tr>
@@ -993,21 +1000,151 @@ The encoding of authenticator data is a byte array of 37 bytes or more, as follo
     </tr>
 </table>
 
-Note that the RP ID hash is originally received from the client when the credential is created, and again when an assertion is
-generated. However, it differs from other client data in some important ways. First, unlike the client data, the RP ID of a
-credential does not change between operations but instead remains the same for the lifetime of that credential. Secondly, it is
-validated by the authenticator during the <a>authenticatorGetAssertion</a> operation, by making sure that the RP ID hash
-associated with the requested credential exactly matches the RP ID hash supplied by the client. These differences also explain
-why the RP ID hash is always a SHA-256 hash instead of being crypto-agile like the <a>clientDataHash</a>; for a given RP ID, we
-need the hash to be computed the same way by all clients for all operations so that authenticators can roam among clients
-without losing interoperability.
+The RP ID hash is originally received from the client when the credential is created, and again when an assertion is generated.
+However, it differs from other client data in some important ways. First, unlike the client data, the RP ID of a credential does
+not change between operations but instead remains the same for the lifetime of that credential. Secondly, it is validated by the
+authenticator during the <a>authenticatorGetAssertion</a> operation, by making sure that the RP ID hash associated with the
+requested credential exactly matches the RP ID hash supplied by the client. These differences also explain why the RP ID hash is
+always a SHA-256 hash instead of being crypto-agile like the <a>clientDataHash</a>; for a given RP ID, we need the hash to be
+computed the same way by all clients for all operations so that authenticators can roam among clients without losing
+interoperability.
 
 The `TUP` flag SHALL be set if and only if the authenticator detected a user through an authenticator specific gesture. The
 `RFU` bits in the flags byte SHALL be set to zero.
 
 For attestation signatures, the authenticator MUST set the AT flag and include the attestation data. For authentication
-signatures, the AT flag MUST NOT be set and the attestation data MUST NOT be included. The attestation data, if present, MUST be
-in the following format:
+signatures, the AT flag MUST NOT be set and the attestation data MUST NOT be included.
+
+If the authenticator does not include any extension data, it MUST set the `ED` flag in the first byte to zero, and to one if
+extension data is included.
+
+The figure below shows a visual representation of the authenticator data structure.
+
+<figure>
+    <img src="images/fido-signature-formats-figure1.svg"/>
+    <figcaption><a>authenticatorData</a> layout.</figcaption>
+</figure>
+
+Note that the <a>authenticatorData</a> describes its own length: If the AT and ED flags are not set, it is always 37 bytes long.
+The attestation data (which is only present if the AT flag is set) describes its own length. If the ED flag is set, then the
+total length is 37 bytes plus the length of the attestation data, plus the length of the CBOR map that follows.
+
+
+### Generating a signature ### {#authenticator-signature}
+
+A raw cryptographic signature must assert the integrity of both the client data and the authenticator data. Thus, an
+<a>authenticator</a> SHALL compute a signature over the concatenation of the <a>authenticatorData</a> and the
+<a>clientDataHash</a>.
+
+<figure id="fig-signature">
+    <img src="images/fido-signature-formats-figure2.svg"/>
+    <figcaption>Generating a signature on the authenticator.</figcaption>
+</figure>
+
+A simple, undelimited concatenation is safe to use here because the <a>authenticatorData</a> describes its own length. The
+<a>clientDataHash</a> (which potentially has a variable length) is always the last element.
+
+The authenticator MUST return both the <a>authenticatorData</a> and the raw signature back to the client. The client, in turn,
+MUST return <a>clientDataJSON</a>, <a>authenticatorData</a> and the signature to the RP. The first two are returned in the
+`clientData` and `authenticatorData` members respectively of the {{WebAuthnAssertion}} and {{WebAuthnAttestation}} structures.
+
+
+## Credential Attestation Statements ## {#cred-attestation-stmts}
+
+An attestation statement is a specific type of signed data object, containing statements about a credential itself and the
+authenticator that created it. It is created using the process described in [[#signature-format]], with the important difference
+that the signature is generated not using the private key associated with the credential but using the key of the attesting
+authority. In order to correctly interpret an attestation statement, a [RP] needs to understand two aspects of the attestation:
+
+1. The <dfn>attestation format</dfn> is the manner in which the signature is represented and the various contextual bindings are
+    incorporated into the attestation statement by the <a>Authenticator</a>. In other words, this defines the syntax of the
+    statement. Various existing devices and platforms (such as TPMs and the Android OS) have previously defined attestation
+    formats. This specification supports a variety of such formats in an extensible way, as defined in [[#attestation-formats]].
+
+2. The <dfn>attestation type</dfn> defines the semantics of the attestation statement and its underlying trust model. It defines
+    how a [RP] establishes trust in a particular attestation statement, after verifying that it is cryptographically valid.
+
+In general, there is no simple mapping between attestation formats and attestation types. For example the "packed" attestation
+format defined in [[#packed-attestation]] can be used in conjunction with all attestation types, while other formats and types
+have more limited applicability.
+
+The privacy, security and operational characteristics of attestation depend on:
+- The attestation type, which determines the trust model,
+- The attestation format, which may constrain the strength of the attestation by limiting what can be expressed in an
+    attestation statement, and
+- The characteristics of the individual authenticator, such as its construction, whether part or all of it runs in a secure
+    operating environment, and so on.
+
+It is expected that most authenticators will support a small number of attestation types and formats, while [RPS] will decide
+what attestation types are acceptable to them by policy. [RPS] will also need to understand the characteristics of the
+authenticators that they trust, based on information they have about these authenticators. For example, the FIDO Metadata
+Service [[FIDOMetadataService]] provides one way to access such information.
+
+
+### Attestation Formats ### {#attestation-formats}
+
+As described above, an attestation format is a data format which represents a cryptographic signature by an authenticator over a
+set of contextual bindings. Each attestation format is defined by the following attributes:
+
+- The name of the format, used to identify it in a {{WebAuthnAttestation}} structure. This MUST be an ASCII string, and MUST
+    NOT be an <a>ASCII case-insensitive match</a> for the name of any other attestation format.
+
+- The set of attestation types supported by the format.
+
+- The syntax of an attestation statement produced in this format.
+
+- The procedure for computing an attestation statement in this format given the <a>attToBeSigned</a> for the attestation,
+    created as per [[#generating-an-attestation-statement]].
+
+- The procedure for verifying an attestation statement, which takes the following:
+    - The authenticator data claimed to have been used for the attestation
+    - The <a>clientDataHash</a> of the client's contextual bindings
+    - A trust anchor (a root certificate, a DAA root key or the public key of the credential itself)
+
+    and returns a Boolean value indicating whether the attestation is cryptographically valid, and if so the attestation type.
+
+The initial list of supported formats is in [[#defined-attestation-formats]].
+
+
+<!-- Editors Note: differentiating section IDs from non-section IDs is useful because at times we need to seperately reference
+     different things having the same nominal name, eg attestation-types-the-section, and attestation-types-the-definition -->
+### Attestation Types ### {#sctn-attestation-types}
+
+WebAuthn supports multiple attestation types:
+
+: <dfn>Basic Attestation</dfn>
+:: In the case of basic attestation [[UAFProtocol]], the Authenticator's attestation private key is specific to an
+    Authenticator model.  That means that an Authenticator of the same model typically shares the same attestation private key.
+    This model is also used for FIDO UAF 1.0 and FIDO U2F 1.0.
+
+: <dfn>Self Attestation</dfn>
+:: In the case of self attestation, also known as surrogate basic attestation [[UAFProtocol]], the Authenticator doesn't have
+    any specific attestation key. Instead it uses the authentication key itself to sign the attestation statement.
+    Authenticators without meaningful protection measures for an attestation private key typically use this attestation type.
+
+: <dfn>Privacy CA</dfn>
+:: In this case, the Authenticator owns an authenticator-specific (endorsement) key. This key is used to securely communicate
+    with a trusted third party, the Privacy CA.  The Authenticator can generate multiple attestation key pairs and asks the
+    Privacy CA to issue an attestation certificate for it. Using this approach, the Authenticator can limit the exposure of the
+    endorsement key (which is a global correlation handle) to Privacy CA(s). Attestation keys can be requested for each scoped
+    credential individually.
+
+    Note: This concept typically leads to multiple attestation certificates. The attestation certificate requested most recently
+        is called "active".
+
+: <dfn>Direct Anonymous Attestation</dfn> (DAA)
+:: In this case, the Authenticator receives DAA credentials from a single DAA-Issuer. These DAA credentials are used along with
+    blinding to sign the attestation data. The concept of blinding avoids the DAA credentials being misused as global
+    correlation handle. WebAuthn supports DAA using elliptic curve cryptography and bilinear pairings, called ECDAA (see
+    [[FIDOEcdaaAlgorithm]]) in this specification.
+
+
+### Generating an Attestation Statement ### {#generating-an-attestation-statement}
+
+This section specifies the algorithm for generating an attestation statement, independent of <a>attestation format</a>.
+
+When requested to generate an attestation statement for a given credential using a particular <a>attestation format</a>, the
+authenticator MUST first generate an <a>authenticatorData</a> structure, with the attestation data field populated as follows:
 
 <table class="complex data longlastcol">
     <tr>
@@ -1055,127 +1192,14 @@ in the following format:
     </tr>
 </table>
 
-If the authenticator does not include any extension data, it MUST set the `ED` flag in the first byte to zero, and to one if
-extension data is included.
-
-The figure below shows a visual representation of the authenticator data structure.
-
-<figure>
-    <img src="images/fido-signature-formats-figure1.svg"/>
-    <figcaption><dfn>authenticatorData</dfn> layout.</figcaption>
-</figure>
-
-Note: The `authenticatorData` describes its own length: If the AT and ED flags are not set, it is always 37 bytes long. If the
-AT flag is present, the attestation data describes its own length. If the ED flag is set, then the total length is 37 bytes plus
-the length of the attestation data, plus the length of the CBOR map that follows.
-
-
-### Generating a signature ### {#authenticator-signature}
-
-A raw cryptographic signature must assert the integrity of both the client data and the authenticator data. Thus, an
-<a>authenticator</a> SHALL compute a signature over the concatenation of the |authenticatorData| and the <a>clientDataHash</a>.
-
-<figure id="fig-signature">
-    <img src="images/fido-signature-formats-figure2.svg"/>
-    <figcaption>Generating a signature on the authenticator.</figcaption>
-</figure>
-
-Note: A simple, undelimited concatenation is safe to use here because the |authenticatorData| describes its own length. The
-    <a>clientDataHash</a> (which potentially has a variable length) is always the last element.
-
-The authenticator MUST return both the <a>authenticatorData</a> and the raw signature back to the client. The client, in turn,
-MUST return <a>clientDataJSON</a>, <a>authenticatorData</a> and the signature to the RP. The first two are returned in the
-`clientData` and `authenticatorData` members respectively of the {{WebAuthnAssertion}} and {{WebAuthnAttestation}} structures.
-
-
-## Credential Attestation Statements ## {#cred-attestation-stmts}
-
-An attestation statement is a specific type of signed data object, containing statements about a credential itself and the
-authenticator that created it. It is created using the process described in [[#signature-format]], with the important difference
-that the signature is generated not using the private key associated with the credential but using the key of the attesting
-authority. In order to correctly interpret an attestation statement, a [RP] needs to understand two aspects of the attestation:
-
-1. The <dfn>attestation format</dfn> is the manner in which the signature is represented and the various contextual bindings are
-    serialized into the attestation statement by the <a>Authenticator</a>. In other words, this defines the syntax of the
-    statement. Various existing devices and platforms (such as TPMs and the Android OS) have previously defined attestation
-    formats. This specification supports a variety of such formats in an extensible way, as defined in [[#attestation-formats]].
-
-2. The <dfn>attestation type</dfn> defines the semantics of the attestation statement and its underlying trust model. It defines
-    how a [RP] establishes trust in a particular attestation statement, after verifying that it is cryptographically valid. The
-    privacy, security and operational characteristics of attestation depend mainly on the attestation type, and are largely
-    independent of the attestation format.
-
-In general, there is no simple mapping between attestation formats and attestation types. For example the "packed" attestation
-format defined in [[#packed-attestation]] can be used in conjunction with all attestation types, while other formats and types
-have more limited applicability.
-
-It is expected that most authenticators will support a small number of attestation types and formats, while [RPS] will decide
-what attestation types are acceptable to them by policy.
-
-
-### Attestation Formats ### {#attestation-formats}
-
-As described above, an attestation format is a data format which represents a cryptographic signature by an authenticator over a
-set of contextual bindings. Each attestation format is defined by the following attributes:
-
-- The name of the format, used to identify it in a {{WebAuthnAttestation}} structure. This MUST be an ASCII string, and MUST
-    NOT be an <a>ASCII case-insensitive match</a> for the name of any other attestation format.
-
-- The set of attestation types supported by the format.
-
-- The syntax of an attestation statement produced in this format.
-
-- The procedure for computing an attestation statement in this format given the following:
-    - The authenticator data for the attestation, created as per [[#sec-authenticator-data]]
-    - The current value of the authenticator's signature counter
-    - The <a>clientDataHash</a> of the client's contextual bindings
-
-- The procedure for verifying an attestation statement, which takes the following:
-    - The authenticator data claimed to have been used for the attestation
-    - The <a>clientDataHash</a> of the client's contextual bindings
-    - A trust anchor (a root certificate, a DAA root key or the public key of the credential itself)
-
-    and returns a Boolean value indicating whether the attestation is cryptographically valid, and if so the attestation type.
-
-The initial list of supported formats is in [[#defined-attestation-formats]].
-
-
-<!-- Editors Note: differentiating section IDs from non-section IDs is useful because at times we need to seperately reference
-     different things having the same nominal name, eg attestation-types-the-section, and attestation-types-the-definition -->
-### Attestation Types ### {#sctn-attestation-types}
-
-WebAuthn supports multiple attestation types:
-
-: <dfn>Basic Attestation</dfn>
-:: In the case of basic attestation [[UAFProtocol]], the Authenticator's attestation private key is specific to an
-    Authenticator model.  That means that an Authenticator of the same model typically shares the same attestation private key.
-    This model is also used for FIDO UAF 1.0 and FIDO U2F 1.0.
-
-: <dfn>Self Attestation</dfn>
-:: In the case of self attestation, also known as surrogate basic attestation [[UAFProtocol]], the Authenticator doesn't have
-    any specific attestation key. Instead it uses the authentication key itself to sign the attestation statement.
-    Authenticators without meaningful protection measures for an attestation private key typically use this attestation type.
-
-: <dfn>Privacy CA</dfn>
-:: In this case, the Authenticator owns an authenticator-specific (endorsement) key. This key is used to securely communicate
-    with a trusted third party, the Privacy CA.  The Authenticator can generate multiple attestation key pairs and asks the
-    Privacy CA to issue an attestation certificate for it. Using this approach, the Authenticator can limit the exposure of the
-    endorsement key (which is a global correlation handle) to Privacy CA(s). Attestation keys can be requested for each scoped
-    credential individually.
-
-    Note: This concept typically leads to multiple attestation certificates. The attestation certificate requested most recently
-        is called "active".
-
-: <dfn>Direct Anonymous Attestation</dfn> (DAA)
-:: In this case, the Authenticator receives DAA credentials from a single DAA-Issuer. These DAA credentials are used along with
-    blinding to sign the attestation data. The concept of blinding avoids the DAA credentials being misused as global
-    correlation handle. WebAuthn supports DAA using elliptic curve cryptography and bilinear pairings, called ECDAA (see
-    [[FIDOEcdaaAlgorithm]]) in this specification.
-
+The authenticator MUST then concatenate this <a>authenticatorData</a> and the client-supplied <a>clientDataHash</a> as specified
+in [[#authenticator-signature]] to form <dfn>attToBeSigned</dfn>. It must then run the signing procedure for the desired
+attestation format, with <a>attToBeSigned</a> as input.
+ 
 
 ### Verifying an Attestation Statement ### {#verifying-an-attestation-statement}
 
-This section outlines the recommended algorithm for verifying an attestation statement, independent of attestation format.
+This section specifies the algorithm for verifying an attestation statement, independent of attestation format.
 
 Upon receiving an attestation statement in the form of a {{WebAuthnAttestation}} structure, the [RP] shall:
 
@@ -1201,7 +1225,7 @@ Upon receiving an attestation statement in the form of a {{WebAuthnAttestation}}
     {{WebAuthnAssertion/authenticatorData}} can be used for this lookup.
     
 9. Using the verification process for the above attestation format, validate that the attestation
-    {{WebAuthnAttestation/statement}} is valid for the given {{WebAuthnAttestation/authenticatorData}},
+    {{WebAuthnAttestation/attestation}} is valid for the given {{WebAuthnAttestation/authenticatorData}},
     {{WebAuthnAttestation/clientData}} and the above trust anchor.
 
 The [RP] MAY take any of the below actions when verification of an attestation statement fails, according to its policy:
@@ -1274,7 +1298,7 @@ Certificate). It is also recommended that for each WebAuthn Authenticator device
 used to help facilitate isolating problems with a specific version of a device.
 
 If the attestation root certificate is not dedicated to a single WebAuthn Authenticator device line (i.e., AAGUID), the AAGUID
-must be specified either in the attestation certificate itself or it must be specified in `rawData`.
+should be specified in the attestation certificate itself, so that it can be verified against the <a>authenticatorData</a>.
 
 
 
@@ -1345,7 +1369,7 @@ elements).
     </div>
 
 : Signing procedure
-:: The authenticator produces a signature as specified in [[#authenticator-signature]] using the attestation private key. 
+:: The authenticator signs the <a>attToBeSigned</a> using the attestation private key.
 
 : Verification procedure
 :: If {{PackedAttestation/x5c}} is present, this indicates that the attestation type is not DAA. In this case:
@@ -1435,14 +1459,11 @@ This attestation format is generally used by authenticators that use a Trusted P
     </div>
 
 : Signing procedure
-:: Concatenate the {{WebAuthnAttestation/authenticatorData}} and {{WebAuthnAttestation/clientData}} as specified in
-    [[#authenticator-signature]]; let this be `attInput`.
-    
-    If using TPM version 1.2, generate a signature using the procedure specified in [[TPMv1-2-Part3]] Section 13.8 or
-    Section 13.9, using the attestation private key and setting the `antiReplay` parameter to the SHA-1 hash of `attInput`.
+:: If using TPM version 1.2, generate a signature using the procedure specified in [[TPMv1-2-Part3]] Section 13.8 or
+    Section 13.9, using the attestation private key and setting the `antiReplay` parameter to the SHA-1 hash of </a>attToBeSigned</a>.
 
     If using TPM version 2.0, generate a signature using the procedure specified in [[TPMv2-Part3]] Section 18.2, using the
-    attestation private key and setting the `qualifyingData` parameter to `attInput`.
+    attestation private key and setting the `qualifyingData` parameter to </a>attToBeSigned</a>.
     
     In both the above cases, return the certifyInfo output parameter along with the signature.
 
@@ -1490,14 +1511,65 @@ TPM <a>attestation certificate</a> MUST have the following fields/extensions:
     See, for example, the FIDO Metadata Service [[FIDOMetadataService]].
 
 
-## Android Attestation Format ## {#android-attestation}
+## Android Key Attestation Format ## {#android-key-attestation}
 
-When the <a>Authenticator</a> in question is a platform-provided Authenticator on the Android platform, the attestation
-statement is based on the <a href="https://developer.android.com/training/safetynet/index.html#compat-check-response">SafetyNet
-API</a>.
+When the <a>Authenticator</a> in question is a platform-provided Authenticator on the Android "N" or later platform, the
+attestation statement is based on the 
+[Android key attestation](https://developer.android.com/preview/api-overview.html#key_attestation). In these cases, the
+attestation statement is produced by a component running in a secure operating environment, but the <a>authenticatorData</a>
+is produced outside this environment. The [RP] is expected to check that the contents of <a>authenticatorData</a> are consistent
+with the fields of the attestation certificate's extension data.
 
 : Attestation format identifier
-:: android
+:: android-key
+
+: Attestation types supported
+:: Basic
+
+: Syntax
+:: An Android key Attestation statement has the following format:
+
+    <pre class="idl">
+        interface AndroidKeyAttestation {
+            readonly    attribute ArrayBuffer   signature;
+        };
+    </pre>
+
+    <div dfn-for="AndroidKeyAttestation">
+        The <dfn>signature</dfn> field contains the Android attestation statement, which is a DER encoded X.509 certificate. See
+        [the Android developer documentation](https://developer.android.com/training/articles/security-key-attestation.html).
+    </div>
+
+: Signing procedure
+:: Request a Android Key Attestation (i.e. calling "keyStore.getCertificateChain(myKeyUUID)") providing <a>attToBeSigned</a> as
+    the challenge value (e.g. using "setAttestationChallenge").
+
+: Verification procedure
+:: Verification is performed as follows:
+    - Verify that {{AndroidKeyAttestation/signature}} is a valid certificate chain, comsisting of a time-valid X.509 certificate
+        chaining up to a trusted attestation root key.
+
+    - Verify that the public key in the attestation certificate matches the credential public key in the attestation data field
+        of the given <a>authenticatorData</a>.
+
+    - Verify that in the attestation certificate extension data:
+        - The value of the `attestationChallenge` field is identical to <a>attToBeSigned</a>.
+        - The `AuthorizationList.allApplications` field is <em>not</em> present, since ScopedCredentials must be bound to the
+            rpId.
+        - The value in the `AuthorizationList.origin` field is equal to KM_TAG_GENERATED.
+        - The value in the `AuthorizationList.purpose` field is equal to KM_PURPOSE_SIGN.
+
+
+## Android SafetyNet Attestation Format ## {#android-safetynet-attestation}
+
+When the <a>Authenticator</a> in question is a platform-provided Authenticator on certain Android platforms, the attestation
+statement is based on the [SafetyNet API](https://developer.android.com/training/safetynet/index.html#compat-check-response). In
+this case the authenticator data is completely controlled by the caller of the SafetyNet API (typically an application running
+on the Android platform) and the attestation statement only provides some statements about the health of the platform and thehref
+identity of the calling application.
+
+: Attestation format identifier
+:: android-safetynet
 
 : Attestation types supported
 :: Basic
@@ -1506,43 +1578,37 @@ API</a>.
 :: An Android Attestation statement has the following format:
 
     <pre class="idl">
-        interface AndroidAttestation {
+        interface AndroidSafetyNetAttestation {
             readonly attribute unsigned long version;
             readonly attribute DOMString     safetyNetResponse;
         };
     </pre>
 
-    <div dfn-for="AndroidAttestation">
+    <div dfn-for="AndroidSafetyNetAttestation">
         The <dfn>version</dfn> element is set to the version number of Google Play Services responsible for providing the SafetyNet
         API.
 
         The <dfn>safetyNetResponse</dfn> element contains the value returned by the above SafetyNet API. This value is a JWS
-        [[RFC7515]] object (see <a href="https://developer.android.com/training/safetynet/index.html#compat-check-response">
-        SafetyNet online documentation</a>) in Compact Serialization.
+        [[RFC7515]] object (see 
+        [SafetyNet online documentation](https://developer.android.com/training/safetynet/index.html#compat-check-response))
+        in Compact Serialization.
     </div>
 
 : Signing procedure
-:: Concatenate the {{WebAuthnAttestation/authenticatorData}} and {{WebAuthnAttestation/clientData}} as specified in
-    [[#authenticator-signature]]; let this be `attInput`. Request a SafetyNet attestation, providing this as the nonce value.
+:: Request a SafetyNet attestation, providing </a>attToBeSigned</a> as the nonce value.
 
 : Verification procedure
-:: If the attestation format is "android":
+:: Verification is performed as follows:
+    - Verify that {{AndroidSafetyNetAttestation/safetyNetResponse}} is a valid SafetyNet response of version
+        {{AndroidSafetyNetAttestation/version}}.
+        
+    - Verify that the nonce in the {{AndroidSafetyNetAttestation/safetyNetResponse}} is identical to <a>attToBeSigned</a>.
+
     - Verify that the attestation certificate is issued to the hostname "attest.android.com" (see
-        <a href="https://developer.android.com/training/safetynet/index.html#compat-check-response"> SafetyNet online
-        documentation</a>).
+        [SafetyNet online documentation](https://developer.android.com/training/safetynet/index.html#compat-check-response)).
 
-    - Check that `AndroidAttestationClientData.challenge` equals the attestationChallenge that was passed into the
-        {{makeCredential()}} call.
-
-    - Check that the {{ClientData/origin}} and {{ClientData/tokenBinding}} parameters in the `AndroidAttestationClientData` match
-        the [RP] App.
-
-    - Check that `AndroidAttestationClientData.publicKey` is the same key as the one returned in the `ScopedCredentialInfo` by the
-        `makeCredential` call.
-
-    - Check that the hash of the <a>clientDataJSON</a> matches the `nonce` attribute in the payload of the `safetynetResponse` JWS.
-
-    - Check that the `ctsProfileMatch` attribute in the payload of the `safetynetResponse` is true.
+    - Verify that the `ctsProfileMatch` attribute in the payload of the {{AndroidSafetyNetAttestation/safetyNetResponse}} is
+        true.
 
 
 # WebAuthn Extensions # {#extensions}
@@ -1568,7 +1634,7 @@ extension. In addition, the client collects the authenticator arguments for the 
 authenticator in the <a>authenticatorMakeCredential</a> call (for registration extensions) or <a>authenticatorGetAssertion</a>
 call (for authentication extensions). These authenticator arguments are passed as name-value pairs, with the extension
 identifier as the name, and the corresponding authenticator argument as the value. The authenticator, in turn, performs
-additional processing for the extensions that it supports, and augments |authenticatorData| as specified by the extension.
+additional processing for the extensions that it supports, and augments <a>authenticatorData</a> as specified by the extension.
 
 All WebAuthn extensions are optional for both clients and authenticators. Thus, any extensions requested by a [RP] may be
 ignored by the client browser or OS and not passed to the authenticator at all, or they may be ignored by the authenticator.
@@ -1611,13 +1677,14 @@ Identifiers.
 
 A definition of an extension must specify, at minimum, an extension identifier and an extension client argument sent via the
 {{getAssertion()}} or {{makeCredential()}} call. Additionally, extensions may specify additional values in {{ClientData}}, 
-`authenticatorData` (in the case of authentication extensions), or both. Finally, if the extension requires any authenticator 
-processing, it must also specify an authenticator argument to be sent via the <a>authenticatorGetAssertion</a> or 
+<a>authenticatorData</a> (in the case of authentication extensions), or both. Finally, if the extension requires any
+authenticator processing, it must also specify an authenticator argument to be sent via the <a>authenticatorGetAssertion</a> or
 <a>authenticatorMakeCredential</a> call.
 
 Any extension that requires client processing MUST specify a method of augmenting {{ClientData}} that unambiguously lets the
 [RP] know that the extension was honored by the client. Similarly, any extension that requires authenticator processing MUST
-specify a method of augmenting `authenticatorData` to let the [RP] know that the extension was honored by the authenticator.
+specify a method of augmenting <a>authenticatorData</a> to let the [RP] know that the extension was honored by the
+authenticator.
 
 
 ## Extending request parameters ## {#extension-request-parameters}
@@ -1669,10 +1736,10 @@ the authenticator argument.
 
 Extensions that define additional authenticator processing may similarly define an authenticator data value. The value may be
 any data that can be encoded in CBOR. An authenticator that processes an authentication extension that defines such a value must
-include it in the `authenticatorData`.
+include it in the <a>authenticatorData</a>.
 
 As specified in [[#sec-authenticator-data]], the authenticator data value of each processed extension is included in the
-extended data part of the `authenticatorData`. This part is a CBOR map, with extension identifiers as keys, and the
+extended data part of the <a>authenticatorData</a>. This part is a CBOR map, with extension identifiers as keys, and the
 authenticator data value of each extension as the value.
 
 
@@ -1713,7 +1780,7 @@ The extension also requires the client to set the authenticator parameter to the
 
 Finally, the extension requires the authenticator to specify its geolocation in the authenticator data, if known. The extension
 e.g. specifies that the location shall be encoded as a two-element array of floating point numbers, encoded with CBOR. An
-authenticator does this by including it in the `authenticatorData`. As an example, authenticator data may be as follows
+authenticator does this by including it in the <a>authenticatorData</a>. As an example, authenticator data may be as follows
 (notation taken from [[RFC7049]]):
 
 <pre class="highlight">
@@ -1878,9 +1945,9 @@ credential. It is intended primarily for [RPS] that wish to tightly control the 
 
     Servers supporting UVI extensions MUST support a length of up to 32 bytes for the UVI value.
 
-    Example for rawData containing one UVI extension
+    Example for <a>authenticatorData</a> containing one UVI extension
     <pre class="highlight">
-        F1 D0                                       -- This is a WebAuthn packed rawData object
+        ...                                         -- RP ID hash (32 bytes)
         81                                          -- TUP and ED set
         00 00 00 01                                 -- (initial) signature counter
         ...                                         -- all public key alg etc.
@@ -1918,12 +1985,12 @@ credential. It is intended primarily for [RPS] that wish to tightly control the 
 :: If the <a>authenticator</a> accepts the extension request, then authenticator data SHOULD provide location data in the form of a 
     CBOR-encoded map, with the first value being the extension identifier and the second being an array of returned values.  The array 
     elements SHOULD be derived from (key,value) pairings for each location attribute that the <a>authenticator</a> supports. The following is 
-    an example of authenticator data where the returned array is comprised of a {longitude, latitude, altitude} triplet, following the
-    coordinate representation defined in <a href=https://dev.w3.org/geo/api/spec-source.html#coordinates_interface>The W3C Geolocation API
-    Specification</a>.
+    an example of <a>authenticatorData</a> where the returned array is comprised of a {longitude, latitude, altitude} triplet, following the
+    coordinate representation defined in 
+    [The W3C Geolocation API Specification](https://dev.w3.org/geo/api/spec-source.html#coordinates_interface).
 
     <pre class="highlight">
-        F1 D0                                       -- This is a WebAuthn packed rawData object
+        ...                                         -- RP ID hash (32 bytes)
         81                                          -- TUP and ED set
         00 00 00 01                                 -- (initial) signature counter
         ...                                         -- all public key alg etc.
@@ -1986,9 +2053,9 @@ credential. It is intended primarily for [RPS] that wish to tightly control the 
 
     Servers supporting the UVM extension MUST support a length up to 36 bytes for a 3 factor maximum UVM value.  
 
-    Example for rawData containing one UVM extension for a multi-factor authentication instance where 2 factors were used:
+    Example for <a>authenticatorData</a> containing one UVM extension for a multi-factor authentication instance where 2 factors were used:
     <pre class="highlight">
-        F1 D0                  -- This is a WebAuthn packed rawData object
+        ...                    -- RP ID hash (32 bytes)
         81                     -- TUP and ED set
         00 00 00 01            -- (initial) signature counter
         ...                    -- all public key alg etc.
@@ -2012,8 +2079,7 @@ credential. It is intended primarily for [RPS] that wish to tightly control the 
 This specification registers the algorithm names "S256", "S384", "S512", and "SM3" with the IANA JSON Web Algorithms registry as
 defined in section "Cryptographic Algorithms for Digital Signatures and MACs" in [[RFC7518]].
 
-These names follow the naming strategy in <a href="https://tools.ietf.org/html/draft-ietf-oauth-spop-15">
-draft-ietf-oauth-spop-15</a>.
+These names follow the naming strategy in [draft-ietf-oauth-spop-15](https://tools.ietf.org/html/draft-ietf-oauth-spop-15).
 
 <table class="def">
 <tbody>
