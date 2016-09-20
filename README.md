@@ -1,20 +1,21 @@
 
 # Web Authentication Specification
 
-This is the repository for the W3C WebAuthn Working Group, producing the draft **"Web Authentication"**
+This is the repository for the W3C WebAuthn Working Group, producing the draft **"Web Authentication"** specification.
 
 * [The editor's copy is available at https://w3c.github.io/webauthn/](https://w3c.github.io/webauthn/), or in the [`gh-pages` branch of this repository](https://github.com/w3c/webauthn/blob/gh-pages/index.html).
+  - The current *offically-published working-draft snapshot* [is here: https://www.w3.org/TR/webauthn/](https://www.w3.org/TR/webauthn/).
 * [The build history is available at Travis-CI.org](https://travis-ci.org/w3c/webauthn/builds)
 * [W3C WebAuthn Blog](https://www.w3.org/blog/webauthn/)
 * [Web platform tests repository](https://github.com/w3c/web-platform-tests/tree/master/webauthn)
 
 # Contributing
 
-Before submitting feedback, please familiarize yourself with [our current issues list](https://github.com/w3c/webauthn/issues) and review the [mailing list discussion](https://lists.w3.org/Archives/Public/public-webauthn/).
+To materially contribute to this specification, you must meet the requiements outlined in [CONTRIBUTING.md](/CONTRIBUTING.md). Also, before submitting feedback, please familiarize yourself with [our current issues list](https://github.com/w3c/webauthn/issues) and review the [mailing list discussion](https://lists.w3.org/Archives/Public/public-webauthn/).
 
 # Building the Draft
 
-Formatted HTML for the draft can be built using `bikeshed`:
+Formatted HTML for the draft can be built using `bikeshed` (see below for instructions for `bikeshed` installation):
 
 ```
 $ bikeshed spec
@@ -26,7 +27,7 @@ You may also want to use the `watch` functionality to automatically regenerate a
 $ bikeshed watch
 ```
 
-# Installation and Setup
+# Bikeshed Installation and Setup
 
 You will need to have the Python tools `pygments` and `bikeshed` to build the draft. Pygments can be obtained via `pip`, but Bikeshed will need to be downloaded with `git`:
 
