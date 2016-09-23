@@ -24,6 +24,7 @@ Text Macro: RPS Relying Parties
 Text Macro: INFORMATIVE <em>This section is not normative.</em>
 Text Macro: WAC WebAuthn Client
 Ignored Vars: op, alg, type, algorithm
+Issue Tracking: Github https://github.com/w3c/webauthn/issues
 Abstract: This specification defines an API enabling the creation and use of strong, attested, cryptographic scoped credentials 
  by web applications, for the purpose of strongly authenticating users. Conceptually, one or more credentials, each scoped to a
  given Relying Party, are created and stored on an authenticator by the user agent in conjunction with the web application. The
@@ -35,6 +36,23 @@ Boilerplate: omit conformance, omit feedback-header
 Markup Shorthands: css off, markdown on
 </pre>
 
+<pre class="anchors">
+
+<!-- spec: HTML; urlPrefix: https://html.spec.whatwg.org/multipage/ -->
+spec: HTML51; urlPrefix: http://www.w3.org/TR/html51/; for: web
+    type: dfn
+        urlPrefix: browsers.html
+            text: origin; url: concept-cross-origin
+            text: opaque origin
+            text: tuple origin
+            text: relaxing the same-origin restriction
+    type: dfn
+        urlPrefix: webappapis.html; for: interface
+            text: current settings object; url:current-settings-object
+            text: Navigator
+    
+</pre>
+
 
 # Introduction # {#intro}
 
@@ -43,7 +61,7 @@ Markup Shorthands: css off, markdown on
 This specification defines an API enabling the creation and use of strong, attested, cryptographic <em><a>scoped
 credentials</a></em> by web applications, for the purpose of strongly authenticating users. A <a>scoped credential</a> is
 created and stored by an <em><a>authenticator</a></em> at the behest of a <em><a>[RP]</a></em>, subject to <em><a>user
-consent</a></em>. Subsequently, the scoped credential can only be accessed by web origins belonging to that [RP].
+consent</a></em>. Subsequently, the scoped credential can only be accessed by origins belonging to that [RP].
 This scoping is enforced jointly by <em><a>conforming User Agents</a></em> and <em><a>authenticators</a></em>. 
 Additionally, privacy across <a>[RPS]</a> is maintained; [RPS] are not able to detect any properties, or even
 the existence, of credentials scoped to other [RPS].
@@ -130,8 +148,12 @@ or a combination of both.
 
 This specification relies on several other underlying specifications.
 
-: HTML5
-:: The concept of <dfn for='web'>origin</dfn> and the <dfn>Navigator</dfn> interface are defined in [[!HTML5]].
+<!-- , <a>opaque origin</a>, -->
+
+: HTML
+:: The concepts of <a link-for='web'>current settings object</a>, |given value|, <a link-for='web'>opaque origin</a>, 
+    <a for='web'>origin</a>, the <a>Navigator</a> interface, and the 
+    <a link-for='web'>relaxing the same-origin restriction</a> "setting" algorithm are defined in [[!HTML51]].
 
 : Web IDL
 :: Many of the interface definitions and all of the IDL in this specification depend on [[!WebIDL-1]]. This updated version of
@@ -227,7 +249,7 @@ NOT", "SHOULD", "SHOULD NOT", "RECOMMENDED",  "MAY", and
 
 : <dfn>Relying Party Identifier</dfn>
 : <dfn>RP ID</dfn>
-:: A Relying Party Identifier is derived from a <a>[RP]</a>'s web origin's hostname by computing the hostname's <a>eTLD+1</a>. 
+:: A Relying Party Identifier is derived from a <a>[RP]</a>'s origin's hostname by computing the hostname's <a>eTLD+1</a>. 
 
 : <dfn>Scoped Credential</dfn>
 :: Generically, a credential is data one entity presents to another in order to authenticate the former's identity [[RFC4949]].
@@ -273,7 +295,7 @@ and/or platform on the user's behalf. At no point does the script get access to 
 information about the credentials in the form of objects. 
 
 The security properties of this API are provided by the client and the authenticator working together. The authenticator, which
-holds and manages credentials, ensures that all operations are scoped to a particular web origin, and cannot be replayed against
+holds and manages credentials, ensures that all operations are scoped to a particular origin, and cannot be replayed against
 a different origin, by incorporating the origin in its responses. Specifically, as defined in [[#signature-format]], the full
 origin of the requester is included, and signed over, in the attestation statement produced when a new credential is created as
 well as in all assertions produced by WebAuthn credentials.
@@ -282,9 +304,9 @@ Additionally, to maintain user privacy and prevent malicious [RPS] from probing 
 other [RPS], each credential is also associated with a Relying Party Identifier, or RP ID. This RP ID is provided by the client
 to the authenticator for all operations, and the authenticator ensures that credentials created by a [RP] can only be used in
 operations requested by the same RP ID. Separating the origin from the RP ID in this way allows the API to be used in cases
-where a single [RP] maintains multiple web origins.
+where a single [RP] maintains multiple origins.
 
-The client facilitates these security measures by providing correct web origins and RP IDs to the authenticator for each
+The client facilitates these security measures by providing correct origins and RP IDs to the authenticator for each
 operation. Since this is an integral part of the WebAuthn security model, user agents MUST only expose this API to callers in
 <dfn>secure contexts</dfn>, as defined in [[secure-contexts]].
 
@@ -301,12 +323,13 @@ The Web Authentication API is defined by the union of the Web IDL fragments pres
 ## <dfn interface>WebAuthentication</dfn> Interface ## {#iface-credential}
 
 <pre class="idl">
+    [SecureContext]
     interface WebAuthentication {
         Promise < ScopedCredentialInfo > makeCredential (
             Account                                 accountInformation,
             sequence < ScopedCredentialParameters > cryptoParameters,
             BufferSource                            attestationChallenge,
-            optional CredentialOptions              options
+            optional ScopedCredentialOptions        options
         );
 
         Promise < WebAuthnAssertion > getAssertion (
@@ -329,7 +352,14 @@ created credential.
 This method takes the following parameters:
 
 - The <dfn>accountInformation</dfn> parameter specifies information about the user account for which the credential is being
-    created. This is meant for later use by the authenticator when it needs to prompt the user to select a credential.
+    created. This is meant for later use by the authenticator when it needs to prompt the user to select a credential. An
+    authenticator is only required to store one credential for any given value of {{accountInformation}}. Specifically, if an
+    authenticator already has a credential for the specified value of {{Account/id}} in {{accountInformation}}, and if this
+    credential is not listed in {{ScopedCredentialOptions/excludeList}}, then after successful execution of this method:
+    - Any calls to {{getAssertion()}} that do not specify {{AssertionOptions/allowList}} will not result in the older
+        credential being offered to the user.
+    - Any calls to {{getAssertion()}} that specify the older credential in the {{AssertionOptions/allowList}} may also not
+        result in it being offered to the user.
 
 - The <dfn>cryptoParameters</dfn> parameter supplies information about the desired properties of the credential to be created.
     The sequence is ordered from most preferred to least preferred. The platform makes a best effort to create the most
@@ -343,46 +373,58 @@ This method takes the following parameters:
 
 When this method is invoked, the user agent MUST execute the following algorithm:
 
-1. If {{CredentialOptions/timeoutSeconds}} was specified, check if its value lies within a reasonable range as defined by the
-    platform and if not, correct it to the closest value lying within that range. Set |adjustedTimeout| to this adjusted value.
-    If {{CredentialOptions/timeoutSeconds}} was not specified, then set |adjustedTimeout| to a platform-specific default.
+1. If {{ScopedCredentialOptions/timeoutSeconds}} was specified, check if its value lies within a reasonable range as defined by
+    the platform and if not, correct it to the closest value lying within that range. Set |adjustedTimeout| to this adjusted
+    value. If {{ScopedCredentialOptions/timeoutSeconds}} was not specified, then set |adjustedTimeout| to a platform-specific
+    default.
 
 2. Let |promise| be a new <a data-lt="Promises">Promise</a>. Return |promise| and start a timer for |adjustedTimeout| seconds.
-    Then asynchronously continue executing the following steps.
+    Then asynchronously continue executing the following steps. If any fatal error is encountered in this process other than the
+    ones enumerated below, cancel the timer, reject |promise| with a DOMException whose name is "UnknownError", and terminate
+    this algorithm.
 
-3. Set |callerOrigin| to the <a link-for='web'>origin</a> of the caller. Derive the RP ID from |callerOrigin| by computing the
+3. Set |callerOrigin| to the <a link-for='web'>current settings object</a>'s <a link-for='web'>origin</a>. If |callerOrigin| is
+    an <a link-for='web'>opaque origin</a>, reject |promise| with a <a>DOMException</a> whose name is "NotAllowedError", and
+    terminate this algorithm. 
+    Otherwise, apply the <a link-for='web'>relaxing the same-origin restriction</a> "setting" algorithm using |callerOrigin| as
+    the |given value|. 
+    If no errors are thrown, then derive the RP ID from |callerOrigin| by computing the
     "public suffix + 1" or "PS+1" (which is also referred to as the "Effective Top-Level Domain plus One" or "<a>eTLD+1</a>")
     part of |callerOrigin| [[PSL]]. Let |rpId| be the lowercase form of this RP ID. Set |rpIdHash| to the SHA-256 hash of the
     UTF-8 encoding of |rpId|.
 
-4. Process each element of <a>cryptoParameters</a> using the following steps, to produce a new sequence `normalizedParameters`:
-    - Let |current| be the currently selected element of <a>cryptoParameters</a>.
-    - If `current.type` does not contain a {{CredentialType}} supported by this implementation, then stop processing |current|
-        and move on to the next element in <a>cryptoParameters</a>.
-    - Let `normalizedAlgorithm` be the result of normalizing an algorithm using the procedure defined in [[!WebCryptoAPI]],
+4. Process each element of {{cryptoParameters}} using the following steps, to produce a new sequence |normalizedParameters|.
+    - Let |current| be the currently selected element of {{cryptoParameters}}.
+    - If `current.type` does not contain a {{ScopedCredentialType}} supported by this implementation, then stop processing
+        |current| and move on to the next element in {{cryptoParameters}}.
+    - Let |normalizedAlgorithm| be the result of normalizing an algorithm using the procedure defined in [[!WebCryptoAPI]],
         with |alg| set to `current.algorithm` and |op| set to 'generateKey'. If an error occurs during this procedure, then
-        stop processing |current| and move on to the next element in <a>cryptoParameters</a>.
-    - Add a new object of type {{ScopedCredentialParameters}} to `normalizedParameters`, with |type| set to `current.type` and
-        |algorithm| set to `normalizedAlgorithm`.
+        stop processing |current| and move on to the next element in {{cryptoParameters}}.
+    - Add a new object of type {{ScopedCredentialParameters}} to |normalizedParameters|, with |type| set to `current.type` and
+        |algorithm| set to |normalizedAlgorithm|.
 
-5. If <a>excludeList</a> is undefined, set it to the empty list.
+5. If |normalizedAlgorithm| is empty and {{cryptoParameters}} was not empty, cancel the timer started in step 2, reject
+    |promise| with a DOMException whose name is "NotSupportedError", and terminate this algorithm.
 
-6. If {{CredentialOptions/extensions}} was specified, process any extensions supported by this client platform, to produce the
-    extension data that needs to be sent to the authenticator. Call this data |clientExtensions|.
+6. If {{ScopedCredentialOptions/excludeList}} is undefined, set it to the empty list.
 
-7. Use {{attestationChallenge}}, |callerOrigin| and |rpId|, along with the token binding key associated with |callerOrigin| (if
+7. If {{ScopedCredentialOptions/extensions}} was specified, process any extensions supported by this client platform, to produce
+    the extension data that needs to be sent to the authenticator. If an error is encountered while processing an extension,
+    skip that extension and do not produce any extension data for it. Call the result of this processing |clientExtensions|.
+
+8. Use {{attestationChallenge}}, |callerOrigin| and |rpId|, along with the token binding key associated with |callerOrigin| (if
     any), to create a {{ClientData}} structure representing this request. Choose a hash algorithm for {{ClientData/hashAlg}} and
     compute the <a>clientDataJSON</a> and <a>clientDataHash</a>.
-    
-8. Initialize |issuedRequests| to an empty list.
 
-9. For each authenticator currently available on this platform: asynchronously invoke the <a>authenticatorMakeCredential</a>
-    operation on that authenticator with |rpIdHash|, <a>clientDataHash</a>, <a>accountInformation</a>, `normalizedParameters`,
-    <a>excludeList</a> and |clientExtensions| as parameters. Add a corresponding entry to |issuedRequests|.
-    - For each credential C in <a>excludeList</a> that has a non-empty |transports| list, optionally use only the specified
-        transports to test for the existence of C.
+9. Initialize |issuedRequests| to an empty list.
 
-10. While |issuedRequests| is not empty, perform the following actions depending upon the |adjustedTimeout| timer and responses
+10. For each authenticator currently available on this platform: asynchronously invoke the <a>authenticatorMakeCredential</a>
+    operation on that authenticator with |rpIdHash|, <a>clientDataHash</a>, {{accountInformation}}, |normalizedParameters|,
+    {{ScopedCredentialOptions/excludeList}} and |clientExtensions| as parameters. Add a corresponding entry to |issuedRequests|.
+    - For each credential C in {{ScopedCredentialOptions/excludeList}} that has a non-empty |transports| list, optionally use
+        only the specified transports to test for the existence of C.
+
+11. While |issuedRequests| is not empty, perform the following actions depending upon the |adjustedTimeout| timer and responses
     from the authenticators:
     - If the |adjustedTimeout| timer expires, then for each entry in |issuedRequests| invoke the <a>authenticatorCancel</a>
         operation on that authenticator and remove its entry from the list.
@@ -398,7 +440,7 @@ When this method is invoked, the user agent MUST execute the following algorithm
             remove its entry from the list.
         - Resolve |promise| with |value| and terminate this algorithm.
 
-10. Resolve |promise| with a <a>DOMException</a> whose name is "NotFoundError", and terminate this algorithm.
+12. Reject |promise| with a <a>DOMException</a> whose name is "NotAllowedError", and terminate this algorithm.
 
 During the above process, the user agent SHOULD show some UI to the user to guide them in the process of selecting and
 authorizing an authenticator.
@@ -426,15 +468,23 @@ When this method is invoked, the user agent MUST execute the following algorithm
     If {{AssertionOptions/timeoutSeconds}} was not specified, then set |adjustedTimeout| to a platform-specific default.
 
 2. Let |promise| be a new <a data-lt="Promises">Promise</a>. Return |promise| and start a timer for |adjustedTimeout| seconds.
-    Then asynchronously continue executing the following steps.
+    Then asynchronously continue executing the following steps. If any fatal error is encountered in this process other than the
+    ones enumerated below, cancel the timer, reject |promise| with a DOMException whose name is "UnknownError", and terminate
+    this algorithm.
 
-3. Set |callerOrigin| to the <a link-for='web'>origin</a> of the caller. Derive the RP ID from |callerOrigin| by computing the
+3. Set |callerOrigin| to the <a link-for='web'>current settings object</a>'s <a link-for='web'>origin</a>. If |callerOrigin|
+    is an <a link-for='web'>opaque origin</a>, reject |promise| with a <a>DOMException</a> whose name is "NotAllowedError", and
+    terminate this algorithm.
+    Otherwise, apply the <a link-for='web'>relaxing the same-origin restriction</a> "setting" algorithm using |callerOrigin| as
+    the |given value|. 
+    If no errors are thrown, then derive the RP ID from |callerOrigin| by computing the
     "public suffix + 1" or "PS+1" (which is also referred to as the "Effective Top-Level Domain plus One" or "<a>eTLD+1</a>")
     part of |callerOrigin| [[PSL]]. Let |rpId| be the lowercase form of this RP ID. Set |rpIdHash| to the SHA-256 hash of the
     UTF-8 encoding of |rpId|.
 
 4. If {{AssertionOptions/extensions}} was specified, process any extensions supported by this client platform, to produce the
-    extension data that needs to be sent to the authenticator. Call this data |clientExtensions|.
+    extension data that needs to be sent to the authenticator. If an error is encountered while processing an extension, skip
+    that extension and do not produce any extension data for it. Call the result of this processing |clientExtensions|.
 
 5. Use {{assertionChallenge}}, |callerOrigin| and |rpId|, along with the token binding key associated with |callerOrigin| (if
     any), to create a {{ClientData}} structure representing this request. Choose a hash algorithm for {{ClientData/hashAlg}} and
@@ -443,12 +493,13 @@ When this method is invoked, the user agent MUST execute the following algorithm
 6. Initialize |issuedRequests| to an empty list.
 
 7. For each authenticator currently available on this platform, perform the following steps:
-    - If <a>allowList</a> is undefined or empty, let |credentialList| be an empty list. Otherwise, execute a platform-specific
-        procedure to determine which, if any, credentials listed in <a>allowList</a> might be present on this authenticator, and
-        set |credentialList| to this filtered list. If no such filtering is possible, set |credentialList| to an empty list.
+    - If {{AssertionOptions/allowList}} is undefined or empty, let |credentialList| be an empty list. Otherwise, execute a
+        platform-specific procedure to determine which, if any, credentials listed in {{AssertionOptions/allowList}} might be
+        present on this authenticator, and set |credentialList| to this filtered list. If no such filtering is possible, set
+        |credentialList| to an empty list.
     - For each credential C within the |credentialList| that has a non-empty |transports| list, optionally use only the
         specified transports to get assertions using credential C.
-    - If the above filtering process concludes that none of the credentials on <a>allowList</a> can possibly be on this
+    - If the above filtering process concludes that none of the credentials on {{AssertionOptions/allowList}} can possibly be on this
         authenticator, do not perform any of the following steps for this authenticator, and proceed to the next authenticator
         (if any).
     - Asynchronously invoke the <a>authenticatorGetAssertion</a> operation on this authenticator with |rpIdHash|,
@@ -471,7 +522,7 @@ When this method is invoked, the user agent MUST execute the following algorithm
             remove its entry from the list.
         - Resolve |promise| with |value| and terminate this algorithm.
 
-9. Resolve |promise| with a <a>DOMException</a> whose name is "NotFoundError", and terminate this algorithm.
+9. Reject |promise| with a <a>DOMException</a> whose name is "NotAllowedError", and terminate this algorithm.
 
 During the above process, the user agent SHOULD show some UI to the user to guide them in the process of selecting and
 authorizing an authenticator with which to complete the operation.
@@ -480,8 +531,9 @@ authorizing an authenticator with which to complete the operation.
 ## Information about Scoped Credential (interface <dfn interface>ScopedCredentialInfo</dfn>) ## {#iface-credentialInfo}
 
 <pre class="idl">
+    [SecureContext]
     interface ScopedCredentialInfo {
-        readonly attribute Credential           credential;
+        readonly attribute ScopedCredential     credential;
         readonly attribute CryptoKey            publicKey;
         readonly attribute WebAuthnAttestation  attestation;
     };
@@ -509,8 +561,8 @@ authorizing an authenticator with which to complete the operation.
     dictionary Account {
         required DOMString rpDisplayName;
         required DOMString displayName;
+        required DOMString id;
         DOMString          name;
-        DOMString          id;
         DOMString          imageURL;
     };
 </pre>
@@ -526,10 +578,11 @@ authorizing an authenticator with which to complete the operation.
     The <dfn>displayName</dfn> member contains the friendly name associated with the user account by the [RP], such as "John P.
     Smith".
 
-    The <dfn>name</dfn> member contains a detailed name for the account, such as "john.p.smith@example.com".
+    The <dfn>id</dfn> member contains an identifier for the account, specified by the [RP]. This is not meant to be displayed
+    to the user. It is used by the [RP] to control the number of credentials - an authenticator will never contain more than one
+    credential for a given [RP] under the same {{Account/id}}.
 
-    The <dfn>id</dfn> member contains an identifier for the account, stored for the use of the [RP]. This is not meant to be
-    displayed to the user.
+    The <dfn>name</dfn> member contains a detailed name for the account, such as "john.p.smith@example.com".
 
     The <dfn>imageURL</dfn> member contains a URL that resolves to the user's account image. This may be a URL that can be used
     to retrieve an image containing the user's current avatar, or a data URI that contains the image data.
@@ -540,7 +593,7 @@ authorizing an authenticator with which to complete the operation.
 
 <pre class="idl">
     dictionary ScopedCredentialParameters {
-        required CredentialType        type;
+        required ScopedCredentialType  type;
         required AlgorithmIdentifier   algorithm;
     };
 </pre>
@@ -555,18 +608,18 @@ authorizing an authenticator with which to complete the operation.
 </div>
 
 
-## Additional options for Credential Generation (dictionary <dfn dictionary>CredentialOptions</dfn>) ## {#credential-options}
+## Additional options for Credential Generation (dictionary <dfn dictionary>ScopedCredentialOptions</dfn>) ## {#credential-options}
 
 <pre class="idl">
-    dictionary CredentialOptions {
-        unsigned long                       timeoutSeconds;
-        sequence < CredentialDescription >  excludeList;
-        WebAuthnExtensions                  extensions;
+    dictionary ScopedCredentialOptions {
+        unsigned long                             timeoutSeconds;
+        sequence < ScopedCredentialDescription >  excludeList;
+        WebAuthnExtensions                        extensions;
     };
 </pre>
 
 
-<div dfn-for="CredentialOptions">
+<div dfn-for="ScopedCredentialOptions">
     This dictionary is used to supply additional options when creating a new credential. All these parameters are optional.
 
     - The <dfn>timeoutSeconds</dfn> parameter specifies a time, in seconds, that the caller is willing to wait for the call to
@@ -587,11 +640,12 @@ authorizing an authenticator with which to complete the operation.
 ## Web Authentication Assertion (interface <dfn interface>WebAuthnAssertion</dfn>) ## {#iface-assertion}
 
 <pre class="idl">
+    [SecureContext]
     interface WebAuthnAssertion {
-        readonly attribute Credential  credential;
-        readonly attribute ArrayBuffer clientData;
-        readonly attribute ArrayBuffer authenticatorData;
-        readonly attribute ArrayBuffer signature;
+        readonly attribute ScopedCredential  credential;
+        readonly attribute ArrayBuffer       clientData;
+        readonly attribute ArrayBuffer       authenticatorData;
+        readonly attribute ArrayBuffer       signature;
     };
 </pre>
 
@@ -616,9 +670,9 @@ user consent to a specific transaction. The structure of these signatures is def
 
 <pre class="idl">
     dictionary AssertionOptions {
-        unsigned long                      timeoutSeconds;
-        sequence < CredentialDescription > allowList;
-        WebAuthnExtensions                 extensions;
+        unsigned long                            timeoutSeconds;
+        sequence < ScopedCredentialDescription > allowList;
+        WebAuthnExtensions                       extensions;
     };
 </pre>
 
@@ -655,6 +709,7 @@ with the extension identifier as the key, and the extension's value as the value
 ## Credential Attestation Structure (interface <dfn interface>WebAuthnAttestation</dfn>) ## {#iface-attestation}
 
 <pre class="idl">
+    [SecureContext]
     interface WebAuthnAttestation {
         readonly    attribute USVString     format;
         readonly    attribute ArrayBuffer   clientData;
@@ -714,7 +769,7 @@ string-valued keys. Values may be any type that has a valid encoding in JSON. It
 <div dfn-for="ClientData">
     The <dfn>challenge</dfn> member contains the base64url encoding of the challenge provided by the RP.
 
-    The <dfn>origin</dfn> member contains the fully qualified web origin of the requester, as provided to the authenticator by
+    The <dfn for="ClientData">origin</dfn> member contains the fully qualified origin of the requester, as provided to the authenticator by
     the client, in the syntax defined by [[RFC6454]].
 
     The <dfn>rpId</dfn> member contains the RP ID of the requester, as computed by the client.
@@ -740,15 +795,15 @@ This structure is used by the client to compute the following quantities:
 :: This is the hash (computed using <a>hashAlg</a>) of <a>clientDataJSON</a>.
 
 
-### Credential Type enumeration (enum <dfn enum>CredentialType</dfn>) ### {#credentialType}
+### Credential Type enumeration (enum <dfn enum>ScopedCredentialType</dfn>) ### {#credentialType}
 
 <pre class="idl">
-    enum CredentialType {
+    enum ScopedCredentialType {
         "ScopedCred"
     };
 </pre>
 
-<div dfn-for="CredentialType">
+<div dfn-for="ScopedCredentialType">
     This enumeration defines the valid credential types. It is an extension point; values may be added to it in the future, as
     more credential types are defined. The values of this enumeration are used for versioning the WebAuthn assertion and
     attestation structures according to the type of the authenticator.
@@ -757,21 +812,22 @@ This structure is used by the client to compute the following quantities:
 </div>
 
 
-### Unique Identifier for Credential (interface <dfn interface>Credential</dfn>) ### {#credential-identifier}
+### Unique Identifier for Credential (interface <dfn interface>ScopedCredential</dfn>) ### {#credential-identifier}
 
 <pre class="idl">
-    interface Credential {
-        readonly attribute CredentialType type;
-        readonly attribute ArrayBuffer    id;
+    [SecureContext]
+    interface ScopedCredential {
+        readonly attribute ScopedCredentialType type;
+        readonly attribute ArrayBuffer          id;
     };
 </pre>
 
 This interface contains the attributes that are returned to the caller when a new credential is created, and can be used later
 by the caller to select a credential for use.
 
-<div dfn-for="Credential">
-    The <dfn>type</dfn> attribute contains a value of type {{CredentialType}}, indicating the specification and version that
-    this credential conforms to.
+<div dfn-for="ScopedCredential">
+    The <dfn>type</dfn> attribute contains a value of type {{ScopedCredentialType}}, indicating the specification and version
+    that this credential conforms to.
 
     The <dfn>id</dfn> attribute contains an identifier for the credential, chosen by the platform with help from the
     authenticator. This identifier is used to look up credentials for use, and is therefore expected to be globally unique with
@@ -782,20 +838,21 @@ by the caller to select a credential for use.
 </div>
 
 
-### Credential Descriptor (dictionary <dfn dictionary>CredentialDescription</dfn>) ### {#credential-dictionary}
+### Credential Descriptor (dictionary <dfn dictionary>ScopedCredentialDescription</dfn>) ### {#credential-dictionary}
 
 <pre class="idl">
-    dictionary CredentialDescription {
-        required CredentialType type;
+    dictionary ScopedCredentialDescription {
+        required ScopedCredentialType type;
         required BufferSource   id;
         sequence < Transport >  transports;
     };
 </pre>
 
 This dictionary contains the attributes that are specified by a caller when referring to a credential as an input parameter to
-the {{makeCredential()}} or {{getAssertion()}} method. It mirrors the fields of the {{Credential}} object returned by these methods.
+the {{makeCredential()}} or {{getAssertion()}} method. It mirrors the fields of the {{ScopedCredential}} object returned by
+these methods.
 
-<div dfn-for="CredentialDescription">
+<div dfn-for="ScopedCredentialDescription">
     The <dfn>type</dfn> attribute contains the type of the credential the caller is referring to.
 
     The <dfn>id</dfn> attribute contains the identifier of the credential that the caller is referring to.
@@ -840,9 +897,12 @@ defined in [[!WebCryptoAPI]].
 # WebAuthn Authenticator model # {#authenticator-model}
 
 The API defined in this specification implies a specific abstract functional model for an <a>authenticator</a>. This section
-describes the authenticator model. Client platforms may implement and expose this abstract model in any way desired. However,
-the behavior of the client's Web Authentication API implementation, when operating on the authenticators
-supported by that platform, MUST be indistinguishable from the behavior specified in [[#api]].
+describes the authenticator model. Client platforms may implement and expose this abstract model in any way desired. For
+instance, this abstract model does not define specific error codes or methods of returning them; however, it does define error
+behavior in terms of the needs of the client. Therefore, specific error codes are mentioned as a means of showing which error
+conditions must be distinguishable (or not) from each other in order to enable a compliant and secure client implementation.
+The overall requirement is that the behavior of the client's Web Authentication API implementation, when operating on the
+authenticators supported by that platform, MUST be indistinguishable from the behavior specified in [[#api]].
 
 In this abstract model, each authenticator stores some number of scoped credentials. Each scoped credential has an identifier
 which is unique (or extremely unlikely to be duplicated) among all scoped credentials. Each credential is also associated with a
@@ -872,29 +932,39 @@ input parameters:
 - The SHA-256 hash of the caller's RP ID, as determined by the user agent and the client.
 - The <a>clientDataHash</a>, which is the hash of the serialized {{ClientData}} and is provided by the client.
 - The {{Account}} information provided by the [RP].
-- The {{CredentialType}} and cryptographic parameters requested by the [RP], with the cryptographic algorithms normalized as per
-    the procedure in [[WebCryptoAPI#algorithm-normalization-normalize-an-algorithm]].
-- A list of {{Credential}} objects provided by the [RP] with the intention that, if any of these are known to the authenticator,
-    it should not create a new credential.
+- The {{ScopedCredentialType}} and cryptographic parameters requested by the [RP], with the cryptographic algorithms normalized
+    as per the procedure in [[WebCryptoAPI#algorithm-normalization-normalize-an-algorithm]].
+- A list of {{ScopedCredential}} objects provided by the [RP] with the intention that, if any of these are known to the
+    authenticator, it should not create a new credential.
 - Extension data created by the client based on the extensions requested by the [RP].
 
-When this operation is invoked, the authenticator obtains user consent for creating a new credential. The prompt for obtaining 
-this consent is shown by the authenticator if it has its own output capability, or by the user agent otherwise. Once user 
-consent is obtained, the authenticator generates the appropriate cryptographic keys and creates a new credential. It also 
-generates an identifier for the credential, such that this identifier is globally unique with high probability across all 
-credentials with the same type across all authenticators. It then associates the credential with the specified RP ID hash such
-that it will be able to retrieve the RP ID hash later, given the credential ID. Finally, it generates an attestation statement
-that describes its own attributes as well as some attributes of the credential. If no authority key is available to sign such an
-attestation statement, then the authenticator performs <a>self attestation</a> of the credential with its own private key. For
-more details on attestation, see [[#cred-attestation-stmts]].
+When this operation is invoked, the authenticator must perform the following procedure:
+- Check if all the supplied parameters are syntactically well-formed and of the correct length. If not, return an error code
+    equivalent to UnknownError and terminate the operation.
+-  Check if at least one of the specified combinations of {{ScopedCredentialType}} and cryptographic parameters is supported. If
+    not, return an error code equivalent to NotSupportedError and terminate the operation.
+- Check if a credential matching any of the supplied {{ScopedCredential}} identifiers is present on this authenticator. If so,
+    return an error code equivalent to NotAllowedError and terminate the operation.
+- Prompt the user for consent to create a new credential. The prompt for obtaining this consent is shown by the authenticator
+    if it has its own output capability, or by the user agent otherwise. If the user denies consent, return an error code
+    equivalent to NotAllowedError and terminate the operation.
+- Once user consent has been obtained, generate a new credential object:
+    - Generate a set of cryptographic keys using the most preferred combination of {{ScopedCredentialType}} and cryptographic
+        parameters supported by this authenticator.
+    - Generate an identifier for this credential, such that this identifier is globally unique with high probability across all
+        credentials with the same type across all authenticators.
+    - Associate the credential with the specified RP ID hash and the user's account identifier {{Account/id}}.
+    - Delete any older credentials with the same RP ID hash and {{Account/id}} that are stored locally in the authenticator.
+- If any error occurred while creating the new credential object, return an error code equivalent to UnknownError and terminate
+    the operation.
+- Process all the supported extensions requested by the client, and generate an attestation statement. If no authority key is
+	available to sign such an attestation statement, then the authenticator performs <a>self attestation</a> of the credential
+	with its own private key. For more details on attestation, see [[#cred-attestation-stmts]].
 
-On successful completion of this operation, the authenticator returns the following to the client:
-
+On successful completion of this operation, the authenticator must return the following to the client:
 - The type and unique identifier of the new credential.
 - The public key associated with the new credential.
 - The fields of the attestation structure {{WebAuthnAttestation}}, including information about the attestation format used.
-
-If the user refuses consent, the authenticator returns an appropriate error status to the client.
 
 
 ### The <dfn>authenticatorGetAssertion</dfn> operation ### {#op-get-assertion}
@@ -907,14 +977,23 @@ input parameters:
 - A list of credentials acceptable to the [RP] (possibly filtered by the client).
 - Extension data created by the client based on the extensions requested by the [RP].
 
-When this method is invoked, the authenticator allows the user to select a credential from among the credentials associated with
-that [RP] (as determined by an exact match of the RP ID hash) and matching the specified criteria, then obtains user consent
-for using that credential. The prompt for obtaining this consent may be shown by the authenticator if it has its own output
-capability, or by the user agent otherwise. Once a credential is selected and user consent is obtained, the authenticator
-computes a cryptographic signature using the credential's private key and constructs an assertion signature as specified in
-[[#signature-format]].
+When this method is invoked, the authenticator must perform the following procedure:
+- Check if all the supplied parameters are syntactically well-formed and of the correct length. If not, return an error code
+    equivalent to UnknownError and terminate the operation.
+- If a list of credentials was supplied by the client, filter it by removing those credentials that are not present on this
+    authenticator. If no list was supplied, create a list with all credentials stored for the caller's RP ID (as determined by
+    an exact match of the RP ID hash).
+- If the previous step resulted in an empty list, return an error code equivalent to NotAllowedError and terminate the
+    operation.
+- Prompt the user to select a credential from among the above list. Obtain user consent for using this credential. The prompt
+    for obtaining this consent may be shown by the authenticator if it has its own output capability, or by the user agent
+    otherwise.
+- Process all the supported extensions requested by the client, then generate a cryptographic signature using the private key of
+    the selected credential (as specified in [[#signature-format]]), and use it to construct an assertion.
+- If any error occurred while generating the assertion, return an error code equivalent to UnknownError and terminate the
+    operation.
 
-On successful completion, the authenticator returns to the user agent:
+On successful completion, the authenticator must return to the user agent:
 - The identifier of the credential used to generate the signature.
 - The <a>authenticatorData</a> used to generate the signature.
 - The signature itself.
@@ -1369,8 +1448,10 @@ Packed attestation is a WebAuthn optimized format of attestation data. It uses a
 method. Encoding this format can even be implemented by <a>authenticators</a> with very limited resources (e.g., secure
 elements).
 
+
 : Attestation format identifier
 :: packed
+
 
 : Attestation types supported
 :: All
@@ -1555,6 +1636,7 @@ attestation statement is produced by a component running in a secure operating e
 is produced outside this environment. The [RP] is expected to check that the contents of <a>authenticatorData</a> are consistent
 with the fields of the attestation certificate's extension data.
 
+
 : Attestation format identifier
 :: android-key
 
@@ -1565,6 +1647,7 @@ with the fields of the attestation certificate's extension data.
 :: An Android key Attestation statement has the following format:
 
     <pre class="idl">
+        [SecureContext]
         interface AndroidKeyAttestation {
             readonly    attribute ArrayBuffer   signature;
         };
@@ -1581,7 +1664,7 @@ with the fields of the attestation certificate's extension data.
 
 : Verification procedure
 :: Verification is performed as follows:
-    - Verify that {{AndroidKeyAttestation/signature}} is a valid certificate chain, comsisting of a time-valid X.509 certificate
+    - Verify that {{AndroidKeyAttestation/signature}} is a valid certificate chain, consisting of a time-valid X.509 certificate
         chaining up to a trusted attestation root key.
 
     - Verify that the public key in the attestation certificate matches the credential public key in the attestation data field
@@ -1591,8 +1674,8 @@ with the fields of the attestation certificate's extension data.
         - The value of the `attestationChallenge` field is identical to <a>attToBeSigned</a>.
         - The `AuthorizationList.allApplications` field is <em>not</em> present, since ScopedCredentials must be bound to the
             rpId.
-        - The value in the `AuthorizationList.origin` field is equal to KM_TAG_GENERATED.
-        - The value in the `AuthorizationList.purpose` field is equal to KM_PURPOSE_SIGN.
+        - The value in the `AuthorizationList.origin` field is equal to `KM_TAG_GENERATED`.
+        - The value in the `AuthorizationList.purpose` field is equal to `KM_PURPOSE_SIGN`.
 
 
 ## Android SafetyNet Attestation Format ## {#android-safetynet-attestation}
@@ -1729,7 +1812,7 @@ in the {{getAssertion()}} or {{makeCredential()}} call, while the <dfn>authentic
 to the authenticator during the processing of these calls.
 
 A [RP] simultaneously requests the use of an extension and sets its client argument by including an entry in the
-{{CredentialOptions/extensions}} option to the {{makeCredential()}} or {{getAssertion()}} call. The entry key MUST be the
+{{ScopedCredentialOptions/extensions}} option to the {{makeCredential()}} or {{getAssertion()}} call. The entry key MUST be the
 extension identifier, and the value MUST be the <a>client argument</a>.
 
 <pre class="example highlight">
@@ -2072,14 +2155,14 @@ credential. It is intended primarily for [RPS] that wish to tightly control the 
     
     Each data item is in turn a CBOR array of length 3 (type 0x83) with the following data items:
     - Data Item 1 – User Verification Method. This is the authentication method/factor used by the authenticator to verify 
-                    the user. Available values are defined in the FIDO Registry of Predefined Values, ‘User Verification 
-                    Methods’ section. It is encoded as a CBOR unsigned integer (Major type 0).
+                    the user. Available values are defined in [[!FIDOReg]], "User Verification Methods" section. It is 
+                    encoded as a CBOR unsigned integer (Major type 0).
     - Data Item 2 – Key Protection Type. This is the method used by the authenticator to protect the FIDO registration 
-                    private key material. Available values are defined in the FIDO Registry of Predefined Values, ‘Key 
-                    Protection Types’ section. It is encoded as a CBOR 2 byte unsigned short (Major type 0).
+                    private key material. Available values are defined in [[!FIDOReg]], "Key Protection Types" section. 
+                    It is encoded as a CBOR 2 byte unsigned short (Major type 0).
     - Data Item 3 – Matcher Protection Type. This is the method used by the authenticator to protect the matcher that 
-		    performs user verification. Available values are defined in the FIDO Registry of Predefined Values, 
-		    ‘Matcher Protection Types’ section. It is encoded as a CBOR 2 byte unsigned short (Major type 0).
+		            performs user verification. Available values are defined in [[!FIDOReg]], "Matcher Protection Types" 
+		            section. It is encoded as a CBOR 2 byte unsigned short (Major type 0).
 
     This is repeated for each factor used in the authentication instance.
     
@@ -2370,7 +2453,8 @@ handled on the server side and do not need support from the API specified here.
 
 
 # Acknowledgements # {#acknowledgements}
-We thank the following for their contributions to, and thorough review of, this specification: Jing Jin and Giridhar Mandyam.
+We thank the following for their contributions to, and thorough review of, this specification: Domenic Denicola, Rahul Ghosh,
+Brad Hill, Jing Jin, Anne van Kesteren, Giridhar Mandyam, Axel Nennker, Yaron Sheffer, Mike West.
 
 <pre class=biblio>
 {  
@@ -2484,6 +2568,13 @@ We thank the following for their contributions to, and thorough review of, this 
     "authors": ["R. Lindemann", "D. Baghdasaryan", "B. Hill"],
     "title": "FIDO Security Reference",
     "href": "https://fidoalliance.org/specs/fido-uaf-v1.0-ps-20141208/fido-security-ref-v1.0-ps-20141208.html",
+    "status": "FIDO Alliance Proposed Standard"
+  },
+  
+  "FIDOReg": {
+    "authors": ["R. Lindemann", "D. Baghdasaryan", "B. Hill"],
+    "title": "FIDO UAF Registry of Predefined Values",
+    "href": "https://fidoalliance.org/specs/fido-uaf-v1.0-ps-20141208/fido-uaf-reg-v1.0-ps-20141208.html",
     "status": "FIDO Alliance Proposed Standard"
   }
 }
