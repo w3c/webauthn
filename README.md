@@ -49,7 +49,7 @@ To build a new WD and upload it to the W3C publishing system:
 - Edit the Bikeshed metadata to change the status from ED to WD (do not commit this change)
 - Build and upload the new draft with
 ```
-bikeshed echidna -u USERNAME -p PASSWORD -d DECISION_URL
+bikeshed echidna --u USERNAME --p PASSWORD --d DECISION_URL
 ```
 
-This will create a tarball of the HTML and images, and upload to Echidna. Status of the request can be tracked through the W3C API [as described in the Echidna documentation](https://github.com/w3c/echidna/wiki/How-to-use-Echidna).
+This will create a tarball of the HTML and images, and upload to Echidna. Status of the request can be tracked through the W3C API [as described in the Echidna documentation](https://github.com/w3c/echidna/wiki/How-to-use-Echidna). Note that on Windows, this will give an error about failing to delete a temporary file because it is in use by a different process. This error is harmless; it happens after the submission has completed.
