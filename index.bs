@@ -148,12 +148,9 @@ or a combination of both.
 
 This specification relies on several other underlying specifications.
 
-<!-- , <a>opaque origin</a>, -->
-
 : HTML
-:: The concepts of <a link-for='web'>current settings object</a>, |given value|, <a link-for='web'>opaque origin</a>, 
-    <a for='web'>origin</a>, the <a>Navigator</a> interface, and the 
-    <a link-for='web'>relaxing the same-origin restriction</a> "setting" algorithm are defined in [[!HTML51]].
+:: The concepts of <a>current settings object</a>, <a link-for='web'>origin</a>, <a>opaque origin</a>,
+    <a>relaxing the same-origin restriction</a>, and the <a>Navigator</a> interface are defined in [[!HTML51]].
 
 : Web IDL
 :: Many of the interface definitions and all of the IDL in this specification depend on [[!WebIDL-1]]. This updated version of
@@ -231,10 +228,6 @@ NOT", "SHOULD", "SHOULD NOT", "RECOMMENDED",  "MAY", and
 :: A user agent implementing, in conjunction with the underlying platform, the <a>Web Authentication API</a> and algorithms
 	given in this specification, and handling communication between <a>Authenticators</a> and <a>[RPS]</a>.
 
-: <dfn>eTLD+1</dfn>
-:: Also known as a <em>Registered Domain</em> [[PSL]], an eTLD+1 is an <em>effective Top-Level Domain Name</em> (eTLD), plus the
-	next domain name label, proceeding from right to left. An eTLD is also known as a <em>public suffix</em> [[RFC7719]].
-
 : <dfn>Registration</dfn>
 :: The <a>ceremony</a> where a user, a <a>[RP]</a>, and the user's computing device(s) (containing at least one
 	<a>authenticator</a>) work in concert to create a <a>scoped credential</a> and associate it with the user's <a>[RP]</a>
@@ -249,18 +242,21 @@ NOT", "SHOULD", "SHOULD NOT", "RECOMMENDED",  "MAY", and
 
 : <dfn>Relying Party Identifier</dfn>
 : <dfn>RP ID</dfn>
-:: A Relying Party Identifier is derived from a <a>[RP]</a>'s origin's hostname by computing the hostname's <a>eTLD+1</a>. 
+:: An identifier for the [RP] on whose behalf a given registration or authentication ceremony is being performed. Scoped
+    credentials can only be used for authentication by the same entity (as identified by RP ID) that created and registered
+    them. By default, the RP ID for a WebAuthn operation is set to the <a>current settings object</a>'s
+    <a link-for='web'>origin</a>. This default can be overridden by the caller subject to certain restrictions, as specified in
+    [[#makeCredential]] and [[#getAssertion]].
 
 : <dfn>Scoped Credential</dfn>
 :: Generically, a credential is data one entity presents to another in order to authenticate the former's identity [[RFC4949]].
 	A WebAuthn <em><a>scoped credential</a></em> is a <code>{ identifier, type }</code> pair identifying authentication
-	information established by the authenticator and the [RP], together, at <a>registration</a> time. 
-	The authentication information consists of an asymmetric key pair, where the public key portion is returned to the [RP]. who
-	stores it in conjunction with the present user's account.
-	The authenticator maps the private key to the [RP]'s <a>RP ID</a> and stores it. 
-	Subsequently, only that [RP], as identified by its <a>RP ID</a>, is able to employ the <a>scoped credential</a> in 
-	<a>authentication</a> ceremonies, via the <a>getAssertion()</a> method. 
-	The [RP] uses its copy of the stored public key to verify the resultant <a>WebAuthn Assertion</a>.
+	information established by the authenticator and the [RP], together, at <a>registration</a> time. The authentication
+    information consists of an asymmetric key pair, where the public key portion is returned to the [RP], which stores it in
+    conjunction with the present user's account. The authenticator maps the private key to the [RP]'s <a>RP ID</a> and stores
+    it. Subsequently, only that [RP], as identified by its <a>RP ID</a>, is able to employ the <a>scoped credential</a> in 
+	<a>authentication</a> ceremonies, via the <a>getAssertion()</a> method. The [RP] uses its copy of the stored public key to
+    verify the resultant <a>WebAuthn Assertion</a>.
 
 
 : <dfn>User Consent</dfn>
@@ -383,15 +379,16 @@ When this method is invoked, the user agent MUST execute the following algorithm
     ones enumerated below, cancel the timer, reject |promise| with a DOMException whose name is "UnknownError", and terminate
     this algorithm.
 
-3. Set |callerOrigin| to the <a link-for='web'>current settings object</a>'s <a link-for='web'>origin</a>. If |callerOrigin| is
-    an <a link-for='web'>opaque origin</a>, reject |promise| with a <a>DOMException</a> whose name is "NotAllowedError", and
-    terminate this algorithm. 
-    Otherwise, apply the <a link-for='web'>relaxing the same-origin restriction</a> "setting" algorithm using |callerOrigin| as
-    the |given value|. 
-    If no errors are thrown, then derive the RP ID from |callerOrigin| by computing the
-    "public suffix + 1" or "PS+1" (which is also referred to as the "Effective Top-Level Domain plus One" or "<a>eTLD+1</a>")
-    part of |callerOrigin| [[PSL]]. Let |rpId| be the lowercase form of this RP ID. Set |rpIdHash| to the SHA-256 hash of the
-    UTF-8 encoding of |rpId|.
+3. Set |callerOrigin| to the <a>current settings object</a>'s <a link-for='web'>origin</a>. If |callerOrigin| is an <a>opaque
+    origin</a>, reject |promise| with a <a>DOMException</a> whose name is "NotAllowedError", and terminate this algorithm.
+    Otherwise,
+    - If {{ScopedCredentialOptions/rpId}} is not specified, then set |rpId| to |callerOrigin|, and |rpIdHash| to the SHA-256
+        hash of |rpId|.
+    - If {{ScopedCredentialOptions/rpId}} is specified, then invoke the procedure used for <a>relaxing the same-origin
+        restriction</a> by setting the `document.domain` attribute, using {{ScopedCredentialOptions/rpId}} as the given value
+        but without changing the current document's `domain`. If no errors are thrown, set |rpId| to the value of `host` as
+        computed by this procedure, and |rpIdHash| to the SHA-256 hash of |rpId|. Otherwise, reject |promise| with a
+        <a>DOMException</a> whose name is "SecurityError", and terminate this algorithm.
 
 4. Process each element of {{cryptoParameters}} using the following steps, to produce a new sequence |normalizedParameters|.
     - Let |current| be the currently selected element of {{cryptoParameters}}.
@@ -472,15 +469,16 @@ When this method is invoked, the user agent MUST execute the following algorithm
     ones enumerated below, cancel the timer, reject |promise| with a DOMException whose name is "UnknownError", and terminate
     this algorithm.
 
-3. Set |callerOrigin| to the <a link-for='web'>current settings object</a>'s <a link-for='web'>origin</a>. If |callerOrigin|
-    is an <a link-for='web'>opaque origin</a>, reject |promise| with a <a>DOMException</a> whose name is "NotAllowedError", and
-    terminate this algorithm.
-    Otherwise, apply the <a link-for='web'>relaxing the same-origin restriction</a> "setting" algorithm using |callerOrigin| as
-    the |given value|. 
-    If no errors are thrown, then derive the RP ID from |callerOrigin| by computing the
-    "public suffix + 1" or "PS+1" (which is also referred to as the "Effective Top-Level Domain plus One" or "<a>eTLD+1</a>")
-    part of |callerOrigin| [[PSL]]. Let |rpId| be the lowercase form of this RP ID. Set |rpIdHash| to the SHA-256 hash of the
-    UTF-8 encoding of |rpId|.
+3. Set |callerOrigin| to the <a>current settings object</a>'s <a link-for='web'>origin</a>. If |callerOrigin| is an <a>opaque
+    origin</a>, reject |promise| with a <a>DOMException</a> whose name is "NotAllowedError", and terminate this algorithm.
+    Otherwise,
+    - If {{AssertionOptions/rpId}} is not specified, then set |rpId| to |callerOrigin|, and |rpIdHash| to the SHA-256
+        hash of |rpId|.
+    - If {{AssertionOptions/rpId}} is specified, then invoke the procedure used for <a>relaxing the same-origin restriction</a>
+        by setting the `document.domain` attribute, using {{AssertionOptions/rpId}} as the given value but without changing the
+        current document's `domain`. If no errors are thrown, set |rpId| to the value of `host` as computed by this procedure,
+        and |rpIdHash| to the SHA-256 hash of |rpId|. Otherwise, reject |promise| with a <a>DOMException</a> whose name is
+        "SecurityError", and terminate this algorithm.
 
 4. If {{AssertionOptions/extensions}} was specified, process any extensions supported by this client platform, to produce the
     extension data that needs to be sent to the authenticator. If an error is encountered while processing an extension, skip
@@ -613,6 +611,7 @@ authorizing an authenticator with which to complete the operation.
 <pre class="idl">
     dictionary ScopedCredentialOptions {
         unsigned long                             timeoutSeconds;
+        USVString                                 rpId;
         sequence < ScopedCredentialDescription >  excludeList;
         WebAuthnExtensions                        extensions;
     };
@@ -624,6 +623,9 @@ authorizing an authenticator with which to complete the operation.
 
     - The <dfn>timeoutSeconds</dfn> parameter specifies a time, in seconds, that the caller is willing to wait for the call to
         complete. This is treated as a hint, and may be overridden by the platform.
+    
+    - The <dfn>rpId</dfn> parameter explicitly specifies the RP ID that the credential should be associated with. If it is
+        omitted, the RP ID will be set to the <a>current settings object</a>'s <a link-for='web'>origin</a>.
 
     - The <dfn>excludeList</dfn> parameter is intended for use by <a>[RPS]</a> that wish to limit the creation of multiple
         credentials for the same account on a single authenticator. The platform is requested to return an error if the new
@@ -671,6 +673,7 @@ user consent to a specific transaction. The structure of these signatures is def
 <pre class="idl">
     dictionary AssertionOptions {
         unsigned long                            timeoutSeconds;
+        USVString                                rpId;
         sequence < ScopedCredentialDescription > allowList;
         WebAuthnExtensions                       extensions;
     };
@@ -681,6 +684,9 @@ user consent to a specific transaction. The structure of these signatures is def
 
     - The optional <dfn>timeoutSeconds</dfn> parameter specifies a time, in seconds, that the caller is willing to wait for the
         call to complete. This is treated as a hint, and may be overridden by the platform.
+        
+    - The optional <dfn>rpId</dfn> parameter specifies the rpId claimed by the caller. If it is omitted, it will be assumed to
+        be equal to the <a>current settings object</a>'s <a link-for='web'>origin</a>.
 
     - The optional <dfn>allowList</dfn> member contains a list of credentials acceptable to the caller, in order of the caller's
         preference.
@@ -759,7 +765,6 @@ string-valued keys. Values may be any type that has a valid encoding in JSON. It
     dictionary ClientData {
         required DOMString           challenge;
         required DOMString           origin;
-        required DOMString           rpId;
         required AlgorithmIdentifier hashAlg;
         DOMString                    tokenBinding;
         WebAuthnExtensions           extensions;
@@ -771,8 +776,6 @@ string-valued keys. Values may be any type that has a valid encoding in JSON. It
 
     The <dfn for="ClientData">origin</dfn> member contains the fully qualified origin of the requester, as provided to the authenticator by
     the client, in the syntax defined by [[RFC6454]].
-
-    The <dfn>rpId</dfn> member contains the RP ID of the requester, as computed by the client.
 
     The <dfn>hashAlg</dfn> member specifies the hash algorithm used to compute <a>clientDataHash</a> (see
     [[#authenticator-signature]]). Use "S256" for SHA-256, "S384" for SHA384, "S512" for SHA512, and "SM3" for SM3 (see
@@ -1318,16 +1321,15 @@ Upon receiving an attestation statement in the form of a {{WebAuthnAttestation}}
 
 2. Verify that the {{ClientData/challenge}} in the {{ClientData}} matches the challenge that was sent to the authenticator.
 
-3. Verify that the {{ClientData/origin}} and {{ClientData/rpId}} in the {{ClientData}} match the origin and RP ID used by the
-    RP.
+3. Verify that the {{ClientData/origin}} in the {{ClientData}} matches the [RP]'s origin.
 
 4. Verify that the {{ClientData/tokenBinding}} in the {{ClientData}} matches the token binding public key for the TLS connection
     over which the attestation was obtained.
 
 5. Verify that the {{ClientData/extensions}} in the {{ClientData}} is a proper subset of the extensions requested by the RP.
 
-6. Verify that the RP ID hash in the {{WebAuthnAttestation/authenticatorData}} is indeed the SHA-256 hash of the
-    {{ClientData/rpId}}.   
+6. Verify that the RP ID hash in the {{WebAuthnAttestation/authenticatorData}} is indeed the SHA-256 hash of the RP ID expected
+    by the RP.   
 
 7. Perform an <a>ASCII case-insensitive match</a> on {{WebAuthnAttestation/format}} to determine the attestation format.
 
@@ -1670,7 +1672,7 @@ with the fields of the attestation certificate's extension data.
     - Verify that in the attestation certificate extension data:
         - The value of the `attestationChallenge` field is identical to <a>attToBeSigned</a>.
         - The `AuthorizationList.allApplications` field is <em>not</em> present, since ScopedCredentials must be bound to the
-            rpId.
+            RP ID.
         - The value in the `AuthorizationList.origin` field is equal to `KM_TAG_GENERATED`.
         - The value in the `AuthorizationList.purpose` field is equal to `KM_PURPOSE_SIGN`.
 
