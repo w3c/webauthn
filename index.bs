@@ -106,12 +106,12 @@ scenarios. Additional scenarios, including sample code, are given later in [[#sa
 
 ### Authentication ### {#usecase-authentication}
 
-- On a laptop:
+- On a laptop or desktop:
     * User navigates to example.com in a browser, sees an option to "Sign in with your phone."
     * User chooses this option and gets a message from the browser, "Please complete this action on your phone."
 
 - Next, on their phone:
-    * User sees a discreet prompt or notification, "Sign in to example.com."
+    * User sees a discrete prompt or notification, "Sign in to example.com."
     * User selects this prompt / notification.
     * User is shown a list of their example.com identities, e.g., "Sign in as Alice / Sign in as Bob."
     * User picks an identity, is prompted for an <a>authorization gesture</a> (PIN, biometric, etc.) and provides this.
@@ -124,7 +124,9 @@ scenarios. Additional scenarios, including sample code, are given later in [[#sa
 
 A variety of additional use cases and configurations are also possible, including (but not limited to):
 
-- User navigates to example.com on their laptop, is guided through a flow to create and register a credential on their phone.
+- A user navigates to example.com on their laptop, is guided through a flow to create and register a credential on their phone.
+
+- A user obtains an discrete, cross-platform authenticator, such as a "fob" with USB or USB+NFC/BLE connectivity options, loads example.com in their browser on a laptop or phone, and is guided though a flow to create and register a credential on the fob. 
 
 - A [RP] prompts the user for their <a>authorization gesture</a> in order to authorize a single transaction, such as a payment 
     or other financial transaction.
@@ -611,7 +613,7 @@ authorizing an authenticator with which to complete the operation.
     dictionary ScopedCredentialOptions {
         unsigned long                             timeoutSeconds;
         USVString                                 rpId;
-        sequence < ScopedCredentialDescription >  excludeList;
+        sequence < ScopedCredentialDescriptor >  excludeList;
         WebAuthnExtensions                        extensions;
     };
 </pre>
@@ -673,7 +675,7 @@ user consent to a specific transaction. The structure of these signatures is def
     dictionary AssertionOptions {
         unsigned long                            timeoutSeconds;
         USVString                                rpId;
-        sequence < ScopedCredentialDescription > allowList;
+        sequence < ScopedCredentialDescriptor > allowList;
         WebAuthnExtensions                       extensions;
     };
 </pre>
@@ -707,8 +709,8 @@ This is a dictionary containing zero or more extensions as defined in [[#extensi
 that can be passed to the <a>getAssertion()</a> method and triggers some additional processing by the client platform and/or the
 authenticator.
 
-If the caller wants to pass extensions to the platform, it SHOULD do so by adding one entry per extension to this dictionary
-with the extension identifier as the key, and the extension's value as the value (see [[#signature-format]] for details).
+If the caller wishes to pass extensions to the platform, it MUST do so by adding one entry per extension to this dictionary
+with the extension identifier as the key, and the extension's value as the value (see [[#extensions]] for details).
 
 
 ## Credential Attestation Structure (interface <dfn interface>WebAuthnAttestation</dfn>) ## {#iface-attestation}
@@ -840,10 +842,10 @@ by the caller to select a credential for use.
 </div>
 
 
-### Credential Descriptor (dictionary <dfn dictionary>ScopedCredentialDescription</dfn>) ### {#credential-dictionary}
+### Credential Descriptor (dictionary <dfn dictionary>ScopedCredentialDescriptor</dfn>) ### {#credential-dictionary}
 
 <pre class="idl">
-    dictionary ScopedCredentialDescription {
+    dictionary ScopedCredentialDescriptor {
         required ScopedCredentialType type;
         required BufferSource   id;
         sequence < Transport >  transports;
@@ -854,7 +856,7 @@ This dictionary contains the attributes that are specified by a caller when refe
 the {{makeCredential()}} or {{getAssertion()}} method. It mirrors the fields of the {{ScopedCredential}} object returned by
 these methods.
 
-<div dfn-for="ScopedCredentialDescription">
+<div dfn-for="ScopedCredentialDescriptor">
     The <dfn>type</dfn> attribute contains the type of the credential the caller is referring to.
 
     The <dfn>id</dfn> attribute contains the identifier of the credential that the caller is referring to.
@@ -1231,9 +1233,10 @@ The initial list of supported formats is in [[#defined-attestation-formats]].
 WebAuthn supports multiple attestation types:
 
 : <dfn>Basic Attestation</dfn>
-:: In the case of basic attestation [[UAFProtocol]], the Authenticator's attestation private key is specific to an
-    Authenticator model.  That means that an Authenticator of the same model typically shares the same attestation private key.
-    This model is also used for FIDO UAF 1.0 and FIDO U2F 1.0.
+:: In the case of basic attestation [[UAFProtocol]], the authenticator's attestation key pair is specific to an
+    authenticator model.  Thus, authenticators of the same model often share the same attestation key pair. See 
+    [[#sec-attestation-privacy]] for futher information. 
+    
 
 : <dfn>Self Attestation</dfn>
 :: In the case of self attestation, also known as surrogate basic attestation [[UAFProtocol]], the Authenticator doesn't have
@@ -1910,7 +1913,7 @@ authenticator does this by including it in the <a>authenticatorData</a>. As an e
     A1                                          -- CBOR map of one element
         73                                      -- Key 1: CBOR text string of 19 bytes
             77 65 62 61 75 74 68 6E 45 78 61
-            6D 70 6C 65 5F 67 65 6F             -- "webauthnExample_geo" UTF-8 string
+            6D 70 6C 65 5F 67 65 6F             -- "webauthnExample_geo" UTF-8 encoded string
         82                                      -- Value 1: CBOR array of two elements
             FA 42 82 1E B3                      -- Element 1: Latitude as CBOR encoded float
             FA C1 5F E3 7F                      -- Element 2: Longitude as CBOR encoded float
@@ -1945,7 +1948,7 @@ intended for display on a trusted device on the authenticator.
     authenticator may insert line breaks if needed.
 
 : Authenticator data
-:: A single UTF-8 string, representing the prompt as displayed (including any eventual line breaks).
+:: A single UTF-8 encoded string, representing the prompt as displayed (including any eventual line breaks).
 
 The generic version of this extension allows images to be used as prompts as well.  This allows authenticators without a font
 rendering engine to be used and also supports a richer visual appearance.
@@ -2030,7 +2033,7 @@ credential. It is intended primarily for [RPS] that wish to tightly control the 
     defined below. This extension can be added to attestation statements.
 
 : Authenticator data
-:: The SupportedExtensions extension is a list (CBOR array) of extension identifiers encoded as UTF-8 Strings.
+:: The SupportedExtensions extension is a list (CBOR array) of extension identifiers (UTF-8 encoded strings).
 
 
 ## User Verification Index (UVI) Extension ## {#uvi-extension}
@@ -2074,7 +2077,7 @@ credential. It is intended primarily for [RPS] that wish to tightly control the 
         ...                                         -- all public key alg etc.
         A1                                          -- extension: CBOR map of one element
             6C                                      -- Key 1: CBOR text string of 11 bytes
-                77 65 62 61 75 74 68 6E 5F 75 76 69 -- "webauthn_uvi" UTF-8 string
+                77 65 62 61 75 74 68 6E 5F 75 76 69 -- "webauthn_uvi" UTF-8 encoded string
             58 20                                   -- Value 1: CBOR byte string with 0x20 bytes
                 00 43 B8 E3 BE 27 95 8C             -- the UVI value itself
                 28 D5 74 BF 46 8A 85 CF
@@ -2117,16 +2120,16 @@ credential. It is intended primarily for [RPS] that wish to tightly control the 
         ...                                         -- all public key alg etc.
         A1                                          -- extension: CBOR map of one element
             6C                                      -- Value 1: CBOR text string of 11 bytes
-                77 65 62 61 75 74 68 6E 5F 6C 6F 63 -- "webauthn_loc" UTF-8 string
+                77 65 62 61 75 74 68 6E 5F 6C 6F 63 -- "webauthn_loc" UTF-8 encoded string
             86                                      -- Value 2: array of 6 elements
                 68				    -- Element 1:  CBOR text string of 8 bytes
-                   6C 61 74 69 74 75 64 65          -- “latitude” UTF-8 string
+                   6C 61 74 69 74 75 64 65          -- “latitude” UTF-8 encoded string
                 FB ...				    -- Element 2:  Latitude as CBOR encoded double-precision float
                 69				    -- Element 3:  CBOR text string of 9 bytes
-                   6C 6F 6E 67 69 74 75 64 65       -- “longitude” UTF-8 string
+                   6C 6F 6E 67 69 74 75 64 65       -- “longitude” UTF-8 encoded string
                 FB ...				    -- Element 4:  Longitude as CBOR encoded double-precision float
                 68				    -- Element 5:  CBOR text string of 8 bytes
-                  61 6C 74 69 74 75 64 65           -- “altitude” UTF-8 string
+                  61 6C 74 69 74 75 64 65           -- “altitude” UTF-8 encoded string
                 FB ...				    -- Element 6:  Altitude as CBOR encoded double-precision float
     </pre>
 
@@ -2182,7 +2185,7 @@ credential. It is intended primarily for [RPS] that wish to tightly control the 
         ...                    -- all public key alg etc.
         A1                     -- extension: CBOR map of one element
             6C                 -- Key 1: CBOR text string of 12 bytes
-                77 65 62 61 75 74 68 6E 2E 75 76 6d -- "webauthn_uvm" UTF-8 string
+                77 65 62 61 75 74 68 6E 2E 75 76 6d -- "webauthn_uvm" UTF-8 encoded string
             82                 -- Value 1: CBOR array of length 2 indicating two factor usage
                 83              -- Item 1: CBOR array of length 3
                     02           -- Subitem 1: CBOR integer for User Verification Method Fingerprint
