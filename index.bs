@@ -427,13 +427,16 @@ When this method is invoked, the user agent MUST execute the following algorithm
 
 9. Initialize |issuedRequests| to an empty list.
 
-10. For each authenticator currently available on this platform: asynchronously invoke the <a>authenticatorMakeCredential</a>
+10. If {{ScopedCredentialOptions/attachment}} is specified, only consider authenticators which meet the attachment criteria for
+    executing further steps.
+
+11. For each available authenticator: asynchronously invoke the <a>authenticatorMakeCredential</a>
     operation on that authenticator with |rpIdHash|, <a>clientDataHash</a>, {{accountInformation}}, |normalizedParameters|,
     {{ScopedCredentialOptions/excludeList}} and |clientExtensions| as parameters. Add a corresponding entry to |issuedRequests|.
     - For each credential C in {{ScopedCredentialOptions/excludeList}} that has a non-empty |transports| list, optionally use
         only the specified transports to test for the existence of C.
 
-11. While |issuedRequests| is not empty, perform the following actions depending upon the |adjustedTimeout| timer and responses
+12. While |issuedRequests| is not empty, perform the following actions depending upon the |adjustedTimeout| timer and responses
     from the authenticators:
     - If the |adjustedTimeout| timer expires, then for each entry in |issuedRequests| invoke the <a>authenticatorCancel</a>
         operation on that authenticator and remove its entry from the list.
@@ -620,8 +623,9 @@ authorizing an authenticator with which to complete the operation.
     dictionary ScopedCredentialOptions {
         unsigned long                             timeoutSeconds;
         USVString                                 rpId;
-        sequence < ScopedCredentialDescriptor >  excludeList;
+        sequence < ScopedCredentialDescriptor >   excludeList;
         WebAuthnExtensions                        extensions;
+        Attachment                                attachment;
     };
 </pre>
 
@@ -644,7 +648,46 @@ authorizing an authenticator with which to complete the operation.
         the credential, or that additional information be returned in the attestation statement. Alternatively, the caller may
         specify an additional message that they would like the authenticator to display to the user. Extensions are defined in
         [[#extensions]].
+
+    - The <dfn>attachment</dfn> parameter contains additional constraints on how authenticators may be attached to the
+        client platform.  See [[#attachment]] for a description of the valid attachment values and their meanings.
 </div>
+
+### Credential Attachment enumeration (enum <dfn enum>Attachment</dfn>) ### {#attachment}
+
+<pre class="idl">
+    enum Attachment {
+        "platform",
+        "cross_platform"
+    };
+</pre>
+
+<div dfn-for="Attachment">
+    Clients may communicate with authenticators using a variety of mechanisms.
+    For example, a client may use a platform-specific API to communicate with
+    an authenticator which is physically bound do a platform.  On the other
+    hand, a client may use a variety of transports such as Bluetooth
+    (see [[#transport]] to discover and communicate with authenticators.
+    We define authenticators that are part of the client's platform as having
+    a |platform| attachment, while those that are reachable via standardized
+    cross-platform protocols are defined as having |cross_platform| attachment.
+    This distinction is important because some [RPS] are known to have
+    use-cases where only a |platform| attached authenticator is acceptable 
+    (or use-cases where only |cross_platform| attachment may be used).  As
+    concrete example for the former, [RPS] that offer accounts whereby a
+    webauthn authenticator may be used as the only valid second factor will not
+    want to allow users to use platform-attached authenticators -- as this will
+    lead to user lockout.
+
+    <ul>
+        <li><dfn>platform</dfn> - the respective authenticator is attached
+            using platform-specific transports.  Usually, authenticators of
+            this class are non-removable from the platform.
+        <li><dfn>cross_platform</dfn> - the respective authenticator is attached
+            using cross-platform transports.  Authenticators of this class are
+            removable from the platform.
+    </ul>
+<div>
 
 
 ## Web Authentication Assertion (interface <dfn interface>WebAuthnAssertion</dfn>) ## {#iface-assertion}
