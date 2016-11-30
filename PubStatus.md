@@ -1,3 +1,7 @@
-Publication status will be updated here. 
+WG status may most easily be followed through our milestones:
 
-The group will aim to produce FPWDs of its normative deliverables in Q1 2016, and send them to CR by December 2016. 
+https://github.com/w3c/webauthn/milestones
+
+We published a FPWD of the Web Authentication API in May 2016.  Subsequent updates can be found in the working version of the document at:
+
+https://w3c.github.io/webauthn/
