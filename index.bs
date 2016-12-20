@@ -47,6 +47,7 @@ spec: HTML51; urlPrefix: http://www.w3.org/TR/html51/; for: web
             text: opaque origin; url: opaque-origin; for:web
             text: tuple origin
             text: relaxing the same-origin restriction
+            text: domain; url: origin-domain
     type: dfn
         urlPrefix: webappapis.html;
             text: current settings object; for:web; url:current-settings-object
@@ -56,8 +57,15 @@ spec: WebCryptoAPI; urlPrefix: https://www.w3.org/TR/WebCryptoAPI/; for: web
     type: dfn
         text: normalizing an algorithm; url: dfn-normalize-an-algorithm
 
+<!-- spec: HTML; urlPrefix: https://url.spec.whatwg.org/ -->
+spec: URL; urlPrefix: https://url.spec.whatwg.org/; for: url
+    type: dfn
+        text: host parser; url: concept-host-parser
+        text: domain; url: concept-domain
+        text: host; url: origin-host
+        text: IPv4 address; url: concept-ipv4
+        text: IPv6 address; url: concept-ipv6
 </pre> <!-- class=anchors -->
-
 
 # Introduction # {#intro}
 
@@ -201,8 +209,8 @@ NOT", "SHOULD", "SHOULD NOT", "RECOMMENDED",  "MAY", and
 : <dfn>Attestation</dfn>
 :: Generally, a statement that serves to bear witness, confirm, or authenticate.
     In the WebAuthn context, attestation is employed to attest to the provenance of an authenticator and the data it emits;
-    including, for example: credential IDs, credential key pairs, signature counters, etc. <dfn>Attestation information</dfn> is 
-    conveyed in <a>attestation statements</a>. 
+    including, for example: credential IDs, credential key pairs, signature counters, etc. <dfn>Attestation information</dfn> is
+    conveyed in <a>attestation statements</a>.
     See also <a>attestation format</a>, and <a>attestation type</a>.
 
 : <dfn>Attestation Certificate</dfn>
@@ -405,13 +413,11 @@ When this method is invoked, the user agent MUST execute the following algorithm
     an <a link-for='web'>opaque origin</a>, reject |promise| with a <a>DOMException</a> whose name is "NotAllowedError", and
     terminate this algorithm. Otherwise,
     - If the {{ScopedCredentialOptions/rpId}} member of {{options}} is not <a>present</a>, then set |rpId| to |callerOrigin|, 
-        and |rpIdHash| to the SHA-256 hash of |rpId|.
-    - If the {{ScopedCredentialOptions/rpId}} member of {{options}} is <a>present</a>, then invoke the procedure used for 
-        <a>relaxing the same-origin
-        restriction</a> by setting the `document.domain` attribute, using {{ScopedCredentialOptions/rpId}} as the given value
-        but without changing the current document's `domain`. If no errors are thrown, set |rpId| to the value of `host` as
-        computed by this procedure, and |rpIdHash| to the SHA-256 hash of the UTF-8 encoding of |rpId|. Otherwise, reject |promise| with a
-        <a>DOMException</a> whose name is "SecurityError", and terminate this algorithm.
+        and |rpIdHash| to the SHA-256 hash of the UTF-8 encoding of |rpId|.
+    - If the {{ScopedCredentialOptions/rpId}} member of {{options}} is <a>present</a>, then invoke the [[#algo-relax-same-origin-restriction]],
+        using {{ScopedCredentialOptions/rpId}}. If no errors are thrown, set |rpId| to the value of `host` as
+        computed by this algorithm, and |rpIdHash| to the SHA-256 hash of the UTF-8 encoding of |rpId|. Otherwise, reject
+        |promise| with a <a>DOMException</a> whose name is "SecurityError", and terminate this algorithm.
 
 4. Process each element of {{cryptoParameters}} using the following steps, to produce a new sequence |normalizedParameters|.
     - Let |current| be the currently selected element of {{cryptoParameters}}.
@@ -502,11 +508,10 @@ When this method is invoked, the user agent MUST execute the following algorithm
     terminate this algorithm. Otherwise,
     - If the {{AssertionOptions/rpId}} member of {{options}} is not <a>present</a>, then set |rpId| to |callerOrigin|, and 
         |rpIdHash| to the SHA-256 hash of the UTF-8 encoding of |rpId|.
-    - If the {{AssertionOptions/rpId}} member of {{options}} is <a>present</a>, then invoke the procedure used for <a>relaxing 
-        the same-origin restriction</a> by setting the `document.domain` attribute, using {{AssertionOptions/rpId}} as the given
-        value but without changing the current document's `domain`. If no errors are thrown, set |rpId| to the value of `host`
-        as computed by this procedure, and |rpIdHash| to the SHA-256 hash of the UTF-8 encoding of |rpId|. Otherwise, reject 
-        |promise| with a <a>DOMException</a> whose name is "SecurityError", and terminate this algorithm.
+    - If the {{AssertionOptions/rpId}} member of {{options}} is <a>present</a>, then invoke the [[#algo-relax-same-origin-restriction]], using
+        {{AssertionOptions/rpId}} as the given value. If no errors are thrown, set |rpId| to the value of `host` as computed
+        by this algorithm, and |rpIdHash| to the SHA-256 hash of the UTF-8 encoding of |rpId|. Otherwise, reject |promise| with
+        a <a>DOMException</a> whose name is "SecurityError", and terminate this algorithm.
 
 4. If the {{AssertionOptions/extensions}} member of {{options}} is <a>present</a>, process any extensions supported by this 
     client platform, to produce the extension data that needs to be sent to the authenticator. If an error is encountered while
@@ -1516,7 +1521,38 @@ used to help facilitate isolating problems with a specific version of a device.
 If the attestation root certificate is not dedicated to a single WebAuthn Authenticator device line (i.e., AAGUID), the AAGUID
 should be specified in the attestation certificate itself, so that it can be verified against the <a>authenticatorData</a>.
 
+## Algorithm to Relax the Same-Origin Restriction ## {#algo-relax-same-origin-restriction}
 
+The same-origin policy prevents web applications from interacting, unless they both have the same origin. HTML5, via
+the `document.domain` attribute, permits "relaxing" this same-origin restriction under certain circumstances. This
+algorithm implements a similar procedure that of setting the `document.domain` attribute from [[!HTML51]], but without
+modifying the <a>Document</a> object:
+
+1. If this <a>Document</a> object has no browsing context, throw a "SecurityError" <a>DOMException</a>.
+2. If this <a>Document</a> object’s active sandboxing flag set has its <a>sandboxed `document.domain` browsing context
+    flag</a> set, then throw a "SecurityError" <a>DOMException</a>.
+3. If the given value is the empty string, then throw a "SecurityError" <a>DOMException</a>.
+4. Let |host| be the result of parsing the given value.
+5. If |host| is failure, then throw a "SecurityError" <a>DOMException</a>.
+6. Let |originalDomain| be this <a>Document</a> object’s <a link-for='web'>origin</a>’s original <a link-for='web'>`domain`</a>,
+    assigned when the <a>Document</a> is created.
+
+    Note: The |originalDomain| should not be affected by prior calls to the <a>Document</a> object’s
+     <a link-for='web'>`domain`</a> setter.
+
+7. If |host| is not <a link-for='url'>equal</a> to |originalDomain|, then run these substeps:
+    1. If |host| or |originalDomain| is not a <a link-for='url'>`domain`</a>, then throw a "SecurityError" <a>DOMException</a>.
+
+    Note: This is meant to exclude <a link-for='url'>hosts</a> that are an <a link-for='url'>IPv4 address</a> or an
+     <a link-for='url'>IPv6 address</a>.
+
+    2. If |host|, prefixed by a U+002E FULL STOP (.), does not exactly match the end of |originalDomain|, then throw a
+        "SecurityError" <a>DOMException</a>.
+    3. If |host| matches a suffix in the Public Suffix List, or, if |host|, prefixed by a U+002E FULL STOP (.), matches the
+        end of a suffix in the Public Suffix List, then throw a "SecurityError" <a>DOMException</a>. [[!PSL]]
+
+        Suffixes must be compared after applying the <a link-for='url'>host parser</a> algorithm.
+8. Return |host|.
 
 # Defined Attestation Formats # {#defined-attestation-formats}
 
@@ -2667,6 +2703,12 @@ Brad Hill, Jing Jin, Anne van Kesteren, Giridhar Mandyam, Axel Nennker, Yaron Sh
     "title": "FIDO Metadata Service v1.0",
     "href": "https://fidoalliance.org/specs/fido-uaf-v1.0-ps-20141208/fido-uaf-metadata-service-v1.0-ps-20141208.html",
     "status": "FIDO Alliance Proposed Standard"
+  },
+
+  "PSL": {
+    "title": "Public Suffix List",
+    "publisher": "Mozilla Foundation",
+    "href": "https://publicsuffix.org/"
   },
 
   "TPMv1-2-Part2": {
