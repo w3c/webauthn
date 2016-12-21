@@ -335,7 +335,6 @@ The Web Authentication API is defined by the union of the Web IDL fragments pres
     [SecureContext]
     interface WebAuthentication {
         Promise < ScopedCredentialInfo > makeCredential (
-            Account                                 accountInformation,
             sequence < ScopedCredentialParameters > cryptoParameters,
             BufferSource                            attestationChallenge,
             optional ScopedCredentialOptions        options
@@ -360,16 +359,6 @@ created credential.
 
 This method takes the following parameters:
 
-- The <dfn>accountInformation</dfn> parameter specifies information about the user account for which the credential is being
-    created. This is meant for later use by the authenticator when it needs to prompt the user to select a credential. An
-    authenticator is only required to store one credential for any given value of {{accountInformation}}. Specifically, if an
-    authenticator already has a credential for the specified value of {{Account/id}} in {{accountInformation}}, and if this
-    credential is not listed in {{ScopedCredentialOptions/excludeList}}, then after successful execution of this method:
-    - Any calls to {{getAssertion()}} that do not specify {{AssertionOptions/allowList}} will not result in the older
-        credential being offered to the user.
-    - Any calls to {{getAssertion()}} that specify the older credential in the {{AssertionOptions/allowList}} may also not
-        result in it being offered to the user.
-
 - The <dfn>cryptoParameters</dfn> parameter supplies information about the desired properties of the credential to be created.
     The sequence is ordered from most preferred to least preferred. The platform makes a best effort to create the most
     preferred credential that it can.
@@ -378,7 +367,16 @@ This method takes the following parameters:
     statement of the newly created credential.
 
 - The optional <dfn dfn-for="makeCredential()">options</dfn> parameter specifies additional options, as described in
-    [[#credential-options]].
+    [[#credential-options]].  Note: an authenticator is only required to store one credential for any given value of
+    {{ScopedCredentialOptions/accountInformation}}.  Specifically, if an authenticator already has a credential for the
+    specified value of {{Account/id}} in {{ScopedCredentialOptions/accountInformation}}, and if this credential is not
+    listed in {{ScopedCredentialOptions/excludeList}}, then after successful execution of this method:
+    - Any calls to {{getAssertion()}} that do not specify {{AssertionOptions/allowList}} will not result in the older
+        credential being offered to the user.
+    - Any calls to {{getAssertion()}} that specify the older credential in the {{AssertionOptions/allowList}} may also not
+        result in it being offered to the user.
+
+
 
 When this method is invoked, the user agent MUST execute the following algorithm:
 
@@ -625,6 +623,7 @@ authorizing an authenticator with which to complete the operation.
 
 <pre class="idl">
     dictionary ScopedCredentialOptions {
+        Account                                   accountInformation;
         unsigned long                             timeoutSeconds;
         USVString                                 rpId;
         sequence < ScopedCredentialDescriptor >   excludeList;
@@ -636,6 +635,9 @@ authorizing an authenticator with which to complete the operation.
 
 <div dfn-for="ScopedCredentialOptions">
     This dictionary is used to supply additional options when creating a new credential. All these parameters are optional.
+
+    - The <dfn>accountInformation</dfn> parameter specifies information about the user account for which the credential is being
+        created. This is meant for later use by the authenticator when it needs to prompt the user to select a credential.
 
     - The <dfn>timeoutSeconds</dfn> parameter specifies a time, in seconds, that the caller is willing to wait for the call to
         complete. This is treated as a hint, and may be overridden by the platform.
@@ -2450,14 +2452,15 @@ The sample code for generating and registering a new key follows:
         }
     ];
     var challenge = "Y2xpbWIgYSBtb3VudGFpbg";
-    var options = { timeoutSeconds: 300,  // 5 minutes
-                    excludeList: [],      // No excludeList
+    var options = { account: userAccountInformation,
+                    timeoutSeconds: 300, // 5 minutes
+                    excludeList: [],     // No excludeList
                     extensions: {"webauthn.location": true}  // Include location information
-                                                   // in attestation
+                                                             // in attestation
     };
 
     // Note: The following call will cause the authenticator to display UI.
-    webauthnAPI.makeCredential(userAccountInformation, cryptoParams, challenge, options)
+    webauthnAPI.makeCredential(cryptoParams, challenge, options)
         .then(function (newCredentialInfo) {
         // Send new credential info to server for verification and registration.
     }).catch(function (err) {
