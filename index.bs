@@ -48,23 +48,24 @@ spec: HTML51; urlPrefix: http://www.w3.org/TR/html51/; for: web
             text: tuple origin
             text: relaxing the same-origin restriction
             text: domain; url: origin-domain
+            text: active sandboxing flag set
     type: dfn
         urlPrefix: webappapis.html;
             text: current settings object; for:web; url:current-settings-object
             text: Navigator; for: interface; url:the-navigator-object
 
-spec: WebCryptoAPI; urlPrefix: https://www.w3.org/TR/WebCryptoAPI/; for: web 
+spec: WebCryptoAPI; urlPrefix: https://www.w3.org/TR/WebCryptoAPI/; for: web
     type: dfn
         text: normalizing an algorithm; url: dfn-normalize-an-algorithm
 
-<!-- spec: HTML; urlPrefix: https://url.spec.whatwg.org/ -->
 spec: URL; urlPrefix: https://url.spec.whatwg.org/; for: url
     type: dfn
-        text: host parser; url: concept-host-parser
+        text: host parser
         text: domain; url: concept-domain
-        text: host; url: origin-host
-        text: IPv4 address; url: concept-ipv4
-        text: IPv6 address; url: concept-ipv6
+
+spec: WebIDL; urlPrefix: https://heycam.github.io/webidl/; for: webidl
+    type: dfn
+        text: securityerror
 </pre> <!-- class=anchors -->
 
 # Introduction # {#intro}
@@ -417,7 +418,7 @@ When this method is invoked, the user agent MUST execute the following algorithm
     - If the {{ScopedCredentialOptions/rpId}} member of {{options}} is <a>present</a>, then invoke the [[#algo-relax-same-origin-restriction]],
         using {{ScopedCredentialOptions/rpId}}. If no errors are thrown, set |rpId| to the value of `host` as
         computed by this algorithm, and |rpIdHash| to the SHA-256 hash of the UTF-8 encoding of |rpId|. Otherwise, reject
-        |promise| with a <a>DOMException</a> whose name is "SecurityError", and terminate this algorithm.
+        |promise| with a <a>DOMException</a> whose name is "<a>SecurityError</a>", and terminate this algorithm.
 
 4. Process each element of {{cryptoParameters}} using the following steps, to produce a new sequence |normalizedParameters|.
     - Let |current| be the currently selected element of {{cryptoParameters}}.
@@ -511,7 +512,7 @@ When this method is invoked, the user agent MUST execute the following algorithm
     - If the {{AssertionOptions/rpId}} member of {{options}} is <a>present</a>, then invoke the [[#algo-relax-same-origin-restriction]], using
         {{AssertionOptions/rpId}} as the given value. If no errors are thrown, set |rpId| to the value of `host` as computed
         by this algorithm, and |rpIdHash| to the SHA-256 hash of the UTF-8 encoding of |rpId|. Otherwise, reject |promise| with
-        a <a>DOMException</a> whose name is "SecurityError", and terminate this algorithm.
+        a <a>DOMException</a> whose name is "<a>SecurityError</a>", and terminate this algorithm.
 
 4. If the {{AssertionOptions/extensions}} member of {{options}} is <a>present</a>, process any extensions supported by this 
     client platform, to produce the extension data that needs to be sent to the authenticator. If an error is encountered while
@@ -1523,36 +1524,35 @@ should be specified in the attestation certificate itself, so that it can be ver
 
 ## Algorithm to Relax the Same-Origin Restriction ## {#algo-relax-same-origin-restriction}
 
-The same-origin policy prevents web applications from interacting, unless they both have the same origin. HTML5, via
-the `document.domain` attribute, permits "relaxing" this same-origin restriction under certain circumstances. This
-algorithm implements a similar procedure that of setting the `document.domain` attribute from [[!HTML51]], but without
-modifying the <a>Document</a> object:
+In general, the same-origin policy prevents web applications from interacting
+within user agents, unless they have the same origin. However, there are many
+specific facets and exceptions to this overall policy.
 
-1. If this <a>Document</a> object has no browsing context, throw a "SecurityError" <a>DOMException</a>.
-2. If this <a>Document</a> object’s active sandboxing flag set has its <a>sandboxed `document.domain` browsing context
-    flag</a> set, then throw a "SecurityError" <a>DOMException</a>.
-3. If the given value is the empty string, then throw a "SecurityError" <a>DOMException</a>.
-4. Let |host| be the result of parsing the given value.
-5. If |host| is failure, then throw a "SecurityError" <a>DOMException</a>.
-6. Let |originalDomain| be this <a>Document</a> object’s <a link-for='web'>origin</a>’s original <a link-for='web'>`domain`</a>,
-    assigned when the <a>Document</a> is created.
+For example, cookies [[RFC6265]] have same-origin restrictions similar to those
+of the HTML `document.domain` attribute. Both permit <a>relaxing the same-origin
+restriction</a> in a particular fashion, under certain circumstances.
 
-    Note: The |originalDomain| should not be affected by prior calls to the <a>Document</a> object’s
-     <a link-for='web'>`domain`</a> setter.
+The below algorithm implements a same-origin relaxation in the same vein as
+cookies and `document.domain`, but without modifying the <a>Document</a> object.
 
-7. If |host| is not <a link-for='url'>equal</a> to |originalDomain|, then run these substeps:
-    1. If |host| or |originalDomain| is not a <a link-for='url'>`domain`</a>, then throw a "SecurityError" <a>DOMException</a>.
+1. If the given value is the empty string, then throw a "<a>SecurityError</a>" <a>DOMException</a>.
+2. Let |host| be the result of <a>parsing</a> the given value.
+3. If |host| is failure, then throw a "<a>SecurityError</a>" <a>DOMException</a>.
+4. If this <a>Document</a> object’s <a link-for='web'>origin</a> is an <a link-for='web'>opaque origin</a>, then throw a "<a>SecurityError</a>" <a>DOMException</a>.
+5. Let |originalHost| be this <a>Document</a> object’s <a link-for='web'>origin</a>’s <a link-for='url'>`host`</a>.
+6. If |host| is not <a link-for='url'>equal</a> to |originalHost|, then run these substeps:
+    1. If |host| or |originalHost| is not a <a link-for='url'>domain</a>, then throw a "<a>SecurityError</a>" <a>DOMException</a>.
 
-    Note: This is meant to exclude <a link-for='url'>hosts</a> that are an <a link-for='url'>IPv4 address</a> or an
-     <a link-for='url'>IPv6 address</a>.
+    Note: This is meant to exclude <a link-for='url'>hosts</a> that are an <a>IPv4 address</a> or an
+     <a>IPv6 address</a>.
 
-    2. If |host|, prefixed by a U+002E FULL STOP (.), does not exactly match the end of |originalDomain|, then throw a
-        "SecurityError" <a>DOMException</a>.
+    2. If |host|, prefixed by a U+002E FULL STOP (.), does not exactly match the end of |originalHost|, then throw a
+        "<a>SecurityError</a>" <a>DOMException</a>.
     3. If |host| matches a suffix in the Public Suffix List, or, if |host|, prefixed by a U+002E FULL STOP (.), matches the
-        end of a suffix in the Public Suffix List, then throw a "SecurityError" <a>DOMException</a>. [[!PSL]]
+        end of a suffix in the Public Suffix List, then throw a "<a>SecurityError</a>" <a>DOMException</a>. [[!PSL]]
 
         Suffixes must be compared after applying the <a link-for='url'>host parser</a> algorithm.
-8. Return |host|.
+7. Return |host|.
 
 # Defined Attestation Formats # {#defined-attestation-formats}
 
