@@ -412,10 +412,10 @@ When this method is invoked, the user agent MUST execute the following algorithm
     terminate this algorithm. Otherwise,
     - If the {{ScopedCredentialOptions/rpId}} member of {{options}} is not <a>present</a>, then set |rpId| to |callerOrigin|, 
         and |rpIdHash| to the SHA-256 hash of the UTF-8 encoding of |rpId|.
-    - If the {{ScopedCredentialOptions/rpId}} member of {{options}} is <a>present</a>, then invoke the [[#algo-relax-same-origin-restriction]],
-        using {{ScopedCredentialOptions/rpId}}. If no errors are thrown, set |rpId| to the value of `host` as
+    - If the {{ScopedCredentialOptions/rpId}} member of {{options}} is <a>present</a>, then invoke the [[#algo-relax-same-origin-restriction]]
+        using these arugments: let |relaxingRpId| be {{ScopedCredentialOptions/rpId}}, and let |currentDocument| be the current <a>Document</a>. If no errors are thrown, set |rpId| to the value of `host` as
         computed by this algorithm, and |rpIdHash| to the SHA-256 hash of the UTF-8 encoding of |rpId|. Otherwise, reject
-        |promise| with a <a>DOMException</a> whose name is "{{SecurityError}}", and terminate this algorithm.
+        |promise| with the thrown error, and terminate this algorithm.
 
 4. Process each element of {{cryptoParameters}} using the following steps, to produce a new sequence |normalizedParameters|.
     - Let |current| be the currently selected element of {{cryptoParameters}}.
@@ -506,10 +506,10 @@ When this method is invoked, the user agent MUST execute the following algorithm
     terminate this algorithm. Otherwise,
     - If the {{AssertionOptions/rpId}} member of {{options}} is not <a>present</a>, then set |rpId| to |callerOrigin|, and 
         |rpIdHash| to the SHA-256 hash of the UTF-8 encoding of |rpId|.
-    - If the {{AssertionOptions/rpId}} member of {{options}} is <a>present</a>, then invoke the [[#algo-relax-same-origin-restriction]], using
-        {{AssertionOptions/rpId}} as the given value. If no errors are thrown, set |rpId| to the value of `host` as computed
-        by this algorithm, and |rpIdHash| to the SHA-256 hash of the UTF-8 encoding of |rpId|. Otherwise, reject |promise| with
-        a <a>DOMException</a> whose name is "{{SecurityError}}", and terminate this algorithm.
+    - If the {{AssertionOptions/rpId}} member of {{options}} is <a>present</a>, then invoke the [[#algo-relax-same-origin-restriction]],
+        using these arugments: let |relaxingRpId| be {{ScopedCredentialOptions/rpId}}, and let |currentDocument| be the current <a>Document</a>. If no errors are thrown, set |rpId| to the value of `host` as computed
+        by this algorithm, and |rpIdHash| to the SHA-256 hash of the UTF-8 encoding of |rpId|. Otherwise, reject
+        |promise| with the thrown error, and terminate this algorithm.
 
 4. If the {{AssertionOptions/extensions}} member of {{options}} is <a>present</a>, process any extensions supported by this 
     client platform, to produce the extension data that needs to be sent to the authenticator. If an error is encountered while
@@ -972,22 +972,22 @@ defined in [[!WebCryptoAPI]].
 
 ## Algorithm to Relax the Same-Origin Restriction ## {#algo-relax-same-origin-restriction}
 
-In general, the same-origin policy prevents web applications from interacting
-within user agents, unless they have the same origin. However, there are many
-specific facets and exceptions to this overall policy.
+In general, the same-origin policy prevents pages from different origins from
+interacting with each other. However, for payments we want to allow subdomains
+to create payment requests that look like they come from the main domain.
 
-For example, cookies [[RFC6265]] have same-origin restrictions similar to those
-of the HTML `document.domain` attribute. Both permit <a>relaxing the same-origin
-restriction</a> in a particular fashion, under certain circumstances.
+We want to allow an |rpId| to represent a parent domain, subject to constraints
+similar to those of cookies or `document.domain`.
 
-The below algorithm implements a same-origin relaxation in the same vein as
-cookies and `document.domain`, but without modifying the <a>Document</a> object.
+The below algorithm should be invoked with a <a>Document</a> |currentDocument| and a
+string |relaxingRpId|. It implements a same-origin relaxation in the same vein as
+cookies and `document.domain`, but without modifying the |currentDocument| argument.
 
-1. If the given value is the empty string, then throw a "{{SecurityError}}" <a>DOMException</a>.
-2. Let |host| be the result of <a link-for='url'>parsing</a> the given value.
+1. If |relaxingRpId| is the empty string, then throw a "{{SecurityError}}" <a>DOMException</a>.
+2. Let |host| be the result of <a link-for='url'>parsing</a> the |relaxingRpId|.
 3. If |host| is failure, then throw a "{{SecurityError}}" <a>DOMException</a>.
-4. If this <a>Document</a> object’s <a link-for='web'>origin</a> is an <a link-for='web'>opaque origin</a>, then throw a "{{SecurityError}}" <a>DOMException</a>.
-5. Let |originalHost| be this <a>Document</a> object’s <a link-for='web'>origin</a>’s <a link-for='url'>host</a>.
+4. If |currentDocument|’s <a link-for='web'>origin</a> is an <a link-for='web'>opaque origin</a>, then throw a "{{SecurityError}}" <a>DOMException</a>.
+5. Let |originalHost| be |currentDocument|’s <a link-for='web'>origin</a>’s <a link-for='url'>host</a>.
 6. If |host| is not <a link-for='url'>equal</a> to |originalHost|, then run these substeps:
     1. If |host| or |originalHost| is not a <a link-for='url'>domain</a>, then throw a "{{SecurityError}}" <a>DOMException</a>.
 
