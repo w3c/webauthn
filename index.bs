@@ -304,14 +304,20 @@ NOT", "SHOULD", "SHOULD NOT", "RECOMMENDED",  "MAY", and
 
 # <dfn>Web Authentication API</dfn> # {#api}
 
-This section normatively specifies the API for creating and using scoped credentials. Support for deleting credentials is
-deliberately omitted; this is expected to be done through platform-specific user interfaces rather than from a script. The basic
+This section normatively specifies the API for creating and using scoped credentials. The basic
 idea is that the credentials belong to the user and are managed by an authenticator, with which the [RP] interacts through the
 client (consisting of the browser and underlying OS platform). Scripts can (with the user's consent) request the browser to
 create a new credential for future use by the [RP]. Scripts can also request the user’s permission to perform authentication
 operations with an existing credential. All such operations are performed in the authenticator and are mediated by the browser
 and/or platform on the user's behalf. At no point does the script get access to the credentials themselves; it only gets
 information about the credentials in the form of objects.
+
+In addition to the above script interface, the authenticator may implement (or come with client software that implements) a user
+interface for management. Such an interface may be used, for example, to reset the authenticator to a clean state or to inspect
+the current state of the authenticator. In other words, such an interface is similar to the user interfaces provided by browsers
+for managing user state such as history, saved passwords and cookies. Authenticator management actions such as credential
+deletion are considered to be the responsibility of such a user interface and are deliberately omitted from the API exposed to
+scripts.
 
 The security properties of this API are provided by the client and the authenticator working together. The authenticator, which
 holds and manages credentials, ensures that all operations are scoped to a particular origin, and cannot be replayed against
@@ -408,14 +414,12 @@ When this method is invoked, the user agent MUST execute the following algorithm
 3. Set |callerOrigin| to the <a link-for='web'>current settings object</a>'s <a link-for='web'>origin</a>. If |callerOrigin| is
     an <a link-for='web'>opaque origin</a>, reject |promise| with a <a>DOMException</a> whose name is "NotAllowedError", and
     terminate this algorithm. Otherwise,
-    - If the {{ScopedCredentialOptions/rpId}} member of {{options}} is not <a>present</a>, then set |rpId| to |callerOrigin|, 
-        and |rpIdHash| to the SHA-256 hash of |rpId|.
+    - If the {{ScopedCredentialOptions/rpId}} member of {{options}} is not <a>present</a>, then set |rpId| to |callerOrigin|.
     - If the {{ScopedCredentialOptions/rpId}} member of {{options}} is <a>present</a>, then invoke the procedure used for 
-        <a>relaxing the same-origin
-        restriction</a> by setting the `document.domain` attribute, using {{ScopedCredentialOptions/rpId}} as the given value
-        but without changing the current document's `domain`. If no errors are thrown, set |rpId| to the value of `host` as
-        computed by this procedure, and |rpIdHash| to the SHA-256 hash of the <a>UTF-8 encoding</a> of |rpId|. Otherwise, reject |promise| with a
-        <a>DOMException</a> whose name is "SecurityError", and terminate this algorithm.
+        <a>relaxing the same-origin restriction</a> by setting the `document.domain` attribute, using
+		{{ScopedCredentialOptions/rpId}} as the given value but without changing the current document's `domain`. If no errors
+		are thrown, set |rpId| to the value of `host` as computed by this procedure. Otherwise, reject |promise| with a
+		<a>DOMException</a> whose name is "SecurityError", and terminate this algorithm.
 
 4. Process each element of {{cryptoParameters}} using the following steps, to produce a new sequence |normalizedParameters|.
     - Let |current| be the currently selected element of {{cryptoParameters}}.
@@ -447,7 +451,7 @@ When this method is invoked, the user agent MUST execute the following algorithm
     modality matches |attachment|.
 
 10. For each authenticator in |currentlyAvailableAuthenticators|: asynchronously invoke the <a>authenticatorMakeCredential</a>
-    operation on that authenticator with |rpIdHash|, <a>clientDataHash</a>, {{accountInformation}}, |normalizedParameters|,
+    operation on that authenticator with |rpId|, <a>clientDataHash</a>, {{accountInformation}}, |normalizedParameters|,
     {{ScopedCredentialOptions/excludeList}} and |clientExtensions| as parameters. Add a corresponding entry to |issuedRequests|.
     - For each credential |C| in the {{ScopedCredentialOptions/excludeList}} member of {{options}} that has a non-empty
         |transports| list, optionally use only the specified transports to test for the existence of |C|.
@@ -506,13 +510,12 @@ When this method is invoked, the user agent MUST execute the following algorithm
 3. Set |callerOrigin| to the <a link-for='web'>current settings object</a>'s <a link-for='web'>origin</a>. If |callerOrigin| is
     an <a link-for='web'>opaque origin</a>, reject |promise| with a <a>DOMException</a> whose name is "NotAllowedError", and
     terminate this algorithm. Otherwise,
-    - If the {{AssertionOptions/rpId}} member of {{options}} is not <a>present</a>, then set |rpId| to |callerOrigin|, and 
-        |rpIdHash| to the SHA-256 hash of the UTF-8 encoding of |rpId|.
+    - If the {{AssertionOptions/rpId}} member of {{options}} is not <a>present</a>, then set |rpId| to |callerOrigin|.
     - If the {{AssertionOptions/rpId}} member of {{options}} is <a>present</a>, then invoke the procedure used for <a>relaxing 
         the same-origin restriction</a> by setting the `document.domain` attribute, using {{AssertionOptions/rpId}} as the given
         value but without changing the current document's `domain`. If no errors are thrown, set |rpId| to the value of `host`
-        as computed by this procedure, and |rpIdHash| to the SHA-256 hash of the UTF-8 encoding of |rpId|. Otherwise, reject 
-        |promise| with a <a>DOMException</a> whose name is "SecurityError", and terminate this algorithm.
+        as computed by this procedure. Otherwise, reject |promise| with a <a>DOMException</a> whose name is "SecurityError", and
+		terminate this algorithm.
 
 4. If the {{AssertionOptions/extensions}} member of {{options}} is <a>present</a>, process any extensions supported by this 
     client platform, to produce the extension data that needs to be sent to the authenticator. If an error is encountered while
@@ -535,7 +538,7 @@ When this method is invoked, the user agent MUST execute the following algorithm
     - If the above filtering process concludes that none of the credentials on the {{AssertionOptions/allowList}} can possibly 
         be on this authenticator, do not perform any of the following steps for this authenticator, and proceed to the next
         authenticator (if any).
-    - Asynchronously invoke the <a>authenticatorGetAssertion</a> operation on this authenticator with |rpIdHash|,
+    - Asynchronously invoke the <a>authenticatorGetAssertion</a> operation on this authenticator with |rpId|,
         <a>clientDataHash</a>, |credentialList|, and |clientExtensions| as parameters.
     - Add an entry to |issuedRequests|, corresponding to this request.
 
@@ -1009,7 +1012,7 @@ The following operations can be invoked by the client in an authenticator sessio
 This operation must be invoked in an authenticator session which has no other operations in progress. It takes the following
 input parameters:
 
-- The SHA-256 hash of the caller's RP ID, as determined by the user agent and the client.
+- The caller's RP ID, as determined by the user agent and the client.
 - The <a>clientDataHash</a>, which is the hash of the serialized {{ClientData}} and is provided by the client.
 - The {{Account}} information provided by the [RP].
 - The {{ScopedCredentialType}} and cryptographic parameters requested by the [RP], with the cryptographic algorithms normalized
@@ -1033,8 +1036,8 @@ When this operation is invoked, the authenticator must perform the following pro
         parameters supported by this authenticator.
     - Generate an identifier for this credential, such that this identifier is globally unique with high probability across all
         credentials with the same type across all authenticators.
-    - Associate the credential with the specified RP ID hash and the user's account identifier {{Account/id}}.
-    - Delete any older credentials with the same RP ID hash and {{Account/id}} that are stored locally in the authenticator.
+    - Associate the credential with the specified RP ID and the user's account identifier {{Account/id}}.
+    - Delete any older credentials with the same RP ID and {{Account/id}} that are stored locally in the authenticator.
 - If any error occurred while creating the new credential object, return an error code equivalent to UnknownError and terminate
     the operation.
 - Process all the supported extensions requested by the client, and generate an attestation statement. If no authority key is
@@ -1052,7 +1055,7 @@ On successful completion of this operation, the authenticator must return the fo
 This operation must be invoked in an authenticator session which has no other operations in progress. It takes the following
 input parameters:
 
-- The SHA-256 hash of the caller's RP ID, as determined by the user agent and the client.
+- The caller's RP ID, as determined by the user agent and the client.
 - The <a>clientDataHash</a>, which is the hash of the serialized {{ClientData}} and is provided by the client.
 - A list of credentials acceptable to the [RP] (possibly filtered by the client).
 - Extension data created by the client based on the extensions requested by the [RP].
@@ -1062,7 +1065,7 @@ When this method is invoked, the authenticator must perform the following proced
     equivalent to UnknownError and terminate the operation.
 - If a list of credentials was supplied by the client, filter it by removing those credentials that are not present on this
     authenticator. If no list was supplied, create a list with all credentials stored for the caller's RP ID (as determined by
-    an exact match of the RP ID hash).
+    an exact match of the RP ID).
 - If the previous step resulted in an empty list, return an error code equivalent to NotAllowedError and terminate the
     operation.
 - Prompt the user to select a credential from among the above list. Obtain user consent for using this credential. The prompt
@@ -1194,14 +1197,11 @@ The encoding of authenticator data is a byte array of 37 bytes or more, as follo
     </tr>
 </table>
 
-The RP ID hash is originally received from the client when the credential is created, and again when an assertion is generated.
+The RP ID is originally received from the client when the credential is created, and again when an assertion is generated.
 However, it differs from other client data in some important ways. First, unlike the client data, the RP ID of a credential does
 not change between operations but instead remains the same for the lifetime of that credential. Secondly, it is validated by the
-authenticator during the <a>authenticatorGetAssertion</a> operation, by making sure that the RP ID hash associated with the
-requested credential exactly matches the RP ID hash supplied by the client. These differences also explain why the RP ID hash is
-always a SHA-256 hash instead of being crypto-agile like the <a>clientDataHash</a>; for a given RP ID, we need the hash to be
-computed the same way by all clients for all operations so that authenticators can roam among clients without losing
-interoperability.
+authenticator during the <a>authenticatorGetAssertion</a> operation, by making sure that the RP ID associated with the
+requested credential exactly matches the RP ID supplied by the client.
 
 The `TUP` flag SHALL be set if and only if the authenticator detected a user through an authenticator specific gesture. The
 `RFU` bits in the flags byte SHALL be set to zero.
