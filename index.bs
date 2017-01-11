@@ -177,13 +177,10 @@ This specification relies on several other underlying specifications.
 :: The <dfn dictionary>AlgorithmIdentifier</dfn> type and the method for <a>normalizing an algorithm</a> are defined in
     [[WebCryptoAPI#algorithm-dictionary]].
 
-
-
 : Base64url encoding
 :: The term <dfn>Base64url Encoding</dfn> refers to the base64 encoding using the URL- and filename-safe character set defined
     in Section 5 of [[!RFC4648]], with all trailing '=' characters omitted (as permitted by Section 3.2) and without the
-    inclusion of any line breaks, whitespace, or other additional characters. This is the same encoding as used by JSON Web
-    Signature (JWS) [[RFC7515]].
+    inclusion of any line breaks, whitespace, or other additional characters.
 
 The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL
 NOT", "SHOULD", "SHOULD NOT", "RECOMMENDED",  "MAY", and
@@ -1606,8 +1603,8 @@ elements).
 
     : x5c
     :: A definite-length array of byte strings. The elements of the array contain the attestation certificate and its
-        certificate chain as described in [[!RFC7515]] section 4.1.6. This field is present only if Basic attestation or Privacy
-        CA attestation is in use.
+        certificate chain, each encoded in X.509 format. The attestation certificate must be the first element in the array.
+        This field is present only if Basic attestation or Privacy CA attestation is in use.
         
     : daaKey
     :: A byte string containing the DAA root key. This field is present only if Direct Anonymous Attestation is in use.
@@ -1628,7 +1625,9 @@ elements).
     credential private key. It sets |alg| to the algorithm of the credential private key, and omits the other fields.
 
 : Verification procedure
-:: If |x5c| is present, this indicates that the attestation type is not DAA. In this case:
+:: If both |x5c| and |daaKey| are present, terminate this procedure with an error.
+
+    If |x5c| is present, this indicates that the attestation type is not DAA. In this case:
     - Follow the procedure in [[#authenticator-signature-verification]] to verify that |signature| is a valid signature over the
         given <a>authenticatorData</a> and <a>clientDataHash</a>  using the attestation public key in |x5c| with the algorithm
         specified in |alg|.
@@ -1679,7 +1678,7 @@ The attestation certificate MUST have the following fields/extensions:
 
 ## TPM Attestation Format ## {#tpm-attestation}
 
-This attestation format is generally used by authenticators that use a Trusted Platform Model as their cryptographic engine.
+This attestation format is generally used by authenticators that use a Trusted Platform Module as their cryptographic engine.
 
 : Attestation format identifier
 :: tpm
@@ -1691,62 +1690,72 @@ This attestation format is generally used by authenticators that use a Trusted P
 :: A TPM Attestation statement is a CBOR map with the following fields:
 
     : tpmVersion
-    :: A text string containing the version of the TPM specification to which the signature conforms. Currently supported
-        versions are "1.2" and "2.0".
+    :: A text string containing the version of the TPM specification to which the signature conforms. Currently the only
+        supported version is "2.0".
 
     : x5c
-    :: A definite-length array of byte strings. The elements of the array contain the attestation certificate and its
-        certificate chain as described in [[!RFC7515]] section 4.1.6. This will be an AIK certificate.
+    :: A definite-length array of byte strings. The elements of the array contain the AIK certificate used for the attestation,
+        each encoded in X.509 format. The attestation certificate must be the first element in the array.
     
     : alg
     :: A text string containing the name of the algorithm used to generate the attestation signature according to [[!RFC7518]]
         section 3.1. The following algorithms are supported:
 
-        1. "RSA1_5" [[!RFC7518]] (TPM v1.2 only)
-        2. "ES256" [[!RFC7518]]  (TPM v2.0 only)
-        3. "RS256" [[!RFC7518]]  (TPM v2.0 only)
-        4. "PS256" [[!RFC7518]]  (TPM v2.0 only)
-        5. "ED256" [[!FIDOEcdaaAlgorithm]]  (TPM v2.0 only)
-        6. "ED512" [[!FIDOEcdaaAlgorithm]]  (TPM v2.0 only)
+        1. "ES256" [[!RFC7518]]
+        2. "RS256" [[!RFC7518]]
+        3. "PS256" [[!RFC7518]]
+        4. "ED256" [[!FIDOEcdaaAlgorithm]]
+        5. "ED512" [[!FIDOEcdaaAlgorithm]]
 
     : signature
-    :: A byte string containing the attestation signature.
+    :: A byte string containing the attestation signature, in the form of a TPMT_SIGNATURE structure as specified in
+        [[TPMv2-Part2]] section 11.3.4.
     
     : certifyInfo
-    :: A byte string containing the certifyInfo structure returned by the TPM.
+    :: A byte string containing the structure over which the attestation signature was computed. This is a TPMS_ATTEST structure
+        as specified in [[TPMv2-Part2]] section 10.12.8.
+    
+    : publicArea
+    :: The TPMT_PUBLIC structure (see [[TPMv2-Part2]] section 12.2.4) used by the TPM to represent the credential public key.
     
 : Signing procedure
 :: Concatenate the given <a>authenticatorData</a> and <a>clientDataHash</a> as shown in [[#authenticator-signature]] to form
     |attToBeSigned|.
 
-    If using TPM version 1.2, generate a signature using the procedure specified in [[TPMv1-2-Part3]] Section 13.8 or
-    Section 13.9, using the attestation private key and setting the `antiReplay` parameter to the SHA-1 hash of |attToBeSigned|.
+    Generate a signature using the procedure specified in [[TPMv2-Part3]] Section 18.2, using the attestation private key and
+    setting the `qualifyingData` parameter to |attToBeSigned|.
 
-    If using TPM version 2.0, generate a signature using the procedure specified in [[TPMv2-Part3]] Section 18.2, using the
-    attestation private key and setting the `qualifyingData` parameter to |attToBeSigned|.
-
-    In both the above cases, return the certifyInfo output parameter along with the signature.
+    Set the |publicArea| field to the public area of the credential public key, the |certifyInfo| field to the output parameter
+    of the same name, and the signature to the signature obtained from the above procedure.
 
 : Verification procedure
-:: If |x5c| is present, this indicates that the attestation type is not DAA. In this case:
-    - Verify the |signature| is over the |certifyInfo| using the attestation public key in |x5c| with the algorithm specified in
-        |alg|.
-    - If |tpmVersion| is "1.2", verify that the |certifyInfo| contains a TPM_CERTIFY_INFO or TPM_CERTIFY_INFO2 structure with
-        the `data` field set to the SHA-1 hash of the concatenation of the claimed <a>authenticatorData</a> and
-        <a>clientDataHash</a>.
-    - If |tpmVersion| is "2.0", verify that |certifyInfo| is a TPMS_ATTEST structure with the `extraData` field set to the
-        concatenation of the claimed <a>authenticatorData</a> and <a>clientDataHash</a>.
+:: Verify that the public key specified by the `parameters` and `unique` fields of |publicArea| is identical to the public key
+    contained in the attestation data inside the claimed <a>authenticatorData</a>
+    
+    Concatenate the given <a>authenticatorData</a> and <a>clientDataHash</a> as shown in [[#authenticator-signature]] to form
+    |attToBeSigned|.
+
+    Validate that |certifyInfo| is valid:
+    - Verify that `magic` is set to TPM_GENERATED_VALUE.
+    - Verify that `type` is set to TPM_ST_ATTEST_CERTIFY.
+    - Verify that `extraData` is set to |attToBeSigned|.
+    - Verify that `attested` contains a TPMS_CERTIFY_INFO structure, whose `name` field contains a valid Name for |publicArea|,
+        as computed using the algorithm in the `nameAlg` field of |publicArea|, by the procedure specified in [[TPMv2-Part1]]
+        section 16.
+    
+    If both |x5c| and |daaKey| are present, terminate this procedure with an error.
+
+    If |x5c| is present, this indicates that the attestation type is not DAA. In this case:
+    - Verify the |signature| is a valid signature over |certifyInfo| using the attestation public key in |x5c| with the
+        algorithm specified in |alg|.
     - Verify that |x5c| meets the requirements in [[#tpm-cert-requirements]].
     - If |x5c| contains an extension with OID `1 3 6 1 4 1 45724 1 1 4` (id-fido-gen-ce-aaguid) verify that the value of this
         extension matches the AAGUID in the claimed <a>authenticatorData</a>.
     - If successful, return attestation type Privacy CA and trust path |x5c|.
 
-
     If |daaKey| is present, then the attestation type is DAA.
     - Verify that |alg| is "ED256" or "ED512".
-    - Verify that |certifyInfo| is a TPMS_ATTEST structure with the `extraData` field set to the concatenation of the claimed
-        <a>authenticatorData</a> and <a>clientDataHash</a>.
-    - Perform DAA-Verify on |signature| to verify that it is over the |certifyInfo| (see [[!FIDOEcdaaAlgorithm]]).
+    - Perform DAA-Verify on |signature| to verify that it is a valid signature over |certifyInfo| (see [[!FIDOEcdaaAlgorithm]]).
     - If successful, return attestation type DAA and trust path |daaKey|.
 
 
@@ -1758,13 +1767,12 @@ TPM <a>attestation certificate</a> MUST have the following fields/extensions:
 
 - Subject field MUST be set to empty.
 
-- The Subject Alternative Name extension must be set as defined in [[TPMv2-EK-Profile]] section 3.2.9 if "version" equals 2 and
-    [[TPMv1-2-Credential-Profiles]] section 3.2.9 if "version" equals 1.
+- The Subject Alternative Name extension must be set as defined in [[TPMv2-EK-Profile]] section 3.2.9.
 
 - The Extended Key Usage extension MUST contain the
     "joint-iso-itu-t(2) internationalorganizations(23) 133 tcg-kp(8) tcg-kp-AIKCertificate(3)" OID.
 
-- The Basic Constraints extension MUST have the CA component set to false
+- The Basic Constraints extension MUST have the CA component set to false.
 
 - An Authority Information Access (AIA) extension with entry `id-ad-ocsp` and a CRL Distribution Point extension [[RFC5280]] are
     both optional as the status of many attestation certificates is available through metadata services.
@@ -1814,6 +1822,7 @@ with the fields of the attestation certificate's extension data.
         - The value in the `AuthorizationList.purpose` field is equal to `KM_PURPOSE_SIGN`.
     - If successful, return attestation type Basic with the trust path set to the entire attestation statement.
 
+    
 ## Android SafetyNet Attestation Format ## {#android-safetynet-attestation}
 
 When the <a>Authenticator</a> in question is a platform-provided Authenticator on certain Android platforms, the attestation
@@ -2702,6 +2711,12 @@ Brad Hill, Jing Jin, Anne van Kesteren, Giridhar Mandyam, Axel Nennker, Yaron Sh
     "title": "TPM Main Part 3: TPM Commands",
     "publisher": "Trusted Computing Group",
     "href": "http://www.trustedcomputinggroup.org/wp-content/uploads/TPM-Main-Part-3-TPM-Commands_v1.2_rev116_01032011.pdf"
+  },
+
+  "TPMv2-Part1": {
+    "title": "Trusted Platform Module Library, Part 1: Architecture",
+    "publisher": "Trusted Computing Group",
+    "href": "http://www.trustedcomputinggroup.org/wp-content/uploads/TPM-Rev-2.0-Part-1-Architecture-01.16-1.pdf"
   },
 
   "TPMv2-Part2": {
