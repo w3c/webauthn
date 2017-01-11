@@ -1866,6 +1866,51 @@ identity of the calling application.
     - If successful, return attestation type Basic with the trust path set to the above attestation certificate.
 
 
+## FIDO U2F Attestation Format ## {#fido-u2f-attestation}
+
+This attestation format is used to represent attestation statements from FIDO U2F authenticators using the formats defined in
+[[FIDO-U2F-Message-Formats]].
+
+: Attestation format identifier
+:: fido-u2f
+
+: Attestation types supported
+:: Basic
+
+: Syntax
+:: A FIDO U2F attestation statement is a CBOR map with the following fields:
+
+    : x5c
+    :: A byte string representing the U2F attestation certificate used for the attestation, encoded in X.509 format.
+
+    : signature
+    :: A byte string containing the attestation signature.
+
+: Signing procedure
+:: If the credential public key of the given credential is not of algorithm "ES256", stop and return an error.
+
+    Concatenate the given <a>authenticatorData</a> and <a>clientDataHash</a> as shown in [[#authenticator-signature]] to form
+    |attToBeSigned|. Compute the SHA-256 hash of |attToBeSigned| and call the result |tbsHash|.
+
+    Generate a signature as specified in [[FIDO-U2F-Message-Formats]] section 4.3, with the application parameter set to the
+    SHA-256 hash of the RP ID associated with the given credential, the challenge parameter set to |tbsHash|, and the key handle
+    parameter set to the credential ID of the given credential. Set this as `signature` and set the attestation certificate of
+    the attestation public key as `x5c`.
+
+: Verification procedure
+:: Verification is performed as follows:
+    - If `x5c` is not a certificate for an ECDSA public key over the P-256 curve, stop verification and return an error.
+    - Concatenate the given <a>authenticatorData</a> and <a>clientDataHash</a> as shown in [[#authenticator-signature]] to form
+        |attToBeSigned|. Compute the SHA-256 hash of |attToBeSigned| and call the result |tbsHash|.
+    - From the given <a>authenticatorData</a>, extract the claimed RP ID hash, the claimed credential ID and the claimed
+        credential public key.
+    - Generate the claimed to-be-signed data as specified in [[FIDO-U2F-Message-Formats]] section 4.3, with the application
+        parameter set to the claimed RP ID hash, the challenge parameter set to |tbsHash|, the key handle parameter set to the
+        claimed credential ID of the given credential, and the user public key parameter set to the claimed credential public key.
+    - Verify that the `signature` is a valid ECDSA P-256 signature over the to-be-signed data constructed above.
+    - If successful, return attestation type Basic with the trust path set to `x5c`.
+
+
 # WebAuthn Extensions # {#extensions}
 
 The mechanism for generating scoped credentials, as well as requesting and generating WebAuthn assertions, as defined in
@@ -2762,6 +2807,13 @@ Brad Hill, Jing Jin, Anne van Kesteren, Giridhar Mandyam, Axel Nennker, Yaron Sh
     "title": "FIDO AppID and Facets",
     "href": "https://fidoalliance.org/specs/fido-uaf-v1.1-rd-20161005/fido-appid-and-facets-v1.1-rd-20161005.html",
     "status": "FIDO Alliance Review Draft"
+  },
+
+  "FIDO-U2F-Message-Formats": {
+    "authors": ["D. Balfanz", "J. Ehrensvard", "J. Lang"],
+    "title": "FIDO U2F Raw Message Formats",
+    "href": "https://fidoalliance.org/specs/fido-u2f-v1.1-id-20160915/fido-u2f-raw-message-formats-v1.1-id-20160915.html",
+    "status": "FIDO Alliance Implementation Draft"
   }
 }
 </pre>
