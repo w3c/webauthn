@@ -1483,18 +1483,18 @@ When requested to register a new credential with a {{ScopedCredentialInfo}} stru
     in the {{ClientData}} structure.
 
 7. Perform CBOR decoding on the {{ScopedCredentialInfo/attestationObject}} field of the {{ScopedCredentialInfo}} structure to
-    obtain the attestation statement format |fmt|, the authenticator data |data|, and the attestation statement |stmt|.
+    obtain the attestation statement format |fmt|, the authenticator data |authData|, and the attestation statement |attStmt|.
 
-8. Verify that the RP ID hash in |data| is indeed the SHA-256 hash of the RP ID expected by the RP.
+8. Verify that the RP ID hash in |authData| is indeed the SHA-256 hash of the RP ID expected by the RP.
 
 9. Perform an <a>ASCII case-insensitive match</a> on |fmt| to determine the attestation statement format.
 
-10. Using the verification process for the above attestation statement format, validate that |stmt| is a valid attestation
-    statement for authenticator data |data| and the <a>clientDataHash</a> computed in step 6.
+10. Using the verification process for the above attestation statement format, validate that |attStmt| is a valid attestation
+    statement for authenticator data |authData| and the <a>clientDataHash</a> computed in step 6.
 
 11. If validation is successful, obtain a list of acceptable trust anchors (attestation root certificates or DAA root keys) for
     that attestation type and attestation statement format |fmt|, from a trusted source or from policy. For example, the FIDO
-    Metadata Service [[FIDOMetadataService]] provides one way to access such information, using the AAGUID in |data|.
+    Metadata Service [[FIDOMetadataService]] provides one way to access such information, using the AAGUID in |authData|.
 
 12. Verify the trustworthiness of the attestation using the outputs of the verification process in step 10 as follows:
         - If self-attestation was used, check if self-attestation is acceptable under [RP] policy.
@@ -1503,7 +1503,7 @@ When requested to register a new credential with a {{ScopedCredentialInfo}} stru
             correctly chains up to an acceptable root certificate.
 
 13. If the attestation statement was correctly verified and found to be trustworthy, then register the new credential by
-    associating the credential ID and credential public key found in |data| with the [RP] user on whose behalf the
+    associating the credential ID and credential public key found in |authData| with the [RP] user on whose behalf the
     {{makeCredential()}} operation was requested.
 
 14. If the attestation statement was correctly verified but could not be established to be trustworthy, the [RP] SHOULD reject
@@ -1600,17 +1600,17 @@ this format can even be implemented by <a>authenticators</a> with very limited r
     :: A byte string containing the DAA root key. This field is present only if Direct Anonymous Attestation is in use.
 
 : Signing procedure
-:: If Basic or Privacy CA attestation is in use, the authenticator produces |signature| by following the procedure in
+:: If Basic or Privacy CA attestation is in use, the authenticator produces |sig| by following the procedure in
     [[#authenticator-signature]] with the given <a>clientDataHash</a> and <a>authenticatorData</a> as inputs, using an
     attestation private key selected through an authenticator-specific mechanism. It sets |x5c| to the certificate chain of the
     attestation public key and |alg| to the algorithm of the attestation private key.
 
-    If DAA is in use, the authenticator produces |signature| by following the procedure in [[#authenticator-signature]] with the
-    given <a>clientDataHash</a> and <a>authenticatorData</a> as inputs, using DAA-Sign with a DAA root key selected through an
+    If DAA is in use, the authenticator produces |sig| by following the procedure in [[#authenticator-signature]] with the given
+    <a>clientDataHash</a> and <a>authenticatorData</a> as inputs, using DAA-Sign with a DAA root key selected through an
     authenticator-specific mechanism (see [[!FIDOEcdaaAlgorithm]]). It sets |alg| to the algorithm of the DAA root key and
     |daaKey| to the DAA root key.
 
-    If self attestation is in use, the authenticator produces |signature| by following the procedure in
+    If self attestation is in use, the authenticator produces |sig| by following the procedure in
     [[#authenticator-signature]] with the given <a>clientDataHash</a> and <a>authenticatorData</a> as inputs, using the
     credential private key. It sets |alg| to the algorithm of the credential private key, and omits the other fields.
 
@@ -1618,8 +1618,8 @@ this format can even be implemented by <a>authenticators</a> with very limited r
 :: If both |x5c| and |daaKey| are present, terminate this procedure with an error.
 
     If |x5c| is present, this indicates that the attestation type is not DAA. In this case:
-    - Follow the procedure in [[#authenticator-signature-verification]] to verify that |signature| is a valid signature over the
-        given <a>authenticatorData</a> and <a>clientDataHash</a>  using the attestation public key in |x5c| with the algorithm
+    - Follow the procedure in [[#authenticator-signature-verification]] to verify that |sig| is a valid signature over the given
+        <a>authenticatorData</a> and <a>clientDataHash</a>  using the attestation public key in |x5c| with the algorithm
         specified in |alg|.
     - Verify that |x5c| meets the requirements in [[#packed-attestation-cert-requirements]].
     - If |x5c| contains an extension with OID `1 3 6 1 4 1 45724 1 1 4` (id-fido-gen-ce-aaguid) verify that
@@ -1628,16 +1628,14 @@ this format can even be implemented by <a>authenticators</a> with very limited r
 
     If |daaKey| is present, then the attestation type is DAA. In this case:
     - Verify that |alg| is "ED256" or "ED512".
-    - Follow the procedure in [[#authenticator-signature-verification]] to verify that |signature| is a valid signature over the
-        given <a>authenticatorData</a> and <a>clientDataHash</a>  using DAA-Verify with |daaKey| (see [[!FIDOEcdaaAlgorithm]]).
+    - Follow the procedure in [[#authenticator-signature-verification]] to verify that |sig| is a valid signature over the given
+        <a>authenticatorData</a> and <a>clientDataHash</a>  using DAA-Verify with |daaKey| (see [[!FIDOEcdaaAlgorithm]]).
     - If successful, return attestation type DAA and trust path |daaKey|.
 
     If neither |x5c| nor |daaKey| is present, self attestation is in use.
     - Validate that |alg| matches the algorithm of the credential private key in the claimed <a>authenticatorData</a>.
-    - Construct |attToBeSigned| from the claimed <a>authenticatorData</a> and {{ClientData}}, and verify the signature using the
-        <a>credential public key</a>.
-    - Follow the procedure in [[#authenticator-signature-verification]] to verify that |signature| is a valid signature over the
-        given <a>authenticatorData</a> and <a>clientDataHash</a> using the credential public key with |alg|.
+    - Follow the procedure in [[#authenticator-signature-verification]] to verify that |sig| is a valid signature over the given
+        <a>authenticatorData</a> and <a>clientDataHash</a> using the credential public key with |alg|.
     - If successful, return attestation type Self and empty trust path.
 
 
@@ -1716,28 +1714,28 @@ engine.
     Generate a signature using the procedure specified in [[TPMv2-Part3]] Section 18.2, using the attestation private key and
     setting the `qualifyingData` parameter to |attToBeSigned|.
 
-    Set the |publicArea| field to the public area of the credential public key, the |certifyInfo| field to the output parameter
-    of the same name, and the signature to the signature obtained from the above procedure.
+    Set the |pubArea| field to the public area of the credential public key, the |certInfo| field to the output parameter of the
+    same name, and the |sig| field to the signature obtained from the above procedure.
 
 : Verification procedure
-:: Verify that the public key specified by the `parameters` and `unique` fields of |publicArea| is identical to the public key
+:: Verify that the public key specified by the `parameters` and `unique` fields of |pubArea| is identical to the public key
     contained in the attestation data inside the claimed <a>authenticatorData</a>
 
     Concatenate the given <a>authenticatorData</a> and <a>clientDataHash</a> as shown in [[#authenticator-signature]] to form
     |attToBeSigned|.
 
-    Validate that |certifyInfo| is valid:
+    Validate that |certInfo| is valid:
     - Verify that `magic` is set to `TPM_GENERATED_VALUE`.
     - Verify that `type` is set to `TPM_ST_ATTEST_CERTIFY`.
     - Verify that `extraData` is set to |attToBeSigned|.
-    - Verify that `attested` contains a `TPMS_CERTIFY_INFO` structure, whose `name` field contains a valid Name for |publicArea|,
-        as computed using the algorithm in the `nameAlg` field of |publicArea| using the procedure specified in [[TPMv2-Part1]]
+    - Verify that `attested` contains a `TPMS_CERTIFY_INFO` structure, whose `name` field contains a valid Name for |pubArea|,
+        as computed using the algorithm in the `nameAlg` field of |pubArea| using the procedure specified in [[TPMv2-Part1]]
         section 16.
 
     If both |x5c| and |daaKey| are present, terminate this procedure with an error.
 
     If |x5c| is present, this indicates that the attestation type is not DAA. In this case:
-    - Verify the |signature| is a valid signature over |certifyInfo| using the attestation public key in |x5c| with the
+    - Verify the |sig| is a valid signature over |certInfo| using the attestation public key in |x5c| with the
         algorithm specified in |alg|.
     - Verify that |x5c| meets the requirements in [[#tpm-cert-requirements]].
     - If |x5c| contains an extension with OID `1 3 6 1 4 1 45724 1 1 4` (id-fido-gen-ce-aaguid) verify that the value of this
@@ -1746,7 +1744,7 @@ engine.
 
     If |daaKey| is present, then the attestation type is DAA.
     - Verify that |alg| is "ED256" or "ED512".
-    - Perform DAA-Verify on |signature| to verify that it is a valid signature over |certifyInfo| (see [[!FIDOEcdaaAlgorithm]]).
+    - Perform DAA-Verify on |sig| to verify that it is a valid signature over |certInfo| (see [[!FIDOEcdaaAlgorithm]]).
     - If successful, return attestation type DAA and trust path |daaKey|.
 
 
@@ -1843,17 +1841,17 @@ identity of the calling application.
 :: Concatenate the given <a>authenticatorData</a> and <a>clientDataHash</a> as shown in [[#authenticator-signature]] to form
     |attToBeSigned|.
 
-    Request a SafetyNet attestation, providing |attToBeSigned| as the nonce value. Set |safetyNetResponse| to the result, and
-    |version| to the version of Google Play Services running in the authenticator.
+    Request a SafetyNet attestation, providing |attToBeSigned| as the nonce value. Set |response| to the result, and |ver| to
+    the version of Google Play Services running in the authenticator.
 
 : Verification procedure
 :: Verification is performed as follows:
-    - Verify that |safetyNetResponse| is a valid SafetyNet response of version |version|.
-    - Verify that the nonce in the |safetyNetResponse| is identical to the concatenation of the claimed <a>authenticatorData</a>
+    - Verify that |response| is a valid SafetyNet response of version |ver|.
+    - Verify that the nonce in the |response| is identical to the concatenation of the claimed <a>authenticatorData</a>
         and <a>clientDataHash</a>.
     - Verify that the attestation certificate is issued to the hostname "attest.android.com" (see
         [SafetyNet online documentation](https://developer.android.com/training/safetynet/index.html#compat-check-response)).
-    - Verify that the `ctsProfileMatch` attribute in the payload of |safetyNetResponse| is true.
+    - Verify that the `ctsProfileMatch` attribute in the payload of |response| is true.
     - If successful, return attestation type Basic with the trust path set to the above attestation certificate.
 
 
@@ -1884,12 +1882,12 @@ This attestation statement format is used with FIDO U2F authenticators using the
 
     Generate a signature as specified in [[FIDO-U2F-Message-Formats]] section 4.3, with the application parameter set to the
     SHA-256 hash of the RP ID associated with the given credential, the challenge parameter set to |tbsHash|, and the key handle
-    parameter set to the credential ID of the given credential. Set this as `signature` and set the attestation certificate of
-    the attestation public key as `x5c`.
+    parameter set to the credential ID of the given credential. Set this as |sig| and set the attestation certificate of
+    the attestation public key as |x5c|.
 
 : Verification procedure
 :: Verification is performed as follows:
-    - If `x5c` is not a certificate for an ECDSA public key over the P-256 curve, stop verification and return an error.
+    - If |x5c| is not a certificate for an ECDSA public key over the P-256 curve, stop verification and return an error.
     - Concatenate the given <a>authenticatorData</a> and <a>clientDataHash</a> as shown in [[#authenticator-signature]] to form
         |attToBeSigned|. Compute the SHA-256 hash of |attToBeSigned| and call the result |tbsHash|.
     - From the given <a>authenticatorData</a>, extract the claimed RP ID hash, the claimed credential ID and the claimed
@@ -1897,8 +1895,8 @@ This attestation statement format is used with FIDO U2F authenticators using the
     - Generate the claimed to-be-signed data as specified in [[FIDO-U2F-Message-Formats]] section 4.3, with the application
         parameter set to the claimed RP ID hash, the challenge parameter set to |tbsHash|, the key handle parameter set to the
         claimed credential ID of the given credential, and the user public key parameter set to the claimed credential public key.
-    - Verify that the `signature` is a valid ECDSA P-256 signature over the to-be-signed data constructed above.
-    - If successful, return attestation type Basic with the trust path set to `x5c`.
+    - Verify that the |sig| is a valid ECDSA P-256 signature over the to-be-signed data constructed above.
+    - If successful, return attestation type Basic with the trust path set to |x5c|.
 
 
 # WebAuthn Extensions # {#extensions}
