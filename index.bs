@@ -375,7 +375,7 @@ This method takes the following parameters:
     created. This is meant for later use by the authenticator when it needs to prompt the user to select a credential. An
     authenticator is only required to store one credential for any given value of {{accountInformation}}. Specifically, if an
     authenticator already has a credential for the specified value of {{Account/id}} in {{accountInformation}}, and if this
-    credential is not listed in the {{ScopedCredentialOptions/excludeList}} member of {{options}}, then after successful
+    credential is not listed in the {{ScopedCredentialOptions/excludeList}} attribute of {{options}}, then after successful
     execution of this method:
     - Any calls to {{getAssertion()}} that do not specify {{AssertionOptions/allowList}} will not result in the older
         credential being offered to the user.
@@ -386,19 +386,18 @@ This method takes the following parameters:
     The sequence is ordered from most preferred to least preferred. The platform makes a best effort to create the most
     preferred credential that it can.
 
-- The <dfn>attestationChallenge</dfn> parameter contains a challenge intended to be used for generating the attestation
-    object of the newly created credential.
+- The <dfn>attestationChallenge</dfn> parameter contains a challenge intended to be used for generating the newly created
+    credential's attestation object.
 
 - The optional <dfn dfn-for="makeCredential()">options</dfn> parameter specifies additional options, as described in
     [[#credential-options]].
 
 When this method is invoked, the user agent MUST execute the following algorithm:
 
-1. If the {{ScopedCredentialOptions/timeoutSeconds}} member of {{options}} is <a>present</a>, check if its value lies
-    within a reasonable range as defined by
-    the platform and if not, correct it to the closest value lying within that range. Set |adjustedTimeout| to this adjusted
-    value. If {{ScopedCredentialOptions/timeoutSeconds}} was not specified, then set |adjustedTimeout| to a platform-specific
-    default.
+1. If the {{ScopedCredentialOptions/timeoutSeconds}} attribute of {{options}} is <a>present</a>, check if its value lies within
+    a reasonable range as defined by the platform and if not, correct it to the closest value lying within that range. Set
+    |adjustedTimeout| to this adjusted value. If {{ScopedCredentialOptions/timeoutSeconds}} was not specified, then set
+    |adjustedTimeout| to a platform-specific default.
 
 2. Let |promise| be a new <a data-lt="Promises">Promise</a>. Return |promise| and start a timer for |adjustedTimeout| seconds.
     Then asynchronously continue executing the following steps. If any fatal error is encountered in this process other than the
@@ -408,8 +407,8 @@ When this method is invoked, the user agent MUST execute the following algorithm
 3. Set |callerOrigin| to the <a link-for='web'>current settings object</a>'s <a link-for='web'>origin</a>. If |callerOrigin| is
     an <a link-for='web'>opaque origin</a>, reject |promise| with a <a>DOMException</a> whose name is "NotAllowedError", and
     terminate this algorithm. Otherwise,
-    - If the {{ScopedCredentialOptions/rpId}} member of {{options}} is not <a>present</a>, then set |rpId| to |callerOrigin|.
-    - If the {{ScopedCredentialOptions/rpId}} member of {{options}} is <a>present</a>, then invoke the procedure used for
+    - If the {{ScopedCredentialOptions/rpId}} attribute of {{options}} is not <a>present</a>, then set |rpId| to |callerOrigin|.
+    - If the {{ScopedCredentialOptions/rpId}} attribute of {{options}} is <a>present</a>, then invoke the procedure used for
         <a>relaxing the same-origin restriction</a> by setting the `document.domain` attribute, using
         {{ScopedCredentialOptions/rpId}} as the given value but without changing the current document's `domain`. If no errors
         are thrown, set |rpId| to the value of `host` as computed by this procedure. Otherwise, reject |promise| with a
@@ -428,26 +427,26 @@ When this method is invoked, the user agent MUST execute the following algorithm
 5. If |normalizedAlgorithm| is empty and {{cryptoParameters}} was not empty, cancel the timer started in step 2, reject
     |promise| with a DOMException whose name is "NotSupportedError", and terminate this algorithm.
 
-6. If the {{ScopedCredentialOptions/extensions}} member of {{options}} is <a>present</a>, process any extensions supported by
+6. If the {{ScopedCredentialOptions/extensions}} attribute of {{options}} is <a>present</a>, process any extensions supported by
     this client platform, to produce the extension data that needs to be sent to the authenticator. If an error is encountered
     while processing an extension, skip that extension and do not produce any extension data for it. Call the result of this
     processing |clientExtensions|.
 
 7. Use {{attestationChallenge}}, |callerOrigin| and |rpId|, along with the token binding key associated with |callerOrigin| (if
     any), to create a {{ClientData}} structure representing this request. Choose a hash algorithm for {{ClientData/hashAlg}} and
-    compute the <a>clientDataJSON</a> and <a>clientDataHash</a>.
+    compute the {{ScopedCredentialInfo/clientDataJSON}} and its <a>clientDataHash</a>.
 
 8. Initialize |issuedRequests| and |currentlyAvailableAuthenticators| to empty lists.
 
 9. For each authenticator currently available on this platform, add the authenticator to |currentlyAvailableAuthenticators|
-    unless the {{ScopedCredentialOptions/attachment}} member of {{options}} is <a>present</a>. In that case, let |attachment| be
-    {{ScopedCredentialOptions/attachment}}, and add the authenticator to |currentlyAvailableAuthenticators| if its attachment
+    unless the {{ScopedCredentialOptions/attachment}} attribute of {{options}} is <a>present</a>. In that case, let |attachment|
+    be {{ScopedCredentialOptions/attachment}}, and add the authenticator to |currentlyAvailableAuthenticators| if its attachment
     modality matches |attachment|.
 
 10. For each authenticator in |currentlyAvailableAuthenticators|: asynchronously invoke the <a>authenticatorMakeCredential</a>
     operation on that authenticator with |rpId|, <a>clientDataHash</a>, {{accountInformation}}, |normalizedParameters|,
     {{ScopedCredentialOptions/excludeList}} and |clientExtensions| as parameters. Add a corresponding entry to |issuedRequests|.
-    - For each credential |C| in the {{ScopedCredentialOptions/excludeList}} member of {{options}} that has a non-empty
+    - For each credential |C| in the {{ScopedCredentialOptions/excludeList}} attribute of {{options}} that has a non-empty
         |transports| list, optionally use only the specified transports to test for the existence of |C|.
 
 11. While |issuedRequests| is not empty, perform the following actions depending upon the |adjustedTimeout| timer and responses
@@ -461,7 +460,7 @@ When this method is invoked, the user agent MUST execute the following algorithm
     - If any authenticator indicates success:
         - Remove this authenticator's entry from |issuedRequests|.
         - Create a new {{ScopedCredentialInfo}} object named |value| and populate its fields with the values returned from the
-            authenticator as well as the <a>clientDataJSON</a> computed earlier.
+            authenticator as well as the {{ScopedCredentialInfo/clientDataJSON}} computed earlier.
         - For each remaining entry in |issuedRequests| invoke the <a>authenticatorCancel</a> operation on that authenticator and
             remove its entry from the list.
         - Resolve |promise| with |value| and terminate this algorithm.
@@ -491,7 +490,7 @@ This method takes the following parameters:
 
 When this method is invoked, the user agent MUST execute the following algorithm:
 
-1. If the {{AssertionOptions/timeoutSeconds}} member of {{options}} is <a>present</a>, check if its value lies within a
+1. If the {{AssertionOptions/timeoutSeconds}} attribute of {{options}} is <a>present</a>, check if its value lies within a
     reasonable range as defined by the platform and if not, correct it to the closest value lying within that range. Set
     |adjustedTimeout| to this adjusted value. If {{AssertionOptions/timeoutSeconds}} is not <a>present</a>, then set
     |adjustedTimeout| to a platform-specific default.
@@ -504,26 +503,26 @@ When this method is invoked, the user agent MUST execute the following algorithm
 3. Set |callerOrigin| to the <a link-for='web'>current settings object</a>'s <a link-for='web'>origin</a>. If |callerOrigin| is
     an <a link-for='web'>opaque origin</a>, reject |promise| with a <a>DOMException</a> whose name is "NotAllowedError", and
     terminate this algorithm. Otherwise,
-    - If the {{AssertionOptions/rpId}} member of {{options}} is not <a>present</a>, then set |rpId| to |callerOrigin|.
-    - If the {{AssertionOptions/rpId}} member of {{options}} is <a>present</a>, then invoke the procedure used for <a>relaxing
+    - If the {{AssertionOptions/rpId}} attribute of {{options}} is not <a>present</a>, then set |rpId| to |callerOrigin|.
+    - If the {{AssertionOptions/rpId}} attribute of {{options}} is <a>present</a>, then invoke the procedure used for <a>relaxing
         the same-origin restriction</a> by setting the `document.domain` attribute, using {{AssertionOptions/rpId}} as the given
         value but without changing the current document's `domain`. If no errors are thrown, set |rpId| to the value of `host`
         as computed by this procedure. Otherwise, reject |promise| with a <a>DOMException</a> whose name is "SecurityError", and
         terminate this algorithm.
 
-4. If the {{AssertionOptions/extensions}} member of {{options}} is <a>present</a>, process any extensions supported by this
+4. If the {{AssertionOptions/extensions}} attribute of {{options}} is <a>present</a>, process any extensions supported by this
     client platform, to produce the extension data that needs to be sent to the authenticator. If an error is encountered while
     processing an extension, skip that extension and do not produce any extension data for it. Call the result of this
     processing |clientExtensions|.
 
 5. Use {{assertionChallenge}}, |callerOrigin| and |rpId|, along with the token binding key associated with |callerOrigin| (if
     any), to create a {{ClientData}} structure representing this request. Choose a hash algorithm for {{ClientData/hashAlg}} and
-    compute the <a>clientDataJSON</a> and <a>clientDataHash</a>.
+    compute the {{AuthenticationAssertion/clientDataJSON}} and <a>clientDataHash</a>.
 
 6. Initialize |issuedRequests| to an empty list.
 
 7. For each authenticator currently available on this platform, perform the following steps:
-    - If the {{AssertionOptions/allowList}} member of {{options}} is empty, let |credentialList| be an empty list. Otherwise,
+    - If the {{AssertionOptions/allowList}} attribute of {{options}} is empty, let |credentialList| be an empty list. Otherwise,
         execute a platform-specific procedure to determine which, if any, credentials listed in {{AssertionOptions/allowList}}
         might be present on this authenticator, and set |credentialList| to this filtered list. If no such filtering is
         possible, set |credentialList| to an empty list.
@@ -547,7 +546,7 @@ When this method is invoked, the user agent MUST execute the following algorithm
     - If any authenticator returns success:
         - Remove this authenticator's entry from |issuedRequests|.
         - Create a new {{AuthenticationAssertion}} object named |value| and populate its fields with the values returned from the
-            authenticator as well as the <a>clientDataJSON</a> computed earlier.
+            authenticator as well as the {{AuthenticationAssertion/clientDataJSON}} computed earlier.
         - For each remaining entry in |issuedRequests| invoke the <a>authenticatorCancel</a> operation on that authenticator and
             remove its entry from the list.
         - Resolve |promise| with |value| and terminate this algorithm.
@@ -564,7 +563,7 @@ authorizing an authenticator with which to complete the operation.
 <pre class="idl">
     [SecureContext]
     interface ScopedCredentialInfo {
-        readonly    attribute ArrayBuffer   clientData;
+        readonly    attribute ArrayBuffer   clientDataJSON;
         readonly    attribute ArrayBuffer   attestationObject;
     };
 </pre>
@@ -574,14 +573,14 @@ authorizing an authenticator with which to complete the operation.
     to locate it later for use, and also contains metadata that can be used by the <a>[RP]</a> to assess the strength of the
     credential during registration.
 
-    The <dfn>clientData</dfn> member contains the <a>clientDataJSON</a> (see [[#signature-format]]) passed to the authenticator
-    by the client in order to generate this credential. The exact JSON encoding must be preserved as a cryptographic hash
-    (<a>clientDataHash</a>) has been computed over it.
+    The <dfn>clientDataJSON</dfn> attribute contains the <a for="ClientData">clientDataJSON</a> (see [[#signature-format]])
+    passed to the authenticator by the client in order to generate this credential. The exact JSON serialization must be
+    preserved as a cryptographic hash (<a>clientDataHash</a>) has been computed over it.
 
-    The <dfn>attestationObject</dfn> element contains the <a>attestation object</a>. The contents of this object are determined
-    by the <a>attestation statement format</a> used by the authenticator. This object is opaque to, and cryptographically
-    protected against tampering by, the client. It contains the unique identifier of the credential, the <a>credential public
-    key</a>, and an attestation statement. It also contains any additional information that the [RP]'s server requires to
+    The <dfn>attestationObject</dfn> attribute contains an <a>attestation object</a>. The contents of this object are
+    determined by the <a>attestation statement format</a> used by the authenticator. This object is opaque to, and
+    cryptographically protected against tampering by, the client. It contains the credential's unique identifier, <a>credential
+    public key</a>, and attestation statement. It also contains any additional information that the [RP]'s server requires to
     validate the attestation statement, as well as to decode and validate the bindings of both the client and authenticator
     data. For more details, see [[#cred-attestation]].
 </div>
@@ -604,20 +603,20 @@ authorizing an authenticator with which to complete the operation.
     is to be associated. It is intended to help the authenticator in providing a friendly credential selection interface for the
     user.
 
-    The <dfn>rpDisplayName</dfn> member contains the friendly name of the [RP], such as "Acme Corporation", "Widgets Inc" or
+    The <dfn>rpDisplayName</dfn> attribute contains the friendly name of the [RP], such as "Acme Corporation", "Widgets Inc" or
     "Awesome Site".
 
-    The <dfn>displayName</dfn> member contains the friendly name associated with the user account by the [RP], such as "John P.
-    Smith".
+    The <dfn>displayName</dfn> attribute contains the friendly name associated with the user account by the [RP], such as "John
+    P. Smith".
 
-    The <dfn>id</dfn> member contains an identifier for the account, specified by the [RP]. This is not meant to be displayed
+    The <dfn>id</dfn> attribute contains an identifier for the account, specified by the [RP]. This is not meant to be displayed
     to the user. It is used by the [RP] to control the number of credentials - an authenticator will never contain more than one
     credential for a given [RP] under the same {{Account/id}}.
 
-    The <dfn>name</dfn> member contains a detailed name for the account, such as "john.p.smith@example.com".
+    The <dfn>name</dfn> attribute contains a detailed name for the account, such as "john.p.smith@example.com".
 
-    The <dfn>imageURL</dfn> member contains a URL that resolves to the user's account image. This may be a URL that can be used
-    to retrieve an image containing the user's current avatar, or a data URI that contains the image data.
+    The <dfn>imageURL</dfn> attribute contains a URL that resolves to the user's account image. This may be a URL that can be
+    used to retrieve an image containing the user's current avatar, or a data URI that contains the image data.
 </div>
 
 
@@ -633,9 +632,9 @@ authorizing an authenticator with which to complete the operation.
 <div dfn-for="ScopedCredentialParameters">
     This dictionary is used to supply additional parameters when creating a new credential.
 
-    The <dfn>type</dfn> member specifies the type of credential to be created.
+    The <dfn>type</dfn> attribute specifies the type of credential to be created.
 
-    The <dfn>algorithm</dfn> member specifies the cryptographic signature algorithm with which the newly generated credential
+    The <dfn>algorithm</dfn> attribute specifies the cryptographic signature algorithm with which the newly generated credential
     will be used, and thus also the type of asymmetric key pair to be generated, e.g., RSA or Elliptic Curve.
 </div>
 
@@ -668,9 +667,9 @@ authorizing an authenticator with which to complete the operation.
 
     - The <dfn>extensions</dfn> parameter contains additional parameters requesting additional processing by the client and
         authenticator. For example, the caller may request that only authenticators with certain capabilities be used to create
-        the credential, or that additional information be returned in the <a>attestation object</a>. Alternatively, the caller
-        may specify an additional message that they would like the authenticator to display to the user. Extensions are defined
-        in [[#extensions]].
+        the credential, or that particular information be returned in the <a>attestation object</a>. The caller may also specify
+        an additional message that they would like the authenticator to display to the user. Extensions are defined in
+        [[#extensions]].
 
     - The <dfn>attachment</dfn> parameter contains authenticator attachment descriptions, which are used as an additional
         constraint on which authenticators are eligible to participate in a [[#makeCredential]] or [[#getAssertion]] operation.
@@ -721,7 +720,7 @@ authorizing an authenticator with which to complete the operation.
     [SecureContext]
     interface AuthenticationAssertion {
         readonly attribute ScopedCredential  credential;
-        readonly attribute ArrayBuffer       clientData;
+        readonly attribute ArrayBuffer       clientDataJSON;
         readonly attribute ArrayBuffer       authenticatorData;
         readonly attribute ArrayBuffer       signature;
     };
@@ -731,15 +730,15 @@ Scoped credentials produce a cryptographic signature that provides proof of poss
 user consent to a specific transaction. The structure of these signatures is defined as follows.
 
 <div dfn-for="AuthenticationAssertion">
-    The <dfn>credential</dfn> member represents the credential that was used to generate this assertion.
+    The <dfn>credential</dfn> attribute represents the credential that was used to generate this assertion.
 
-    The <dfn>clientData</dfn> member contains the parameters sent to the authenticator by the client, in serialized form. See
-    [[#sec-client-data]] for the format of this parameter and how it is generated.
+    The <dfn>clientDataJSON</dfn> attribute contains the parameters sent to the authenticator by the client, in serialized form.
+    See [[#sec-client-data]] for the format of this parameter and how it is generated.
 
-    The <b><em>authenticatorData</em></b> member contains the serialized data returned by the authenticator. See
+    The <b><em>authenticatorData</em></b> attribute contains the serialized data returned by the authenticator. See
     [[#sec-authenticator-data]].
 
-    The <dfn>signature</dfn> member contains the raw signature returned from the authenticator. See
+    The <dfn>signature</dfn> attribute contains the raw signature returned from the authenticator. See
     [[#authenticator-signature]].
 </div>
 
@@ -764,8 +763,8 @@ user consent to a specific transaction. The structure of these signatures is def
     - The optional <dfn>rpId</dfn> parameter specifies the rpId claimed by the caller. If it is omitted, it will be assumed to
         be equal to the <a link-for='web'>current settings object</a>'s <a link-for='web'>origin</a>.
 
-    - The optional <dfn>allowList</dfn> member contains a list of credentials acceptable to the caller, in order of the caller's
-        preference.
+    - The optional <dfn>allowList</dfn> attribute contains a list of credentials acceptable to the caller, in order of the
+        caller's preference.
 
     - The optional <dfn>extensions</dfn> parameter contains additional parameters requesting additional processing by the client
         and authenticator. For example, if transaction confirmation is sought from the user, then the prompt string would be
@@ -809,31 +808,33 @@ string-valued keys. Values may be any type that has a valid encoding in JSON. It
 </pre>
 
 <div dfn-for="ClientData">
-    The <dfn>challenge</dfn> member contains the base64url encoding of the challenge provided by the RP.
+    The <dfn>challenge</dfn> attribute contains the base64url encoding of the challenge provided by the RP.
 
-    The <dfn for="ClientData">origin</dfn> member contains the fully qualified origin of the requester, as provided to the authenticator by
+    The <dfn>origin</dfn> attribute contains the fully qualified origin of the requester, as provided to the authenticator by
     the client, in the syntax defined by [[RFC6454]].
 
-    The <dfn>hashAlg</dfn> member specifies the hash algorithm used to compute <a>clientDataHash</a>. Use "S256" for SHA-256,
+    The <dfn>hashAlg</dfn> attribute specifies the hash algorithm used to compute <a>clientDataHash</a>. Use "S256" for SHA-256,
     "S384" for SHA384, "S512" for SHA512, and "SM3" for SM3 (see [[#iana-considerations]]). This algorithm is chosen by the
     client at its sole discretion.
 
-    The <dfn>tokenBinding</dfn> member contains the base64url encoding of the Token Binding ID that this client uses for the
+    The <dfn>tokenBinding</dfn> attribute contains the base64url encoding of the Token Binding ID that this client uses for the
     Token Binding protocol when communicating with the [RP]. This can be omitted if no Token Binding has been negotiated between
     the client and the [RP].
 
-    The optional <dfn>extensions</dfn> member contains additional parameters generated by processing the extensions passed in
+    The optional <dfn>extensions</dfn> attribute contains additional parameters generated by processing the extensions passed in
     by the [RP]. WebAuthn extensions are detailed in Section [[#extensions]].
+
+    This structure is used by the client to compute the following quantities:
+
+    : <dfn>clientDataJSON</dfn>
+    :: This is the <a>UTF-8 encoded</a> JSON serialization [[RFC7159]] of a {{ClientData}} dictionary. Any valid JSON
+        serialization may be used by the client. This specification imposes no canonicalization requirements. Instead, the
+        {{ScopedCredentialInfo}} and {{AuthenticationAssertion}} structures contain the actual serializations used by the client
+        to generate them.
+
+    : <dfn>clientDataHash</dfn>
+    :: This is the hash (computed using <a>hashAlg</a>) of <a for="ClientData">clientDataJSON</a>, as constructed by the client.
 </div>
-
-This structure is used by the client to compute the following quantities:
-
-: <dfn>clientDataJSON</dfn>
-:: This is the <a>UTF-8 encoded</a> JSON serialization [[RFC7159]] of a {{ClientData}} dictionary. Any valid JSON serialization
-    may be used by the client. This specification imposes no canonicalization requirements.
-
-: <dfn>clientDataHash</dfn>
-:: This is the hash (computed using <a>hashAlg</a>) of <a>clientDataJSON</a>, as constructed by the client.
 
 
 ### Credential Type enumeration (enum <dfn enum>ScopedCredentialType</dfn>) ### {#credentialType}
@@ -999,7 +1000,7 @@ When this operation is invoked, the authenticator must perform the following pro
     <a>clientDataHash</a> received from the client to create an <a>attestation object</a> for the new credential using the
     procedure specified in [[#generating-an-attestation-object]]. For more details on attestation, see [[#cred-attestation]].
 
-On successful completion of this operation, the authenticator must return the <a>attestation object</a> to the client.
+On successful completion of this operation, the authenticator returns the <a>attestation object</a> to the client.
 
 
 ### The <dfn>authenticatorGetAssertion</dfn> operation ### {#op-get-assertion}
@@ -1030,7 +1031,7 @@ When this method is invoked, the authenticator must perform the following proced
 - If any error occurred while generating the assertion signature, return an error code equivalent to UnknownError and terminate
     the operation.
 
-On successful completion, the authenticator must return to the user agent:
+On successful completion, the authenticator returns to the user agent:
 - The identifier of the credential used to generate the signature.
 - The <a>authenticatorData</a> used to generate the signature.
 - The assertion signature.
@@ -1090,8 +1091,8 @@ The goals of this design can be summarized as follows.
 - The design aims to reuse as much as possible of existing encoding formats in order to aid adoption and implementation.
 
 The contextual bindings are divided in two: Those added by the RP or the client, referred to as client data; and those added by
-the authenticator, referred to as the authenticator data. The client data must be signed over, but an authenticator is otherwise
-not interested in its contents. To save bandwidth and processing requirements on the authenticator, the client hashes the
+the authenticator, referred to as the authenticator data. The authenticator signs over the client data, but is otherwise not
+interested in its contents. To save bandwidth and processing requirements on the authenticator, the client hashes the
 {{ClientData}} and sends only the result to the authenticator. The authenticator signs over the combination of this
 <a>clientDataHash</a>, and its own authenticator data.
 
@@ -1099,9 +1100,9 @@ not interested in its contents. To save bandwidth and processing requirements on
 ### Authenticator data ### {#sec-authenticator-data}
 
 The authenticator data structure, <dfn>authenticatorData</dfn>, encodes contextual bindings made by the <a>authenticator</a>.
-These bindings are controlled by the authenticator itself, and derive their trust from the [RP]'s assessment of the security of
-the authenticator. In one extreme case, the authenticator may be embedded in the client, and its bindings may be no more
-trustworthy than the {{ClientData}}. At the other extreme, the authenticator may be a discrete entity with high-security
+These bindings are controlled by the authenticator itself, and derive their trust from the [RP]'s assessment of the security
+properties of the authenticator. In one extreme case, the authenticator may be embedded in the client, and its bindings may be
+no more trustworthy than the {{ClientData}}. At the other extreme, the authenticator may be a discrete entity with high-security
 hardware and software, connected to the client over a secure channel. In both cases, the [RP] receives the authenticator data in
 the same format, and uses its knowledge of the authenticator to make trust decisions.
 
@@ -1138,8 +1139,8 @@ The encoding of authenticator data is a byte array of 37 bytes or more, as follo
     <tr>
         <td>variable (if present)</td>
         <td>
-            Attestation data (if present). See [[#generating-an-attestation-object]] for details. Its length depends on the
-            length of the <a>credential public key</a> and credential ID being attested.
+            Attestation data (if present). See [[#sec-attestation-data]] for details. Its length depends on the length of the
+            <a>credential public key</a> and credential ID being attested.
         </td>
     </tr>
     <tr>
@@ -1154,8 +1155,8 @@ The encoding of authenticator data is a byte array of 37 bytes or more, as follo
 The RP ID is originally received from the client when the credential is created, and again when an assertion is generated.
 However, it differs from other client data in some important ways. First, unlike the client data, the RP ID of a credential does
 not change between operations but instead remains the same for the lifetime of that credential. Secondly, it is validated by the
-authenticator during the <a>authenticatorGetAssertion</a> operation, by making sure that the RP ID associated with the
-requested credential exactly matches the RP ID supplied by the client.
+authenticator during the <a>authenticatorGetAssertion</a> operation, by verifying that the RP ID associated with the requested
+credential exactly matches the RP ID supplied by the client.
 
 The `TUP` flag SHALL be set if and only if the authenticator detected a user through an authenticator specific gesture. The
 `RFU` bits in the flags byte SHALL be set to zero.
@@ -1224,12 +1225,15 @@ It has the following format:
 Authenticators produce cryptographic signatures for two distinct purposes:
 1. An <dfn>attestation signature</dfn> is produced when a new credential is created, and provides cryptographic proof of certain
     properties of the credential and the authenticator. For instance, an attestation signature asserts the type of authenticator
-    (as denoted by its AAGUID) and the public key of the credential. The attestation signature is signed by an authority key,
-    which is chosen depending on the type of attestation desired.
-2. An <dfn>assertion signature</dfn> is produced when the <a>authenticatorGetAssertion</a> method is invoked. It asserts that
-    the user has consented to a specific transaction. Thus, an assertion signature asserts the identity of the requester, and
-    provides additional information that might be useful to the caller, such as the means by which user consent was provided,
-    and the prompt that was shown to the user by the authenticator.
+    (as denoted by its AAGUID) and the public key of the credential. The attestation signature is signed by an attestation key,
+    which is chosen depending on the type of attestation desired. For more details on attestation, see [[#cred-attestation]].
+2. An <dfn>assertion signature</dfn> is produced when the <a>authenticatorGetAssertion</a> method is invoked. It represents an
+    assertion by the authenticator that the user has consented to a specific transaction, such as logging in, or completing a
+    purchase. Thus, an assertion signature asserts that the authenticator which possesses a particular credential private key
+    has established, to the best of its ability, that the human who is requesting this transaction is the same human who
+    consented to creating that particular credential. It also provides additional information that might be useful to the
+    caller, such as the means by which user consent was provided, and the prompt that was shown to the user by the
+    authenticator.
 
 Both types of signature must assert the integrity of both the client data and the authenticator data. Thus, in both cases the
 <a>authenticator</a> computes a signature over a combination of the <a>clientDataHash</a> and the <a>authenticatorData</a>.
@@ -1251,10 +1255,10 @@ A simple, undelimited concatenation is safe to use here because the <a>authentic
 
 This section specifies the algorithm for verifying any signature generated using the method in [[#authenticator-signature]].
 
-To verify a signature |S| given a claimed <a>clientDataJSON</a> |C| and a claimed <a>authenticatorData</a> |data| using a given
-public key, the [RP] shall:
+To verify a signature |S| given a claimed {{AuthenticationAssertion/clientDataJSON}} |C| and a claimed <a>authenticatorData</a>
+|data| using a given public key, the [RP] SHALL:
 
-1. Perform JSON decoding on |C| to extract the {{ClientData}} used for the signature.
+1. Perform JSON deserialization on |C| to extract the {{ClientData}} used for the signature.
 
 2. Verify that the {{ClientData/challenge}} in the {{ClientData}} matches the challenge that was sent to the authenticator.
 
@@ -1267,10 +1271,10 @@ public key, the [RP] shall:
 
 6. Verify that the RP ID hash in |data| is indeed the SHA-256 hash of the RP ID expected by the RP.
 
-7. Compute the <a>clientDataHash</a> over |C| using the {{ClientData/hashAlg}} algorithm found in the {{ClientData}} structure.
+7. Let |hash| be the result of computing a hash over |C| using the {{ClientData/hashAlg}} algorithm found in the {{ClientData}}
+    structure.
 
-8. Use the given public key to verify that |S| is a valid signature over the binary concatenation of |data| and the
-    <a>clientDataHash</a> computed above.
+8. Use the given public key to verify that |S| is a valid signature over the binary concatenation of |data| and |hash|.
 
 If all the above steps succeed, then the signature is valid, otherwise it is invalid.
 
@@ -1327,7 +1331,7 @@ the FIDO Metadata Service [[FIDOMetadataService]] provides one way to access suc
 As described above, an attestation statement format is a data format which represents a cryptographic signature by an
 authenticator over a set of contextual bindings. Each attestation statement format is defined by the following attributes:
 
-- Its <a>attestation format identifier</a>.
+- Its <a>attestation statement format identifier</a>.
 
 - The set of attestation types supported by the format.
 
@@ -1392,7 +1396,7 @@ statement in that attestation statement format.
 Finally, the authenticator MUST construct the <a>attestation object</a> as a CBOR map comprising the following fields:
 
 : fmt
-:: The <a>attestation format identifier</a> associated with the attestation statement.
+:: The <a>attestation statement format identifier</a> associated with the attestation statement.
 
 : authData
 :: The authenticator data used to generate the attestation statement.
@@ -1469,113 +1473,121 @@ operations that the [RP] must perform upon receipt of these structures.
 
 ## Registering a new credential ## {#registering-a-new-credential}
 
-When requested to register a new credential with a {{ScopedCredentialInfo}} structure, a [RP] must proceed as follows:
+When requested to register a new credential, represented by a {{ScopedCredentialInfo}} structure, as part of a registration
+ceremony, a [RP] MUST proceed as follows:
 
-1. Perform JSON decoding on the {{ScopedCredentialInfo/clientData}} field of the {{ScopedCredentialInfo}} object to extract the
-    {{ClientData}} used for the credential's attestation.
+1. Perform JSON deserialization on the {{ScopedCredentialInfo/clientDataJSON}} field of the {{ScopedCredentialInfo}} object to
+    extract the {{ClientData}} |C| claimed to have been used for the credential's attestation.
 
-2. Verify that the {{ClientData/challenge}} in the {{ClientData}} matches the challenge that was sent to the authenticator in
-    the {{makeCredential()}} call.
+2. Verify that the {{ClientData/challenge}} in |C| matches the challenge that was sent to the authenticator in the
+    {{makeCredential()}} call.
 
-3. Verify that the {{ClientData/origin}} in the {{ClientData}} matches the [RP]'s origin.
+3. Verify that the {{ClientData/origin}} in |C| matches the [RP]'s origin.
 
-4. Verify that the {{ClientData/tokenBinding}} in the {{ClientData}} matches the token binding ID for the TLS connection over
+4. Verify that the {{ClientData/tokenBinding}} in |C| matches the token binding ID for the TLS connection over
     which the attestation was obtained.
 
-5. Verify that the {{ClientData/extensions}} in the {{ClientData}} is a proper subset of the extensions requested by the RP.
+5. Verify that the {{ClientData/extensions}} in |C| is a proper subset of the extensions requested by the RP.
 
-6. Compute the <a>clientDataHash</a> over {{ScopedCredentialInfo/clientData}} using the {{ClientData/hashAlg}} algorithm found
-    in the {{ClientData}} structure.
+6. Compute the <a>clientDataHash</a> over {{ScopedCredentialInfo/clientDataJSON}} using the {{ClientData/hashAlg}} algorithm
+    found in |C|.
 
 7. Perform CBOR decoding on the {{ScopedCredentialInfo/attestationObject}} field of the {{ScopedCredentialInfo}} structure to
     obtain the attestation statement format |fmt|, the authenticator data |authData|, and the attestation statement |attStmt|.
 
 8. Verify that the RP ID hash in |authData| is indeed the SHA-256 hash of the RP ID expected by the RP.
 
-9. Perform an <a>ASCII case-insensitive match</a> on |fmt| to determine the attestation statement format.
+9. Determine the attestation statement format by performing an <a>ASCII case-insensitive match</a> on |fmt| against the set of
+    WebAuthn Attestation Statement Format Identifiers given in the IANA Registry of the same name [[WebAuthn-Registries]].
 
-10. Using the verification process for the above attestation statement format, validate that |attStmt| is a valid attestation
-    statement for authenticator data |authData| and the <a>clientDataHash</a> computed in step 6.
+10. Verify that |attStmt| is a correct, validly-signed attestation statement, using the attestation statement format |fmt|'s
+    verification procedure given authenticator data |authData| and the <a>clientDataHash</a> computed in step 6.
 
-11. If validation is successful, obtain a list of acceptable trust anchors (attestation root certificates or DAA root keys) for
-    that attestation type and attestation statement format |fmt|, from a trusted source or from policy. For example, the FIDO
-    Metadata Service [[FIDOMetadataService]] provides one way to access such information, using the AAGUID in |authData|.
+11. If validation is successful, obtain a list of acceptable trust anchors (attestation root certificates or DAA root keys)
+    for that attestation type and attestation statement format |fmt|, from a trusted source or from policy. For example, the
+    FIDO Metadata Service [[FIDOMetadataService]] provides one way to obtain such information, using the AAGUID in the
+    attestation data contained in |authData|.
 
-12. Verify the trustworthiness of the attestation using the outputs of the verification process in step 10 as follows:
+12. Assess the attestation trustworthiness using the outputs of the verification procedure in step 10, as follows:
         - If self-attestation was used, check if self-attestation is acceptable under [RP] policy.
-        - If DAA was used, verify that the DAA key used is in the set of acceptable trust anchors obtained above.
-        - Otherwise, use the X.509 certificates returned by the verification process to verify that the attestation public key
+        - If DAA was used, verify that the DAA key used is in the set of acceptable trust anchors obtained in step 11.
+        - Otherwise, use the X.509 certificates returned by the verification procedure to verify that the attestation public key
             correctly chains up to an acceptable root certificate.
 
-13. If the attestation statement was correctly verified and found to be trustworthy, then register the new credential by
-    associating the credential ID and credential public key found in |authData| with the [RP] user on whose behalf the
-    {{makeCredential()}} operation was requested.
+13. If the attestation statement |attStmt| verified successfully and is found to be trustworthy, then register the new
+    credential with the account that was denoted in the
+    {{WebAuthentication/makeCredential(accountInformation, cryptoParameters, attestationChallenge, options)/accountInformation}}
+    passed to {{makeCredential()}}, by associating it with the credential ID and credential public key contained in |authData|'s
+    attestation data, as appropriate for the [RP]'s systems.
 
-14. If the attestation statement was correctly verified but could not be established to be trustworthy, the [RP] SHOULD reject
-    the registration operation. However, if permitted by policy, the [RP] MAY register the credential ID and credential public
-    key but treat the credential as one with self-attestation (see [[#sctn-attestation-types]]). If doing so, the [RP] is
-    asserting there is no cryptographic proof that the Scoped Credential has been generated by a particular Authenticator model.
-    See [[FIDOSecRef]] and [[UAFProtocol]] for a more detailed discussion.
+14. If the attestation statement |attStmt| successfully verified but is not trustworthy per step 12 above, the [RP] SHOULD fail
+    the registration ceremony.
+    
+    NOTE: However, if permitted by policy, the [RP] MAY register the credential ID and credential public key but treat the
+        credential as one with self-attestation (see [[#sctn-attestation-types]]). If doing so, the [RP] is asserting there is
+        no cryptographic proof that the Scoped Credential has been generated by a particular Authenticator model. See
+        [[FIDOSecRef]] and [[UAFProtocol]] for a more detailed discussion.
 
-15. If the attestation statement could not be correctly verified, the [RP] MUST reject the registration operation.
+15. If verification of the attestation statement failed, the [RP] MUST fail the registration ceremony.
 
 Verification of <a>attestation objects</a> requires that the [RP] has a trusted method of determining acceptable trust anchors
-in Step 11 above. Also, if certificates are being used, the [RP] must have access to certificate status information for the
+in step 11 above. Also, if certificates are being used, the [RP] must have access to certificate status information for the
 intermediate CA certificates. The [RP] must also be able to build the attestation certificate chain if the client did not
 provide this chain in the attestation information.
 
 To avoid ambiguity during authentication, the [RP] SHOULD check that each credential is registered to no more than one user. If
-registration is requested for a credential that is already registered to a different user, the [RP] MAY reject this operation,
-or it MAY decide to accept the registration while deleting the older registration.
+registration is requested for a credential that is already registered to a different user, the [RP] SHOULD fail this ceremony,
+or it MAY decide to accept the registration, e.g. while deleting the older registration.
 
 
 ## Verifying an authentication assertion ## {#verifying-assertion}
 
-When requested to perform authentication with an {{AuthenticationAssertion}} structure, the [RP] MUST proceed as follows:
+When requested to authenticate a given {{AuthenticationAssertion}} structure as part of an authentication ceremony, the [RP]
+MUST proceed as follows:
 
-1. Using the credential identifier contained in the {{AuthenticationAssertion/credential}} member of the
-    {{AuthenticationAssertion}} structure, look up the corresponding credential public key as well as the [RP] user for whom it
-    is registered.
+1. Using the {{credential/id}} attribute contained in the {{AuthenticationAssertion/credential}} attribute of the
+    {{AuthenticationAssertion}} structure, look up the corresponding credential public key.
 
 2. Using the procedure in [[#authenticator-signature-verification]], verify that {{AuthenticationAssertion/signature}} is a
-    valid signature over {{AuthenticationAssertion/clientData}} and {{AuthenticationAssertion/authenticatorData}} with the above
-    public key.
+    valid signature over {{AuthenticationAssertion/clientDataJSON}} and {{AuthenticationAssertion/authenticatorData}} given the
+    credential public key.
 
-3. If the above verification succeeds, authenticate the user looked up in step 1. Otherwise, reject the authentication request.
+3. If the verification is successful, continue with the authentication ceremony as appropriate. Otherwise, fail the
+    authentication ceremony.
 
 
 # Defined Attestation Statement Formats # {#defined-attestation-formats}
 
 WebAuthn supports pluggable attestation statement formats. This section defines an initial set of such formats.
 
-## Attestation Format Identifiers ## {#sctn-attstn-fmt-ids}
+## Attestation Statement Format Identifiers ## {#sctn-attstn-fmt-ids}
 
-Attestation statement formats are identified by a string, called a <dfn>attestation format identifier</dfn>, chosen by the
-author of the attestation statement format.
+Attestation statement formats are identified by a string, called a <dfn>attestation statement format identifier</dfn>, chosen by
+the author of the attestation statement format.
 
-Attestation format identifiers SHOULD be registered per [[WebAuthn-Registries]] "Registries for Web Authentication (WebAuthn)".
-All registered attestation format identifiers are unique amongst themselves as a matter of course.
+Attestation statement format identifiers SHOULD be registered per [[WebAuthn-Registries]] "Registries for Web Authentication
+(WebAuthn)". All registered attestation statement format identifiers are unique amongst themselves as a matter of course.
 
-Unregistered attestation format identifiers SHOULD use reverse domain-name naming, using a domain name registered by the
-developer, in order to assure uniqueness of the identifier. All attestation format identifiers MUST be a maximum of 32 octets in
-length and MUST consist only of printable USASCII characters, i.e., VCHAR as defined in [[!RFC5234]] (note: this means
-attestation format identifiers based on domain names MUST incorporate only LDH Labels [[!RFC5890]]). Implementations MUST match
-WebAuthn attestation format identifiers in a case-insensitive fashion.
+Unregistered attestation statement format identifiers SHOULD use reverse domain-name naming, using a domain name registered by
+the developer, in order to assure uniqueness of the identifier. All attestation statement format identifiers MUST be a maximum
+of 32 octets in length and MUST consist only of printable USASCII characters, i.e., VCHAR as defined in [[!RFC5234]] (note: this
+means attestation statement format identifiers based on domain names MUST incorporate only LDH Labels [[!RFC5890]]).
+Implementations MUST match WebAuthn attestation statement format identifiers in a case-insensitive fashion.
 
 Attestation statement formats that may exist in multiple versions SHOULD include a version in their identifier. In effect,
 different versions are thus treated as different formats, e.g., `packed2` as a new version of the `packed` attestation statement
 format.
 
 The following sections present a set of currently-defined and registered attestation statement formats and their identifiers.
-See the WebAuthn Attestation Format Identifier Registry defined in [[WebAuthn-Registries]] for an up-to-date list of registered
-attestation statement formats.
+See the WebAuthn Attestation Statement Format Identifier Registry defined in [[WebAuthn-Registries]] for an up-to-date list of
+registered attestation statement formats.
 
 ## Packed Attestation Statement Format ## {#packed-attestation}
 
-This is a WebAuthn optimized attestation statement format. It uses a very compact but still extensible encoding method. Encoding
-this format can even be implemented by <a>authenticators</a> with very limited resources (e.g., secure elements).
+This is a WebAuthn optimized attestation statement format. It uses a very compact but still extensible encoding method. It is
+implementable by <a>authenticators</a> with limited resources (e.g., secure elements).
 
-: Attestation format identifier
+: Attestation statement format identifier
 :: packed
 
 : Attestation types supported
@@ -1597,9 +1609,9 @@ this format can even be implemented by <a>authenticators</a> with very limited r
     :: A byte string containing the attestation signature.
 
     : x5c
-    :: A definite-length array of byte strings. The elements of the array contain the attestation certificate and its
-        certificate chain, each encoded in X.509 format. The attestation certificate must be the first element in the array.
-        This field is present only if Basic attestation or Privacy CA attestation is in use.
+    :: An array of byte strings. The elements of the array contain the attestation certificate and its certificate chain, each
+        encoded in X.509 format. The attestation certificate must be the first element in the array. This field is present only
+        if Basic attestation or Privacy CA attestation is in use.
 
     : daaKey
     :: A byte string containing the DAA root key. This field is present only if Direct Anonymous Attestation is in use.
@@ -1674,7 +1686,7 @@ The attestation certificate MUST have the following fields/extensions:
 This attestation statement format is generally used by authenticators that use a Trusted Platform Module as their cryptographic
 engine.
 
-: Attestation format identifier
+: Attestation statement format identifier
 :: tpm
 
 : Attestation types supported
@@ -1783,7 +1795,7 @@ is produced outside this environment. The [RP] is expected to check that the con
 with the fields of the attestation certificate's extension data.
 
 
-: Attestation format identifier
+: Attestation statement format identifier
 :: android-key
 
 : Attestation types supported
@@ -1825,7 +1837,7 @@ this case the authenticator data is completely controlled by the caller of the S
 on the Android platform) and the attestation statement only provides some statements about the health of the platform and the
 identity of the calling application.
 
-: Attestation format identifier
+: Attestation statement format identifier
 :: android-safetynet
 
 : Attestation types supported
@@ -1864,7 +1876,7 @@ identity of the calling application.
 
 This attestation statement format is used with FIDO U2F authenticators using the formats defined in [[FIDO-U2F-Message-Formats]].
 
-: Attestation format identifier
+: Attestation statement format identifier
 :: fido-u2f
 
 : Attestation types supported
