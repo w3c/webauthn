@@ -315,7 +315,7 @@ scripts.
 
 The security properties of this API are provided by the client and the authenticator working together. The authenticator, which
 holds and manages credentials, ensures that all operations are scoped to a particular origin, and cannot be replayed against
-a different origin, by incorporating the origin in its responses. Specifically, as defined in [[#signature-format]], the full
+a different origin, by incorporating the origin in its responses. Specifically, as defined in [[#authenticator-ops]], the full
 origin of the requester is included, and signed over, in the <a>attestation object</a> produced when a new credential is created
 as well as in all assertions produced by WebAuthn credentials.
 
@@ -573,7 +573,7 @@ authorizing an authenticator with which to complete the operation.
     to locate it later for use, and also contains metadata that can be used by the <a>[RP]</a> to assess the strength of the
     credential during registration.
 
-    The <dfn>clientDataJSON</dfn> attribute contains the <a for="ClientData">clientDataJSON</a> (see [[#signature-format]])
+    The <dfn>clientDataJSON</dfn> attribute contains the <a for="ClientData">clientDataJSON</a> (see [[#cred-attestation]])
     passed to the authenticator by the client in order to generate this credential. The exact JSON serialization must be
     preserved as a cryptographic hash (<a>clientDataHash</a>) has been computed over it.
 
@@ -739,7 +739,7 @@ user consent to a specific transaction. The structure of these signatures is def
     [[#sec-authenticator-data]].
 
     The <dfn>signature</dfn> attribute contains the raw signature returned from the authenticator. See
-    [[#authenticator-signature]].
+    [[#op-get-assertion]].
 </div>
 
 
@@ -935,16 +935,29 @@ defined in [[!WebCryptoAPI]].
 # WebAuthn Authenticator model # {#authenticator-model}
 
 The API defined in this specification implies a specific abstract functional model for an <a>authenticator</a>. This section
-describes the authenticator model. Client platforms may implement and expose this abstract model in any way desired. For
-instance, this abstract model does not define specific error codes or methods of returning them; however, it does define error
-behavior in terms of the needs of the client. Therefore, specific error codes are mentioned as a means of showing which error
-conditions must be distinguishable (or not) from each other in order to enable a compliant and secure client implementation.
-The overall requirement is that the behavior of the client's Web Authentication API implementation, when operating on the
-authenticators supported by that platform, MUST be indistinguishable from the behavior specified in [[#api]].
+describes the authenticator model.
 
-In this abstract model, each authenticator stores some number of scoped credentials. Each scoped credential has an identifier
-which is unique (or extremely unlikely to be duplicated) among all scoped credentials. Each credential is also associated with a
-<a>[RP]</a>, whose identity is represented by a <a>Relying Party Identifier</a> (<a>RP ID</a>).
+Client platforms may implement and expose this abstract model in any way desired. However, the behavior of the client's Web
+Authentication API implementation, when operating on the authenticators supported by that platform, MUST be indistinguishable
+from the behavior specified in [[#api]].
+
+For authenticators, this model defines the logical operations that they must support, and the data formats that they expose to
+the client and the [RP]. However, it does not define the details of how authenticators communicate with the client platform,
+unless they are required for interoperability with [RPS]. For instance, this abstract model does not define protocols for
+connecting authenticators to clients over transports such as USB or NFC. Similarly, this abstract model does not define specific
+error codes or methods of returning them; however, it does define error behavior in terms of the needs of the client. Therefore,
+specific error codes are mentioned as a means of showing which error conditions must be distinguishable (or not) from each other
+in order to enable a compliant and secure client implementation.
+
+In this abstract model, the authenticator provides key management and cryptographic signatures. It may be embedded in the
+WebAuthn client, or housed in a separate device entirely. The authenticator may itself contain a cryptographic module which
+operates at a higher security level than the rest of the authenticator. This is particularly important for authenticators that
+are embedded in the WebAuthn client, as in those cases this cryptographic module (which may, for example, be a TPM) could be
+considered more trustworthy than the rest of the authenticator.
+
+Each authenticator stores some number of scoped credentials. Each scoped credential has an identifier which is unique (or
+extremely unlikely to be duplicated) among all scoped credentials. Each credential is also associated with a <a>[RP]</a>, whose
+identity is represented by a <a>Relying Party Identifier</a> (<a>RP ID</a>).
 
 Each authenticator has an AAGUID, which is a 128-bit identifier that indicates the type (e.g. make and model) of the
 authenticator. The AAGUID MUST be chosen by the manufacturer to be identical across all substantially identical authenticators
@@ -952,131 +965,14 @@ made by that manufacturer, and different (with probability 1-2<sup>-128</sup> or
 authenticators. The RP MAY use the AAGUID to infer certain properties of the authenticator, such as certification level and
 strength of key protection, using information from other sources.
 
-
-## Authenticator operations ## {#authenticator-ops}
-
-A client must connect to an authenticator in order to invoke any of the operations of that authenticator. This connection
-defines an authenticator session. An authenticator must maintain isolation between sessions. It may do this by only allowing one
-session to exist at any particular time, or by providing more complicated session management.
-
-The following operations can be invoked by the client in an authenticator session.
-
-
-### The <dfn>authenticatorMakeCredential</dfn> operation ### {#op-make-cred}
-
-This operation must be invoked in an authenticator session which has no other operations in progress. It takes the following
-input parameters:
-
-- The caller's RP ID, as determined by the user agent and the client.
-- The <a>clientDataHash</a>, which is the hash of the serialized {{ClientData}} and is provided by the client.
-- The {{Account}} information provided by the [RP].
-- The {{ScopedCredentialType}} and cryptographic parameters requested by the [RP], with the cryptographic algorithms normalized
-    as per the procedure in [[WebCryptoAPI#algorithm-normalization-normalize-an-algorithm]].
-- A list of {{ScopedCredential}} objects provided by the [RP] with the intention that, if any of these are known to the
-    authenticator, it should not create a new credential.
-- Extension data created by the client based on the extensions requested by the [RP].
-
-When this operation is invoked, the authenticator must perform the following procedure:
-- Check if all the supplied parameters are syntactically well-formed and of the correct length. If not, return an error code
-    equivalent to UnknownError and terminate the operation.
--  Check if at least one of the specified combinations of {{ScopedCredentialType}} and cryptographic parameters is supported. If
-    not, return an error code equivalent to NotSupportedError and terminate the operation.
-- Check if a credential matching any of the supplied {{ScopedCredential}} identifiers is present on this authenticator. If so,
-    return an error code equivalent to NotAllowedError and terminate the operation.
-- Prompt the user for consent to create a new credential. The prompt for obtaining this consent is shown by the authenticator
-    if it has its own output capability, or by the user agent otherwise. If the user denies consent, return an error code
-    equivalent to NotAllowedError and terminate the operation.
-- Once user consent has been obtained, generate a new credential object:
-    - Generate a set of cryptographic keys using the most preferred combination of {{ScopedCredentialType}} and cryptographic
-        parameters supported by this authenticator.
-    - Generate an identifier for this credential, such that this identifier is globally unique with high probability across all
-        credentials with the same type across all authenticators.
-    - Associate the credential with the specified RP ID and the user's account identifier {{Account/id}}.
-    - Delete any older credentials with the same RP ID and {{Account/id}} that are stored locally in the authenticator.
-- If any error occurred while creating the new credential object, return an error code equivalent to UnknownError and terminate
-    the operation.
-- Process all the supported extensions requested by the client, and generate an <a>authenticatorData</a> structure with
-    attestation data as specified in [[#sec-authenticator-data]]. Use this <a>authenticatorData</a> and the
-    <a>clientDataHash</a> received from the client to create an <a>attestation object</a> for the new credential using the
-    procedure specified in [[#generating-an-attestation-object]]. For more details on attestation, see [[#cred-attestation]].
-
-On successful completion of this operation, the authenticator returns the <a>attestation object</a> to the client.
-
-
-### The <dfn>authenticatorGetAssertion</dfn> operation ### {#op-get-assertion}
-
-This operation must be invoked in an authenticator session which has no other operations in progress. It takes the following
-input parameters:
-
-- The caller's RP ID, as determined by the user agent and the client.
-- The <a>clientDataHash</a>, which is the hash of the serialized {{ClientData}} and is provided by the client.
-- A list of credentials acceptable to the [RP] (possibly filtered by the client).
-- Extension data created by the client based on the extensions requested by the [RP].
-
-When this method is invoked, the authenticator must perform the following procedure:
-- Check if all the supplied parameters are syntactically well-formed and of the correct length. If not, return an error code
-    equivalent to UnknownError and terminate the operation.
-- If a list of credentials was supplied by the client, filter it by removing those credentials that are not present on this
-    authenticator. If no list was supplied, create a list with all credentials stored for the caller's RP ID (as determined by
-    an exact match of the RP ID).
-- If the previous step resulted in an empty list, return an error code equivalent to NotAllowedError and terminate the
-    operation.
-- Prompt the user to select a credential from among the above list. Obtain user consent for using this credential. The prompt
-    for obtaining this consent may be shown by the authenticator if it has its own output capability, or by the user agent
-    otherwise.
-- Process all the supported extensions requested by the client, and generate an <a>authenticatorData</a> structure without
-    attestation data as specified in [[#sec-authenticator-data]]. Use this <a>authenticatorData</a> and the
-    <a>clientDataHash</a> received from the client to generate an assertion signature using the private key of the selected
-    credential, as specified in [[#authenticator-signature]].
-- If any error occurred while generating the assertion signature, return an error code equivalent to UnknownError and terminate
-    the operation.
-
-On successful completion, the authenticator returns to the user agent:
-- The identifier of the credential used to generate the signature.
-- The <a>authenticatorData</a> used to generate the signature.
-- The assertion signature.
-
-If the authenticator cannot find any credential corresponding to the specified [RP] that matches the specified criteria, it
-terminates the operation and returns an error.
-
-If the user refuses consent, the authenticator returns an appropriate error status to the client.
-
-
-### The <dfn>authenticatorCancel</dfn> operation ### {#op-cancel}
-
-This operation takes no input parameters and returns no result.
-
-When this operation is invoked by the client in an authenticator session, it has the effect of terminating any
-<a>authenticatorMakeCredential</a> or <a>authenticatorGetAssertion</a> operation currently in progress in that authenticator
-session. The authenticator stops prompting for, or accepting, any user input related to authorizing the canceled operation. The
-client ignores any further responses from the authenticator for the canceled operation.
-
-This operation is ignored if it is invoked in an authenticator session which does not have an <a>authenticatorMakeCredential</a>
-or <a>authenticatorGetAssertion</a> operation currently in progress.
-
-
-## Signature Format ## {#signature-format}
-
-WebAuthn signatures are bound to various contextual data. These data are observed, and added at different levels of the stack as
-a signature request passes from the server to the authenticator. In verifying a signature, the server checks these bindings
-against expected values.
-
-The components of a system using WebAuthn can be divided into three layers:
-
-1. The <a>[RP]</a> (RP), which uses the WebAuthn services. The RP consists of a server component and a web-application running
-    in a browser.
-
-2. The <a>WebAuthn Client</a> platform, which consists of the User Agent and the OS and device on which it executes.
-
-3. The <a>Authenticator</a> itself, which provides key management and cryptographic signatures. This may be embedded in the
-    WebAuthn client, or housed in a separate device entirely. In the latter case, the interface between the WebAuthn client and
-    the authenticator is a separately-defined protocol. The authenticator may itself contain a cryptographic module which
-    operates at a higher security level than the rest of the authenticator. This is particularly important for authenticators
-    that are embedded in the WebAuthn client, as in those cases this cryptographic module (which may, for example, be a TPM)
-    could be considered more trustworthy than the rest of the authenticator.
-
-This specification defines the common signature format shared by all the above layers. This includes how the different
-contextual bindings are encoded, signed over, and delivered to the RP.
+The primary function of the authenticator is to provide WebAuthn signatures, which are bound to various contextual data. These
+data are observed, and added at different levels of the stack as a signature request passes from the server to the
+authenticator. In verifying a signature, the server checks these bindings against expected values. These contextual bindings
+are divided in two: Those added by the RP or the client, referred to as client data; and those added by the authenticator,
+referred to as the authenticator data. The authenticator signs over the client data, but is otherwise not interested in its
+contents. To save bandwidth and processing requirements on the authenticator, the client hashes the {{ClientData}} and sends
+only the result to the authenticator. The authenticator signs over the combination of this <a>clientDataHash</a>, and its own
+authenticator data.
 
 The goals of this design can be summarized as follows.
 
@@ -1090,14 +986,23 @@ The goals of this design can be summarized as follows.
 
 - The design aims to reuse as much as possible of existing encoding formats in order to aid adoption and implementation.
 
-The contextual bindings are divided in two: Those added by the RP or the client, referred to as client data; and those added by
-the authenticator, referred to as the authenticator data. The authenticator signs over the client data, but is otherwise not
-interested in its contents. To save bandwidth and processing requirements on the authenticator, the client hashes the
-{{ClientData}} and sends only the result to the authenticator. The authenticator signs over the combination of this
-<a>clientDataHash</a>, and its own authenticator data.
+Authenticators produce cryptographic signatures for two distinct purposes:
+1. An <dfn>attestation signature</dfn> is produced when a new credential is created, and provides cryptographic proof of certain
+    properties of the credential and the authenticator. For instance, an attestation signature asserts the type of authenticator
+    (as denoted by its AAGUID) and the public key of the credential. The attestation signature is signed by an attestation key,
+    which is chosen depending on the type of attestation desired. For more details on attestation, see [[#cred-attestation]].
+2. An <dfn>assertion signature</dfn> is produced when the <a>authenticatorGetAssertion</a> method is invoked. It represents an
+    assertion by the authenticator that the user has consented to a specific transaction, such as logging in, or completing a
+    purchase. Thus, an assertion signature asserts that the authenticator which possesses a particular credential private key
+    has established, to the best of its ability, that the human who is requesting this transaction is the same human who
+    consented to creating that particular credential. It also provides additional information that might be useful to the
+    caller, such as the means by which user consent was provided, and the prompt that was shown to the user by the
+    authenticator.
+
+The formats of these signatures, as well as the procedures for generating them, are specified below.
 
 
-### Authenticator data ### {#sec-authenticator-data}
+## Authenticator data ## {#sec-authenticator-data}
 
 The authenticator data structure, <dfn>authenticatorData</dfn>, encodes contextual bindings made by the <a>authenticator</a>.
 These bindings are controlled by the authenticator itself, and derive their trust from the [RP]'s assessment of the security
@@ -1179,104 +1084,113 @@ The attestation data (which is only present if the AT flag is set) describes its
 total length is 37 bytes plus the length of the attestation data, plus the length of the CBOR map that follows.
 
 
-### Attestation data ### {#sec-attestation-data}
+## Authenticator operations ## {#authenticator-ops}
 
-Attestation data is added to the <a>authenticatorData</a> when generating an <a>attestation object</a> for a given credential.
-It has the following format:
+A client must connect to an authenticator in order to invoke any of the operations of that authenticator. This connection
+defines an authenticator session. An authenticator must maintain isolation between sessions. It may do this by only allowing one
+session to exist at any particular time, or by providing more complicated session management.
 
-<table class="complex data longlastcol">
-    <tr>
-        <th>Length (in bytes)</th>
-        <th>Description</th>
-    </tr>
-    <tr>
-        <td>16</td>
-        <td>The AAGUID of the authenticator.</td>
-    </tr>
-    <tr>
-        <td>2</td>
-        <td>Byte length L of Credential ID</td>
-    </tr>
-    <tr>
-        <td>L</td>
-        <td>Credential ID</td>
-    </tr>
-    <tr>
-        <td>variable</td>
-        <td>
-            Credential public key encoded in CBOR format. This is a CBOR map comprising the following fields:
-
-            : alg
-            :: This is the name of the signature algorithm associated with the credential private key, expressed as defined in
-                [[!RFC7518]] section 3.1. Specifically, the following values are supported: "ES256", "ES384", "ES512", "RS256",
-                "RS384", "RS512", "PS256", "PS384" and "PS512".
-
-            : (public key fields)
-            :: These fields contain the public key, expressed in the format defined by [[!RFC7518]] section 6. Specifically, for
-                ECC keys, the `x` and `y` fields are present as defined in [[!RFC7518]] sections 6.2.1.2 and 6.2.1.3, and for
-                RSA keys, the `n` and `e` fields are present as defined in [[!RFC7518]] sections 6.3.1.1 and 6.3.1.2.
-        </td>
-    </tr>
-</table>
+The following operations can be invoked by the client in an authenticator session.
 
 
-### Generating a signature ### {#authenticator-signature}
+### The <dfn>authenticatorMakeCredential</dfn> operation ### {#op-make-cred}
 
-Authenticators produce cryptographic signatures for two distinct purposes:
-1. An <dfn>attestation signature</dfn> is produced when a new credential is created, and provides cryptographic proof of certain
-    properties of the credential and the authenticator. For instance, an attestation signature asserts the type of authenticator
-    (as denoted by its AAGUID) and the public key of the credential. The attestation signature is signed by an attestation key,
-    which is chosen depending on the type of attestation desired. For more details on attestation, see [[#cred-attestation]].
-2. An <dfn>assertion signature</dfn> is produced when the <a>authenticatorGetAssertion</a> method is invoked. It represents an
-    assertion by the authenticator that the user has consented to a specific transaction, such as logging in, or completing a
-    purchase. Thus, an assertion signature asserts that the authenticator which possesses a particular credential private key
-    has established, to the best of its ability, that the human who is requesting this transaction is the same human who
-    consented to creating that particular credential. It also provides additional information that might be useful to the
-    caller, such as the means by which user consent was provided, and the prompt that was shown to the user by the
-    authenticator.
+This operation must be invoked in an authenticator session which has no other operations in progress. It takes the following
+input parameters:
 
-Both types of signature must assert the integrity of both the client data and the authenticator data. Thus, in both cases the
-<a>authenticator</a> computes a signature over a combination of the <a>clientDataHash</a> and the <a>authenticatorData</a>.
+- The caller's RP ID, as determined by the user agent and the client.
+- The <a>clientDataHash</a>, which is the hash of the serialized {{ClientData}} and is provided by the client.
+- The {{Account}} information provided by the [RP].
+- The {{ScopedCredentialType}} and cryptographic parameters requested by the [RP], with the cryptographic algorithms normalized
+    as per the procedure in [[WebCryptoAPI#algorithm-normalization-normalize-an-algorithm]].
+- A list of {{ScopedCredential}} objects provided by the [RP] with the intention that, if any of these are known to the
+    authenticator, it should not create a new credential.
+- Extension data created by the client based on the extensions requested by the [RP].
 
-To generate either type of signature, the authenticator must first select an appropriate private key for the signature. Then,
-the authenticator concatenates the <a>authenticatorData</a> and <a>clientDataHash</a>, and signs the result using the selected
-private key as shown in [the figure below](#fig-signature).
+When this operation is invoked, the authenticator must perform the following procedure:
+- Check if all the supplied parameters are syntactically well-formed and of the correct length. If not, return an error code
+    equivalent to UnknownError and terminate the operation.
+-  Check if at least one of the specified combinations of {{ScopedCredentialType}} and cryptographic parameters is supported. If
+    not, return an error code equivalent to NotSupportedError and terminate the operation.
+- Check if a credential matching any of the supplied {{ScopedCredential}} identifiers is present on this authenticator. If so,
+    return an error code equivalent to NotAllowedError and terminate the operation.
+- Prompt the user for consent to create a new credential. The prompt for obtaining this consent is shown by the authenticator
+    if it has its own output capability, or by the user agent otherwise. If the user denies consent, return an error code
+    equivalent to NotAllowedError and terminate the operation.
+- Once user consent has been obtained, generate a new credential object:
+    - Generate a set of cryptographic keys using the most preferred combination of {{ScopedCredentialType}} and cryptographic
+        parameters supported by this authenticator.
+    - Generate an identifier for this credential, such that this identifier is globally unique with high probability across all
+        credentials with the same type across all authenticators.
+    - Associate the credential with the specified RP ID and the user's account identifier {{Account/id}}.
+    - Delete any older credentials with the same RP ID and {{Account/id}} that are stored locally in the authenticator.
+- If any error occurred while creating the new credential object, return an error code equivalent to UnknownError and terminate
+    the operation.
+- Process all the supported extensions requested by the client, and generate an <a>authenticatorData</a> structure with
+    attestation data as specified in [[#sec-authenticator-data]]. Use this <a>authenticatorData</a> and the
+    <a>clientDataHash</a> received from the client to create an <a>attestation object</a> for the new credential using the
+    procedure specified in [[#generating-an-attestation-object]]. For more details on attestation, see [[#cred-attestation]].
+
+On successful completion of this operation, the authenticator returns the <a>attestation object</a> to the client.
+
+
+### The <dfn>authenticatorGetAssertion</dfn> operation ### {#op-get-assertion}
+
+This operation must be invoked in an authenticator session which has no other operations in progress. It takes the following
+input parameters:
+
+- The caller's RP ID, as determined by the user agent and the client.
+- The <a>clientDataHash</a>, which is the hash of the serialized {{ClientData}} and is provided by the client.
+- A list of credentials acceptable to the [RP] (possibly filtered by the client).
+- Extension data created by the client based on the extensions requested by the [RP].
+
+When this method is invoked, the authenticator must perform the following procedure:
+- Check if all the supplied parameters are syntactically well-formed and of the correct length. If not, return an error code
+    equivalent to UnknownError and terminate the operation.
+- If a list of credentials was supplied by the client, filter it by removing those credentials that are not present on this
+    authenticator. If no list was supplied, create a list with all credentials stored for the caller's RP ID (as determined by
+    an exact match of the RP ID).
+- If the previous step resulted in an empty list, return an error code equivalent to NotAllowedError and terminate the
+    operation.
+- Prompt the user to select a credential from among the above list. Obtain user consent for using this credential. The prompt
+    for obtaining this consent may be shown by the authenticator if it has its own output capability, or by the user agent
+    otherwise.
+- Process all the supported extensions requested by the client, and generate an <a>authenticatorData</a> structure without
+    attestation data as specified in [[#sec-authenticator-data]]. Concatenate this <a>authenticatorData</a> with the
+    <a>clientDataHash</a> received from the client to generate an assertion signature using the private key of the selected
+    credential, [as shown below](#fig-signature). A simple, undelimited concatenation is safe to use here because the
+    <a>authenticatorData</a> describes its own length. The <a>clientDataHash</a> (which potentially has a variable length) is
+    always the last element.
+- If any error occurred while generating the assertion signature, return an error code equivalent to UnknownError and terminate
+    the operation.
 
 <figure id="fig-signature">
     <img src="images/fido-signature-formats-figure2.svg"/>
     <figcaption>Generating a signature on the authenticator.</figcaption>
 </figure>
 
-A simple, undelimited concatenation is safe to use here because the <a>authenticatorData</a> describes its own length. The
-<a>clientDataHash</a> (which potentially has a variable length) is always the last element.
+On successful completion, the authenticator returns to the user agent:
+- The identifier of the credential used to generate the signature.
+- The <a>authenticatorData</a> used to generate the signature.
+- The assertion signature.
+
+If the authenticator cannot find any credential corresponding to the specified [RP] that matches the specified criteria, it
+terminates the operation and returns an error.
+
+If the user refuses consent, the authenticator returns an appropriate error status to the client.
 
 
-### Verifying a signature ### {#authenticator-signature-verification}
+### The <dfn>authenticatorCancel</dfn> operation ### {#op-cancel}
 
-This section specifies the algorithm for verifying any signature generated using the method in [[#authenticator-signature]].
+This operation takes no input parameters and returns no result.
 
-To verify a signature |S| given a claimed {{AuthenticationAssertion/clientDataJSON}} |C| and a claimed <a>authenticatorData</a>
-|data| using a given public key, the [RP] SHALL:
+When this operation is invoked by the client in an authenticator session, it has the effect of terminating any
+<a>authenticatorMakeCredential</a> or <a>authenticatorGetAssertion</a> operation currently in progress in that authenticator
+session. The authenticator stops prompting for, or accepting, any user input related to authorizing the canceled operation. The
+client ignores any further responses from the authenticator for the canceled operation.
 
-1. Perform JSON deserialization on |C| to extract the {{ClientData}} used for the signature.
-
-2. Verify that the {{ClientData/challenge}} in the {{ClientData}} matches the challenge that was sent to the authenticator.
-
-3. Verify that the {{ClientData/origin}} in the {{ClientData}} matches the [RP]'s origin.
-
-4. Verify that the {{ClientData/tokenBinding}} (if present) in the {{ClientData}} matches the token binding ID for the TLS
-    connection over which the signature was obtained.
-
-5. Verify that the {{ClientData/extensions}} in the {{ClientData}} is a proper subset of the extensions requested by the RP.
-
-6. Verify that the RP ID hash in |data| is indeed the SHA-256 hash of the RP ID expected by the RP.
-
-7. Let |hash| be the result of computing a hash over |C| using the {{ClientData/hashAlg}} algorithm found in the {{ClientData}}
-    structure.
-
-8. Use the given public key to verify that |S| is a valid signature over the binary concatenation of |data| and |hash|.
-
-If all the above steps succeed, then the signature is valid, otherwise it is invalid.
+This operation is ignored if it is invoked in an authenticator session which does not have an <a>authenticatorMakeCredential</a>
+or <a>authenticatorGetAssertion</a> operation currently in progress.
 
 
 ## Credential Attestation ## {#cred-attestation}
@@ -1324,6 +1238,47 @@ It is expected that most authenticators will support a small number of attestati
 while [RPS] will decide what attestation types are acceptable to them by policy. [RPS] will also need to understand the
 characteristics of the authenticators that they trust, based on information they have about these authenticators. For example,
 the FIDO Metadata Service [[FIDOMetadataService]] provides one way to access such information.
+
+
+### Attestation data ### {#sec-attestation-data}
+
+Attestation data is added to the <a>authenticatorData</a> when generating an <a>attestation object</a> for a given credential.
+It has the following format:
+
+<table class="complex data longlastcol">
+    <tr>
+        <th>Length (in bytes)</th>
+        <th>Description</th>
+    </tr>
+    <tr>
+        <td>16</td>
+        <td>The AAGUID of the authenticator.</td>
+    </tr>
+    <tr>
+        <td>2</td>
+        <td>Byte length L of Credential ID</td>
+    </tr>
+    <tr>
+        <td>L</td>
+        <td>Credential ID</td>
+    </tr>
+    <tr>
+        <td>variable</td>
+        <td>
+            Credential public key encoded in CBOR format. This is a CBOR map comprising the following fields:
+
+            : alg
+            :: This is the name of the signature algorithm associated with the credential private key, expressed as defined in
+                [[!RFC7518]] section 3.1. Specifically, the following values are supported: "ES256", "ES384", "ES512", "RS256",
+                "RS384", "RS512", "PS256", "PS384" and "PS512".
+
+            : (public key fields)
+            :: These fields contain the public key, expressed in the format defined by [[!RFC7518]] section 6. Specifically, for
+                ECC keys, the `x` and `y` fields are present as defined in [[!RFC7518]] sections 6.2.1.2 and 6.2.1.3, and for
+                RSA keys, the `n` and `e` fields are present as defined in [[!RFC7518]] sections 6.3.1.1 and 6.3.1.2.
+        </td>
+    </tr>
+</table>
 
 
 ### Attestation Statement Formats ### {#attestation-formats}
@@ -1545,14 +1500,33 @@ or it MAY decide to accept the registration, e.g. while deleting the older regis
 When requested to authenticate a given {{AuthenticationAssertion}} structure as part of an authentication ceremony, the [RP]
 MUST proceed as follows:
 
-1. Using the {{ScopedCredential/id}} attribute contained in the {{AuthenticationAssertion/credential}} attribute of the
+1. Using the {{ScopedCredential/id}} attribute contained in the {{AuthenticationAssertion/credential}} attribute of the given
     {{AuthenticationAssertion}} structure, look up the corresponding credential public key.
 
-2. Using the procedure in [[#authenticator-signature-verification]], verify that {{AuthenticationAssertion/signature}} is a
-    valid signature over {{AuthenticationAssertion/clientDataJSON}} and {{AuthenticationAssertion/authenticatorData}} given the
-    credential public key.
+2. Let |cData|, |aData| and |sig| denote the {{AuthenticationAssertion/clientDataJSON}},
+    {{AuthenticationAssertion/authenticatorData}} and {{AuthenticationAssertion/signature}} attributes of the given
+    {{AuthenticationAssertion}} structure, respectively.
 
-3. If the verification is successful, continue with the authentication ceremony as appropriate. Otherwise, fail the
+3. Perform JSON deserialization on |cData| to extract the {{ClientData}} |C| used for the signature.
+
+4. Verify that the {{ClientData/challenge}} member of |C| matches the challenge that was sent to the authenticator.
+
+5. Verify that the {{ClientData/origin}} member of |C| matches the [RP]'s origin.
+
+6. Verify that the {{ClientData/tokenBinding}} member of |C| (if present) matches the token binding ID for the TLS connection
+    over which the signature was obtained.
+
+7. Verify that the {{ClientData/extensions}} member of |C| is a proper subset of the extensions requested by the RP.
+
+8. Verify that the RP ID hash in |aData| is the SHA-256 hash of the RP ID expected by the RP.
+
+9. Let |hash| be the result of computing a hash over the |cData| using the algorithm represented by the {{ClientData/hashAlg}}
+    member of |C|.
+
+10. Using the credential public key looked up in step 1, verify that |sig| is a valid signature over the binary concatenation of
+    |aData| and |hash|.
+
+11. If all the above steps are successful, continue with the authentication ceremony as appropriate. Otherwise, fail the
     authentication ceremony.
 
 
@@ -1617,27 +1591,29 @@ implementable by <a>authenticators</a> with limited resources (e.g., secure elem
     :: A byte string containing the DAA root key. This field is present only if Direct Anonymous Attestation is in use.
 
 : Signing procedure
-:: If Basic or Privacy CA attestation is in use, the authenticator produces |sig| by following the procedure in
-    [[#authenticator-signature]] with the given <a>clientDataHash</a> and <a>authenticatorData</a> as inputs, using an
-    attestation private key selected through an authenticator-specific mechanism. It sets |x5c| to the certificate chain of the
-    attestation public key and |alg| to the algorithm of the attestation private key.
+:: The signing procedure for this attestation statement format is similar to [the procedure for generating assertion
+    signatures](#fig-signature).
 
-    If DAA is in use, the authenticator produces |sig| by following the procedure in [[#authenticator-signature]] with the given
-    <a>clientDataHash</a> and <a>authenticatorData</a> as inputs, using DAA-Sign with a DAA root key selected through an
+    If Basic or Privacy CA attestation is in use, the authenticator produces the |sig| by concatenating the given
+    <a>clientDataHash</a> and <a>authenticatorData</a>, and signing the result using an attestation private key selected through
+    an authenticator-specific mechanism. It sets |x5c| to the certificate chain of the attestation public key and |alg| to the
+    algorithm of the attestation private key.
+
+    If DAA is in use, the authenticator produces |sig| by concatenating the given <a>clientDataHash</a> and
+    <a>authenticatorData</a>, and signing the result using DAA-Sign with a DAA root key selected through an
     authenticator-specific mechanism (see [[!FIDOEcdaaAlgorithm]]). It sets |alg| to the algorithm of the DAA root key and
     |daaKey| to the DAA root key.
 
-    If self attestation is in use, the authenticator produces |sig| by following the procedure in
-    [[#authenticator-signature]] with the given <a>clientDataHash</a> and <a>authenticatorData</a> as inputs, using the
-    credential private key. It sets |alg| to the algorithm of the credential private key, and omits the other fields.
+    If self attestation is in use, the authenticator produces |sig| by concatenating the given <a>clientDataHash</a> and
+    <a>authenticatorData</a>, and signing the result using the credential private key. It sets |alg| to the algorithm of the
+    credential private key, and omits the other fields.
 
 : Verification procedure
 :: If both |x5c| and |daaKey| are present, terminate this procedure with an error.
 
     If |x5c| is present, this indicates that the attestation type is not DAA. In this case:
-    - Follow the procedure in [[#authenticator-signature-verification]] to verify that |sig| is a valid signature over the given
-        <a>authenticatorData</a> and <a>clientDataHash</a>  using the attestation public key in |x5c| with the algorithm
-        specified in |alg|.
+    - Verify that |sig| is a valid signature over the given <a>authenticatorData</a> and <a>clientDataHash</a>  using the
+        attestation public key in |x5c| with the algorithm specified in |alg|.
     - Verify that |x5c| meets the requirements in [[#packed-attestation-cert-requirements]].
     - If |x5c| contains an extension with OID `1 3 6 1 4 1 45724 1 1 4` (id-fido-gen-ce-aaguid) verify that
         the value of this extension matches the AAGUID in the claimed <a>authenticatorData</a>.
@@ -1645,14 +1621,14 @@ implementable by <a>authenticators</a> with limited resources (e.g., secure elem
 
     If |daaKey| is present, then the attestation type is DAA. In this case:
     - Verify that |alg| is "ED256" or "ED512".
-    - Follow the procedure in [[#authenticator-signature-verification]] to verify that |sig| is a valid signature over the given
-        <a>authenticatorData</a> and <a>clientDataHash</a>  using DAA-Verify with |daaKey| (see [[!FIDOEcdaaAlgorithm]]).
+    - Verify that |sig| is a valid signature over the given <a>authenticatorData</a> and <a>clientDataHash</a>  using DAA-Verify
+        with |daaKey| (see [[!FIDOEcdaaAlgorithm]]).
     - If successful, return attestation type DAA and trust path |daaKey|.
 
     If neither |x5c| nor |daaKey| is present, self attestation is in use.
     - Validate that |alg| matches the algorithm of the credential private key in the claimed <a>authenticatorData</a>.
-    - Follow the procedure in [[#authenticator-signature-verification]] to verify that |sig| is a valid signature over the given
-        <a>authenticatorData</a> and <a>clientDataHash</a> using the credential public key with |alg|.
+    - Verify that |sig| is a valid signature over the given <a>authenticatorData</a> and <a>clientDataHash</a> using the
+        credential public key with |alg|.
     - If successful, return attestation type Self and empty trust path.
 
 
@@ -1725,8 +1701,7 @@ engine.
     :: The TPMT_PUBLIC structure (see [[TPMv2-Part2]] section 12.2.4) used by the TPM to represent the credential public key.
 
 : Signing procedure
-:: Concatenate the given <a>authenticatorData</a> and <a>clientDataHash</a> as shown in [[#authenticator-signature]] to form
-    |attToBeSigned|.
+:: Concatenate the given <a>authenticatorData</a> and <a>clientDataHash</a> to form |attToBeSigned|.
 
     Generate a signature using the procedure specified in [[TPMv2-Part3]] Section 18.2, using the attestation private key and
     setting the `qualifyingData` parameter to |attToBeSigned|.
@@ -1738,8 +1713,7 @@ engine.
 :: Verify that the public key specified by the `parameters` and `unique` fields of |pubArea| is identical to the public key
     contained in the attestation data inside the claimed <a>authenticatorData</a>
 
-    Concatenate the given <a>authenticatorData</a> and <a>clientDataHash</a> as shown in [[#authenticator-signature]] to form
-    |attToBeSigned|.
+    Concatenate the given <a>authenticatorData</a> and <a>clientDataHash</a> to form |attToBeSigned|.
 
     Validate that |certInfo| is valid:
     - Verify that `magic` is set to `TPM_GENERATED_VALUE`.
@@ -1807,8 +1781,7 @@ with the fields of the attestation certificate's extension data.
     [the Android developer documentation](https://developer.android.com/training/articles/security-key-attestation.html).
 
 : Signing procedure
-:: Concatenate the given <a>authenticatorData</a> and <a>clientDataHash</a> as shown in [[#authenticator-signature]] to form
-    |attToBeSigned|.
+:: Concatenate the given <a>authenticatorData</a> and <a>clientDataHash</a> to form |attToBeSigned|.
 
     Request a Android Key Attestation by calling "keyStore.getCertificateChain(myKeyUUID)") providing |attToBeSigned| as the
     challenge value (e.g., by using
@@ -1855,8 +1828,7 @@ identity of the calling application.
         in Compact Serialization.
 
 : Signing procedure
-:: Concatenate the given <a>authenticatorData</a> and <a>clientDataHash</a> as shown in [[#authenticator-signature]] to form
-    |attToBeSigned|.
+:: Concatenate the given <a>authenticatorData</a> and <a>clientDataHash</a> to form |attToBeSigned|.
 
     Request a SafetyNet attestation, providing |attToBeSigned| as the nonce value. Set |response| to the result, and |ver| to
     the version of Google Play Services running in the authenticator.
@@ -1894,8 +1866,8 @@ This attestation statement format is used with FIDO U2F authenticators using the
 : Signing procedure
 :: If the credential public key of the given credential is not of algorithm "ES256", stop and return an error.
 
-    Concatenate the given <a>authenticatorData</a> and <a>clientDataHash</a> as shown in [[#authenticator-signature]] to form
-    |attToBeSigned|. Compute the SHA-256 hash of |attToBeSigned| and call the result |tbsHash|.
+    Concatenate the given <a>authenticatorData</a> and <a>clientDataHash</a> to form |attToBeSigned|. Compute the SHA-256 hash
+    of |attToBeSigned| and call the result |tbsHash|.
 
     Generate a signature as specified in [[FIDO-U2F-Message-Formats]] section 4.3, with the application parameter set to the
     SHA-256 hash of the RP ID associated with the given credential, the challenge parameter set to |tbsHash|, and the key handle
@@ -1905,8 +1877,8 @@ This attestation statement format is used with FIDO U2F authenticators using the
 : Verification procedure
 :: Verification is performed as follows:
     - If |x5c| is not a certificate for an ECDSA public key over the P-256 curve, stop verification and return an error.
-    - Concatenate the given <a>authenticatorData</a> and <a>clientDataHash</a> as shown in [[#authenticator-signature]] to form
-        |attToBeSigned|. Compute the SHA-256 hash of |attToBeSigned| and call the result |tbsHash|.
+    - Concatenate the given <a>authenticatorData</a> and <a>clientDataHash</a> to form |attToBeSigned|. Compute the SHA-256 hash
+        of |attToBeSigned| and call the result |tbsHash|.
     - From the given <a>authenticatorData</a>, extract the claimed RP ID hash, the claimed credential ID and the claimed
         credential public key.
     - Generate the claimed to-be-signed data as specified in [[FIDO-U2F-Message-Formats]] section 4.3, with the application
