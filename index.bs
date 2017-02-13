@@ -1277,6 +1277,10 @@ It has the following format:
             ```
             pubKey = $pubKeyFmt
 
+            ; All public key formats must include an alg name
+            pubKeyTemplate = { alg: text }
+            pubKeyTemplate .within $pubKeyFmt
+
             pubKeyFmt /= rsaPubKey
             rsaPubKey = { alg: rsaAlgName, n: biguint, e: uint }
             rsaAlgName = "RS256" / "RS384" / "RS512" / "PS256" / "PS384" / "PS512"
@@ -1369,10 +1373,17 @@ Finally, the authenticator MUST construct the <a>attestation object</a> as a CBO
 
 ```
 attObj = {
-            fmt: $attFmtName,
             authData: bytes,
-            attStmt: $attStmtFormat
+            $$attStmtType
          }
+
+attStmtTemplate = (
+                      fmt: text,
+                      attStmt: bytes
+                  )
+
+; Every attestation statement format must have the above fields
+attStmtTemplate .within $$attStmtType
 ```
 
 The semantics of the fields in the <a>attestation object</a> are as follows:
@@ -1600,19 +1611,21 @@ implementable by <a>authenticators</a> with limited resources (e.g., secure elem
 :: The syntax of a Packed Attestation statement is defined by the following CDDL:
 
     ```
-    attFmtName /= "packed"
+    $$attStmtType //= (
+                          fmt: "packed",
+                          attStmt: packedStmtFormat
+                      )
 
-    attStmtFormat /= packedAttestationStmt
-    packedAttestationStmt = {
-                                alg: rsaAlgName / eccAlgName,
-                                sig: bytes,
-                                x5c: [ attestnCert: bytes, * (caCert: bytes) ]
-                            } //
-                            {
-                                alg: "ED256" / "ED512",
-                                sig: bytes,
-                                daaKey: eccPubKey
-                            }
+    packedStmtFormat = {
+                           alg: rsaAlgName / eccAlgName,
+                           sig: bytes,
+                           x5c: [ attestnCert: bytes, * (caCert: bytes) ]
+                       } //
+                       {
+                           alg: "ED256" / "ED512",
+                           sig: bytes,
+                           daaKey: eccPubKey
+                       }
     ```
     
     The semantics of the fields are as follows:
@@ -1713,23 +1726,25 @@ engine.
 :: The syntax of a TPM Attestation statement is as follows:
 
     ```
-    attFmtName /= "tpm"
+    $$attStmtType // = (
+                           fmt: "tpm",
+                           attStmt: tpmStmtFormat
+                       )
     
-    attStmtFormat /= tpmAttStmt
-    tpmAttStmt = {
-                      ver: "2.0",
-                      (
-                          alg: rsaAlgName / eccAlgName,
-                          x5c: [ aikCert: bytes, * (caCert: bytes) ]
-                      ) //
-                      (
-                          alg:  "ED256" / "ED512",
-                          daaKey: eccPubKey
-                      ),
-                      sig: bytes,
-                      certInfo: bytes,
-                      pubArea: bytes
-                 }
+    tpmStmtFormat = {
+                        ver: "2.0",
+                        (
+                            alg: rsaAlgName / eccAlgName,
+                            x5c: [ aikCert: bytes, * (caCert: bytes) ]
+                        ) //
+                        (
+                            alg:  "ED256" / "ED512",
+                            daaKey: eccPubKey
+                        ),
+                        sig: bytes,
+                        certInfo: bytes,
+                        pubArea: bytes
+                    }
     ```
 
     The semantics of the above fields are as follows:
@@ -1838,9 +1853,11 @@ with the fields of the attestation certificate's extension data.
     syntax is defined as follows:
     
     ```
-    attFmtName /= "android-key"
-    
-    attStmtFormat /= androidStmtFormat
+    $$attStmtType //= (
+                          fmt: "android-key",
+                          attStmt: androidStmtFormat
+                      )
+
     androidStmtFormat = bytes
     ```
 
@@ -1884,9 +1901,11 @@ identity of the calling application.
 :: The syntax of an Android Attestation statement is defined as follows:
 
     ```
-    attFmtName /= "android-safetynet"
-    
-    attStmtFormat /= safetynetStmtFormat
+    $$attStmtType //= (
+                          fmt: "android-safetynet",
+                          attStmt: safetynetStmtFormat
+                      )
+
     safetynetStmtFormat = {
                               ver: text,
                               response: bytes
@@ -1935,9 +1954,11 @@ This attestation statement format is used with FIDO U2F authenticators using the
 :: The syntax of a FIDO U2F attestation statement is defined as follows:
 
     ```
-    attFmtName /= "fido-u2f"
-    
-    attStmtFormat /= u2fStmtFormat
+    $$attStmtType //= (
+                          fmt: "fido-u2f",
+                          attStmt: u2fStmtFormat
+                      )
+
     u2fStmtFormat = {
                         x5c: bytes,
                         sig: bytes
