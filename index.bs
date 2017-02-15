@@ -292,8 +292,8 @@ The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "S
     <a>User verification</a> encompasses the means employed by the user to indicate consent.
 
 : <dfn>User Verification</dfn>
-:: The process by which an <a>authenticator</a> <em>locally authorizes</em> the invocation of the
-    <a>authenticatorMakeCredential</a> and <a>authenticatorGetAssertion</a> operations, for example through a touch plus pin
+:: The process by which an <a>authenticator</a> <em>verifies the user</em> and <em>locally authorizes</em> the invocation of the
+    <a>authenticatorMakeCredential</a> and <a>authenticatorGetAssertion</a> operations, such as through a touch plus pin
     code, a password, a gesture (e.g., presenting a fingerprint), or other modality. Note that invocation of said operations
     implies use of key material managed by the authenticator.
 
@@ -444,13 +444,16 @@ When this method is invoked, the user agent MUST execute the following algorithm
 8. Initialize |issuedRequests| and |currentlyAvailableAuthenticators| to empty lists.
 
 9. For each authenticator currently available on this platform, add the authenticator to |currentlyAvailableAuthenticators|
-    unless the {{ScopedCredentialOptions/attachment}} member of {{options}} is <a>present</a>. In that case, let |attachment|
-    be {{ScopedCredentialOptions/attachment}}, and add the authenticator to |currentlyAvailableAuthenticators| if its attachment
-    modality matches |attachment|.
+    unless the {{ScopedCredentialOptions/attachment}} member of {{options}} or the {{ScopedCredentialOptions/verificationGesture}} 
+    member of {{options}} is set to true. In that case, let |attachment|
+    be {{ScopedCredentialOptions/attachment}} and |verificationGesture| be {{ScopedCredentialOptions/verificationGesture}}. 
+    Add the authenticator to |currentlyAvailableAuthenticators| if its attachment modality matches |attachment| and its 
+    user verification modality is set to true.
 
 10. For each authenticator in |currentlyAvailableAuthenticators|: asynchronously invoke the <a>authenticatorMakeCredential</a>
     operation on that authenticator with |rpId|, <a>clientDataHash</a>, {{accountInformation}}, |normalizedParameters|,
-    {{ScopedCredentialOptions/excludeList}} and |clientExtensions| as parameters. Add a corresponding entry to |issuedRequests|.
+    {{ScopedCredentialOptions/excludeList}}, {{ScopedCredentialOptions/verificationGesture}}, and |clientExtensions| as 
+    parameters. Add a corresponding entry to |issuedRequests|.
     - For each credential |C| in the {{ScopedCredentialOptions/excludeList}} member of {{options}} that has a non-empty
         |transports| list, optionally use only the specified transports to test for the existence of |C|.
 
@@ -523,9 +526,14 @@ When this method is invoked, the user agent MUST execute the following algorithm
     any), to create a {{ClientData}} structure representing this request. Choose a hash algorithm for {{ClientData/hashAlg}} and
     compute the {{AuthenticationAssertion/clientDataJSON}} and <a>clientDataHash</a>.
 
-6. Initialize |issuedRequests| to an empty list.
+6. Initialize |issuedRequests| to an empty list and |currentlyAvailableAuthenticators| to empty lists.
 
-7. For each authenticator currently available on this platform, perform the following steps:
+7. For each authenticator currently available on this platform, add the authenticator to |currentlyAvailableAuthenticators|
+    unless the {{AssertionOptions/verificationGesture}} member of {{options}} is set to true. In that case, let 
+    |verificationGesture| be {{AssertionOptions/verificationGesture}}. Add the authenticator
+    to |currentlyAvailableAuthenticators| if its user verification modality is set to true.
+
+8. For each authenticator in |currentlyAvailableAuthenticators|, perform the following steps:
     - If the {{AssertionOptions/allowList}} member of {{options}} is empty, let |credentialList| be an empty list. Otherwise,
         execute a platform-specific procedure to determine which, if any, credentials listed in {{AssertionOptions/allowList}}
         might be present on this authenticator, and set |credentialList| to this filtered list. If no such filtering is
@@ -536,10 +544,10 @@ When this method is invoked, the user agent MUST execute the following algorithm
         be on this authenticator, do not perform any of the following steps for this authenticator, and proceed to the next
         authenticator (if any).
     - Asynchronously invoke the <a>authenticatorGetAssertion</a> operation on this authenticator with |rpId|,
-        <a>clientDataHash</a>, |credentialList|, and |clientExtensions| as parameters.
+        <a>clientDataHash</a>, |verificationGesture|, |credentialList|, and |clientExtensions| as parameters.
     - Add an entry to |issuedRequests|, corresponding to this request.
 
-8. While |issuedRequests| is not empty, perform the following actions depending upon the |adjustedTimeout| timer and responses
+9. While |issuedRequests| is not empty, perform the following actions depending upon the |adjustedTimeout| timer and responses
     from the authenticators:
     - If the timer for |adjustedTimeout| expires, then for each entry in |issuedRequests| invoke the <a>authenticatorCancel</a>
         operation on that authenticator and remove its entry from the list.
@@ -555,7 +563,7 @@ When this method is invoked, the user agent MUST execute the following algorithm
             remove its entry from the list.
         - Resolve |promise| with |value| and terminate this algorithm.
 
-9. Reject |promise| with a <a>DOMException</a> whose name is "NotAllowedError", and terminate this algorithm.
+10. Reject |promise| with a <a>DOMException</a> whose name is "NotAllowedError", and terminate this algorithm.
 
 During the above process, the user agent SHOULD show some UI to the user to guide them in the process of selecting and
 authorizing an authenticator with which to complete the operation.
@@ -651,6 +659,7 @@ authorizing an authenticator with which to complete the operation.
         USVString                            rpId;
         sequence<ScopedCredentialDescriptor> excludeList = [];
         Attachment                           attachment;
+        boolean                              verificationGesture;
         AuthenticationExtensions             extensions;
     };
 </xmp>
@@ -669,15 +678,20 @@ authorizing an authenticator with which to complete the operation.
         credentials for the same account on a single authenticator. The platform is requested to return an error if the new
         credential would be created on an authenticator that also contains one of the credentials enumerated in this parameter.
 
+    - The <dfn>attachment</dfn> parameter contains authenticator attachment descriptions, which are used as an additional
+        constraint on which authenticators are eligible to participate in a [[#makeCredential]] or [[#getAssertion]] operation.
+        See [[#attachment]] for a description of the attachment values and their meanings.
+
+    - The <dfn>verificationGesture</dfn> parameter is intended for use by <a>[RPS]</a> that want authenticators to perform the 
+        <a>user verification</a> process during the [[#makeCredential]] operation. A gesture that can be 
+        performed by anyone in posession of an authenticator is not considered a gesture that verifies the user, such as 
+        plugging in a usb device, clicking a button on the device, etc. 
+
     - The <dfn>extensions</dfn> parameter contains additional parameters requesting additional processing by the client and
         authenticator. For example, the caller may request that only authenticators with certain capabilities be used to create
         the credential, or that particular information be returned in the <a>attestation object</a>. The caller may also specify
         an additional message that they would like the authenticator to display to the user. Extensions are defined in
         [[#extensions]].
-
-    - The <dfn>attachment</dfn> parameter contains authenticator attachment descriptions, which are used as an additional
-        constraint on which authenticators are eligible to participate in a [[#makeCredential]] or [[#getAssertion]] operation.
-        See [[#attachment]] for a description of the attachment values and their meanings.
 
 </div>
 
@@ -754,6 +768,7 @@ user consent to a specific transaction. The structure of these signatures is def
         unsigned long                        timeout;
         USVString                            rpId;
         sequence<ScopedCredentialDescriptor> allowList = [];
+        boolean                              verificationGesture;
         AuthenticationExtensions             extensions;
     };
 </xmp>
@@ -761,14 +776,19 @@ user consent to a specific transaction. The structure of these signatures is def
 <div dfn-for="AssertionOptions">
     This dictionary is used to supply additional options when generating an assertion. All these parameters are optional.
 
-    - The optional <dfn>timeout</dfn> parameter specifies a time, in milliseconds, that the caller is willing to wait for the
+    - The <dfn>timeout</dfn> parameter specifies a time, in milliseconds, that the caller is willing to wait for the
         call to complete. This is treated as a hint, and may be overridden by the platform.
 
-    - The optional <dfn>rpId</dfn> parameter specifies the rpId claimed by the caller. If it is omitted, it will be assumed to
+    - The <dfn>rpId</dfn> parameter specifies the rpId claimed by the caller. If it is omitted, it will be assumed to
         be equal to the <a link-for='web'>current settings object</a>'s <a link-for='web'>origin</a>.
 
-    - The optional <dfn>allowList</dfn> member contains a list of credentials acceptable to the caller, in order of the
+    - The <dfn>allowList</dfn> member contains a list of credentials acceptable to the caller, in order of the
         caller's preference.
+
+    - The <dfn>verificationGesture</dfn> parameter is intended for use by <a>[RPS]</a> that want authenticators to perform the 
+        <a>user verification</a> process during the [[#getAssertion]] operation. A gesture that can be 
+        performed by anyone in posession of an authenticator is not considered a gesture that verifies the user, such as 
+        plugging in a usb device, clicking a button on the device, etc. 
 
     - The optional <dfn>extensions</dfn> parameter contains additional parameters requesting additional processing by the client
         and authenticator. For example, if transaction confirmation is sought from the user, then the prompt string would be
@@ -1109,6 +1129,8 @@ input parameters:
     as per the procedure in [[WebCryptoAPI#algorithm-normalization-normalize-an-algorithm]].
 - A list of {{ScopedCredential}} objects provided by the [RP] with the intention that, if any of these are known to the
     authenticator, it should not create a new credential.
+- A boolean called {{ScopedCredentialOptions/verificationGesture}} provided by the [RP] with the intention that, if the parameter 
+    is set to true, the authenticator SHOULD perform a user verification process during the operation. 
 - Extension data created by the client based on the extensions requested by the [RP].
 
 When this operation is invoked, the authenticator must perform the following procedure:
@@ -1121,6 +1143,9 @@ When this operation is invoked, the authenticator must perform the following pro
 - Prompt the user for consent to create a new credential. The prompt for obtaining this consent is shown by the authenticator
     if it has its own output capability, or by the user agent otherwise. If the user denies consent, return an error code
     equivalent to NotAllowedError and terminate the operation.
+- If the {{ScopedCredentialOptions/verificationGesture}} parameter is set to true, prompt the user for performing an 
+    <a>authorization gesture</a> to verify the user. If this prompt is shown with sufficient explanation that the success of 
+    this verification gesture will generate a new credential, the previous prompt for user consent may not be needed.  
 - Once user consent has been obtained, generate a new credential object:
     - Generate a set of cryptographic keys using the most preferred combination of {{ScopedCredentialType}} and cryptographic
         parameters supported by this authenticator.
@@ -1145,6 +1170,8 @@ input parameters:
 
 - The caller's RP ID, as determined by the user agent and the client.
 - The <a>clientDataHash</a>, which is the hash of the serialized {{ClientData}} and is provided by the client.
+- A boolean called {{AssertionOptions/verificationGesture}} provided by the [RP] with the intention that, if the parameter 
+    is set to true, the authenticator SHOULD perform a user verification process during the operation.
 - A list of credentials acceptable to the [RP] (possibly filtered by the client).
 - Extension data created by the client based on the extensions requested by the [RP].
 
@@ -1159,6 +1186,9 @@ When this method is invoked, the authenticator must perform the following proced
 - Prompt the user to select a credential from among the above list. Obtain user consent for using this credential. The prompt
     for obtaining this consent may be shown by the authenticator if it has its own output capability, or by the user agent
     otherwise.
+- If the {{AssertionOptions/verificationGesture}} parameter is set to true, prompt the user for performing an 
+    <a>authorization gesture</a> to verify the user. If this prompt is shown with sufficient explanation that the success of 
+    this verification gesture will generate a new credential, the previous prompt for user consent may not be needed. 
 - Process all the supported extensions requested by the client, and generate an <a>authenticatorData</a> structure without
     attestation data as specified in [[#sec-authenticator-data]]. Concatenate this <a>authenticatorData</a> with the
     <a>clientDataHash</a> received from the client to generate an assertion signature using the private key of the selected
