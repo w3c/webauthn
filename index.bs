@@ -47,7 +47,6 @@ spec: HTML52; urlPrefix: https://w3c.github.io/html/
             text: origin; url: concept-cross-origin
             text: opaque origin; url: opaque-origin
             text: tuple origin
-            text: relaxing the same-origin restriction
     urlPrefix: webappapis.html
         type: dfn
             text: current settings object; url:current-settings-object
@@ -181,7 +180,7 @@ This specification relies on several other underlying specifications.
 
 : HTML
 :: The concepts of <a>current settings object</a>, <a>origin</a>,
-    <a>opaque origin</a>, <a>relaxing the same-origin restriction</a>, and the {{Navigator}} interface are
+    <a>opaque origin</a>, <a>is a registrable domain suffix of or is equal to</a>, and the {{Navigator}} interface are
     defined in [[!HTML52]].
 
 : Web Cryptography API
@@ -406,22 +405,26 @@ When this method is invoked, the user agent MUST execute the following algorithm
     value. If {{ScopedCredentialOptions/timeout}} was not specified, then set |adjustedTimeout| to a platform-specific
     default.
 
-2. Let |promise| be [=a new Promise=]. Return |promise| and start a timer for |adjustedTimeout| milliseconds.
+1. Let |promise| be [=a new Promise=]. Return |promise| and start a timer for |adjustedTimeout| milliseconds.
     Then asynchronously continue executing the following steps. If any fatal error is encountered in this process other than the
-    ones enumerated below, cancel the timer, reject |promise| with a DOMException whose name is "{{UnknownError}}", and terminate
+    ones enumerated below, cancel the timer, reject |promise| with a {{DOMException}} whose name is "{{UnknownError}}", and terminate
     this algorithm.
 
-3. Set |callerOrigin| to the <a>current settings object</a>'s <a>origin</a>. If |callerOrigin| is
+1. Set |callerOrigin| to the <a>current settings object</a>'s <a>origin</a>. If |callerOrigin| is
     an <a>opaque origin</a>, reject |promise| with a {{DOMException}} whose name is "{{NotAllowedError}}", and
-    terminate this algorithm. Otherwise,
-    - If the {{ScopedCredentialOptions/rpId}} member of {{options}} is not <a>present</a>, then set |rpId| to |callerOrigin|.
-    - If the {{ScopedCredentialOptions/rpId}} member of {{options}} is <a>present</a>, then invoke the procedure used for
-        <a>relaxing the same-origin restriction</a> by setting the `document.domain` attribute, using
-        {{ScopedCredentialOptions/rpId}} as the given value but without changing the current document's `domain`. If no errors
-        are thrown, set |rpId| to the value of `host` as computed by this procedure. Otherwise, reject |promise| with a
-        {{DOMException}} whose name is "{{SecurityError}}", and terminate this algorithm.
+    terminate this algorithm.
 
-4. Process each element of {{cryptoParameters}} using the following steps, to produce a new sequence |normalizedParameters|.
+1. If the {{ScopedCredentialOptions/rpId}} member of {{options}} is not <a>present</a>, then set |rpId| to
+    |callerOrigin|. Otherwise,
+    1. Let |effectiveDomain| be the |callerOrigin|'s <a>effective domain</a>.
+    1. If |effectiveDomain| is null, then reject |promise| with a {{DOMException}} whose name is "{{SecurityError}}"
+        and terminate this algorithm.
+    1. If {{ScopedCredentialOptions/rpId}} <a>is not a registrable domain suffix of and is not equal to</a>
+        |effectiveDomain|, reject |promise| with a {{DOMException}} whose name is "{{SecurityError}}", and
+        terminate this algorithm.
+    1. Set |rpId| to the {{ScopedCredentialOptions/rpId}}.
+
+1. Process each element of {{cryptoParameters}} using the following steps, to produce a new sequence |normalizedParameters|.
     - Let |current| be the currently selected element of {{cryptoParameters}}.
     - If `current.type` does not contain a {{ScopedCredentialType}} supported by this implementation, then stop processing
         |current| and move on to the next element in {{cryptoParameters}}.
@@ -431,32 +434,32 @@ When this method is invoked, the user agent MUST execute the following algorithm
     - Add a new object of type {{ScopedCredentialParameters}} to |normalizedParameters|, with |type| set to `current.type` and
         |algorithm| set to |normalizedAlgorithm|.
 
-5. If |normalizedAlgorithm| is empty and {{cryptoParameters}} was not empty, cancel the timer started in step 2, reject
+1. If |normalizedAlgorithm| is empty and {{cryptoParameters}} was not empty, cancel the timer started in step 2, reject
     |promise| with a DOMException whose name is "{{NotSupportedError}}", and terminate this algorithm.
 
-6. If the {{ScopedCredentialOptions/extensions}} member of {{options}} is <a>present</a>, process any extensions supported by
+1. If the {{ScopedCredentialOptions/extensions}} member of {{options}} is <a>present</a>, process any extensions supported by
     this client platform, to produce the extension data that needs to be sent to the authenticator. If an error is encountered
     while processing an extension, skip that extension and do not produce any extension data for it. Call the result of this
     processing |clientExtensions|.
 
-7. Use {{attestationChallenge}}, |callerOrigin| and |rpId|, along with the token binding key associated with |callerOrigin| (if
+1. Use {{attestationChallenge}}, |callerOrigin| and |rpId|, along with the token binding key associated with |callerOrigin| (if
     any), to create a {{ClientData}} structure representing this request. Choose a hash algorithm for {{ClientData/hashAlg}} and
     compute the {{ScopedCredentialInfo/clientDataJSON}} and its <a>clientDataHash</a>.
 
-8. Initialize |issuedRequests| and |currentlyAvailableAuthenticators| to empty lists.
+1. Initialize |issuedRequests| and |currentlyAvailableAuthenticators| to empty lists.
 
-9. For each authenticator currently available on this platform, add the authenticator to |currentlyAvailableAuthenticators|
+1. For each authenticator currently available on this platform, add the authenticator to |currentlyAvailableAuthenticators|
     unless the {{ScopedCredentialOptions/attachment}} member of {{options}} is <a>present</a>. In that case, let |attachment|
     be {{ScopedCredentialOptions/attachment}}, and add the authenticator to |currentlyAvailableAuthenticators| if its attachment
     modality matches |attachment|.
 
-10. For each authenticator in |currentlyAvailableAuthenticators|: asynchronously invoke the <a>authenticatorMakeCredential</a>
+1. For each authenticator in |currentlyAvailableAuthenticators|: asynchronously invoke the <a>authenticatorMakeCredential</a>
     operation on that authenticator with |rpId|, <a>clientDataHash</a>, {{accountInformation}}, |normalizedParameters|,
     {{ScopedCredentialOptions/excludeList}} and |clientExtensions| as parameters. Add a corresponding entry to |issuedRequests|.
     - For each credential |C| in the {{ScopedCredentialOptions/excludeList}} member of {{options}} that has a non-empty
         |transports| list, optionally use only the specified transports to test for the existence of |C|.
 
-11. While |issuedRequests| is not empty, perform the following actions depending upon the |adjustedTimeout| timer and responses
+1. While |issuedRequests| is not empty, perform the following actions depending upon the |adjustedTimeout| timer and responses
     from the authenticators:
     - If the |adjustedTimeout| timer expires, then for each entry in |issuedRequests| invoke the <a>authenticatorCancel</a>
         operation on that authenticator and remove its entry from the list.
@@ -472,7 +475,7 @@ When this method is invoked, the user agent MUST execute the following algorithm
             remove its entry from the list.
         - Resolve |promise| with |value| and terminate this algorithm.
 
-12. Reject |promise| with a {{DOMException}} whose name is "{{NotAllowedError}}", and terminate this algorithm.
+1. Reject |promise| with a {{DOMException}} whose name is "{{NotAllowedError}}", and terminate this algorithm.
 
 During the above process, the user agent SHOULD show some UI to the user to guide them in the process of selecting and
 authorizing an authenticator.
@@ -504,33 +507,37 @@ When this method is invoked, the user agent MUST execute the following algorithm
     platform and if not, correct it to the closest value lying within that range. Set |adjustedTimeout| to this adjusted value.
     If {{AssertionOptions/timeout}} was not specified, then set |adjustedTimeout| to a platform-specific default.
 
-2. Let |promise| be [=a new Promise=]. Return |promise| and start a timer for |adjustedTimeout| milliseconds.
+1. Let |promise| be [=a new Promise=]. Return |promise| and start a timer for |adjustedTimeout| milliseconds.
     Then asynchronously continue executing the following steps. If any fatal error is encountered in this process other than the
-    ones enumerated below, cancel the timer, reject |promise| with a DOMException whose name is "{{UnknownError}}", and terminate
+    ones enumerated below, cancel the timer, reject |promise| with a {{DOMException}} whose name is "{{UnknownError}}", and terminate
     this algorithm.
 
-3. Set |callerOrigin| to the <a>current settings object</a>'s <a>origin</a>. If |callerOrigin| is
+1. Set |callerOrigin| to the <a>current settings object</a>'s <a>origin</a>. If |callerOrigin| is
     an <a>opaque origin</a>, reject |promise| with a {{DOMException}} whose name is "{{NotAllowedError}}", and
-    terminate this algorithm. Otherwise,
-    - If the {{AssertionOptions/rpId}} member of {{options}} is not <a>present</a>, then set |rpId| to |callerOrigin|.
-    - If the {{AssertionOptions/rpId}} member of {{options}} is <a>present</a>, then invoke the procedure used for <a>relaxing
-        the same-origin restriction</a> by setting the `document.domain` attribute, using {{AssertionOptions/rpId}} as the given
-        value but without changing the current document's `domain`. If no errors are thrown, set |rpId| to the value of `host`
-        as computed by this procedure. Otherwise, reject |promise| with a {{DOMException}} whose name is "{{SecurityError}}", and
-        terminate this algorithm.
+    terminate this algorithm.
 
-4. If the {{AssertionOptions/extensions}} member of {{options}} is <a>present</a>, process any extensions supported by this
+1. If the {{ScopedCredentialOptions/rpId}} member of {{options}} is not <a>present</a>, then set |rpId| to
+    |callerOrigin|. Otherwise,
+    1. Let |effectiveDomain| be the |callerOrigin|'s <a>effective domain</a>.
+    1. If |effectiveDomain| is null, then reject |promise| with a {{DOMException}} whose name is "{{SecurityError}}"
+        and terminate this algorithm.
+    1. If {{ScopedCredentialOptions/rpId}} <a>is not a registrable domain suffix of and is not equal to</a>
+        |effectiveDomain|, reject |promise| with a {{DOMException}} whose name is "{{SecurityError}}", and
+        terminate this algorithm.
+    1. Set |rpId| to the {{ScopedCredentialOptions/rpId}}.
+
+1. If the {{AssertionOptions/extensions}} member of {{options}} is <a>present</a>, process any extensions supported by this
     client platform, to produce the extension data that needs to be sent to the authenticator. If an error is encountered while
     processing an extension, skip that extension and do not produce any extension data for it. Call the result of this
     processing |clientExtensions|.
 
-5. Use {{assertionChallenge}}, |callerOrigin| and |rpId|, along with the token binding key associated with |callerOrigin| (if
+1. Use {{assertionChallenge}}, |callerOrigin| and |rpId|, along with the token binding key associated with |callerOrigin| (if
     any), to create a {{ClientData}} structure representing this request. Choose a hash algorithm for {{ClientData/hashAlg}} and
     compute the {{AuthenticationAssertion/clientDataJSON}} and <a>clientDataHash</a>.
 
-6. Initialize |issuedRequests| to an empty list.
+1. Initialize |issuedRequests| to an empty list.
 
-7. For each authenticator currently available on this platform, perform the following steps:
+1. For each authenticator currently available on this platform, perform the following steps:
     - If the {{AssertionOptions/allowList}} member of {{options}} is empty, let |credentialList| be an empty list. Otherwise,
         execute a platform-specific procedure to determine which, if any, credentials listed in {{AssertionOptions/allowList}}
         might be present on this authenticator, and set |credentialList| to this filtered list. If no such filtering is
@@ -544,7 +551,7 @@ When this method is invoked, the user agent MUST execute the following algorithm
         <a>clientDataHash</a>, |credentialList|, and |clientExtensions| as parameters.
     - Add an entry to |issuedRequests|, corresponding to this request.
 
-8. While |issuedRequests| is not empty, perform the following actions depending upon the |adjustedTimeout| timer and responses
+1. While |issuedRequests| is not empty, perform the following actions depending upon the |adjustedTimeout| timer and responses
     from the authenticators:
     - If the timer for |adjustedTimeout| expires, then for each entry in |issuedRequests| invoke the <a>authenticatorCancel</a>
         operation on that authenticator and remove its entry from the list.
@@ -560,7 +567,7 @@ When this method is invoked, the user agent MUST execute the following algorithm
             remove its entry from the list.
         - Resolve |promise| with |value| and terminate this algorithm.
 
-9. Reject |promise| with a {{DOMException}} whose name is "{{NotAllowedError}}", and terminate this algorithm.
+1. Reject |promise| with a {{DOMException}} whose name is "{{NotAllowedError}}", and terminate this algorithm.
 
 During the above process, the user agent SHOULD show some UI to the user to guide them in the process of selecting and
 authorizing an authenticator with which to complete the operation.
