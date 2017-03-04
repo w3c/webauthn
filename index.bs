@@ -464,6 +464,7 @@ When this method is invoked, the user agent MUST execute the following algorithm
     [=a promise rejected with=] with a {{DOMException}} whose name is "{{NotSupportedError}}", and terminate this algorithm.
 
 1. Let |clientExtensions| be a new [=list=].
+
 1. If the {{ScopedCredentialOptions/extensions}} member of {{options}} is <a>present</a>, then [=map/for each=]
     |extension| → |argument| of <code>{{options}}.{{ScopedCredentialOptions/extensions}}</code>:
     1. If |extension| is not supported by this client platform, then [=continue=].
@@ -557,6 +558,7 @@ some criteria to indicate what credentials are acceptable to it. The user agent 
 specified criteria, and guides the user to pick one that the script should be allowed to use. The user may choose not to provide
 a credential even if one is present, for example to maintain privacy.
 
+<div class="note">
 This method takes the following parameters:
 
 <ul dfn-type="argument" dfn-for="WebAuthentication/getAssertion(assertionChallenge, options)">
@@ -567,75 +569,120 @@ This method takes the following parameters:
     [[#assertion-options]].
 
 </ul>
+</div>
 
 When this method is invoked, the user agent MUST execute the following algorithm:
 
-1. If the {{AssertionOptions/timeout}} member of {{options}} is <a>present</a>, check if its value lies within a reasonable range as defined by the
-    platform and if not, correct it to the closest value lying within that range. Set |adjustedTimeout| to this adjusted value.
-    If {{AssertionOptions/timeout}} was not specified, then set |adjustedTimeout| to a platform-specific default.
-
-1. Let |promise| be [=a new Promise=]. Return |promise| and start a timer for |adjustedTimeout| milliseconds.
-    Then asynchronously continue executing the following steps. If any fatal error is encountered in this process other than the
-    ones enumerated below, cancel the timer, reject |promise| with a {{DOMException}} whose name is "{{UnknownError}}", and terminate
-    this algorithm.
+1. If the {{AssertionOptions/timeout}} member of {{options}} is <a>present</a>, check if its value lies within a reasonable 
+    range as defined by the platform and if not, correct it to the closest value lying within that range. Set |adjustedTimeout|
+    to this adjusted value. If {{AssertionOptions/timeout}} was not specified, then set |adjustedTimeout| to a platform-specific
+    default.
 
 1. Set |callerOrigin| to the <a>current settings object</a>'s <a>origin</a>. If |callerOrigin| is
-    an <a>opaque origin</a>, reject |promise| with a {{DOMException}} whose name is "{{NotAllowedError}}", and
-    terminate this algorithm.
+    return [=a promise rejected with=] a {{DOMException}} whose name is "{{NotAllowedError}}", and terminate this algorithm.
 
 1. If the {{ScopedCredentialOptions/rpId}} member of {{options}} is not <a>present</a>, then set |rpId| to
     |callerOrigin|. Otherwise,
     1. Let |effectiveDomain| be the |callerOrigin|'s <a>effective domain</a>.
-    1. If |effectiveDomain| is null, then reject |promise| with a {{DOMException}} whose name is "{{SecurityError}}"
-        and terminate this algorithm.
-    1. If {{ScopedCredentialOptions/rpId}} <a>is not a registrable domain suffix of and is not equal to</a>
-        |effectiveDomain|, reject |promise| with a {{DOMException}} whose name is "{{SecurityError}}", and
-        terminate this algorithm.
+    1. If |effectiveDomain| is null, then return [=a promise rejected with=] a {{DOMException}} whose name is 
+        "{{SecurityError}}" and terminate this algorithm.
+    1. If {{ScopedCredentialOptions/rpId}} <a>is not a registrable domain suffix of and is not equal to</a> |effectiveDomain|,
+        return [=a promise rejected with=] a {{DOMException}} whose name is "{{SecurityError}}", and terminate this algorithm.
     1. Set |rpId| to the {{ScopedCredentialOptions/rpId}}.
 
-1. If the {{AssertionOptions/extensions}} member of {{options}} is <a>present</a>, process any extensions supported by this
-    client platform, to produce the extension data that needs to be sent to the authenticator. If an error is encountered while
-    processing an extension, skip that extension and do not produce any extension data for it. Call the result of this
-    processing |clientExtensions|.
+1. Let |clientExtensions| be a new [=list=].
 
-1. Use {{assertionChallenge}}, |callerOrigin| and |rpId|, along with the token binding key associated with |callerOrigin| (if
-    any), to create a {{ClientData}} structure representing this request. Choose a hash algorithm for {{ClientData/hashAlg}} and
-    compute the [=JSON-serialized client data=] |clientDataJSON| and the [=hash of the serialized client data=]
-    |clientDataHash|.
+1. If the {{AssertionOptions/extensions}} member of {{options}} is <a>present</a>, then [=map/for each=]
+    |extension| → |argument| of <code>{{options}}.{{AssertionOptions/extensions}}</code>:
+    1. If |extension| is not supported by this client platform, then [=continue=].
 
-1. Initialize |issuedRequests| to an empty list.
+    1. Otherwise, let |result| be the result of running |extension|'s [=client processing=] algorithm on |argument|. If the
+        algorithm returned an error, [=continue=].
 
-1. For each authenticator currently available on this platform, perform the following steps:
-    - If the {{AssertionOptions/allowList}} member of {{options}} is empty, let |credentialList| be an empty list. Otherwise,
-        execute a platform-specific procedure to determine which, if any, credentials listed in {{AssertionOptions/allowList}}
-        might be present on this authenticator, and set |credentialList| to this filtered list. If no such filtering is
-        possible, set |credentialList| to an empty list.
-    - For each credential C within the |credentialList| that has a non-empty {{transports}} list, optionally use only the
-        specified transports to get assertions using credential C.
-    - If the above filtering process concludes that none of the credentials on the {{AssertionOptions/allowList}} can possibly
-        be on this authenticator, do not perform any of the following steps for this authenticator, and proceed to the next
-        authenticator (if any).
-    - Asynchronously invoke the <a>authenticatorGetAssertion</a> operation on this authenticator with |rpId|,
-        |clientDataHash|, |credentialList|, and |clientExtensions| as parameters.
-    - Add an entry to |issuedRequests|, corresponding to this request.
+    1. [=list/Append=] |result| to |clientExtensions|.
+
+1. Let |clientData| be a new {{ClientData}} instance whose fields are:
+    : {{challenge}}
+    :: The [=base64url encoding=] of {{assertionChallenge}}
+    : {{origin}}
+    :: The [=unicode serialization of an origin|unicode serialization=] of |rpId|
+    : {{hashAlg}}
+    :: The [=recognized algorithm name=] of the hash algorithm selected by the client for generating the
+        [=hash of the serialized client data=]
+    : {{tokenBinding}}
+    :: The [=Token Binding ID=] associated with |callerOrigin| (if any)
+    : {{ClientData/extensions}}
+    :: |clientExtensions|
+
+1. Let |clientDataJSON| be the [=JSON-serialized client data=] constructed from |clientData|.
+
+1. Let |clientDataHash| be the [=hash of the serialized client data=] represented by |clientDataJSON|.
+
+1. Let |issuedRequests| be a new [=ordered set=]. 
+
+1. For each |authenticator| currently available on this platform, perform the following steps:
+
+    1. Let |credentialList| be a new [=list=].
+
+    1. [=list/For each=] credential |C| in <code>{{options}}.{{AssertionOptions/allowList}}</code> that is present on this 
+        authenticator, [=list/append=] |C| to |credentialList|.
+
+    1. If |credentialList| [=list/is empty=] then [=continue=].
+
+    1. [=In parallel=], [=list/for each=] credential |C| in |credentialList|:
+        1. If |C| has a non-empty {{transports}} list, the client MAY, [=list/for each=] |transport| in {{transports}}, 
+            invoke the <a>authenticatorGetAssertion</a> operation on |authenticator|, using |transport|, with |rpId|,
+            |clientDataHash|, |credentialList|, and |clientExtensions| as parameters.
+        1. Otherwise, invoke the <a>authenticatorGetAssertion</a> operation on |authenticator| with |rpId|,
+            |clientDataHash|, |credentialList|, and |clientExtensions| as parameters.
+    
+    1. [=set/Append=] |authenticator| to |issuedRequests|.
+
+1. Let |promise| be [=a new Promise=]. Return |promise| and start a timer for |adjustedTimeout| milliseconds. Then execute the
+    following steps [=in parallel=].
 
 1. While |issuedRequests| is not empty, perform the following actions depending upon the |adjustedTimeout| timer and responses
     from the authenticators:
-    - If the timer for |adjustedTimeout| expires, then for each entry in |issuedRequests| invoke the <a>authenticatorCancel</a>
-        operation on that authenticator and remove its entry from the list.
-    - If any authenticator returns a status indicating that the user cancelled the operation, delete that authenticator's entry
-        from |issuedRequests|. For each remaining entry in |issuedRequests| invoke the <a>authenticatorCancel</a> operation on
-        that authenticator, and remove its entry from the list.
-    - If any authenticator returns an error status, delete the corresponding entry from |issuedRequests|.
-    - If any authenticator returns success:
-        - Remove this authenticator's entry from |issuedRequests|.
-        - Create a new {{AuthenticationAssertion}} object named |value| and populate its fields with the values returned from the
-            authenticator and |clientDataJSON|.
-        - For each remaining entry in |issuedRequests| invoke the <a>authenticatorCancel</a> operation on that authenticator and
-            remove its entry from the list.
-        - Resolve |promise| with |value| and terminate this algorithm.
 
-1. Reject |promise| with a {{DOMException}} whose name is "{{NotAllowedError}}", and terminate this algorithm.
+    <dl class="switch">
+
+    <dt>If the |adjustedTimeout| timer expires,</dt>
+    <dd>[=set/For each=] |authenticator| in |issuedRequests| invoke the <a>authenticatorCancel</a> operation on |authenticator|
+        and [=set/remove=] |authenticator| from |issuedRequests|.</dd>
+
+    <dt>If any |authenticator| returns a status indicating that the user cancelled the operation,</dt>
+    <dd>
+        1. [=set/Remove=] |authenticator| from |issuedRequests|.
+        2. [=set/For each=] remaining |authenticator| in |issuedRequests| invoke the <a>authenticatorCancel</a> operation on
+            |authenticator| and [=set/remove=] it from |issuedRequests|.
+    </dd>
+
+    <dt>If any |authenticator| returns an error status,</dt>
+    <dd>[=set/Remove=] |authenticator| from |issuedRequests|.</dd>
+
+    <dt>If any |authenticator| indicates success,</dt>
+    <dd>
+        1. [=set/Remove=] |authenticator| from |issuedRequests|.
+        2. Let |value| be a new {{AuthenticationAssertion}} object whose fields are:
+            : {{AuthenticationAssertion/credential}}
+            :: A new {{ScopedCredential}} object whose fields are:
+                1. {{ScopedCredential/type}} whose value is the {{ScopedCredentialType}} representing this [=scoped 
+                    credential=]'s type.
+                1. {{ScopedCredential/id}} whose value is a new {{ArrayBuffer}} containing the bytes of the crendential ID 
+                    returned from the successful [=authenticatorMakeCredential=] operation.
+            : {{AuthenticationAssertion/clientDataJSON}}
+            :: A new {{ArrayBuffer}} containing the bytes of |clientDataJSON|
+            : {{AuthenticationAssertion/authenticatorData}}
+            :: A new {{ArrayBuffer}} containing the bytes of the returned {{authenticatorData}}
+            : {{AuthenticationAssertion/signature}}
+            :: A new {{ArrayBuffer}} containing the bytes of the returned {{signature}}
+        3. [=set/For each=] remaining |authenticator| in |issuedRequests| invoke the <a>authenticatorCancel</a> operation on
+            |authenticator| and [=set/remove=] it from |issuedRequests|.
+        4. [=Resolve=] |promise| with |value| and terminate this algorithm.
+    </dd>
+    </dl>
+
+1. [=Reject=] |promise| with a {{DOMException}} whose name is "{{NotAllowedError}}".
 
 During the above process, the user agent SHOULD show some UI to the user to guide them in the process of selecting and
 authorizing an authenticator with which to complete the operation.
