@@ -242,7 +242,12 @@ The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "S
 :: A cryptographic device used by a <a>[WAC]</a> to (i) generate a <a>scoped credential</a> and register it with a <a>[RP]</a>,
     and (ii) subsequently used to cryptographically sign and return, in the form of an <a>Authentication Assertion</a>, a
     challenge and other data presented by a <a>[RP]</a> (in concert with the <a>[WAC]</a>) in order to effect
-    [=authentication=].
+    [=authentication=]. All authenticators refered to this document should be capable of the basic operations listed above. 
+    However, certain additive capabilites are only available among certain authenticators, such as the capability to 
+    store <a>credential private keys</a>. When an authenticator is said to be "capable of" performing a task, it means that
+    the authenticator can perform the task when requested. It doesn't mean the authenticator is able to perform the tasks
+    by itself. For example, an authenticator relying on its associated platform's ability to store keys is still considered 
+    an authenticators capable of private key storage.
 
 : <dfn>Authorization Gesture</dfn>
 :: An [=authorization gesture=] is a physical interaction performed by a user with an authenticator as part of a [=ceremony=], 
@@ -493,8 +498,9 @@ When this method is invoked, the user agent MUST execute the following algorithm
 1. Let |issuedRequests| and |currentlyAvailableAuthenticators| be new [=ordered sets=].
 
 1. For each |authenticator| currently available on this platform, if
-    <code>{{options}}.{{ScopedCredentialOptions/attachment}}</code> is not [=present=] or its value matches |authenticator|'s
-    attachment modality, [=set/append=] |authenticator| to |currentlyAvailableAuthenticators|.
+    <code>{{options}}.{{ScopedCredentialOptions/attachment}}</code> is not [=present=], its value matches |authenticator|'s
+    attachment modality, or <code>{{options}}.{{ScopedCredentialOptions/keystorage}}</code> is not [=present=], its value 
+    matches |authenticator|'s key storage modality, [=set/append=] |authenticator| to |currentlyAvailableAuthenticators|.
 
 1. [=set/For each=] |authenticator| in |currentlyAvailableAuthenticators|:
     1. Let |excludeList| be a new [=list=].
@@ -503,7 +509,8 @@ When this method is invoked, the user agent MUST execute the following algorithm
             <code>|C|.{{transports}}</code>, the client MAY [=continue=].
         1. Otherwise, [=list/Append=] |C| to |excludeList|.
     1. [=In parallel=], invoke the <a>authenticatorMakeCredential</a> operation on |authenticator| with |rpId|,
-        |clientDataHash|, {{accountInformation}}, |normalizedParameters|, |excludeList| and |clientExtensions| as parameters.
+        |clientDataHash|, {{accountInformation}}, |normalizedParameters|, |excludeList|, |keyStorage| and |clientExtensions| 
+        as parameters.
     1. [=set/Append=] |authenticator| to |issuedRequests|.
 
 1. Let |promise| be [=a new promise=]. Return |promise| and start a timer for |adjustedTimeout| milliseconds. Then execute the
@@ -731,6 +738,7 @@ authorizing an authenticator with which to complete the operation.
         USVString                            rpId;
         sequence<ScopedCredentialDescriptor> excludeList = [];
         Attachment                           attachment;
+        KeyStorage                           keyStorage;
         AuthenticationExtensions             extensions;
     };
 </xmp>
@@ -745,6 +753,14 @@ authorizing an authenticator with which to complete the operation.
     - The <dfn>rpId</dfn> parameter explicitly specifies the RP ID that the credential should be associated with. If it is
         omitted, the RP ID will be set to the <a>current settings object</a>'s <a>origin</a>.
 
+    - The <dfn>attachment</dfn> parameter contains authenticator attachment descriptions, which are used as an additional
+        constraint on which authenticators are eligible to participate in a [[#makeCredential]] operation.
+        See [[#attachment]] for a description of the attachment values and their meanings.
+
+    - The <dfn>keyStorage</dfn> parameter contains description of where the <a>credential private key</a> should be stored. 
+        Similiar to {{attachment}}, the keyStorage parameter is an additional constraint on which authenticators
+        are eligible for the [[#makeCredential]] operation. See [[#keyStorage]] for more description. 
+
     - The <dfn>excludeList</dfn> parameter is intended for use by <a>[RPS]</a> that wish to limit the creation of multiple
         credentials for the same account on a single authenticator. The platform is requested to return an error if the new
         credential would be created on an authenticator that also contains one of the credentials enumerated in this parameter.
@@ -754,10 +770,6 @@ authorizing an authenticator with which to complete the operation.
         the credential, or that particular information be returned in the <a>attestation object</a>. The caller may also specify
         an additional message that they would like the authenticator to display to the user. Extensions are defined in
         [[#extensions]].
-
-    - The <dfn>attachment</dfn> parameter contains authenticator attachment descriptions, which are used as an additional
-        constraint on which authenticators are eligible to participate in a [[#makeCredential]] or [[#getAssertion]] operation.
-        See [[#attachment]] for a description of the attachment values and their meanings.
 
 </div>
 
@@ -793,6 +805,27 @@ credential on a <a>platform authenticator</a> may be used by [RPS] to quickly an
 a minimum of friction, e.g., the user will not have to dig around in their pocket for their key fob or phone. As a concrete
 example of the latter, when the user is accessing the [RP] from a given client for the first time, they may be required to
 use a <a>roaming authenticator</a> which was originally registered with the [RP] using a different client.
+
+
+### Credential Private Key Storage Option enumeration (enum <dfn enum>KeyStorage</dfn>) ### {#keyStorage}
+
+<pre class="idl">
+    enum KeyStorage {
+        "onAuthenticator",
+        "onRelyingParty"
+    };
+</pre>
+
+The private key portion of a <a>[RP]</a>-specific <a>credential key pair</a> can be stored by either the authenticator
+or by the server. If supplied with the "onAuthenticator" value, the makeCredential operation will only be carried out with 
+authenticators capable of storing private keys. Authenticators capable of this ability may or may not export the credential
+private key they generated. In fact some authenticators are designed without the ability to export <a>credential private 
+keys</a>. If supplied with the "onRelyingParty" value, the makeCredential operation will only be carried out by 
+authenticators capable of exporting private keys and the private keys will be exported as Credential IDs as part of
+{{ScopedCredentialInfo/attestationObject}}. The <a>[RP]</a> will therefore be responsible for storing the private keys and 
+ensuring the keys are supplied in the allowList parameter of the getAssertion call. 
+
+More information about how the the <a>[RP]</a> should store and use the private keys is in the [[#rp-operations]] section. 
 
 
 ## Web Authentication Assertion (interface <dfn interface>AuthenticationAssertion</dfn>) ## {#iface-assertion}
@@ -1186,6 +1219,7 @@ input parameters:
     as per the procedure in [[WebCryptoAPI#algorithm-normalization-normalize-an-algorithm]].
 - A list of {{ScopedCredential}} objects provided by the [RP] with the intention that, if any of these are known to the
     authenticator, it should not create a new credential.
+- The {{KeyStorage}} request provided by the [RP]
 - Extension data created by the client based on the extensions requested by the [RP].
 
 When this operation is invoked, the authenticator must perform the following procedure:
@@ -1202,7 +1236,8 @@ When this operation is invoked, the authenticator must perform the following pro
     - Generate a set of cryptographic keys using the most preferred combination of {{ScopedCredentialType}} and cryptographic
         parameters supported by this authenticator.
     - Generate an identifier for this credential, such that this identifier is globally unique with high probability across all
-        credentials with the same type across all authenticators.
+        credentials with the same type across all authenticators. If the {{onRelyingParty}} value is provided by the [RP], 
+        use the <a>credential private key</a> as the identifier for this credential. 
     - Associate the credential with the specified RP ID and the user's account identifier {{Account/id}}.
     - Delete any older credentials with the same RP ID and {{Account/id}} that are stored locally in the authenticator.
 - If any error occurred while creating the new credential object, return an error code equivalent to UnknownError and terminate
@@ -1552,50 +1587,53 @@ ceremony, a [RP] MUST proceed as follows:
 1. Perform JSON deserialization on the {{ScopedCredentialInfo/clientDataJSON}} field of the {{ScopedCredentialInfo}} object to
     extract the [=client data=] |C| claimed to have been used for the credential's attestation.
 
-2. Verify that the {{ClientData/challenge}} in |C| matches the challenge that was sent to the authenticator in the
+1. Verify that the {{ClientData/challenge}} in |C| matches the challenge that was sent to the authenticator in the
     {{makeCredential()}} call.
 
-3. Verify that the {{ClientData/origin}} in |C| matches the [RP]'s origin.
+1. Verify that the {{ClientData/origin}} in |C| matches the [RP]'s origin.
 
-4. Verify that the {{ClientData/tokenBinding}} in |C| matches the token binding ID for the TLS connection over
+1. Verify that the {{ClientData/tokenBinding}} in |C| matches the token binding ID for the TLS connection over
     which the attestation was obtained.
 
-5. Verify that the {{ClientData/extensions}} in |C| is a proper subset of the extensions requested by the RP.
+1. Verify that the {{ClientData/extensions}} in |C| is a proper subset of the extensions requested by the RP.
 
-6. Compute the hash of {{ScopedCredentialInfo/clientDataJSON}} using the algorithm identified by
+1. Compute the hash of {{ScopedCredentialInfo/clientDataJSON}} using the algorithm identified by
     <code>|C|.{{ClientData/hashAlg}}</code>.
 
-7. Perform CBOR decoding on the {{ScopedCredentialInfo/attestationObject}} field of the {{ScopedCredentialInfo}} structure to
-    obtain the attestation statement format |fmt|, the [=authenticator data=] |authData|, and the attestation statement
-    |attStmt|.
+1. Perform CBOR decoding on the {{ScopedCredentialInfo/attestationObject}} field of the {{ScopedCredentialInfo}} structure to
+    obtain the Credential ID, the attestation statement format |fmt|, the [=authenticator data=] |authData|, and the 
+    attestation statement |attStmt|.
 
-8. Verify that the RP ID hash in |authData| is indeed the SHA-256 hash of the RP ID expected by the RP.
+1. Store the Credential ID if {{ScopedCredentialOptions/keyStorage/onRelyingParty}} value is supplied in the 
+    <code>{{options}}.{{ScopedCredentialOptions/keyStorage}}</code> parameter. 
 
-9. Determine the attestation statement format by performing an <a>ASCII case-insensitive</a> match on |fmt| against the set of
+1. Verify that the RP ID hash in |authData| is indeed the SHA-256 hash of the RP ID expected by the RP.
+
+1. Determine the attestation statement format by performing an <a>ASCII case-insensitive</a> match on |fmt| against the set of
     WebAuthn Attestation Statement Format Identifiers given in the IANA Registry of the same name [[WebAuthn-Registries]].
 
-10. Verify that |attStmt| is a correct, validly-signed attestation statement, using the attestation statement format |fmt|'s
+1. Verify that |attStmt| is a correct, validly-signed attestation statement, using the attestation statement format |fmt|'s
     verification procedure given [=authenticator data=] |authData| and the [=hash of the serialized client data=] computed in
     step 6.
 
-11. If validation is successful, obtain a list of acceptable trust anchors (attestation root certificates or DAA root keys)
+1. If validation is successful, obtain a list of acceptable trust anchors (attestation root certificates or DAA root keys)
     for that attestation type and attestation statement format |fmt|, from a trusted source or from policy. For example, the
     FIDO Metadata Service [[FIDOMetadataService]] provides one way to obtain such information, using the AAGUID in the
     [=attestation data=] contained in |authData|.
 
-12. Assess the attestation trustworthiness using the outputs of the verification procedure in step 10, as follows:
+1. Assess the attestation trustworthiness using the outputs of the verification procedure in step 10, as follows:
         - If self-attestation was used, check if self-attestation is acceptable under [RP] policy.
         - If DAA was used, verify that the DAA key used is in the set of acceptable trust anchors obtained in step 11.
         - Otherwise, use the X.509 certificates returned by the verification procedure to verify that the attestation public key
             correctly chains up to an acceptable root certificate.
 
-13. If the attestation statement |attStmt| verified successfully and is found to be trustworthy, then register the new
+1. If the attestation statement |attStmt| verified successfully and is found to be trustworthy, then register the new
     credential with the account that was denoted in the
     {{WebAuthentication/makeCredential(accountInformation, cryptoParameters, attestationChallenge, options)/accountInformation}}
     passed to {{makeCredential()}}, by associating it with the credential ID and credential public key contained in |authData|'s
     [=attestation data=], as appropriate for the [RP]'s systems.
 
-14. If the attestation statement |attStmt| successfully verified but is not trustworthy per step 12 above, the [RP] SHOULD fail
+1. If the attestation statement |attStmt| successfully verified but is not trustworthy per step 12 above, the [RP] SHOULD fail
     the registration ceremony.
     
     NOTE: However, if permitted by policy, the [RP] MAY register the credential ID and credential public key but treat the
@@ -1603,7 +1641,7 @@ ceremony, a [RP] MUST proceed as follows:
         no cryptographic proof that the Scoped Credential has been generated by a particular Authenticator model. See
         [[FIDOSecRef]] and [[UAFProtocol]] for a more detailed discussion.
 
-15. If verification of the attestation statement failed, the [RP] MUST fail the registration ceremony.
+1. If verification of the attestation statement failed, the [RP] MUST fail the registration ceremony.
 
 Verification of <a>attestation objects</a> requires that the [RP] has a trusted method of determining acceptable trust anchors
 in step 11 above. Also, if certificates are being used, the [RP] must have access to certificate status information for the
@@ -1623,31 +1661,31 @@ MUST proceed as follows:
 1. Using the {{ScopedCredential/id}} attribute contained in the {{AuthenticationAssertion/credential}} attribute of the given
     {{AuthenticationAssertion}} structure, look up the corresponding credential public key.
 
-2. Let |cData|, |aData| and |sig| denote the {{AuthenticationAssertion/clientDataJSON}},
+1. Let |cData|, |aData| and |sig| denote the {{AuthenticationAssertion/clientDataJSON}},
     {{AuthenticationAssertion/authenticatorData}} and {{AuthenticationAssertion/signature}} attributes of the given
     {{AuthenticationAssertion}} structure, respectively.
 
-3. Perform JSON deserialization on |cData| to extract the [=client data=] |C| used for the signature.
+1. Perform JSON deserialization on |cData| to extract the [=client data=] |C| used for the signature.
 
-4. Verify that the {{ClientData/challenge}} member of |C| matches the challenge that was sent to the authenticator in the
+1. Verify that the {{ClientData/challenge}} member of |C| matches the challenge that was sent to the authenticator in the
     {{getAssertion()}} call.
 
-5. Verify that the {{ClientData/origin}} member of |C| matches the [RP]'s origin.
+1. Verify that the {{ClientData/origin}} member of |C| matches the [RP]'s origin.
 
-6. Verify that the {{ClientData/tokenBinding}} member of |C| (if present) matches the token binding ID for the TLS connection
+1. Verify that the {{ClientData/tokenBinding}} member of |C| (if present) matches the token binding ID for the TLS connection
     over which the signature was obtained.
 
-7. Verify that the {{ClientData/extensions}} member of |C| is a proper subset of the extensions requested by the RP.
+1. Verify that the {{ClientData/extensions}} member of |C| is a proper subset of the extensions requested by the RP.
 
-8. Verify that the RP ID hash in |aData| is the SHA-256 hash of the RP ID expected by the RP.
+1. Verify that the RP ID hash in |aData| is the SHA-256 hash of the RP ID expected by the RP.
 
-9. Let |hash| be the result of computing a hash over the |cData| using the algorithm represented by the {{ClientData/hashAlg}}
+1. Let |hash| be the result of computing a hash over the |cData| using the algorithm represented by the {{ClientData/hashAlg}}
     member of |C|.
 
-10. Using the credential public key looked up in step 1, verify that |sig| is a valid signature over the binary concatenation of
+1. Using the credential public key looked up in step 1, verify that |sig| is a valid signature over the binary concatenation of
     |aData| and |hash|.
 
-11. If all the above steps are successful, continue with the authentication ceremony as appropriate. Otherwise, fail the
+1. If all the above steps are successful, continue with the authentication ceremony as appropriate. Otherwise, fail the
     authentication ceremony.
 
 
