@@ -372,13 +372,6 @@ The Web Authentication API is defined by the union of the Web IDL fragments pres
 <xmp class="idl">
     [SecureContext]
     interface WebAuthentication {
-        Promise<ScopedCredential> makeCredential(
-            Account                              accountInformation,
-            sequence<ScopedCredentialParameters> cryptoParameters,
-            BufferSource                         attestationChallenge,
-            optional ScopedCredentialOptions     options
-        );
-
         Promise<ScopedCredential> getAssertion(
             BufferSource                    assertionChallenge,
             optional AssertionOptions       options
@@ -391,7 +384,7 @@ This interface has two methods, which are described in the following subsections
 
 ### Create a new credential - makeCredential() method ### {#makeCredential}
 
-<div link-for-hint="WebAuthentication/makeCredential(accountInformation, cryptoParameters, attestationChallenge, options)">
+<div link-for-hint="ScopedCredential/makeCredential(accountInformation, cryptoParameters, attestationChallenge, options)">
 With this method, a script can request the User Agent to create a new credential of a given type and persist it to the
 underlying platform, which may involve data storage managed by the browser or the OS. The user agent will prompt the user to
 approve this operation. On success, the promise will be resolved with a {{ScopedCredential}} which contains an
@@ -400,7 +393,7 @@ approve this operation. On success, the promise will be resolved with a {{Scoped
 <div class="note">
 This method takes the following parameters:
 
-<ul dfn-type="argument" dfn-for="WebAuthentication/makeCredential(accountInformation, cryptoParameters, attestationChallenge, options)">
+<ul dfn-type="argument" dfn-for="ScopedCredential/makeCredential(accountInformation, cryptoParameters, attestationChallenge, options)">
 - The <dfn>accountInformation</dfn> parameter specifies information about the user account for which the credential is being
     created. This is meant for later use by the authenticator when it needs to prompt the user to select a credential. An
     authenticator is only required to store one credential for any given value of {{accountInformation}}. Specifically, if an
@@ -1013,14 +1006,21 @@ following Web IDL.
 
 ### <dfn interface>ScopedCredential</dfn> Interface ### {#credential-identifier}
 
-<pre class="idl">
+<xmp class="idl">
     [SecureContext]
     interface ScopedCredential {
         readonly attribute ScopedCredentialType  type;
         readonly attribute ArrayBuffer           id;
         readonly attribute AuthenticatorResponse response;
+
+        static Promise<ScopedCredential> makeCredential(
+            Account                              accountInformation,
+            sequence<ScopedCredentialParameters> cryptoParameters,
+            BufferSource                         attestationChallenge,
+            optional ScopedCredentialOptions     options
+        );
     };
-</pre>
+</xmp>
 
 This interface contains the attributes that are returned to the caller when a new credential is created, or a new assertion
 is requested.
@@ -1037,9 +1037,15 @@ is requested.
     burned into the authenticator.
 
     The <dfn>response</dfn> attribute contains the [=authenticator=]'s response to the client's assertion or attestation
-    request. If the {{ScopedCredential}} is created in response to {{WebAuthentication/makeCredential()}}, this attribute's
+    request. If the {{ScopedCredential}} is created in response to {{ScopedCredential/makeCredential()}}, this attribute's
     value will be an {{AuthenticatorAttestationResponse}}, otherwise, the {{ScopedCredential}} was created in response to
     {{WebAuthentication/getAssertion()}}, and this attribute's value will be an {{AuthenticatorAssertionResponse}}.
+
+    The <dfn method>makeCredential(accountInformation, cryptoParameters, attestationChallenge, options)</dfn> method
+    can request the User Agent to create a new credential, and persist it to the underlying platform, which may involve
+    data storage managed by the browser or the OS. The user agent will prompt the user to approve this operation. On success,
+    the promise will be resolved with a {{ScopedCredential}} which contains an {{AuthenticatorAttestationResponse}} object.
+    Implementation details are found in [#makeCredential].
 </div>
 
 
@@ -1673,7 +1679,7 @@ ceremony, a [RP] MUST proceed as follows:
 
 13. If the attestation statement |attStmt| verified successfully and is found to be trustworthy, then register the new
     credential with the account that was denoted in the
-    {{WebAuthentication/makeCredential(accountInformation, cryptoParameters, attestationChallenge, options)/accountInformation}}
+    {{ScopedCredential/makeCredential(accountInformation, cryptoParameters, attestationChallenge, options)/accountInformation}}
     passed to {{makeCredential()}}, by associating it with the credential ID and credential public key contained in |authData|'s
     [=attestation data=], as appropriate for the [RP]'s systems.
 
@@ -2738,7 +2744,7 @@ The sample code for generating and registering a new key follows:
 <pre class="example" highlight="js">
     var webauthnAPI = navigator.authentication;
 
-    if (!webauthnAPI) { /* Platform not capable. Handle error. */ }
+    if (!webauthnAPI || !ScopedCredential) { /* Platform not capable. Handle error. */ }
 
     var userAccountInformation = {
         rpDisplayName: "Acme",
@@ -2769,7 +2775,7 @@ The sample code for generating and registering a new key follows:
     };
 
     // Note: The following call will cause the authenticator to display UI.
-    webauthnAPI.makeCredential(userAccountInformation, cryptoParams, challenge, options)
+    ScopedCredential.makeCredential(userAccountInformation, cryptoParams, challenge, options)
         .then(function (newCredentialInfo) {
         // Send new credential info to server for verification and registration.
     }).catch(function (err) {
