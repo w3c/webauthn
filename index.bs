@@ -379,7 +379,7 @@ The Web Authentication API is defined by the union of the Web IDL fragments pres
             optional ScopedCredentialOptions     options
         );
 
-        Promise<AuthenticatorAssertionResponse> getAssertion(
+        Promise<ScopedCredential> getAssertion(
             BufferSource                    assertionChallenge,
             optional AssertionOptions       options
         );
@@ -669,20 +669,23 @@ When this method is invoked, the user agent MUST execute the following algorithm
 
     <dt>If any |authenticator| indicates success,</dt>
     <dd>
-        1. [=set/Remove=] |authenticator| from |issuedRequests|.
-        2. Using |global|, let |value| be a new {{AuthenticatorAssertionResponse}} object whose fields are:
-            : {{AuthenticatorAssertionResponse/credential}}
-            :: A new {{ScopedCredential}} object whose fields are:
-                1. {{ScopedCredential/type}} whose value is the {{ScopedCredentialType}} representing this [=scoped 
-                    credential=]'s type.
-                1. {{ScopedCredential/id}} whose value is a new {{ArrayBuffer}} containing the bytes of the credential ID 
-                    returned from the successful [=authenticatorGetAssertion=] operation.
-            : {{AuthenticatorResponse/clientDataJSON}}
-            :: A new {{ArrayBuffer}} containing the bytes of |clientDataJSON|
-            : {{AuthenticatorAssertionResponse/authenticatorData}}
-            :: A new {{ArrayBuffer}} containing the bytes of the returned {{authenticatorData}}
-            : {{AuthenticatorAssertionResponse/signature}}
-            :: A new {{ArrayBuffer}} containing the bytes of the returned {{signature}}
+        1.  [=set/Remove=] |authenticator| from |issuedRequests|.
+        2.  Let |value| be a new {{ScopedCredential}} whose fields are:
+
+            :   {{ScopedCredential/type}}
+            ::  The {{ScopedCredentialType}} representing this [=scoped credential=]'s type.
+            :   {{ScopedCredential/id}}
+            ::  A new {{ArrayBuffer}} containing the bytes of the credential ID returned from the successful
+                [=authenticatorGetAssertion=] operation.
+            :   {{ScopedCredential/response}}
+            ::  A new {{AuthenticatorAssertionResponse}} object whose fields are:
+                : {{AuthenticatorResponse/clientDataJSON}}
+                :: A new {{ArrayBuffer}} containing the bytes of |clientDataJSON|
+                : {{AuthenticatorAssertionResponse/authenticatorData}}
+                :: A new {{ArrayBuffer}} containing the bytes of the returned {{authenticatorData}}
+                : {{AuthenticatorAssertionResponse/signature}}
+                :: A new {{ArrayBuffer}} containing the bytes of the returned {{signature}}
+
         3. [=set/For each=] remaining |authenticator| in |issuedRequests| invoke the [=authenticatorCancel=] operation on
             |authenticator| and [=set/remove=] it from |issuedRequests|.
         4. [=Resolve=] |promise| with |value| and terminate this algorithm.
@@ -748,7 +751,6 @@ evidence of user consent to a specific transaction. The structure of these signa
 <xmp class="idl">
   [SecureContext]
   interface AuthenticatorAssertionResponse : AuthenticatorResponse {
-    readonly attribute ScopedCredential  credential;
     readonly attribute ArrayBuffer       authenticatorData;
     readonly attribute ArrayBuffer       signature;
   };
@@ -757,9 +759,6 @@ evidence of user consent to a specific transaction. The structure of these signa
     :   {{AuthenticatorResponse/clientDataJSON}}
     ::  Here, this attribute contains the parameters sent to the authenticator by the client, in serialized form. See
         [[#sec-client-data]] for the format of this parameter and how it is generated.
-
-    :   <dfn attribute>credential</dfn>
-    ::  This attribute represents the credential that was used to generate this assertion.
 
     :   <dfn attribute>authenticatorData</dfn>
     ::  This attribute contains the [=authenticator data=] returned by the authenticator. See [[#sec-authenticator-data]].
@@ -1004,13 +1003,14 @@ following Web IDL.
 </div>
 
 
-### Unique Identifier for Credential (interface <dfn interface>ScopedCredential</dfn>) ### {#credential-identifier}
+### <dfn interface>ScopedCredential</dfn> Interface ### {#credential-identifier}
 
 <pre class="idl">
     [SecureContext]
     interface ScopedCredential {
-        readonly attribute ScopedCredentialType type;
-        readonly attribute ArrayBuffer          id;
+        readonly attribute ScopedCredentialType           type;
+        readonly attribute ArrayBuffer                    id;
+        readonly attribute AuthenticatorAssertionResponse response;
     };
 </pre>
 
@@ -1027,6 +1027,8 @@ by the caller to select a credential for use.
     or length of this identifier, except that it must be sufficient for the platform to uniquely select a key. For example, an
     authenticator without on-board storage may create identifiers that consist of the key material wrapped with a key that is
     burned into the authenticator.
+
+    The <dfn>response</dfn> attribute contains the [=authenticator=]'s response to the client's assertion request.
 </div>
 
 
@@ -1686,15 +1688,15 @@ or it MAY decide to accept the registration, e.g. while deleting the older regis
 
 ## Verifying an authentication assertion ## {#verifying-assertion}
 
-When requested to authenticate a given {{AuthenticatorAssertionResponse}} structure as part of an authentication ceremony, the [RP]
-MUST proceed as follows:
+When requested to authenticate a given {{ScopedCredential}} structure (|credential|) as part of an [=authentication=]
+[=ceremony=], the [RP] MUST proceed as follows:
 
-1. Using the {{ScopedCredential/id}} attribute contained in the {{AuthenticatorAssertionResponse/credential}} attribute of the given
-    {{AuthenticatorAssertionResponse}} structure, look up the corresponding credential public key.
+1. Using |credential|'s {{ScopedCredential/id}} attribute, look up the corresponding credential public key.
 
-2. Let |cData|, |aData| and |sig| denote the {{AuthenticatorResponse/clientDataJSON}},
-    {{AuthenticatorAssertionResponse/authenticatorData}} and {{AuthenticatorAssertionResponse/signature}} attributes of the given
-    {{AuthenticatorAssertionResponse}} structure, respectively.
+2. Let |cData|, |aData| and |sig| denote the value of |credential|'s {{ScopedCredential/response}}'s
+    {{AuthenticatorResponse/clientDataJSON}}, {{AuthenticatorAssertionResponse/authenticatorData}}, and
+    {{AuthenticatorAssertionResponse/signature}} respectively.
+    {{AuthenticatorAssertionResponse}} structure in |credential|'s, respectively.
 
 3. Perform JSON deserialization on |cData| to extract the [=client data=] |C| used for the signature.
 
