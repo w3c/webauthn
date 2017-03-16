@@ -528,10 +528,8 @@ When this method is invoked, the user agent MUST execute the following algorithm
             [=authenticatorMakeCredential=] operation.
         3.  Let |id| be the credential identifier contained in |attestationObject|.
         4.  Using |global|, let |value| be a new {{ScopedCredential}} object whose fields are:
-            :   {{ScopedCredential/id}}
+            :   {{ScopedCredential/[[identifier]]}}
             ::  |id|
-            :   {{ScopedCredential/type}}
-            ::  "{{ScopedCred}}"
             :   {{ScopedCredential/response}}
             ::  A new {{AuthenticatorAttestationResponse}} object whose fields are:
                 :   {{AuthenticatorResponse/clientDataJSON}}
@@ -673,9 +671,7 @@ When this method is invoked, the user agent MUST execute the following algorithm
         1.  [=set/Remove=] |authenticator| from |issuedRequests|.
         2.  Let |value| be a new {{ScopedCredential}} whose fields are:
 
-            :   {{ScopedCredential/type}}
-            ::  The {{ScopedCredentialType}} representing this [=scoped credential=]'s type.
-            :   {{ScopedCredential/id}}
+            :   {{ScopedCredential/[[identifier]]}}
             ::  A new {{ArrayBuffer}} containing the bytes of the credential ID returned from the successful
                 [=authenticatorGetAssertion=] operation.
             :   {{ScopedCredential/response}}
@@ -1006,11 +1002,13 @@ following Web IDL.
 
 ### <dfn interface>ScopedCredential</dfn> Interface ### {#credential-identifier}
 
+The {{ScopedCredential}} interface inherits from {{Credential}} [[!CREDENTIAL-MANAGEMENT-1]], and contains the attributes that
+are returned to the caller when a new credential is created, or a new assertion is requested.
+
 <xmp class="idl">
     [SecureContext]
-    interface ScopedCredential {
-        readonly attribute ScopedCredentialType  type;
-        readonly attribute ArrayBuffer           id;
+    interface ScopedCredential : Credential {
+        readonly attribute ArrayBuffer           rawID;
         readonly attribute AuthenticatorResponse response;
 
         static Promise<ScopedCredential> makeCredential(
@@ -1021,32 +1019,39 @@ following Web IDL.
         );
     };
 </xmp>
+<dl dfn-type="attribute" dfn-for="ScopedCredential">
+    :   {{Credential/id}}
+    ::  {{ScopedCredential}} overrides {{Credential}}'s getter for this attribute, returning the [=base64url encoding=] of the
+        data contained in the object's {{ScopedCredential/[[identifier]]}} slot.
 
-This interface contains the attributes that are returned to the caller when a new credential is created, or a new assertion
-is requested.
+    :   {{ScopedCredential/rawID}}
+    ::  This attribute returns the {{ArrayBuffer}} contained in the {{ScopedCredential/[[identifier]]}} internal slot.
 
-<div dfn-type="attribute" dfn-for="ScopedCredential">
-    The <dfn>type</dfn> attribute contains a value of type {{ScopedCredentialType}}, indicating the specification and version
-    that this credential conforms to.
+    :   <dfn>response</dfn>
+    ::  This attribute contains the [=authenticator=]'s response to the client's assertion or attestation request. If the
+        {{ScopedCredential}} is created in response to {{ScopedCredential/makeCredential()}}, this attribute's
+        value will be an {{AuthenticatorAttestationResponse}}, otherwise, the {{ScopedCredential}} was created in response to
+        {{WebAuthentication/getAssertion()}}, and this attribute's value will be an {{AuthenticatorAssertionResponse}}.
 
-    The <dfn>id</dfn> attribute contains an identifier for the credential, chosen by the platform with help from the
-    authenticator. This identifier is used to look up credentials for use, and is therefore expected to be globally unique with
-    high probability across all credentials of the same type, across all authenticators. This API does not constrain the format
-    or length of this identifier, except that it must be sufficient for the platform to uniquely select a key. For example, an
-    authenticator without on-board storage may create identifiers that consist of the key material wrapped with a key that is
-    burned into the authenticator.
+    :   <dfn>\[[type]]</dfn>
+    ::  The {{ScopedCredential}} [=interface object=]'s {{Credential/[[type]]}} slot's value is the string "`ScopedCred`".
 
-    The <dfn>response</dfn> attribute contains the [=authenticator=]'s response to the client's assertion or attestation
-    request. If the {{ScopedCredential}} is created in response to {{ScopedCredential/makeCredential()}}, this attribute's
-    value will be an {{AuthenticatorAttestationResponse}}, otherwise, the {{ScopedCredential}} was created in response to
-    {{WebAuthentication/getAssertion()}}, and this attribute's value will be an {{AuthenticatorAssertionResponse}}.
+        Note: This is reflected via the {{Credential/type}} attribute getter inherited from {{Credential}}.
 
-    The <dfn method>makeCredential(accountInformation, cryptoParameters, attestationChallenge, options)</dfn> method
-    can request the User Agent to create a new credential, and persist it to the underlying platform, which may involve
-    data storage managed by the browser or the OS. The user agent will prompt the user to approve this operation. On success,
-    the promise will be resolved with a {{ScopedCredential}} which contains an {{AuthenticatorAttestationResponse}} object.
-    Implementation details are found in [#makeCredential].
-</div>
+    :   <dfn>\[[identifier]]</dfn>
+    ::  This internal slot contains an identifier for the credential, chosen by the platform with help from the authenticator.
+        This identifier is used to look up credentials for use, and is therefore expected to be globally unique with high
+        probability across all credentials of the same type, across all authenticators. This API does not constrain the format
+        or length of this identifier, except that it must be sufficient for the platform to uniquely select a key. For example,
+        an authenticator without on-board storage may create identifiers that consist of the key material wrapped with a key
+        that is burned into the authenticator.
+
+    :   <dfn method>makeCredential(accountInformation, cryptoParameters, attestationChallenge, options)</dfn>
+    ::  This methid allows a developer to request the User Agent to create a new credential, and persist it to the underlying
+        platform, which may involve data storage managed by the browser or the OS. The user agent will prompt the user to
+        approve this operation. On success, the promise will be resolved with a {{ScopedCredential}} which contains an
+        {{AuthenticatorAttestationResponse}} object. Implementation details are found in [#makeCredential].
+</dl>
 
 
 ### Credential Descriptor (dictionary <dfn dictionary>ScopedCredentialDescriptor</dfn>) ### {#credential-dictionary}
@@ -1708,7 +1713,8 @@ or it MAY decide to accept the registration, e.g. while deleting the older regis
 When requested to authenticate a given {{ScopedCredential}} structure (|credential|) as part of an [=authentication=]
 [=ceremony=], the [RP] MUST proceed as follows:
 
-1. Using |credential|'s {{ScopedCredential/id}} attribute, look up the corresponding credential public key.
+1. Using |credential|'s {{Credential/id}} attribute (or the corresponding {{ScopedCredential/rawID}}, if
+    [=base64url encoding=] is inappropriate for your use case), look up the corresponding credential public key.
 
 2. Let |cData|, |aData| and |sig| denote the value of |credential|'s {{ScopedCredential/response}}'s
     {{AuthenticatorResponse/clientDataJSON}}, {{AuthenticatorAssertionResponse/authenticatorData}}, and
