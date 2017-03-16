@@ -89,8 +89,11 @@ is [=Registration=], where a [=scoped credential=] is created on an [=authentica
 with the present user's account (the account may already exist or may be created at this time). The second is
 [=Authentication=], where the [=[RP]=] is presented with an <em>[=Authentication Assertion=]</em> proving the presence
 and consent of the user who registered the [=scoped credential=]. Functionally, the [=Web Authentication API=] comprises
-two methods (along with associated data structures): {{create()}} and {{getAssertion()}}. The former is used
-during [=Registration=] and the latter during [=Authentication=].
+a {{ScopedCredential}} which extends the Credential Management API, and infrastructure which allows those credentials to be
+used with <a for="CredentialsContainer" lt="get()" method>`navigator.credentials.get()`</a>.
+
+{{ScopedCredential}} provides a static {{ScopedCredential/create()}} method used during [=Registration=], and the
+Credential Management API's {{CredentialsContainer/get()}} method is used during [=Authentication=].
 
 Broadly, compliant [=authenticators=] protect [=scoped credentials=], and interact with user agents to implement the
 [=Web Authentication API=]. Some authenticators may run on the same computing device (e.g., smart phone, tablet, desktop PC) as
@@ -292,7 +295,7 @@ The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "S
     information consists of an asymmetric key pair, where the public key portion is returned to the [RP], which stores it in
     conjunction with the present user's account. The authenticator maps the private key to the [RP]'s [=RP ID=] and stores
     it. Subsequently, only that [RP], as identified by its [=RP ID=], is able to employ the [=scoped credential=] in
-    [=authentication=] ceremonies, via the {{getAssertion()}} method. The [RP] uses its copy of the stored public key to
+    [=authentication=] ceremonies, via the {{CredentialsContainer/get()}} method. The [RP] uses its copy of the stored public key to
     verify the resultant [=Authentication Assertion=].
     
 : <dfn>Test of User Presence</dfn>
@@ -373,8 +376,6 @@ are returned to the caller when a new credential is created, or a new assertion 
             BufferSource                         attestationChallenge,
             optional ScopedCredentialOptions     options
         );
-
-        static Promise<ScopedCredential> getAssertion(ScopedCredentialRequestOptions options);
     };
 </xmp>
 <dl dfn-type="attribute" dfn-for="ScopedCredential">
@@ -389,7 +390,7 @@ are returned to the caller when a new credential is created, or a new assertion 
     ::  This attribute contains the [=authenticator=]'s response to the client's assertion or attestation request. If the
         {{ScopedCredential}} is created in response to {{ScopedCredential/create()}}, this attribute's
         value will be an {{AuthenticatorAttestationResponse}}, otherwise, the {{ScopedCredential}} was created in response to
-        {{ScopedCredential/getAssertion()}}, and this attribute's value will be an {{AuthenticatorAssertionResponse}}.
+        {{CredentialsContainer/get()}}, and this attribute's value will be an {{AuthenticatorAssertionResponse}}.
 
     :   <dfn>\[[type]]</dfn>
     ::  The {{ScopedCredential}} [=interface object=]'s {{Credential/[[type]]}} slot's value is the string "`scoped`".
@@ -410,10 +411,24 @@ are returned to the caller when a new credential is created, or a new assertion 
         approve this operation. On success, the promise will be resolved with a {{ScopedCredential}} which contains an
         {{AuthenticatorAttestationResponse}} object. Implementation details are found in [#createCredential].
 
-    :   <dfn method>getAssertion(data)</dfn>
-    ::  This method is used to discover and use an existing scoped credential, with the user's consent. Implementation details
-        are found in [[#getAssertion]].
+    :   <dfn method>\[[Retrieve]](options, mediation)</dfn>
+    ::  The {{ScopedCredential}} [=interface object=] defines this internal method to override {{Credential}}'s implementation,
+        which will enable support for assertion generation through {{CredentialsContainer/get()}}. Implementation details are
+        found in [[#getAssertion]].
 </dl>
+
+### `CredentialRequestOptions` Extension ### {#credentialrequestoptions-extension}
+
+To support obtaining assertions via
+<a for="CredentialsContainer" lt="get()" method>`navigator.credentials.get()`</a>, this document extends the
+{{CredentialRequestOptions}} interface as follows:
+
+<pre class="idl">
+    [SecureContext]
+    partial dictionary CredentialRequestOptions {
+        ScopedCredentialRequestOptions? scoped;
+    };
+</pre>
 
 
 ### Create a new credential - ScopedCredential::create() method ### {#createCredential}
@@ -434,9 +449,9 @@ This method takes the following parameters:
     authenticator already has a credential for the specified value of {{Account/id}} in {{accountInformation}}, and if this
     credential is not listed in the {{ScopedCredentialOptions/excludeList}} member of {{options}}, then after successful
     execution of this method:
-    - Any calls to {{getAssertion()}} that do not specify {{ScopedCredentialRequestOptions/allowList}} will not result in the older
+    - Any calls to {{CredentialsContainer/get()}} that do not specify {{ScopedCredentialRequestOptions/allowList}} will not result in the older
         credential being offered to the user.
-    - Any calls to {{getAssertion()}} that specify the older credential in the {{ScopedCredentialRequestOptions/allowList}} may also not
+    - Any calls to {{CredentialsContainer/get()}} that specify the older credential in the {{ScopedCredentialRequestOptions/allowList}} may also not
         result in it being offered to the user.
 
 - The <dfn>cryptoParameters</dfn> parameter supplies information about the desired properties of the credential to be created.
@@ -583,9 +598,9 @@ authorizing an authenticator.
 </div>
 
 
-### Use an existing credential - ScopedCredential::getAssertion() method ### {#getAssertion}
+### Use an existing credential - ScopedCredential::\[[Retrieve]](options, mediation) method ### {#getAssertion}
 
-<div link-for-hint="ScopedCredential/getAssertion(options)">
+<div link-for-hint="ScopedCredential/[[Retrieve]](options, mediation)">
 This method is used to discover and use an existing scoped credential, with the user's consent. The script optionally specifies
 some criteria to indicate what credentials are acceptable to it. The user agent and/or platform locates credentials matching the
 specified criteria, and guides the user to pick one that the script should be allowed to use. The user may choose not to provide
@@ -594,18 +609,21 @@ a credential even if one is present, for example to maintain privacy.
 <div class="note">
 This method takes the following parameters:
 
-<ul dfn-type="argument" dfn-for="ScopedCredential/getAssertion(options)">
-- The <dfn>options</dfn> parameter contains a challenge that the selected authenticator is expected to sign to
-    produce the assertion, and specifies additional options as described in [[#assertion-parameters]].
+*   |options| is a {{CredentialRequestOptions}} object, containing a challenge that the selected authenticator is expected to
+    sign to produce the assertion, and additional options as described in [[#assertion-parameters]]
+*   |mediation| is either "`With User Mediation`" or "`Without User Mediation`".
 
-</ul>
 </div>
 
 When this method is invoked, the user agent MUST execute the following algorithm:
 
-1. If the {{ScopedCredentialRequestOptions/timeout}} member of {{options}} is [=present=], check if its value lies within a reasonable range
+1. If |mediation| is "`Without User Mediation`", return `null`.
+
+1. Let |scoped options| be the value of |options| {{CredentialRequestOptions/scoped}} member.
+
+1. If the {{ScopedCredentialRequestOptions/timeout}} member of |scoped options| is [=present=], check if its value lies within a reasonable range
     as defined by the platform and if not, correct it to the closest value lying within that range. Set |adjustedTimeout| to
-    this adjusted value. If the {{ScopedCredentialRequestOptions/timeout}} member of {{options}} is [=present|not present=], then set
+    this adjusted value. If the {{ScopedCredentialRequestOptions/timeout}} member of |scoped options| is [=present|not present=], then set
     |adjustedTimeout| to a platform-specific default.
 
 1. Let |global| be the {{ScopedCredential}}'s [=relevant settings object=]'s
@@ -615,7 +633,7 @@ When this method is invoked, the user agent MUST execute the following algorithm
     |callerOrigin| is an [=opaque origin=], return [=a promise rejected with=] a {{DOMException}} whose name is
     "{{NotAllowedError}}", and terminate this algorithm.
 
-1. If the {{ScopedCredentialRequestOptions/rpId}} member of {{options}} is [=present|not present=], then set |rpId| to |callerOrigin|.
+1. If the {{ScopedCredentialRequestOptions/rpId}} member of |scoped options| is [=present|not present=], then set |rpId| to |callerOrigin|.
     Otherwise:
     1. Let |effectiveDomain| be the |callerOrigin|'s [=effective domain=].
     1. If |effectiveDomain| is null, then return [=a promise rejected with=] a {{DOMException}} whose name is 
@@ -627,8 +645,8 @@ When this method is invoked, the user agent MUST execute the following algorithm
 
 1. Let |clientExtensions| be a new [=list=].
 
-1. If the {{ScopedCredentialRequestOptions/extensions}} member of {{options}} is [=present=], then [=map/for each=]
-    |extension| → |argument| of <code>{{options}}.{{ScopedCredentialRequestOptions/extensions}}</code>:
+1. If the {{ScopedCredentialRequestOptions/extensions}} member of |scoped options| is [=present=], then [=map/for each=]
+    |extension| → |argument| of <code>|scoped options|.{{ScopedCredentialRequestOptions/extensions}}</code>:
     1. If |extension| is not supported by this client platform, then [=continue=].
     1. Otherwise, let |result| be the result of running |extension|'s [=client processing=] algorithm on |argument|. If the
         algorithm returned an error, [=continue=].
@@ -636,7 +654,7 @@ When this method is invoked, the user agent MUST execute the following algorithm
 
 1. Let |clientData| be a new {{ClientData}} instance whose fields are:
     : {{ClientData/challenge}}
-    :: The [=base64url encoding=] of <code>{{options}}.{{ScopedCredentialRequestOptions/challenge}}</code>
+    :: The [=base64url encoding=] of <code>|scoped options|.{{ScopedCredentialRequestOptions/challenge}}</code>
     : {{origin}}
     :: The [=unicode serialization of an origin|unicode serialization=] of |rpId|
     : {{hashAlg}}
@@ -657,11 +675,11 @@ When this method is invoked, the user agent MUST execute the following algorithm
 
     1. Let |credentialList| be a new [=list=].
 
-    1. If <code>{{options}}.{{ScopedCredentialRequestOptions/allowList}}</code> [=list/is not empty=], execute a 
+    1. If <code>|scoped options|.{{ScopedCredentialRequestOptions/allowList}}</code> [=list/is not empty=], execute a 
         platform-specific procedure to determine which, if any, credentials in
-        <code>{{options}}.{{ScopedCredentialRequestOptions/allowList}}</code> are present on this |authenticator| by matching with 
-        <code>{{options}}.{{ScopedCredentialRequestOptions/allowList}}.{{ScopedCredentialDescriptor/id}}</code> and 
-        <code>{{options}}.{{ScopedCredentialRequestOptions/allowList}}.{{ScopedCredentialDescriptor/type}}</code>, and set |credentialList| to
+        <code>|scoped options|.{{ScopedCredentialRequestOptions/allowList}}</code> are present on this |authenticator| by matching with 
+        <code>|scoped options|.{{ScopedCredentialRequestOptions/allowList}}.{{ScopedCredentialDescriptor/id}}</code> and 
+        <code>|scoped options|.{{ScopedCredentialRequestOptions/allowList}}.{{ScopedCredentialDescriptor/type}}</code>, and set |credentialList| to
         this filtered list.
     
     1. If |credentialList| [=list/is empty=] then [=continue=].
@@ -962,8 +980,8 @@ use a [=roaming authenticator=] which was originally registered with the [RP] us
 </pre>
 
 This is a dictionary containing zero or more extensions as defined in [[#extensions]]. An extension is an additional parameter
-that can be passed to the {{getAssertion()}} method and triggers some additional processing by the client platform and/or the
-authenticator.
+that can be passed to the {{CredentialsContainer/get()}} method as part of a {{ScopedCredentialRequestOptions}} object, and
+triggers some additional processing by the client platform and/or the authenticator.
 
 If the caller wishes to pass extensions to the platform, it MUST do so by adding one entry per extension to this dictionary
 with the extension identifier as the key, and the extension's value as the value (see [[#extensions]] for details).
@@ -1047,8 +1065,7 @@ following Web IDL.
 </xmp>
 
 This dictionary contains the attributes that are specified by a caller when referring to a credential as an input parameter to
-the {{create()}} or {{getAssertion()}} method. It mirrors the fields of the {{ScopedCredential}} object returned by
-these methods.
+the {{create()}} or {{CredentialsContainer/get()}} methods. It mirrors the fields of the {{ScopedCredential}} object returned by these methods.
 
 <div dfn-type="dict-member" dfn-for="ScopedCredentialDescriptor">
     The <dfn>type</dfn> member contains the type of the credential the caller is referring to.
@@ -1613,10 +1630,10 @@ should be specified in the attestation certificate itself, so that it can be ver
 
 # [RP] Operations # {#rp-operations}
 
-Upon successful execution of a {{create()}} or {{getAssertion()}} call, the [RP]'s script receives a
-{{AuthenticatorAttestationResponse}} or {{AuthenticatorAssertionResponse}} structure respectively from the client. It must then deliver the
-contents of this structure to the [=[RP]=], using methods outside the scope of this specification. This section describes the
-operations that the [RP] must perform upon receipt of these structures.
+Upon successful execution of a {{create()}} or {{CredentialsContainer/get()}} call, the [RP]'s script receives a {{ScopedCredential}} containing a
+{{AuthenticatorAttestationResponse}} or {{AuthenticatorAssertionResponse}} structure respectively from the client. It must then
+deliver the contents of this structure to the [=[RP]=], using methods outside the scope of this specification. This section
+describes the operations that the [RP] must perform upon receipt of these structures.
 
 
 ## Registering a new credential ## {#registering-a-new-credential}
@@ -1706,7 +1723,7 @@ When requested to authenticate a given {{ScopedCredential}} structure (|credenti
 3. Perform JSON deserialization on |cData| to extract the [=client data=] |C| used for the signature.
 
 4. Verify that the {{ClientData/challenge}} member of |C| matches the challenge that was sent to the authenticator in the
-    {{getAssertion()}} call.
+    {{ScopedCredentialRequestOptions}} passed to the {{CredentialsContainer/get()}} call.
 
 5. Verify that the {{ClientData/origin}} member of |C| matches the [RP]'s origin.
 
@@ -2188,14 +2205,14 @@ an authentication extension. Extensions can define additions to the following st
 
 - {{create()}} request parameters for registration extension.
 
-- {{getAssertion()}} request parameters for authentication extensions.
+- <a for="CredentialsContainer" lt="get()" method>`navigator.credentials.get()`</a> request parameters for authentication extensions.
 
 - Client processing, and the [=client data=], for registration extensions and authentication extensions.
 
 - Authenticator processing, and the [=authenticator data=], for registration extensions and authentication extensions.
 
 When requesting an assertion for a scoped credential, a [RP] can list a set of extensions to be used, if they are supported by
-the client and/or the authenticator. It sends the client arguments for each extension in the {{getAssertion()}} call (for
+the client and/or the authenticator. It sends the client arguments for each extension in the {{CredentialsContainer/get()}} call (for
 authentication extensions) or {{create()}} call (for registration extensions) to the client platform. The client
 platform performs additional processing for each extension that it supports, and augments the [=client data=] as required by the
 extension. In addition, the client collects the authenticator arguments for the above extensions, and passes them to the
@@ -2245,7 +2262,7 @@ Identifiers.
 ## Defining extensions ## {#extension-specification}
 
 A definition of an extension must specify, at minimum, an extension identifier and an extension client argument sent via the
-{{getAssertion()}} or {{create()}} call. Additionally, extensions may specify additional values in the [=client data=],
+{{CredentialsContainer/get()}} or {{create()}} call. Additionally, extensions may specify additional values in the [=client data=],
 [=authenticator data=] (in the case of authentication extensions), or both. Finally, if the extension requires any
 authenticator processing, it must also specify an authenticator argument to be sent via the [=authenticatorGetAssertion=] or
 [=authenticatorMakeCredential=] call.
@@ -2259,16 +2276,19 @@ authenticator.
 ## Extending request parameters ## {#extension-request-parameters}
 
 An extension defines up to two request arguments. The <dfn>client argument</dfn> is passed from the [=[RP]=] to the client
-in the {{getAssertion()}} or {{create()}} call, while the <dfn>authenticator argument</dfn> is passed from the client
+in the {{CredentialsContainer/get()}} or {{create()}} call, while the <dfn>authenticator argument</dfn> is passed from the client
 to the authenticator during the processing of these calls.
 
 A [RP] simultaneously requests the use of an extension and sets its client argument by including an entry in the
-{{ScopedCredentialOptions/extensions}} option to the {{create()}} or {{getAssertion()}} call. The entry key MUST be the
+{{ScopedCredentialOptions/extensions}} option to the {{create()}} or {{CredentialsContainer/get()}} call. The entry key MUST be the
 extension identifier, and the value MUST be the [=client argument=].
 
 <pre class="example" highlight="js">
-    var assertionPromise = credentials.getAssertion(..., /* extensions */ {
-        "webauthnExample_foobar": 42
+    var assertionPromise = navigator.credentials.get({
+        challenge: "...",
+        extensions: {
+            "webauthnExample_foobar": 42
+        }
     });
 </pre>
 
@@ -2324,9 +2344,11 @@ of the extension. The [RP] sets this value in its request for an assertion:
 
 <pre highlight="js">
     var assertionPromise =
-        credentials.getAssertion("SGFuIFNvbG8gc2hvdCBmaXJzdC4",
-            {}, /* Empty filter */
-            { 'webauthnExample_geo': true });
+        navigator.credentials.get({
+            challenge: "SGFuIFNvbG8gc2hvdCBmaXJzdC4",
+            allowList: [], /* Empty filter */
+            extensions: { 'webauthnExample_geo': true }
+        });
 </pre>
 
 The extension defines the additional [=client data=] to be the client's location, if known, as a GeoJSON [[GeoJSON]] point. The
@@ -2376,7 +2398,7 @@ This authentication extension allows [RPS] who have previously registered a
 credential using the legacy FIDO JavaScript APIs to request an assertion.
 Specifically, this extension allows [RPS] to specify an |appId| [[FIDO-APPID]]
 to overwrite the otherwise computed |rpId|.  This extension is only valid if
-used during the {{getAssertion()}} call; other usage will result in client
+used during the {{CredentialsContainer/get()}} call; other usage will result in client
 error.
 
 : Extension identifier
@@ -2813,13 +2835,13 @@ then the sample code for performing such an authentication might look like this:
 <pre class="example" highlight="js">
     if (!ScopedCredential) { /* Platform not capable. Handle error. */ }
 
-    var challenge = new TextEncoder().encode("climb a mountain");
     var options = {
-                    timeout = 60000,  // 1 minute
+                    challenge: new TextEncoder().encode("climb a mountain"),
+                    timeout: 60000,  // 1 minute
                     allowList: [{ type: "scoped" }]
                   };
 
-    ScopedCredential.getAssertion(challenge, options)
+    navigator.credentials.get(options)
         .then(function (assertion) {
         // Send assertion to server for verification
     }).catch(function (err) {
@@ -2835,7 +2857,6 @@ extension for transaction authorization.
     if (!ScopedCredential) { /* Platform not capable. Handle error. */ }
 
     var encoder = new TextEncoder();
-    var challenge = encoder.encode("climb a mountain");
     var acceptableCredential1 = {
         type: "scoped",
         id: encoder.encode("!!!!!!!hi there!!!!!!!\n")
@@ -2846,13 +2867,14 @@ extension for transaction authorization.
     };
 
     var options = {
+                    challenge: encoder.encoder("climb a mountain"),
                     timeout: 60000,  // 1 minute
                     allowList: [acceptableCredential1, acceptableCredential2];
                     extensions: { 'webauthn.txauth.simple':
                        "Wave your hands in the air like you just don't care" };
                   };
 
-    ScopedCredential.getAssertion(challenge, options)
+    navigator.credentials.get(options)
         .then(function (assertion) {
         // Send assertion to server for verification
     }).catch(function (err) {
