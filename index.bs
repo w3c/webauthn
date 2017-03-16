@@ -51,9 +51,6 @@ spec: HTML52; urlPrefix: https://w3c.github.io/html/
             text: origin; url: concept-cross-origin
             text: opaque origin; url: opaque-origin
             text: tuple origin
-    urlPrefix: webappapis.html
-        type: interface
-            text: Navigator
 
 spec: TokenBinding; urlPrefix: https://tools.ietf.org/html/draft-ietf-tokbind-protocol#
     type: dfn
@@ -186,8 +183,7 @@ below and in [[#index-defined-elsewhere]].
 
 : HTML
 :: The concepts of [=relevant settings object=], [=origin=],
-    [=opaque origin=], [=is a registrable domain suffix of or is equal to=], and the {{Navigator}} interface are
-    defined in [[!HTML52]].
+    [=opaque origin=], [=is a registrable domain suffix of or is equal to=].
 
 : Web Cryptography API
 :: The {{AlgorithmIdentifier}} type and the method for [=normalizing an algorithm=] are defined in
@@ -285,8 +281,8 @@ The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "S
 : <dfn>RP ID</dfn>
 :: An identifier for the [RP] on whose behalf a given registration or authentication ceremony is being performed. Scoped
     credentials can only be used for authentication by the same entity (as identified by RP ID) that created and registered
-    them. By default, the RP ID for a WebAuthn operation is set to the [=origin=] specified by the {{WebAuthentication}}
-    object's [=relevant settings object=]. This default can be overridden by the caller subject to certain restrictions, as
+    them. By default, the RP ID for a WebAuthn operation is set to the [=environment settings object/origin=] specified by the
+    [=current settings object=]. This default can be overridden by the caller subject to certain restrictions, as
     specified in [[#createCredential]] and [[#getAssertion]].
 
 : <dfn>Scoped Credential</dfn>
@@ -357,29 +353,70 @@ The client facilitates these security measures by providing correct origins and 
 operation. Since this is an integral part of the WebAuthn security model, user agents MUST only expose this API to callers in
 [=secure contexts=].
 
-The Web Authentication API is defined by the union of the Web IDL fragments presented in the following sections. A combined IDL listing is given in the [[#idl-index]]. The API is defined as a part of the {{Navigator}} interface:
+The Web Authentication API is defined by the union of the Web IDL fragments presented in the following sections. A combined IDL
+listing is given in the [[#idl-index]].
 
+## <dfn interface>ScopedCredential</dfn> Interface ## {#iface-scopedcredential}
 
-<pre class="idl">
-    partial interface Navigator {
-        readonly attribute WebAuthentication authentication;
-    };
-</pre>
-
-
-## <dfn interface>WebAuthentication</dfn> Interface ## {#iface-credential}
+The {{ScopedCredential}} interface inherits from {{Credential}} [[!CREDENTIAL-MANAGEMENT-1]], and contains the attributes that
+are returned to the caller when a new credential is created, or a new assertion is requested.
 
 <xmp class="idl">
     [SecureContext]
-    interface WebAuthentication {
-        Promise<ScopedCredential> getAssertion(
+    interface ScopedCredential : Credential {
+        readonly attribute ArrayBuffer           rawID;
+        readonly attribute AuthenticatorResponse response;
+
+        static Promise<ScopedCredential> create(
+            Account                              accountInformation,
+            sequence<ScopedCredentialParameters> cryptoParameters,
+            BufferSource                         attestationChallenge,
+            optional ScopedCredentialOptions     options
+        );
+
+        static Promise<ScopedCredential> getAssertion(
             BufferSource                    assertionChallenge,
             optional AssertionOptions       options
         );
     };
 </xmp>
+<dl dfn-type="attribute" dfn-for="ScopedCredential">
+    :   {{Credential/id}}
+    ::  {{ScopedCredential}} overrides {{Credential}}'s getter for this attribute, returning the [=base64url encoding=] of the
+        data contained in the object's {{ScopedCredential/[[identifier]]}} slot.
 
-This interface has two methods, which are described in the following subsections.
+    :   {{ScopedCredential/rawID}}
+    ::  This attribute returns the {{ArrayBuffer}} contained in the {{ScopedCredential/[[identifier]]}} internal slot.
+
+    :   <dfn>response</dfn>
+    ::  This attribute contains the [=authenticator=]'s response to the client's assertion or attestation request. If the
+        {{ScopedCredential}} is created in response to {{ScopedCredential/create()}}, this attribute's
+        value will be an {{AuthenticatorAttestationResponse}}, otherwise, the {{ScopedCredential}} was created in response to
+        {{ScopedCredential/getAssertion()}}, and this attribute's value will be an {{AuthenticatorAssertionResponse}}.
+
+    :   <dfn>\[[type]]</dfn>
+    ::  The {{ScopedCredential}} [=interface object=]'s {{Credential/[[type]]}} slot's value is the string "`scoped`".
+
+        Note: This is reflected via the {{Credential/type}} attribute getter inherited from {{Credential}}.
+
+    :   <dfn>\[[identifier]]</dfn>
+    ::  This internal slot contains an identifier for the credential, chosen by the platform with help from the authenticator.
+        This identifier is used to look up credentials for use, and is therefore expected to be globally unique with high
+        probability across all credentials of the same type, across all authenticators. This API does not constrain the format
+        or length of this identifier, except that it must be sufficient for the platform to uniquely select a key. For example,
+        an authenticator without on-board storage may create identifiers that consist of the key material wrapped with a key
+        that is burned into the authenticator.
+
+    :   <dfn method>create(accountInformation, cryptoParameters, attestationChallenge, options)</dfn>
+    ::  This method allows a developer to request the User Agent to create a new credential, and persist it to the underlying
+        platform, which may involve data storage managed by the browser or the OS. The user agent will prompt the user to
+        approve this operation. On success, the promise will be resolved with a {{ScopedCredential}} which contains an
+        {{AuthenticatorAttestationResponse}} object. Implementation details are found in [#createCredential].
+
+    :   <dfn method>getAssertion(assertionChallenge, options)</dfn>
+    ::  This method is used to discover and use an existing scoped credential, with the user's consent. Implementation details
+        are found in [[#getAssertion]].
+</dl>
 
 
 ### Create a new credential - ScopedCredential::create() method ### {#createCredential}
@@ -425,11 +462,11 @@ When this method is invoked, the user agent MUST execute the following algorithm
     |adjustedTimeout| to this adjusted value. If the {{ScopedCredentialOptions/timeout}} member of {{options}} is [=present|not
     present=], then set |adjustedTimeout| to a platform-specific default.
 
-1. Let |global| be this {{WebAuthentication}} object's [=global object|environment settings object's global object=].
+1. Let |global| be the {{ScopedCredential}} object's [=global object|environment settings object's global object=].
 
-1. Let |callerOrigin| be the [=origin=] specified by this {{WebAuthentication}} object's [=relevant settings object=]. If 
-    |callerOrigin| is an [=opaque origin=], return [=a promise rejected with=] a {{DOMException}} whose name is
-    "{{NotAllowedError}}", and terminate this algorithm.
+1. Let |callerOrigin| be the [=environment settings object/origin=] specified by this {{ScopedCredential}} object's
+    [=relevant settings object=]. If |callerOrigin| is an [=opaque origin=], return [=a promise rejected with=] a
+    {{DOMException}} whose name is "{{NotAllowedError}}", and terminate this algorithm.
 
 1. If the {{ScopedCredentialOptions/rpId}} member of {{options}} is [=present|not present=], then set |rpId| to |callerOrigin|.
     Otherwise:
@@ -549,9 +586,9 @@ authorizing an authenticator.
 </div>
 
 
-### Use an existing credential - getAssertion() method ### {#getAssertion}
+### Use an existing credential - ScopedCredential::getAssertion() method ### {#getAssertion}
 
-<div link-for-hint="WebAuthentication/getAssertion(assertionChallenge, options)">
+<div link-for-hint="ScopedCredential/getAssertion(assertionChallenge, options)">
 This method is used to discover and use an existing scoped credential, with the user's consent. The script optionally specifies
 some criteria to indicate what credentials are acceptable to it. The user agent and/or platform locates credentials matching the
 specified criteria, and guides the user to pick one that the script should be allowed to use. The user may choose not to provide
@@ -560,7 +597,7 @@ a credential even if one is present, for example to maintain privacy.
 <div class="note">
 This method takes the following parameters:
 
-<ul dfn-type="argument" dfn-for="WebAuthentication/getAssertion(assertionChallenge, options)">
+<ul dfn-type="argument" dfn-for="ScopedCredential/getAssertion(assertionChallenge, options)">
 - The <dfn>assertionChallenge</dfn> parameter contains a challenge that the selected authenticator is expected to sign to
     produce the assertion.
 
@@ -577,9 +614,10 @@ When this method is invoked, the user agent MUST execute the following algorithm
     this adjusted value. If the {{AssertionOptions/timeout}} member of {{options}} is [=present|not present=], then set
     |adjustedTimeout| to a platform-specific default.
 
-1. Let |global| be this {{WebAuthentication}} object's [=global object|environment settings object's global object=].
+1. Let |global| be the {{ScopedCredential}}'s [=relevant settings object=]'s
+    [=global object|environment settings object's global object=].
 
-1. Let |callerOrigin| be the [=origin=] specified by this {{WebAuthentication}} object's [=relevant settings object=]. If 
+1. Let |callerOrigin| be the [=current settings object=]'s [=environment settings object/origin=]. If 
     |callerOrigin| is an [=opaque origin=], return [=a promise rejected with=] a {{DOMException}} whose name is
     "{{NotAllowedError}}", and terminate this algorithm.
 
@@ -837,8 +875,7 @@ evidence of user consent to a specific transaction. The structure of these signa
         complete. This is treated as a hint, and may be overridden by the platform.
 
     - The <dfn>rpId</dfn> parameter explicitly specifies the RP ID that the credential should be associated with. If it is
-        omitted, the RP ID will be set to the [=origin=] specified by the {{WebAuthentication}} object's [=relevant settings
-        object=].
+        omitted, the RP ID will be set to the [=environment settings object/origin=] specified by the [=current settings object=].
 
     - The <dfn>excludeList</dfn> parameter is intended for use by [=[RPS]=] that wish to limit the creation of multiple
         credentials for the same account on a single authenticator. The platform is requested to return an error if the new
@@ -907,7 +944,7 @@ use a [=roaming authenticator=] which was originally registered with the [RP] us
         call to complete. This is treated as a hint, and may be overridden by the platform.
 
     - The optional <dfn>rpId</dfn> parameter specifies the rpId claimed by the caller. If it is omitted, it will be assumed to
-        be equal to the [=origin=] specified by the {{WebAuthentication}} object's [=relevant settings object=].
+        be equal to the [=environment settings object/origin=] specified by the [=current settings object=].
 
     - The optional <dfn>allowList</dfn> member contains a list of credentials acceptable to the caller, in order of the
         caller's preference.
@@ -998,60 +1035,6 @@ following Web IDL.
 
     Currently one credential type is defined, namely "<dfn>scoped</dfn>".
 </div>
-
-
-### <dfn interface>ScopedCredential</dfn> Interface ### {#credential-identifier}
-
-The {{ScopedCredential}} interface inherits from {{Credential}} [[!CREDENTIAL-MANAGEMENT-1]], and contains the attributes that
-are returned to the caller when a new credential is created, or a new assertion is requested.
-
-<xmp class="idl">
-    [SecureContext]
-    interface ScopedCredential : Credential {
-        readonly attribute ArrayBuffer           rawID;
-        readonly attribute AuthenticatorResponse response;
-
-        static Promise<ScopedCredential> create(
-            Account                              accountInformation,
-            sequence<ScopedCredentialParameters> cryptoParameters,
-            BufferSource                         attestationChallenge,
-            optional ScopedCredentialOptions     options
-        );
-    };
-</xmp>
-<dl dfn-type="attribute" dfn-for="ScopedCredential">
-    :   {{Credential/id}}
-    ::  {{ScopedCredential}} overrides {{Credential}}'s getter for this attribute, returning the [=base64url encoding=] of the
-        data contained in the object's {{ScopedCredential/[[identifier]]}} slot.
-
-    :   {{ScopedCredential/rawID}}
-    ::  This attribute returns the {{ArrayBuffer}} contained in the {{ScopedCredential/[[identifier]]}} internal slot.
-
-    :   <dfn>response</dfn>
-    ::  This attribute contains the [=authenticator=]'s response to the client's assertion or attestation request. If the
-        {{ScopedCredential}} is created in response to {{ScopedCredential/create()}}, this attribute's
-        value will be an {{AuthenticatorAttestationResponse}}, otherwise, the {{ScopedCredential}} was created in response to
-        {{WebAuthentication/getAssertion()}}, and this attribute's value will be an {{AuthenticatorAssertionResponse}}.
-
-    :   <dfn>\[[type]]</dfn>
-    ::  The {{ScopedCredential}} [=interface object=]'s {{Credential/[[type]]}} slot's value is the string "`scoped`".
-
-        Note: This is reflected via the {{Credential/type}} attribute getter inherited from {{Credential}}.
-
-    :   <dfn>\[[identifier]]</dfn>
-    ::  This internal slot contains an identifier for the credential, chosen by the platform with help from the authenticator.
-        This identifier is used to look up credentials for use, and is therefore expected to be globally unique with high
-        probability across all credentials of the same type, across all authenticators. This API does not constrain the format
-        or length of this identifier, except that it must be sufficient for the platform to uniquely select a key. For example,
-        an authenticator without on-board storage may create identifiers that consist of the key material wrapped with a key
-        that is burned into the authenticator.
-
-    :   <dfn method>create(accountInformation, cryptoParameters, attestationChallenge, options)</dfn>
-    ::  This methid allows a developer to request the User Agent to create a new credential, and persist it to the underlying
-        platform, which may involve data storage managed by the browser or the OS. The user agent will prompt the user to
-        approve this operation. On success, the promise will be resolved with a {{ScopedCredential}} which contains an
-        {{AuthenticatorAttestationResponse}} object. Implementation details are found in [#createCredential].
-</dl>
 
 
 ### Credential Descriptor (dictionary <dfn dictionary>ScopedCredentialDescriptor</dfn>) ### {#credential-dictionary}
@@ -2748,9 +2731,7 @@ This is the first-time flow, in which a new credential is created and registered
 The sample code for generating and registering a new key follows:
 
 <pre class="example" highlight="js">
-    var webauthnAPI = navigator.authentication;
-
-    if (!webauthnAPI || !ScopedCredential) { /* Platform not capable. Handle error. */ }
+    if (!ScopedCredential) { /* Platform not capable. Handle error. */ }
 
     var userAccountInformation = {
         rpDisplayName: "Acme",
@@ -2831,9 +2812,7 @@ If the [RP] script does not have any hints available (e.g., from locally stored 
 then the sample code for performing such an authentication might look like this:
 
 <pre class="example" highlight="js">
-    var webauthnAPI = navigator.authentication;
-
-    if (!webauthnAPI) { /* Platform not capable. Handle error. */ }
+    if (!ScopedCredential) { /* Platform not capable. Handle error. */ }
 
     var challenge = new TextEncoder().encode("climb a mountain");
     var options = {
@@ -2841,7 +2820,7 @@ then the sample code for performing such an authentication might look like this:
                     allowList: [{ type: "scoped" }]
                   };
 
-    webauthnAPI.getAssertion(challenge, options)
+    ScopedCredential.getAssertion(challenge, options)
         .then(function (assertion) {
         // Send assertion to server for verification
     }).catch(function (err) {
@@ -2854,9 +2833,7 @@ performing such an authentication might look like the following. Note that this 
 extension for transaction authorization.
 
 <pre class="example" highlight="js">
-    var webauthnAPI = navigator.authentication;
-
-    if (!webauthnAPI) { /* Platform not capable. Handle error. */ }
+    if (!ScopedCredential) { /* Platform not capable. Handle error. */ }
 
     var encoder = new TextEncoder();
     var challenge = encoder.encode("climb a mountain");
@@ -2876,7 +2853,7 @@ extension for transaction authorization.
                        "Wave your hands in the air like you just don't care" };
                   };
 
-    webauthnAPI.getAssertion(challenge, options)
+    ScopedCredential.getAssertion(challenge, options)
         .then(function (assertion) {
         // Send assertion to server for verification
     }).catch(function (err) {
