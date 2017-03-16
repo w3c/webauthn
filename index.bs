@@ -372,7 +372,7 @@ The Web Authentication API is defined by the union of the Web IDL fragments pres
 <xmp class="idl">
     [SecureContext]
     interface WebAuthentication {
-        Promise<AuthenticatorAttestationResponse> makeCredential(
+        Promise<ScopedCredential> makeCredential(
             Account                              accountInformation,
             sequence<ScopedCredentialParameters> cryptoParameters,
             BufferSource                         attestationChallenge,
@@ -394,8 +394,8 @@ This interface has two methods, which are described in the following subsections
 <div link-for-hint="WebAuthentication/makeCredential(accountInformation, cryptoParameters, attestationChallenge, options)">
 With this method, a script can request the User Agent to create a new credential of a given type and persist it to the
 underlying platform, which may involve data storage managed by the browser or the OS. The user agent will prompt the user to
-approve this operation. On success, the promise will be resolved with a {{AuthenticatorAttestationResponse}} object describing the newly
-created credential.
+approve this operation. On success, the promise will be resolved with a {{ScopedCredential}} which contains an
+{{AuthenticatorAttestationResponse}} object.
 
 <div class="note">
 This method takes the following parameters:
@@ -530,16 +530,24 @@ When this method is invoked, the user agent MUST execute the following algorithm
 
     <dt>If any |authenticator| indicates success,</dt>
     <dd>
-        1. [=set/Remove=] |authenticator| from |issuedRequests|.
-        2. Using |global|, let |value| be a new {{AuthenticatorAttestationResponse}} object whose fields are:
-            : {{AuthenticatorResponse/clientDataJSON}}
-            :: A new {{ArrayBuffer}} containing the bytes of |clientDataJSON|.
-            : {{AuthenticatorAttestationResponse/attestationObject}}
-            :: A new {{ArrayBuffer}} containing the bytes of the value returned from the successful
-                [=authenticatorMakeCredential=] operation
-        3. [=set/For each=] remaining |authenticator| in |issuedRequests| invoke the [=authenticatorCancel=] operation on
+        1.  [=set/Remove=] |authenticator| from |issuedRequests|.
+        2.  Let |attestationObject| be a new {{ArrayBuffer}} containing the bytes of the value returned from the successful
+            [=authenticatorMakeCredential=] operation.
+        3.  Let |id| be the credential identifier contained in |attestationObject|.
+        4.  Using |global|, let |value| be a new {{ScopedCredential}} object whose fields are:
+            :   {{ScopedCredential/id}}
+            ::  |id|
+            :   {{ScopedCredential/type}}
+            ::  "{{ScopedCred}}"
+            :   {{ScopedCredential/response}}
+            ::  A new {{AuthenticatorAttestationResponse}} object whose fields are:
+                :   {{AuthenticatorResponse/clientDataJSON}}
+                ::  A new {{ArrayBuffer}} containing the bytes of |clientDataJSON|.
+                :   {{AuthenticatorAttestationResponse/attestationObject}}
+                ::  |attestationObject|
+        5. [=set/For each=] remaining |authenticator| in |issuedRequests| invoke the [=authenticatorCancel=] operation on
             |authenticator| and [=set/remove=] it from |issuedRequests|.
-        4. [=Resolve=] |promise| with |value| and terminate this algorithm.
+        6. [=Resolve=] |promise| with |value| and terminate this algorithm.
     </dd>
     </dl>
 
@@ -1008,14 +1016,14 @@ following Web IDL.
 <pre class="idl">
     [SecureContext]
     interface ScopedCredential {
-        readonly attribute ScopedCredentialType           type;
-        readonly attribute ArrayBuffer                    id;
-        readonly attribute AuthenticatorAssertionResponse response;
+        readonly attribute ScopedCredentialType  type;
+        readonly attribute ArrayBuffer           id;
+        readonly attribute AuthenticatorResponse response;
     };
 </pre>
 
-This interface contains the attributes that are returned to the caller when a new credential is created, and can be used later
-by the caller to select a credential for use.
+This interface contains the attributes that are returned to the caller when a new credential is created, or a new assertion
+is requested.
 
 <div dfn-type="attribute" dfn-for="ScopedCredential">
     The <dfn>type</dfn> attribute contains a value of type {{ScopedCredentialType}}, indicating the specification and version
@@ -1028,7 +1036,10 @@ by the caller to select a credential for use.
     authenticator without on-board storage may create identifiers that consist of the key material wrapped with a key that is
     burned into the authenticator.
 
-    The <dfn>response</dfn> attribute contains the [=authenticator=]'s response to the client's assertion request.
+    The <dfn>response</dfn> attribute contains the [=authenticator=]'s response to the client's assertion or attestation
+    request. If the {{ScopedCredential}} is created in response to {{WebAuthentication/makeCredential()}}, this attribute's
+    value will be an {{AuthenticatorAttestationResponse}}, otherwise, the {{ScopedCredential}} was created in response to
+    {{WebAuthentication/getAssertion()}}, and this attribute's value will be an {{AuthenticatorAssertionResponse}}.
 </div>
 
 
