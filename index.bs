@@ -374,10 +374,7 @@ are returned to the caller when a new credential is created, or a new assertion 
             optional ScopedCredentialOptions     options
         );
 
-        static Promise<ScopedCredential> getAssertion(
-            BufferSource                    assertionChallenge,
-            optional AssertionOptions       options
-        );
+        static Promise<ScopedCredential> getAssertion(ScopedCredentialRequestOptions options);
     };
 </xmp>
 <dl dfn-type="attribute" dfn-for="ScopedCredential">
@@ -413,7 +410,7 @@ are returned to the caller when a new credential is created, or a new assertion 
         approve this operation. On success, the promise will be resolved with a {{ScopedCredential}} which contains an
         {{AuthenticatorAttestationResponse}} object. Implementation details are found in [#createCredential].
 
-    :   <dfn method>getAssertion(assertionChallenge, options)</dfn>
+    :   <dfn method>getAssertion(data)</dfn>
     ::  This method is used to discover and use an existing scoped credential, with the user's consent. Implementation details
         are found in [[#getAssertion]].
 </dl>
@@ -437,9 +434,9 @@ This method takes the following parameters:
     authenticator already has a credential for the specified value of {{Account/id}} in {{accountInformation}}, and if this
     credential is not listed in the {{ScopedCredentialOptions/excludeList}} member of {{options}}, then after successful
     execution of this method:
-    - Any calls to {{getAssertion()}} that do not specify {{AssertionOptions/allowList}} will not result in the older
+    - Any calls to {{getAssertion()}} that do not specify {{ScopedCredentialRequestOptions/allowList}} will not result in the older
         credential being offered to the user.
-    - Any calls to {{getAssertion()}} that specify the older credential in the {{AssertionOptions/allowList}} may also not
+    - Any calls to {{getAssertion()}} that specify the older credential in the {{ScopedCredentialRequestOptions/allowList}} may also not
         result in it being offered to the user.
 
 - The <dfn>cryptoParameters</dfn> parameter supplies information about the desired properties of the credential to be created.
@@ -505,7 +502,7 @@ When this method is invoked, the user agent MUST execute the following algorithm
     1. [=list/Append=] |result| to |clientExtensions|.
 
 1. Let |clientData| be a new {{ClientData}} instance whose fields are:
-    : {{challenge}}
+    : {{ClientData/challenge}}
     :: The [=base64url encoding=] of {{attestationChallenge}}
     : {{origin}}
     :: The [=unicode serialization of an origin|unicode serialization=] of |rpId|
@@ -588,7 +585,7 @@ authorizing an authenticator.
 
 ### Use an existing credential - ScopedCredential::getAssertion() method ### {#getAssertion}
 
-<div link-for-hint="ScopedCredential/getAssertion(assertionChallenge, options)">
+<div link-for-hint="ScopedCredential/getAssertion(options)">
 This method is used to discover and use an existing scoped credential, with the user's consent. The script optionally specifies
 some criteria to indicate what credentials are acceptable to it. The user agent and/or platform locates credentials matching the
 specified criteria, and guides the user to pick one that the script should be allowed to use. The user may choose not to provide
@@ -597,21 +594,18 @@ a credential even if one is present, for example to maintain privacy.
 <div class="note">
 This method takes the following parameters:
 
-<ul dfn-type="argument" dfn-for="ScopedCredential/getAssertion(assertionChallenge, options)">
-- The <dfn>assertionChallenge</dfn> parameter contains a challenge that the selected authenticator is expected to sign to
-    produce the assertion.
-
-- The optional <dfn>options</dfn> parameter specifies additional options, as described in
-    [[#assertion-options]].
+<ul dfn-type="argument" dfn-for="ScopedCredential/getAssertion(options)">
+- The <dfn>options</dfn> parameter contains a challenge that the selected authenticator is expected to sign to
+    produce the assertion, and specifies additional options as described in [[#assertion-parameters]].
 
 </ul>
 </div>
 
 When this method is invoked, the user agent MUST execute the following algorithm:
 
-1. If the {{AssertionOptions/timeout}} member of {{options}} is [=present=], check if its value lies within a reasonable range
+1. If the {{ScopedCredentialRequestOptions/timeout}} member of {{options}} is [=present=], check if its value lies within a reasonable range
     as defined by the platform and if not, correct it to the closest value lying within that range. Set |adjustedTimeout| to
-    this adjusted value. If the {{AssertionOptions/timeout}} member of {{options}} is [=present|not present=], then set
+    this adjusted value. If the {{ScopedCredentialRequestOptions/timeout}} member of {{options}} is [=present|not present=], then set
     |adjustedTimeout| to a platform-specific default.
 
 1. Let |global| be the {{ScopedCredential}}'s [=relevant settings object=]'s
@@ -621,28 +615,28 @@ When this method is invoked, the user agent MUST execute the following algorithm
     |callerOrigin| is an [=opaque origin=], return [=a promise rejected with=] a {{DOMException}} whose name is
     "{{NotAllowedError}}", and terminate this algorithm.
 
-1. If the {{AssertionOptions/rpId}} member of {{options}} is [=present|not present=], then set |rpId| to |callerOrigin|.
+1. If the {{ScopedCredentialRequestOptions/rpId}} member of {{options}} is [=present|not present=], then set |rpId| to |callerOrigin|.
     Otherwise:
     1. Let |effectiveDomain| be the |callerOrigin|'s [=effective domain=].
     1. If |effectiveDomain| is null, then return [=a promise rejected with=] a {{DOMException}} whose name is 
         "{{SecurityError}}" and terminate this algorithm.
-    1. If {{AssertionOptions/rpId}} [=is not a registrable domain suffix of and is not equal to=]
+    1. If {{ScopedCredentialRequestOptions/rpId}} [=is not a registrable domain suffix of and is not equal to=]
         |effectiveDomain|, return [=a promise rejected with=] a {{DOMException}} whose name is "{{SecurityError}}", and
         terminate this algorithm.
-    1. Set |rpId| to the {{AssertionOptions/rpId}}.
+    1. Set |rpId| to the {{ScopedCredentialRequestOptions/rpId}}.
 
 1. Let |clientExtensions| be a new [=list=].
 
-1. If the {{AssertionOptions/extensions}} member of {{options}} is [=present=], then [=map/for each=]
-    |extension| → |argument| of <code>{{options}}.{{AssertionOptions/extensions}}</code>:
+1. If the {{ScopedCredentialRequestOptions/extensions}} member of {{options}} is [=present=], then [=map/for each=]
+    |extension| → |argument| of <code>{{options}}.{{ScopedCredentialRequestOptions/extensions}}</code>:
     1. If |extension| is not supported by this client platform, then [=continue=].
     1. Otherwise, let |result| be the result of running |extension|'s [=client processing=] algorithm on |argument|. If the
         algorithm returned an error, [=continue=].
     1. [=list/Append=] |result| to |clientExtensions|.
 
 1. Let |clientData| be a new {{ClientData}} instance whose fields are:
-    : {{challenge}}
-    :: The [=base64url encoding=] of {{assertionChallenge}}
+    : {{ClientData/challenge}}
+    :: The [=base64url encoding=] of <code>{{options}}.{{ScopedCredentialRequestOptions/challenge}}</code>
     : {{origin}}
     :: The [=unicode serialization of an origin|unicode serialization=] of |rpId|
     : {{hashAlg}}
@@ -663,11 +657,11 @@ When this method is invoked, the user agent MUST execute the following algorithm
 
     1. Let |credentialList| be a new [=list=].
 
-    1. If <code>{{options}}.{{AssertionOptions/allowList}}</code> [=list/is not empty=], execute a 
+    1. If <code>{{options}}.{{ScopedCredentialRequestOptions/allowList}}</code> [=list/is not empty=], execute a 
         platform-specific procedure to determine which, if any, credentials in
-        <code>{{options}}.{{AssertionOptions/allowList}}</code> are present on this |authenticator| by matching with 
-        <code>{{options}}.{{AssertionOptions/allowList}}.{{ScopedCredentialDescriptor/id}}</code> and 
-        <code>{{options}}.{{AssertionOptions/allowList}}.{{ScopedCredentialDescriptor/type}}</code>, and set |credentialList| to
+        <code>{{options}}.{{ScopedCredentialRequestOptions/allowList}}</code> are present on this |authenticator| by matching with 
+        <code>{{options}}.{{ScopedCredentialRequestOptions/allowList}}.{{ScopedCredentialDescriptor/id}}</code> and 
+        <code>{{options}}.{{ScopedCredentialRequestOptions/allowList}}.{{ScopedCredentialDescriptor/type}}</code>, and set |credentialList| to
         this filtered list.
     
     1. If |credentialList| [=list/is empty=] then [=continue=].
@@ -926,10 +920,11 @@ a minimum of friction, e.g., the user will not have to dig around in their pocke
 example of the latter, when the user is accessing the [RP] from a given client for the first time, they may be required to
 use a [=roaming authenticator=] which was originally registered with the [RP] using a different client.
 
-## Additional options for Assertion Generation (dictionary <dfn dictionary>AssertionOptions</dfn>) ## {#assertion-options}
+## Parameters for Assertion Generation (dictionary <dfn dictionary>ScopedCredentialRequestOptions</dfn>) ## {#assertion-parameters}
 
 <xmp class="idl">
-    dictionary AssertionOptions {
+    dictionary ScopedCredentialRequestOptions {
+        required BufferSource                challenge;
         unsigned long                        timeout;
         USVString                            rpId;
         sequence<ScopedCredentialDescriptor> allowList = [];
@@ -937,8 +932,12 @@ use a [=roaming authenticator=] which was originally registered with the [RP] us
     };
 </xmp>
 
-<div dfn-type="dict-member" dfn-for="AssertionOptions">
-    This dictionary is used to supply additional options when generating an assertion. All these parameters are optional.
+<div dfn-type="dict-member" dfn-for="ScopedCredentialRequestOptions">
+    This dictionary is used to supply additional options when generating an assertion. All these parameters are optional, except
+    {{ScopedCredentialRequestOptions/challenge}}, which is required:
+    
+    - The <dfn>challenge</dfn> parameter specifies a challenge that the selected authenticator is expected to sign to produce
+        the assertion.
 
     - The optional <dfn>timeout</dfn> parameter specifies a time, in milliseconds, that the caller is willing to wait for the
         call to complete. This is treated as a hint, and may be overridden by the platform.
@@ -2387,7 +2386,7 @@ error.
 :: A single [=UTF-8 encoded=] string specifying a FIDO |appId|.
 
 : Client processing
-:: If {{AssertionOptions/rpId}} is present, reject promise with a DOMException
+:: If {{ScopedCredentialRequestOptions/rpId}} is present, reject promise with a DOMException
     whose name is "{{NotAllowedError}}", and terminate this algorithm.
     Replace the calculation of |rpId| in Step 3 of [[#getAssertion]] with the
     following procedure:  The client uses the value of |fido_appid| to perform
