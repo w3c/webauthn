@@ -311,6 +311,11 @@ The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "S
     that this does not constitute [=user verification=] because [=TUP=], by definition, is not capable of [=biometric
     recognition=], nor does it involve the presentation of a shared secret such as a password or PIN.
 
+: <dfn>Test of User Identity</dfn> 
+: <dfn>TUI</dfn> 
+:: A [=test of user identity=] is a technical process where a user's identity is verified by the authenticator through 
+    performing the <a>user verification</a> process. 
+
 : <dfn>User Consent</dfn>
 :: User consent means the user agrees with what they are being asked, i.e., it encompasses reading and understanding prompts.
     An [=authorization gesture=] is a [=ceremony=] component often employed to indicate [=user consent=].
@@ -804,30 +809,30 @@ authorizing an authenticator with which to complete the operation.
 <div dfn-type="dict-member" dfn-for="ScopedCredentialOptions">
     This dictionary is used to supply additional options when creating a new credential. All these parameters are optional.
 
-    - The <dfn>timeout</dfn> parameter specifies a time, in milliseconds, that the caller is willing to wait for the call to
-        complete. This is treated as a hint, and may be overridden by the platform.
+    - The optional <dfn>timeout</dfn> parameter specifies a time, in milliseconds, that the caller is willing to wait for the call
+        to complete. This is treated as a hint, and may be overridden by the platform.
 
-    - The <dfn>rpId</dfn> parameter explicitly specifies the RP ID that the credential should be associated with. If it is
-        omitted, the RP ID will be set to the [=origin=] specified by the {{WebAuthentication}} object's [=relevant settings
+    - The optional <dfn>rpId</dfn> parameter explicitly specifies the RP ID that the credential should be associated with. If it 
+        is omitted, the RP ID will be set to the [=origin=] specified by the {{WebAuthentication}} object's [=relevant settings
         object=].
 
-    - The <dfn>excludeList</dfn> parameter is intended for use by [=[RPS]=] that wish to limit the creation of multiple
+    - The optional <dfn>excludeList</dfn> parameter is intended for use by [=[RPS]=] that wish to limit the creation of multiple
         credentials for the same account on a single authenticator. The platform is requested to return an error if the new
         credential would be created on an authenticator that also contains one of the credentials enumerated in this parameter.
 
-    - The <dfn>attachment</dfn> parameter contains authenticator attachment descriptions, which are used as an additional
+    - The optional <dfn>attachment</dfn> parameter contains authenticator attachment descriptions, which are used as an additional
         constraint on which authenticators are eligible to participate in a [[#makeCredential]] or [[#getAssertion]] operation.
         See [[#attachment]] for a description of the attachment values and their meanings.
 
-    - The <dfn>requireUserVerification</dfn> parameter is intended for use by <a>[RPS]</a> that want authenticators to perform the 
-        <a>user verification</a> process during the [[#makeCredential]] operation. A gesture that can be 
-        performed by anyone in posession of an authenticator is not considered a gesture that verifies the user, such as 
-        plugging in a usb device, clicking a button on the device, etc. 
+    - The optional <dfn>requireUserVerification</dfn> parameter can be used as an additional authenticator selection criteria. 
+        If this parameter is set to <i>true</i>, only  authenticators capable of user verification would participate in the 
+        [[#makeCredential]] operation, thereby ensuring the authenticator will perform the user verification process during 
+        the [[#makeCredential]] operation and future [[#getAssertion]] operation when it is requested to verify the credential. 
 
-    - The <dfn>extensions</dfn> parameter contains additional parameters requesting additional processing by the client and
-        authenticator. For example, the caller may request that only authenticators with certain capabilities be used to create
-        the credential, or that particular information be returned in the [=attestation object=]. The caller may also specify
-        an additional message that they would like the authenticator to display to the user. Extensions are defined in
+    - The optional <dfn>extensions</dfn> parameter contains additional parameters requesting additional processing by the client 
+        and authenticator. For example, the caller may request that only authenticators with certain capabilities be used to 
+        create the credential, or that particular information be returned in the [=attestation object=]. The caller may also 
+        specify an additional message that they would like the authenticator to display to the user. Extensions are defined in
         [[#extensions]].
 
 </div>
@@ -902,7 +907,6 @@ user consent to a specific transaction. The structure of these signatures is def
         unsigned long                        timeout;
         USVString                            rpId;
         sequence<ScopedCredentialDescriptor> allowList = [];
-        boolean                              verificationGesture;
         AuthenticationExtensions             extensions;
     };
 </xmp>
@@ -918,11 +922,6 @@ user consent to a specific transaction. The structure of these signatures is def
 
     - The optional <dfn>allowList</dfn> member contains a list of credentials acceptable to the caller, in order of the
         caller's preference.
-
-    - The optional <dfn>verificationGesture</dfn> parameter is intended for use by <a>[RPS]</a> that want authenticators to perform the 
-        <a>user verification</a> process during the [[#getAssertion]] operation. A gesture that can be 
-        performed by anyone in posession of an authenticator is not considered a gesture that verifies the user, such as 
-        plugging in a usb device, clicking a button on the device, etc. 
 
     - The optional <dfn>extensions</dfn> parameter contains additional parameters requesting additional processing by the client
         and authenticator. For example, if transaction confirmation is sought from the user, then the prompt string would be
@@ -1190,7 +1189,8 @@ The [=authenticator data=] structure is a byte array of 37 bytes or more, as fol
         <td>
             Flags (bit 0 is the least significant bit):
             - Bit 0: [=Test of User Presence=] (`TUP`) result.
-            - Bits 1-5: Reserved for future use (`RFU`).
+            - Bit 1: [=Test of User Identity=] (`TUI`) result.
+            - Bits 2-5: Reserved for future use (`RFU`).
             - Bit 6: [=Attestation data=] included (`AT`). Indicates whether the authenticator added [=attestation data=].
             - Bit 7: Extension data included (`ED`). Indicates if the [=authenticator data=] has extensions.
         </td>
@@ -1221,8 +1221,10 @@ does not change between operations but instead remains the same for the lifetime
 by the authenticator during the [=authenticatorGetAssertion=] operation, by verifying that the RP ID associated with the
 requested credential exactly matches the RP ID supplied by the client.
 
-The `TUP` flag SHALL be set if and only if the authenticator detected a user through an authenticator specific gesture. The
+The `TUP` flag SHALL be set if and only if the authenticator detected a user through an authenticator specific gesture. The 
+`TUI` flag SHALL be set if and only if the <a>user verification</a> process has been performed by the authenticator. The
 `RFU` bits in the flags byte SHALL be set to zero.
+
 
 For attestation signatures, the authenticator MUST set the AT flag and include the [=attestation data=]. For authentication
 signatures, the AT flag MUST NOT be set and the [=attestation data=] MUST NOT be included.
@@ -1260,11 +1262,9 @@ input parameters:
 - The [=hash of the serialized client data=], provided by the client.
 - The {{Account}} information provided by the [RP].
 - The {{ScopedCredentialType}} and cryptographic parameters requested by the [RP], with the cryptographic algorithms normalized
-    as per the procedure in [[WebCryptoAPI#algorithm-normalization-normalize-an-algorithm]]
+    as per the procedure in [[WebCryptoAPI#algorithm-normalization-normalize-an-algorithm]].
 - A list of {{ScopedCredential}} objects provided by the [RP] with the intention that, if any of these are known to the
     authenticator, it should not create a new credential. 
-- A boolean called {{ScopedCredentialOptions/verificationGesture}} provided by the [RP] with the intention that, if the parameter 
-    is set to true, the authenticator SHOULD perform a user verification process during the operation.
 - Extension data created by the client based on the extensions requested by the [RP].
 
 When this operation is invoked, the authenticator must perform the following procedure:
@@ -1277,9 +1277,6 @@ When this operation is invoked, the authenticator must perform the following pro
 - Prompt the user for consent to create a new credential. The prompt for obtaining this consent is shown by the authenticator
     if it has its own output capability, or by the user agent otherwise. If the user denies consent, return an error code
     equivalent to NotAllowedError and terminate the operation.
-- If the {{ScopedCredentialOptions/verificationGesture}} parameter is set to true, prompt the user for performing an 
-    <a>authorization gesture</a> to verify the user. If this prompt is shown with sufficient explanation that the success of 
-    this verification gesture will generate a new credential, the previous prompt for user consent may not be needed.  
 - Once user consent has been obtained, generate a new credential object:
     - Generate a set of cryptographic keys using the most preferred combination of {{ScopedCredentialType}} and cryptographic
         parameters supported by this authenticator.
@@ -1305,8 +1302,6 @@ input parameters:
 - The caller's RP ID, as determined by the user agent and the client.
 - The [=hash of the serialized client data=], provided by the client.
 - A list of credentials acceptable to the [RP] (possibly filtered by the client).
-- A boolean called {{AssertionOptions/verificationGesture}} provided by the [RP] with the intention that, if the parameter 
-    is set to true, the authenticator SHOULD perform a user verification process during the operation.
 - Extension data created by the client based on the extensions requested by the [RP].
 
 When this method is invoked, the authenticator must perform the following procedure:
