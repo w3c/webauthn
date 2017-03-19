@@ -240,9 +240,7 @@ The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "S
     [=authentication=]. All authenticators refered to this document MUST be capable of the basic operations listed above. 
     However, certain additive capabilites are only available among certain authenticators, such as the capability to 
     store <a>credential private keys</a>. When an authenticator is said to be "capable of" performing a task, it means that
-    the authenticator can perform the task when requested. It doesn't mean the authenticator is able to perform the tasks
-    by itself. For example, an authenticator relying on its associated platform's ability to store keys is still considered 
-    an authenticators capable of private key storage.
+    the authenticator can perform the task when requested. 
 
 : <dfn>Authorization Gesture</dfn>
 :: An [=authorization gesture=] is a physical interaction performed by a user with an authenticator as part of a [=ceremony=], 
@@ -313,8 +311,8 @@ The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "S
 
 : <dfn>Resident Key</dfn>
 : <dfn>RK</dfn>
-:: A [=resident key=] is a flag representing whether the authenticator is capable of storing <a>credential private key</a> to 
-    generate the [RP]-specific <a>credential key pair</a>. 
+:: A [=resident key=] is a <a>credential private key</a> that can be found and used by the authenticator based on only the 
+    associated <a>RP ID</a>. 
 
 : <dfn>User Consent</dfn>
 :: User consent means the user agrees with what they are being asked, i.e., it encompasses reading and understanding prompts.
@@ -503,10 +501,9 @@ When this method is invoked, the user agent MUST execute the following algorithm
 
 1. Let |issuedRequests| and |currentlyAvailableAuthenticators| be new [=ordered sets=].
 
-1. For each |authenticator| currently available on this platform, if
-    <code>{{options}}.{{ScopedCredentialOptions/attachment}}</code> is not [=present=] or its value matches |authenticator|'s
-    attachment modality, and <code>{{options}}.{{ScopedCredentialOptions/keystorage}}</code> is not [=present=] or its value 
-    matches |authenticator|'s key storage modality, [=set/append=] |authenticator| to |currentlyAvailableAuthenticators|.
+1. For each |authenticator| currently available on this platform:
+    1. if <code>{{options}}.{{ScopedCredentialOptions/attachment}}</code> is not [=present=] or its value matches |authenticator|'s attachment modality, continue to next step. 
+    1. if <code>{{options}}.{{ScopedCredentialOptions/requireResidentKey}}</code> is not [=present=] or its value matches |authenticator|'s resident key capability, [=set/append=] |authenticator| to |currentlyAvailableAuthenticators|.
 
 1. [=set/For each=] |authenticator| in |currentlyAvailableAuthenticators|:
     1. Let |excludeList| be a new [=list=].
@@ -515,8 +512,7 @@ When this method is invoked, the user agent MUST execute the following algorithm
             mentioned in <code>|C|.{{transports}}</code>, the client MAY [=continue=].
         1. Otherwise, [=list/Append=] |C| to |excludeList|.
     1. [=In parallel=], invoke the <a>authenticatorMakeCredential</a> operation on |authenticator| with |rpId|,
-        |clientDataHash|, {{accountInformation}}, |normalizedParameters|, |excludeList|, |keyStorage| and |clientExtensions| 
-        as parameters.
+        |clientDataHash|, {{accountInformation}}, |normalizedParameters|, {{excludeList}}, and |clientExtensions| as parameters.
     1. [=set/Append=] |authenticator| to |issuedRequests|.
 
 1. Let |promise| be [=a new promise=]. Return |promise| and start a timer for |adjustedTimeout| milliseconds. Then execute the
@@ -797,7 +793,7 @@ authorizing an authenticator with which to complete the operation.
         USVString                            rpId;
         sequence<ScopedCredentialDescriptor> excludeList = [];
         Attachment                           attachment;
-        KeyStorage                           keyStorage;
+        boolean                              requireResidentKey;
         AuthenticationExtensions             extensions;
     };
 </xmp>
@@ -814,12 +810,12 @@ authorizing an authenticator with which to complete the operation.
         object=].
 
     - The <dfn>attachment</dfn> parameter contains authenticator attachment descriptions, which are used as an additional
-        constraint on which authenticators are eligible to participate in a [[#makeCredential]] operation.
+        constraint on which authenticators are eligible to participate in a [[#makeCredential]] or [[#getAssertion]] operation.
         See [[#attachment]] for a description of the attachment values and their meanings.
 
-    - The <dfn>keyStorage</dfn> parameter contains description of where the <a>credential private key</a> should be stored. 
-        Similiar to {{attachment}}, the keyStorage parameter is an additional constraint on which authenticators
-        are eligible for the [[#makeCredential]] operation. See [[#keyStorage]] for more description. 
+    - The <dfn>requireResidentKey</dfn> parameter describes the [=[RPS]=]' requirements regarding availability of the 
+        <a>credential private key</a>. If the parameter is set to <i>true</i>, the authenticator SHOULD create a <a>resident
+        key</a> when creating a <a>scoped credential</a>. Similiar to {{attachment}}, the {{requireResidentKey}} parameter is an additional constraint on which authenticators are eligible for a [[#makeCredential]] or [[#getAssertion]] operation.
 
     - The <dfn>excludeList</dfn> parameter is intended for use by [=[RPS]=] that wish to limit the creation of multiple
         credentials for the same account on a single authenticator. The platform is requested to return an error if the new
@@ -865,27 +861,6 @@ credential on a [=platform authenticator=] may be used by [RPS] to quickly and c
 a minimum of friction, e.g., the user will not have to dig around in their pocket for their key fob or phone. As a concrete
 example of the latter, when the user is accessing the [RP] from a given client for the first time, they may be required to
 use a [=roaming authenticator=] which was originally registered with the [RP] using a different client.
-
-
-### Credential Private Key Storage Option enumeration (enum <dfn enum>KeyStorage</dfn>) ### {#keyStorage}
-
-<pre class="idl">
-    enum KeyStorage {
-        "onAuthenticator",
-        "onRelyingParty"
-    };
-</pre>
-
-The private key portion of a <a>[RP]</a>-specific <a>credential key pair</a> can be stored by either the authenticator
-or by the server. If supplied with the "onAuthenticator" value, the makeCredential operation will only be carried out with 
-authenticators capable of storing private keys. Authenticators capable of this ability may or may not export the credential
-private key they generated. In fact some authenticators are designed without the ability to export <a>credential private 
-keys</a>. If supplied with the "onRelyingParty" value, the makeCredential operation will only be carried out by 
-authenticators capable of exporting private keys and the private keys will be exported as Credential IDs as part of
-{{ScopedCredentialInfo/attestationObject}}. The <a>[RP]</a> will therefore be responsible for storing the private keys and 
-ensuring the keys are supplied in the allowList parameter of the getAssertion call. 
-
-More information about how the the <a>[RP]</a> should store and use the private keys is in the [[#rp-operations]] section. 
 
 
 ## Web Authentication Assertion (interface <dfn interface>AuthenticationAssertion</dfn>) ## {#iface-assertion}
@@ -1239,11 +1214,9 @@ does not change between operations but instead remains the same for the lifetime
 by the authenticator during the [=authenticatorGetAssertion=] operation, by verifying that the RP ID associated with the
 requested credential exactly matches the RP ID supplied by the client.
 
-The `TUP` flag SHALL be set if and only if the authenticator detected a user through an authenticator specific gesture. The
-`RFU` bits in the flags byte SHALL be set to zero.
-
-The `RK` flag SHALL be set if and only if the authenticator is capable of storing <a>credential private key</a> to 
-    generate the [RP]-specific <a>credential key pair</a> on demand. 
+The `TUP` flag SHALL be set if and only if the authenticator detected a user through an authenticator specific gesture. The 
+`RK` flag SHALL be set if and only if the authenticator created a <a>resident key</a> when creating the credential. The `RFU`
+bits in the flags byte SHALL be set to zero.
 
 For attestation signatures, the authenticator MUST set the AT flag and include the [=attestation data=]. For authentication
 signatures, the AT flag MUST NOT be set and the [=attestation data=] MUST NOT be included.
@@ -1284,7 +1257,6 @@ input parameters:
     as per the procedure in [[WebCryptoAPI#algorithm-normalization-normalize-an-algorithm]].
 - A list of {{ScopedCredential}} objects provided by the [RP] with the intention that, if any of these are known to the
     authenticator, it should not create a new credential.
-- The {{KeyStorage}} request provided by the [RP]
 - Extension data created by the client based on the extensions requested by the [RP].
 
 When this operation is invoked, the authenticator must perform the following procedure:
@@ -1301,8 +1273,7 @@ When this operation is invoked, the authenticator must perform the following pro
     - Generate a set of cryptographic keys using the most preferred combination of {{ScopedCredentialType}} and cryptographic
         parameters supported by this authenticator.
     - Generate an identifier for this credential, such that this identifier is globally unique with high probability across all
-        credentials with the same type across all authenticators. If the {{onRelyingParty}} value is provided by the [RP], 
-        use the <a>credential private key</a> as the identifier for this credential. 
+        credentials with the same type across all authenticators.
     - Associate the credential with the specified RP ID and the user's account identifier {{Account/id}}.
     - Delete any older credentials with the same RP ID and {{Account/id}} that are stored locally in the authenticator.
 - If any error occurred while creating the new credential object, return an error code equivalent to UnknownError and terminate
@@ -1668,9 +1639,6 @@ ceremony, a [RP] MUST proceed as follows:
 1. Perform CBOR decoding on the {{ScopedCredentialInfo/attestationObject}} field of the {{ScopedCredentialInfo}} structure to
     obtain the Credential ID, the attestation statement format |fmt|, the [=authenticator data=] |authData|, and the 
     attestation statement |attStmt|.
-
-1. Store the Credential ID if {{ScopedCredentialOptions/keyStorage/onRelyingParty}} value is supplied in the 
-    <code>{{options}}.{{ScopedCredentialOptions/keyStorage}}</code> parameter. 
 
 1. Verify that the RP ID hash in |authData| is indeed the SHA-256 hash of the RP ID expected by the RP.
 
