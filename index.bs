@@ -318,9 +318,7 @@ The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "S
     distinguish individual users. Note that invocation of the [=authenticatorMakeCredential=] and
     [=authenticatorGetAssertion=] operations implies use of key material managed by the authenticator. Note that for
     security, [=user verification=] and use of [=credential private keys=] must occur within a single logical security boundary
-    defining the [=authenticator=]. It is assumed that if an authenticator is capable of performing the user verification 
-    process, the authenticator will always perform the user verification process during [[#makeCredential]] and [[#getAssertion]]
-    operation. 
+    defining the [=authenticator=].
 
 : <dfn>[WAC]</dfn>
 :: Also referred to herein as simply a [=client=]. See also [=Conforming User Agent=].
@@ -497,11 +495,9 @@ When this method is invoked, the user agent MUST execute the following algorithm
 
 1. Let |issuedRequests| and |currentlyAvailableAuthenticators| be new [=ordered sets=].
 
-1. For each |authenticator| currently available on this platform, check if it fulfill the following requirement:
-    1. If <code>{{options}}.{{ScopedCredentialOptions/attachment}}</code> is [=present|not present=] or its value matches
-        |authenticator|'s attachment modality, check if the authenticator fulfills the next requirement. 
-    1. If <code>{{options}}.{{ScopedCredentialOptions/userverification}}</code> is [=present|not present=] or its value matches
-        |authenticator|'s user verification modality, [=set/append=] |authenticator| to |currentlyAvailableAuthenticators|.
+1. For each |authenticator| currently available on this platform, if
+    <code>{{options}}.{{ScopedCredentialOptions/attachment}}</code> is [=present|not present=] or its value matches
+    |authenticator|'s attachment modality, [=set/append=] |authenticator| to |currentlyAvailableAuthenticators|.
 
 1. [=set/For each=] |authenticator| in |currentlyAvailableAuthenticators|:
     1. Let |excludeList| be a new [=list=].
@@ -702,40 +698,36 @@ authorizing an authenticator with which to complete the operation.
 </div>
 
 
-### Signal platform authenticator capability - isPlatformAuthenticatorReady() method ### {#isPlatformAuthenticatorReady}
+### Inform user platform authenticator capability - isPlatformAuthenticatorReady() method ### {#isPlatformAuthenticatorReady}
 
 <div link-for-hint="WebAuthentication/isPlatformAuthenticatorReady">
-This method is used to signal users whether they can log in to the [RP] with the <a>platform-attached</a> authenticator. 
+This method can be used by [RPS] to inform user they can create a new credential with one or more platform authenticators.
 The method gives [RP] the ability to detect whether the client is capable of registering credentials with 
 <a>platform authenticators</a> while giving users control over whether they want to share this information. When the 
 method is invoked, the <a>client</a> will search for the existence of an <a>platform authenticator</a> capable of 
 registering credentials. Upon finding one, the <a>client</a> will prompt the user for whether the user is interested
-to register a credential with the authenticator. If so, the method will resolve the promise with the value of "True". 
-Upon receiving the value "True", the [RP] can take this opportunity to show users how to create a credential. 
+to register a credential with the authenticator. If the user shows an interest in registering, the method will resolve the
+promise with the value of <i>true</i>. Upon receiving the value <i>true</i>, the [RP] can take this opportunity to guide 
+users to create a credential. 
 
 When this method is invoked, the user agent MUST execute the following algorithm: 
 
-1. Let |promise| be a [=a new Promise=] and return the |promise|.
+1. Let |promise| be a [=a new Promise=]. Return |promise| and execute the following steps [=in parallel=].
 
-1. Let |isInterested| be a [=boolean=] value. 
+1. Enumerate all the [=platform authenticators=] on this platform. If there are no such authenticators, take no further action  
+    and terminate this algorithm.
 
-1. Enumerate all the [=platform authenticators=] on this platform. If there are no such authenticators, take no 
-    further action and terminate this algorithm.
+1. If one or more [=platform authenticators=] were found, make a determination of the user's willingness to create a credential
+    for this [RP] on such an authenticator. Factors used in this determination may include, for example:
 
-1. For all |authenticators| currently available on this platform, if there exists an |authenticator| with 
-    the value of "platform" for its attachment modality, the <a>user agent</a> may take this opportunity to 
-    ask the user whether the user is interested in registering a credential with a <a>platform authenticator</a>.
-    The <a>user agent</a> should show three optional actions to the user: 
-    1. An option indicating that user is interested in creating a credential. Set the |isInterested| value as 
-        |True|. 
-    1. An option indicating that user is not interested in creating a credenital. Set the |isInterested| value as 
-        |False|. 
-    1. An option indicating that user wants to close the dialog without indicating interests. Set the 
-        |isInterested| value as |False|. 
+    1. Whether the user is running in private or incognito mode
+    1. Whether the user has configured the [=client=] to never create such credentials
+    1. Whether the user has on a previous occasion expressed an unwillingness to create a new credential for this [RP], either
+        through configuration or by declining a user interface prompt.
+    1. The user's explicitly stated intention, as obtained through a browser-specific user interface prompt.
 
-1. If the |isInterested| value is |True|, [=resolve=] |promise| with |True| and terminate this algorithm. If the
-    |isInterested| value is |False|, [=resolve=] |promise| with |False| and terminate this algorithm. The user 
-    agent MAY randomize the timing of the resolve event to prevent timing attack. 
+1. If the above procedure determines that the user is not willing to create a new credential on a [=platform authenticator=],
+    take no further action and terminate this algorithm. Otherwise, resolve |promise| with a value of <i>true</i>.
 
 
 ## Information about Scoped Credential (interface <dfn interface>ScopedCredentialInfo</dfn>) ## {#iface-credentialInfo}
@@ -827,7 +819,6 @@ When this method is invoked, the user agent MUST execute the following algorithm
         USVString                            rpId;
         sequence<ScopedCredentialDescriptor> excludeList = [];
         Attachment                           attachment;
-        boolean                              requireUserVerification; 
         AuthenticationExtensions             extensions;
     };
 </xmp>
@@ -847,20 +838,15 @@ When this method is invoked, the user agent MUST execute the following algorithm
         credentials for the same account on a single authenticator. The platform is requested to return an error if the new
         credential would be created on an authenticator that also contains one of the credentials enumerated in this parameter.
 
-    - The <dfn>attachment</dfn> parameter contains authenticator attachment descriptions, which are used as an additional
-        constraint on which authenticators are eligible to participate in a [[#makeCredential]] or [[#getAssertion]] operation.
-        See [[#attachment]] for a description of the attachment values and their meanings.
-
-    - The <dfn>requireUserVerification</dfn> parameter is intended for use by [=[RPS]=] that want more control over which 
-        authenticators are eligible to participate in a [[#makeCredential]] operation. If this parameter is set to |True|,
-        only authenticators capable of <a>user verification</a> will partipate in the operation and such authenticators SHOULD 
-        perform <a>user verification</a> process during the [[#makeCredential]] operation.
-
     - The <dfn>extensions</dfn> parameter contains additional parameters requesting additional processing by the client and
         authenticator. For example, the caller may request that only authenticators with certain capabilities be used to create
         the credential, or that particular information be returned in the [=attestation object=]. The caller may also specify
         an additional message that they would like the authenticator to display to the user. Extensions are defined in
         [[#extensions]].
+
+    - The <dfn>attachment</dfn> parameter contains authenticator attachment descriptions, which are used as an additional
+        constraint on which authenticators are eligible to participate in a [[#makeCredential]] or [[#getAssertion]] operation.
+        See [[#attachment]] for a description of the attachment values and their meanings.
 
 </div>
 
@@ -1217,8 +1203,7 @@ The [=authenticator data=] structure is a byte array of 37 bytes or more, as fol
         <td>
             Flags (bit 0 is the least significant bit):
             - Bit 0: [=Test of User Presence=] (`TUP`) result.
-            - Bit 1: [=Test of User Verification=] (`TUI) result
-            - Bits 2-5: Reserved for future use (`RFU`).
+            - Bits 1-5: Reserved for future use (`RFU`).
             - Bit 6: [=Attestation data=] included (`AT`). Indicates whether the authenticator added [=attestation data=].
             - Bit 7: Extension data included (`ED`). Indicates if the [=authenticator data=] has extensions.
         </td>
@@ -1249,8 +1234,7 @@ does not change between operations but instead remains the same for the lifetime
 by the authenticator during the [=authenticatorGetAssertion=] operation, by verifying that the RP ID associated with the
 requested credential exactly matches the RP ID supplied by the client.
 
-The `TUP` flag SHALL be set if and only if the authenticator detected a user through an authenticator specific gesture. The 
-`TUI` flag SHALL be set if and only if the authenticator performed the user verification process during the operation. The
+The `TUP` flag SHALL be set if and only if the authenticator detected a user through an authenticator specific gesture. The
 `RFU` bits in the flags byte SHALL be set to zero.
 
 For attestation signatures, the authenticator MUST set the AT flag and include the [=attestation data=]. For authentication
@@ -1755,7 +1739,6 @@ MUST proceed as follows:
 
 11. If all the above steps are successful, continue with the authentication ceremony as appropriate. Otherwise, fail the
     authentication ceremony.
-
 
 
 # Defined Attestation Statement Formats # {#defined-attestation-formats}
