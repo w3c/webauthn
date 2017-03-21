@@ -475,7 +475,8 @@ When this method is invoked, the user agent MUST execute the following algorithm
     1. If |extension| is not supported by this client platform, then [=continue=].
 
     1. Otherwise, let |result| be the result of running |extension|'s [=client processing=] algorithm on |argument|. If the
-        algorithm returned an error, [=continue=].
+        algorithm returned an error, return [=a promise rejected with=] a {{DOMException}} whose name is
+        "{{InvalidParameterError}}", and terminate this algorithm.
 
     1. [=list/Append=] |result| to |clientExtensions|.
 
@@ -605,7 +606,9 @@ When this method is invoked, the user agent MUST execute the following algorithm
     |extension| → |argument| of <code>{{options}}.{{AssertionOptions/extensions}}</code>:
     1. If |extension| is not supported by this client platform, then [=continue=].
     1. Otherwise, let |result| be the result of running |extension|'s [=client processing=] algorithm on |argument|. If the
-        algorithm returned an error, [=continue=].
+        algorithm returned an error, return [=a promise rejected with=] a {{DOMException}} whose name is
+        "{{InvalidParameterError}}", and terminate this algorithm.
+
     1. [=list/Append=] |result| to |clientExtensions|.
 
 1. Let |clientData| be a new {{ClientData}} instance whose fields are:
@@ -815,8 +818,9 @@ authorizing an authenticator with which to complete the operation.
     - The <dfn>extensions</dfn> parameter contains additional parameters requesting additional processing by the client and
         authenticator. For example, the caller may request that only authenticators with certain capabilities be used to create
         the credential, or that particular information be returned in the [=attestation object=]. The caller may also specify
-        an additional message that they would like the authenticator to display to the user. Extensions are defined in
-        [[#extensions]].
+        an additional message that they would like the authenticator to display to the user. Some extensions are defined in
+        [[#extensions]]; the IANA "WebAuthn Extension Identifier" registry established by [[WebAuthn-Registries]] should be consulted
+        for an up-to-date list of registered WebAuthn Extensions.
 
     - The <dfn>attachment</dfn> parameter contains authenticator attachment descriptions, which are used as an additional
         constraint on which authenticators are eligible to participate in a [[#makeCredential]] or [[#getAssertion]] operation.
@@ -912,7 +916,7 @@ user consent to a specific transaction. The structure of these signatures is def
 
     - The optional <dfn>extensions</dfn> parameter contains additional parameters requesting additional processing by the client
         and authenticator. For example, if transaction confirmation is sought from the user, then the prompt string would be
-        included in an extension. Extensions are defined in a companion specification.
+        included in an extension.
 </div>
 
 
@@ -1634,8 +1638,8 @@ ceremony, a [RP] MUST proceed as follows:
 
 8. Verify that the RP ID hash in |authData| is indeed the SHA-256 hash of the RP ID expected by the RP.
 
-9. Determine the attestation statement format by performing an [=ASCII case-insensitive=] match on |fmt| against the set of
-    WebAuthn Attestation Statement Format Identifiers given in the IANA Registry of the same name [[WebAuthn-Registries]].
+9. Determine the attestation statement format by performing an [=ASCII case-sensitive=] match on |fmt| against the set of
+    WebAuthn Attestation Format Identifier values in the IANA registry of the same name [[WebAuthn-Registries]].
 
 10. Verify that |attStmt| is a correct, validly-signed attestation statement, using the attestation statement format |fmt|'s
     verification procedure given [=authenticator data=] |authData| and the [=hash of the serialized client data=] computed in
@@ -1726,18 +1730,19 @@ the author of the attestation statement format.
 Attestation statement format identifiers SHOULD be registered per [[WebAuthn-Registries]] "Registries for Web Authentication
 (WebAuthn)". All registered attestation statement format identifiers are unique amongst themselves as a matter of course.
 
-Unregistered attestation statement format identifiers SHOULD use reverse domain-name naming, using a domain name registered by
+Unregistered attestation statement format identifiers SHOULD use lowercase reverse domain-name naming, using a domain name registered by
 the developer, in order to assure uniqueness of the identifier. All attestation statement format identifiers MUST be a maximum
-of 32 octets in length and MUST consist only of printable USASCII characters, i.e., VCHAR as defined in [[!RFC5234]] (note: this
-means attestation statement format identifiers based on domain names MUST incorporate only LDH Labels [[!RFC5890]]).
-Implementations MUST match WebAuthn attestation statement format identifiers in a case-insensitive fashion.
+of 32 octets in length and MUST consist only of printable USASCII characters, excluding backslash and doublequote,
+i.e., VCHAR as defined in [[!RFC5234]] but without %x22 and %x5c. (Note: This
+means attestation statement format identifiers based on domain names MUST incorporate only LDH Labels [[!RFC5890]].)
+Implementations MUST match WebAuthn attestation statement format identifiers in a case-sensitive fashion.
 
 Attestation statement formats that may exist in multiple versions SHOULD include a version in their identifier. In effect,
 different versions are thus treated as different formats, e.g., `packed2` as a new version of the `packed` attestation statement
 format.
 
 The following sections present a set of currently-defined and registered attestation statement formats and their identifiers.
-See the WebAuthn Attestation Statement Format Identifier Registry defined in [[WebAuthn-Registries]] for an up-to-date list of
+See the IANA "WebAuthn Attestation Format Identifier" registry established by [[WebAuthn-Registries]] for an up-to-date list of
 registered attestation statement formats.
 
 ## Packed Attestation Statement Format ## {#packed-attestation}
@@ -2204,6 +2209,9 @@ privacy. For instance, if an extension requires client processing, it could be d
 pass-through will produce a semantically invalid authenticator argument, resulting in the extension being ignored by the
 authenticator. Since all extensions are optional, this will not cause a functional failure in the API operation.
 
+The IANA "WebAuthn Extension Identifier" registry established by [[WebAuthn-Registries]] should be consulted
+for an up-to-date list of registered WebAuthn Extensions.
+
 
 ## Extension Identifiers ## {#extension-id}
 
@@ -2215,18 +2223,16 @@ All registered extension identifiers are unique amongst themselves as a matter o
 Unregistered extension identifiers should aim to be globally unique, e.g., by including the defining entity such as `myCompany_extension`.
 
 All extension identifiers MUST be a maximum of 32 octets in length and MUST
-consist only of printable USASCII characters, i.e., VCHAR as defined in [[!RFC5234]].
-Implementations MUST match WebAuthn extension identifiers in a case-insensitive fashion.
+consist only of printable USASCII characters, excluding backslash and doublequote,
+i.e., VCHAR as defined in [[!RFC5234]] but without %x22 and %x5c.
+Implementations MUST match WebAuthn extension identifiers in a case-sensitive fashion.
 
 Extensions that may exist in multiple versions should take care to include a version in their identifier. In effect, different
 versions are thus treated as different extensions, e.g., `myCompany_extension_01`
 
-Extensions defined in this specification use a fixed prefix of `webauthn` for the extension identifiers. This prefix should not
-be used for extensions not defined by the W3C.
-
-[[#extension-predef]] defines an initial set of currently-defined and registered extensions their identifiers. See the WebAuthn
-Extension Identifiers Registry defined in [[WebAuthn-Registries]] for an up-to-date list of registered WebAuthn Extension
-Identifiers.
+[[#extension-predef]] defines an initial set of extensions their identifiers.
+See the IANA "WebAuthn Extension Identifier" registry established by [[WebAuthn-Registries]]
+for an up-to-date list of registered WebAuthn Extension Identifiers.
 
 
 ## Defining extensions ## {#extension-specification}
@@ -2242,6 +2248,13 @@ the [RP] know that the extension was honored by the client. Similarly, any exten
 specify a method of augmenting the [=authenticator data=] to let the [RP] know that the extension was honored by the
 authenticator.
 
+If an extension is designed to enable the [RP] to know whether it was understood and acted on,
+the extension MUST return some data from the client to the [RP] for this purpose.
+If an extension does not otherwise require any result values, it SHOULD be defined as returning a Boolean extension result,
+set to `true` to signify that the extension was understood and processed.
+Likewise, such an extension that is processed by the authenticator that does not otherwise require any result values
+SHOULD also return a Boolean extension result,
+set to `true` to signify that the extension was understood and processed.
 
 ## Extending request parameters ## {#extension-request-parameters}
 
@@ -2351,10 +2364,11 @@ follows (notation taken from [[RFC7049]]):
 </pre>
 
 
-# Pre-defined extensions # {#extension-predef}
+# Defined Extensions # {#extension-predef}
 
-This section defines an initial set of extensions. These are recommended for implementation by user agents targeting broad
-interoperability.
+This section defines the initial set of extensions to be registered in the
+IANA "WebAuthn Extension Identifier" registry established by [[WebAuthn-Registries]].
+These are recommended for implementation by user agents targeting broad interoperability.
 
 
 ## FIDO AppId ## {#extension-appid}
@@ -2367,7 +2381,7 @@ used during the {{getAssertion()}} call; other usage will result in client
 error.
 
 : Extension identifier
-:: `fido_appid`
+:: `appid`
 
 : Client argument
 :: A single [=UTF-8 encoded=] string specifying a FIDO |appId|.
@@ -2376,10 +2390,10 @@ error.
 :: If {{AssertionOptions/rpId}} is present, reject promise with a DOMException
     whose name is "{{NotAllowedError}}", and terminate this algorithm.
     Replace the calculation of |rpId| in Step 3 of [[#getAssertion]] with the
-    following procedure:  The client uses the value of |fido_appid| to perform
+    following procedure:  The client uses the value of |appid| to perform
     the AppId validation procedure (as defined by [[FIDO-APPID]]).  If valid,
     the value of |rpId| for all client processing should be replaced by the
-    value of |fido_appid|.
+    value of |appid|.
 
 : Authenticator argument
 :: none
@@ -2397,7 +2411,7 @@ This authentication extension allows for a simple form of transaction authorizat
 intended for display on a trusted device on the authenticator.
 
 : Extension identifier
-:: `webauthn_txAuthSimple`
+:: `txAuthSimple`
 
 : Client argument
 :: A single [=UTF-8 encoded=] string prompt.
@@ -2419,7 +2433,7 @@ The generic version of this extension allows images to be used as prompts as wel
 rendering engine to be used and also supports a richer visual appearance.
 
 : Extension identifier
-:: `webauthn_txAuthGeneric`
+:: `txAuthGeneric`
 
 : Client argument
 :: A CBOR map defined as follows:
@@ -2452,7 +2466,7 @@ This registration extension allows a [RP] to guide the selection of the authenti
 credential. It is intended primarily for [RPS] that wish to tightly control the experience around credential creation.
 
 : Extension identifier
-:: `webauthn_authnSel`
+:: `authnSel`
 
 : Client argument
 :: A sequence of AAGUIDs:
@@ -2486,7 +2500,7 @@ credential. It is intended primarily for [RPS] that wish to tightly control the 
 ## SupportedExtensions Extension ## {#supported-extensions-extension}
 
 : Extension identifier
-:: `webauthn_exts`
+:: `exts`
 
 : Client argument
 :: The Boolean value `true` to indicate that this extension is requested by the [RP].
@@ -2508,7 +2522,7 @@ credential. It is intended primarily for [RPS] that wish to tightly control the 
 ## User Verification Index (UVI) Extension ## {#uvi-extension}
 
 : Extension identifier
-:: `webauthn_uvi`
+:: `uvi`
 
 : Client argument
 :: The Boolean value `true` to indicate that this extension is requested by the [RP].
@@ -2545,8 +2559,8 @@ credential. It is intended primarily for [RPS] that wish to tightly control the 
         00 00 00 01                                 -- (initial) signature counter
         ...                                         -- all public key alg etc.
         A1                                          -- extension: CBOR map of one element
-            6C                                      -- Key 1: CBOR text string of 11 bytes
-                77 65 62 61 75 74 68 6E 5F 75 76 69 -- "webauthn_uvi" [=UTF-8 encoded=] string
+            63                                      -- Key 1: CBOR text string of 3 bytes
+                75 76 69                            -- "uvi" [=UTF-8 encoded=] string
             58 20                                   -- Value 1: CBOR byte string with 0x20 bytes
                 00 43 B8 E3 BE 27 95 8C             -- the UVI value itself
                 28 D5 74 BF 46 8A 85 CF
@@ -2558,7 +2572,7 @@ credential. It is intended primarily for [RPS] that wish to tightly control the 
 ## Location Extension ## {#uvi-location}
 
 : Extension identifier
-:: `webauthn_loc`
+:: `loc`
 
 : Client argument
 :: The Boolean value `true` to indicate that this extension is requested by the [RP].
@@ -2588,8 +2602,8 @@ credential. It is intended primarily for [RPS] that wish to tightly control the 
         00 00 00 01                                 -- (initial) signature counter
         ...                                         -- all public key alg etc.
         A1                                          -- extension: CBOR map of one element
-            6C                                      -- Value 1: CBOR text string of 11 bytes
-                77 65 62 61 75 74 68 6E 5F 6C 6F 63 -- "webauthn_loc" [=UTF-8 encoded=] string
+            63                                      -- Value 1: CBOR text string of 3 bytes
+                6C 6F 63                            -- "loc" [=UTF-8 encoded=] string
             86                                      -- Value 2: array of 6 elements
                 68                  -- Element 1:  CBOR text string of 8 bytes
                    6C 61 74 69 74 75 64 65          -- “latitude” [=UTF-8 encoded=] string
@@ -2606,7 +2620,7 @@ credential. It is intended primarily for [RPS] that wish to tightly control the 
 ## User Verification Mode (UVM) Extension ## {#uvm-extension}
 
 : Extension identifier
-:: `webauthn_uvm`
+:: `uvm`
 
 : Client argument
 :: The Boolean value true to indicate that this extension is requested by the WebAuthn Relying Party.
@@ -2657,8 +2671,8 @@ credential. It is intended primarily for [RPS] that wish to tightly control the 
         00 00 00 01            -- (initial) signature counter
         ...                    -- all public key alg etc.
         A1                     -- extension: CBOR map of one element
-            6C                 -- Key 1: CBOR text string of 12 bytes
-                77 65 62 61 75 74 68 6E 2E 75 76 6d -- "webauthn_uvm" [=UTF-8 encoded=] string
+            63                 -- Key 1: CBOR text string of 3 bytes
+                75 76 6d       -- "uvm" [=UTF-8 encoded=] string
             82                 -- Value 1: CBOR array of length 2 indicating two factor usage
                 83              -- Item 1: CBOR array of length 3
                     02           -- Subitem 1: CBOR integer for User Verification Method Fingerprint
@@ -2670,6 +2684,70 @@ credential. It is intended primarily for [RPS] that wish to tightly control the 
                     01           -- Subitem 3: CBOR short for Matcher Protection Type Software
     </pre>
 
+
+# IANA Considerations # {#IANA}
+
+## WebAuthn Attestation Format Identifier Registrations ## (#AttFmtReg)
+
+This section registers the attestation formats defined in Section [[#defined-attestation-formats]] in the
+IANA "WebAuthn Attestation Format Identifier" registry established by [[WebAuthn-Registries]].
+
+- WebAuthn Attestation Format Identifier: packed
+- Description: The "packed" attestation format is a WebAuthn-optimized format for attestation data. It uses a very compact but still extensible encoding method. This format is implementable by authenticators with limited resources (e.g., secure elements). 
+- Specification Document: Section [[#packed-attestation]] of this specification
+
+- WebAuthn Attestation Format Identifier: tpm
+- Description: The TPM attestation format returns an attestation statement in the same format as the packed attestation format, although the the rawData and signature fields are computed differently. 
+- Specification Document: Section [[#tpm-attestation]] of this specification
+
+- WebAuthn Attestation Format Identifier: android-key
+- Description: Platform-provided authenticators based on Android versions "N", and later, may provide this proprietary "hardware attestation" statement. 
+- Specification Document: Section [[#android-key-attestation]] of this specification
+
+- WebAuthn Attestation Format Identifier: android-safetynet
+- Description: Android-based, platform-provided authenticators may produce an attestation statement based on the Android SafetyNet API.
+- Specification Document: Section [[#android-safetynet-attestation]] of this specification
+
+- WebAuthn Attestation Format Identifier: fido-u2f
+- Description: Used with FIDO U2F authenticators
+- Specification Document: Section [[#fido-u2f-attestation]] of this specification
+
+## WebAuthn Extension Identifier Registrations ## (#ExtensionReg)
+
+This section registers the extension identifiers defined in Section [[#extensions]] in the
+IANA "WebAuthn Extension Identifier" registry established by [[WebAuthn-Registries]].
+
+- WebAuthn Extension Identifier: appid
+- Description: This authentication extension allows [RPS] who have previously registered a credential using the legacy FIDO JavaScript APIs to request an assertion.
+- Specification Document: Section [[#extension-appid]] of this specification
+
+- WebAuthn Extension Identifier: txAuthSimple
+- Description: This signature extension allows for a simple form of transaction authorization. A WebAuthn Relying Party can specify a prompt string, intended for display on a trusted device on the authenticator
+- Specification Document: Section [[#extension-TBD]] of this specification
+
+- WebAuthn Extension Identifier: txAuthGeneric
+- Description: This generic txauth extension allows images to be used as prompts as well. This allows authenticators without a font rendering engine to be used and also supports a richer visual appearance than accomplished with the webauthn.txauth.simple extension. 
+- Specification Document: Section [[#extension-TBD]] of this specification
+
+- WebAuthn Extension Identifier: authnSel
+- Description: This registration extension allows a WebAuthn Relying Party to guide the selection of the authenticator that will be leveraged when creating the credential. It is intended primarily for WebAuthn Relying Parties that wish to tightly control the experience around credential creation.
+- Specification Document: Section [[#extension-TBD]] of this specification
+
+- WebAuthn Extension Identifier: exts
+- Description: The Supported Extensions extension data is a list (CBOR array) of extension identifiers encoded as UTF-8 Strings. This extension is added automatically by the authenticator. This extension can be added to attestation statements.
+- Specification Document: Section [[#extension-TBD]] of this specification
+
+- WebAuthn Extension Identifier: uvi
+- Description: The user verification index (UVI) is a value uniquely identifying a user verification data record. The UVI data can be used by servers to understand whether an authentication was authorized by the exact same biometric data as the initial key generation. This allows the detection and prevention of "friendly fraud". 
+- Specification Document: Section [[#extension-TBD]] of this specification
+
+- WebAuthn Extension Identifier: loc
+- Description: The location extension provides the client device's current location to the WebAuthn relying party, if supported by the client device and subject to user consent. 
+- Specification Document: Section [[#extension-TBD]] of this specification
+
+- WebAuthn Extension Identifier: uvm
+- Description: The user verification mode (UVM) extension returns to the Webauthn relying party which user verification methods (factors) were used for the WebAuthn operation. 
+- Specification Document: Section [[#extension-TBD]] of this specification
 
 # Sample scenarios # {#sample-scenarios}
 
@@ -2895,10 +2973,12 @@ Paulhamus, Adam Powers, Yaron Sheffer, Mike West, Jeffrey Yasskin, Boris Zbarsky
 
   "WebAuthn-Registries": {
     "authors": [
-        "Jeff Hodges"
+        "Jeff Hodges",
+        "Giridhar Mandyam",
+        "Michael B. Jones"
     ],
-    "date": "June 2016",
-    "href": "https://xml2rfc.tools.ietf.org/cgi-bin/xml2rfc.cgi?modeAsFormat=html/ascii&url=https://raw.githubusercontent.com/w3c/webauthn/master/draft-hodges-webauthn-registries.xml#46923110554855074732",
+    "date": "March 2017",
+    "href": "https://xml2rfc.tools.ietf.org/cgi-bin/xml2rfc.cgi?modeAsFormat=html/ascii&url=https://raw.githubusercontent.com/w3c/webauthn/master/draft-hodges-webauthn-registries.xml",
     "publisher": "W3C WebAuthn Working Draft",
     "status": "Active Internet-Draft",
     "title": "Registries for Web Authentication (WebAuthn)",
