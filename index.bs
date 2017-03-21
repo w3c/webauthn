@@ -378,7 +378,7 @@ The Web Authentication API is defined by the union of the Web IDL fragments pres
     [SecureContext]
     interface WebAuthentication {
         Promise<ScopedCredentialInfo> makeCredential(
-            Account                              accountInformation,
+            RelyingPartyUserInfo                 accountInformation,
             sequence<ScopedCredentialParameters> cryptoParameters,
             BufferSource                         attestationChallenge,
             optional ScopedCredentialOptions     options
@@ -409,7 +409,7 @@ This method takes the following parameters:
 - The <dfn>accountInformation</dfn> parameter specifies information about the user account for which the credential is being
     created. This is meant for later use by the authenticator when it needs to prompt the user to select a credential. An
     authenticator is only required to store one credential for any given value of {{accountInformation}}. Specifically, if an
-    authenticator already has a credential for the specified value of {{Account/id}} in {{accountInformation}}, and if this
+    authenticator already has a credential for the specified value of {{RelyingPartyUserInfo/id}} in {{accountInformation}}, and if this
     credential is not listed in the {{ScopedCredentialOptions/excludeList}} member of {{options}}, then after successful
     execution of this method:
     - Any calls to {{getAssertion()}} that do not specify {{AssertionOptions/allowList}} will not result in the older
@@ -479,7 +479,7 @@ When this method is invoked, the user agent MUST execute the following algorithm
 
     1. [=list/Append=] |result| to |clientExtensions|.
 
-1. Let |clientData| be a new {{ClientData}} instance whose fields are:
+1. Let |clientData| be a new {{CollectedClientData}} instance whose fields are:
     : {{challenge}}
     :: The [=base64url encoding=] of {{attestationChallenge}}
     : {{origin}}
@@ -489,7 +489,7 @@ When this method is invoked, the user agent MUST execute the following algorithm
         [=hash of the serialized client data=]
     : {{tokenBinding}}
     :: The [=Token Binding ID=] associated with |callerOrigin|, if one is available. 
-    : {{ClientData/extensions}}
+    : {{CollectedClientData/extensions}}
     :: |clientExtensions|
 
 1. Let |clientDataJSON| be the [=JSON-serialized client data=] constructed from |clientData|.
@@ -608,7 +608,7 @@ When this method is invoked, the user agent MUST execute the following algorithm
         algorithm returned an error, [=continue=].
     1. [=list/Append=] |result| to |clientExtensions|.
 
-1. Let |clientData| be a new {{ClientData}} instance whose fields are:
+1. Let |clientData| be a new {{CollectedClientData}} instance whose fields are:
     : {{challenge}}
     :: The [=base64url encoding=] of {{assertionChallenge}}
     : {{origin}}
@@ -618,7 +618,7 @@ When this method is invoked, the user agent MUST execute the following algorithm
         [=hash of the serialized client data=]
     : {{tokenBinding}}
     :: The [=Token Binding ID=] associated with |callerOrigin|, if one is available.
-    : {{ClientData/extensions}}
+    : {{CollectedClientData/extensions}}
     :: |clientExtensions|
 
 1. Let |clientDataJSON| be the [=JSON-serialized client data=] constructed from |clientData|.
@@ -732,10 +732,10 @@ authorizing an authenticator with which to complete the operation.
 </div>
 
 
-## User Account Information (dictionary <dfn dictionary>Account</dfn>) ## {#iface-account}
+## User Account Information (dictionary <dfn dictionary>RelyingPartyUserInfo</dfn>) ## {#iface-userinfo}
 
 <pre class="idl">
-    dictionary Account {
+    dictionary RelyingPartyUserInfo {
         required DOMString rpDisplayName;
         required DOMString displayName;
         required DOMString id;
@@ -744,7 +744,7 @@ authorizing an authenticator with which to complete the operation.
     };
 </pre>
 
-<div dfn-type="dict-member" dfn-for="Account">
+<div dfn-type="dict-member" dfn-for="userinfo">
     This dictionary is used by the caller to specify information about the user account and [=[RP]=] with which a credential
     is to be associated. It is intended to help the authenticator in providing a friendly credential selection interface for the
     user.
@@ -757,7 +757,7 @@ authorizing an authenticator with which to complete the operation.
 
     The <dfn>id</dfn> member contains an identifier for the account, specified by the [RP]. This is not meant to be displayed
     to the user. It is used by the [RP] to control the number of credentials - an authenticator will never contain more than one
-    credential for a given [RP] under the same {{Account/id}}.
+    credential for a given [RP] under the same {{RelyingPartyUserInfo/id}}.
 
     The <dfn>name</dfn> member contains a detailed name for the account, such as "john.p.smith@example.com".
 
@@ -936,14 +936,14 @@ with the extension identifier as the key, and the extension's value as the value
 The scoped credential type uses certain data structures that are specified in supporting specifications. These are as follows.
 
 
-### Client data used in WebAuthn signatures (dictionary <dfn dictionary>ClientData</dfn>) ### {#sec-client-data}
+### Client data used in WebAuthn signatures (dictionary <dfn dictionary>CollectedClientData</dfn>) ### {#sec-client-data}
 
 The <dfn>client data</dfn> represents the contextual bindings of both the [RP] and the client platform. It is a key-value
 mapping with string-valued keys. Values may be any type that has a valid encoding in JSON. Its structure is defined by the
 following Web IDL.
 
 <pre class="idl">
-    dictionary ClientData {
+    dictionary CollectedClientData {
         required DOMString           challenge;
         required DOMString           origin;
         required DOMString           hashAlg;
@@ -952,7 +952,7 @@ following Web IDL.
     };
 </pre>
 
-<div dfn-type="dict-member" dfn-for="ClientData">
+<div dfn-type="dict-member" dfn-for="CollectedClientData">
     The <dfn>challenge</dfn> member contains the base64url encoding of the challenge provided by the RP.
 
     The <dfn>origin</dfn> member contains the fully qualified origin of the requester, as provided to the authenticator by
@@ -973,7 +973,7 @@ following Web IDL.
 
     : <dfn dfn>JSON-serialized client data</dfn>
     :: This is the [=UTF-8 encoding=] of the result of calling the initial value of {{JSON/stringify|JSON.stringify}} on a
-        {{ClientData}} dictionary. To avoid ambiguity, the {{ScopedCredentialInfo}} and {{AuthenticationAssertion}} structures
+        {{CollectedClientData}} dictionary. To avoid ambiguity, the {{ScopedCredentialInfo}} and {{AuthenticationAssertion}} structures
         contain the actual serializations used by the client to generate them.
 
     : <dfn dfn>Hash of the serialized client data</dfn>
@@ -1244,7 +1244,7 @@ input parameters:
 
 - The caller's RP ID, as determined by the user agent and the client.
 - The [=hash of the serialized client data=], provided by the client.
-- The {{Account}} information provided by the [RP].
+- The {{RelyingPartyUserInfo}} information provided by the [RP].
 - The {{ScopedCredentialType}} and cryptographic parameters requested by the [RP], with the cryptographic algorithms normalized
     as per the procedure in [[WebCryptoAPI#algorithm-normalization-normalize-an-algorithm]].
 - A list of {{ScopedCredential}} objects provided by the [RP] with the intention that, if any of these are known to the
@@ -1266,8 +1266,8 @@ When this operation is invoked, the authenticator must perform the following pro
         parameters supported by this authenticator.
     - Generate an identifier for this credential, such that this identifier is globally unique with high probability across all
         credentials with the same type across all authenticators.
-    - Associate the credential with the specified RP ID and the user's account identifier {{Account/id}}.
-    - Delete any older credentials with the same RP ID and {{Account/id}} that are stored locally in the authenticator.
+    - Associate the credential with the specified RP ID and the user's account identifier {{RelyingPartyUserInfo/id}}.
+    - Delete any older credentials with the same RP ID and {{RelyingPartyUserInfo/id}} that are stored locally in the authenticator.
 - If any error occurred while creating the new credential object, return an error code equivalent to UnknownError and terminate
     the operation.
 - Process all the supported extensions requested by the client, and generate the [=authenticator data=] with
@@ -1615,18 +1615,18 @@ ceremony, a [RP] MUST proceed as follows:
 1. Perform JSON deserialization on the {{ScopedCredentialInfo/clientDataJSON}} field of the {{ScopedCredentialInfo}} object to
     extract the [=client data=] |C| claimed to have been used for the credential's attestation.
 
-2. Verify that the {{ClientData/challenge}} in |C| matches the challenge that was sent to the authenticator in the
+2. Verify that the {{CollectedClientData/challenge}} in |C| matches the challenge that was sent to the authenticator in the
     {{makeCredential()}} call.
 
-3. Verify that the {{ClientData/origin}} in |C| matches the [RP]'s origin.
+3. Verify that the {{CollectedClientData/origin}} in |C| matches the [RP]'s origin.
 
-4. Verify that the {{ClientData/tokenBinding}} in |C| matches the [=Token Binding ID=] for the TLS connection over
+4. Verify that the {{CollectedClientData/tokenBinding}} in |C| matches the [=Token Binding ID=] for the TLS connection over
     which the attestation was obtained.
 
-5. Verify that the {{ClientData/extensions}} in |C| is a proper subset of the extensions requested by the RP.
+5. Verify that the {{CollectedClientData/extensions}} in |C| is a proper subset of the extensions requested by the RP.
 
 6. Compute the hash of {{ScopedCredentialInfo/clientDataJSON}} using the algorithm identified by
-    <code>|C|.{{ClientData/hashAlg}}</code>.
+    <code>|C|.{{CollectedClientData/hashAlg}}</code>.
 
 7. Perform CBOR decoding on the {{ScopedCredentialInfo/attestationObject}} field of the {{ScopedCredentialInfo}} structure to
     obtain the attestation statement format |fmt|, the [=authenticator data=] |authData|, and the attestation statement
@@ -1692,19 +1692,19 @@ MUST proceed as follows:
 
 3. Perform JSON deserialization on |cData| to extract the [=client data=] |C| used for the signature.
 
-4. Verify that the {{ClientData/challenge}} member of |C| matches the challenge that was sent to the authenticator in the
+4. Verify that the {{CollectedClientData/challenge}} member of |C| matches the challenge that was sent to the authenticator in the
     {{getAssertion()}} call.
 
-5. Verify that the {{ClientData/origin}} member of |C| matches the [RP]'s origin.
+5. Verify that the {{CollectedClientData/origin}} member of |C| matches the [RP]'s origin.
 
-6. Verify that the {{ClientData/tokenBinding}} member of |C| (if present) matches the [=Token Binding ID=] for the TLS connection
+6. Verify that the {{CollectedClientData/tokenBinding}} member of |C| (if present) matches the [=Token Binding ID=] for the TLS connection
     over which the signature was obtained.
 
-7. Verify that the {{ClientData/extensions}} member of |C| is a proper subset of the extensions requested by the RP.
+7. Verify that the {{CollectedClientData/extensions}} member of |C| is a proper subset of the extensions requested by the RP.
 
 8. Verify that the RP ID hash in |aData| is the SHA-256 hash of the RP ID expected by the RP.
 
-9. Let |hash| be the result of computing a hash over the |cData| using the algorithm represented by the {{ClientData/hashAlg}}
+9. Let |hash| be the result of computing a hash over the |cData| using the algorithm represented by the {{CollectedClientData/hashAlg}}
     member of |C|.
 
 10. Using the credential public key looked up in step 1, verify that |sig| is a valid signature over the binary concatenation of
@@ -2279,7 +2279,7 @@ generation of an assertion. In order for the [=[RP]=] to verify the processing t
 value that the [RP] needs to be aware of, the extension should specify a key-value pair to be included in the [=client data=].
 
 The [=client data=] value may be any value that can be encoded using JSON. If any extension processed by a client defines such a
-value, the client SHOULD include a dictionary in its [=client data=] with the key {{ClientData/extensions}}. For each such
+value, the client SHOULD include a dictionary in its [=client data=] with the key {{CollectedClientData/extensions}}. For each such
 extension, the client SHOULD add an entry to this dictionary with the extension identifier as the key, and the extension's
 [=client data=] value.
 
