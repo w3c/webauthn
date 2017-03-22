@@ -1462,7 +1462,7 @@ authenticator over a set of contextual bindings. Each attestation statement form
     [=hash of the serialized client data=], and returns either:
     - An error indicating that the attestation is invalid, or
     - The attestation type, and the trust path of the attestation. This trust path is either empty (in case of
-        self-attestation), a DAA root key (in the case of Direct Anonymous Attestation), or a set of X.509 certificates.
+        self-attestation), an identifier of a [=ECDAA-Issuer public key=] (in the case of [=ECDAA=]), or a set of X.509 certificates.
 
 The initial list of supported attestation statement formats is in [[#defined-attestation-formats]].
 
@@ -1493,11 +1493,11 @@ WebAuthn supports multiple attestation types:
     Note: This concept typically leads to multiple attestation certificates. The attestation certificate requested most recently
         is called "active".
 
-: <dfn>Direct Anonymous Attestation</dfn> (DAA)
-:: In this case, the Authenticator receives DAA credentials from a single DAA-Issuer. These DAA credentials are used along with
+: <dfn>Elliptic Curve based Direct Anonymous Attestation</dfn> (<dfn>ECDAA</dfn>)
+:: In this case, the Authenticator receives direct anonymous attestation (<dfn>DAA</dfn>]) credentials from a single DAA-Issuer. These DAA credentials are used along with
     blinding to sign the [=attestation data=]. The concept of blinding avoids the DAA credentials being misused as global
-    correlation handle. WebAuthn supports DAA using elliptic curve cryptography and bilinear pairings, called ECDAA (see
-    [[FIDOEcdaaAlgorithm]]) in this specification.
+    correlation handle. WebAuthn supports DAA using elliptic curve cryptography and bilinear pairings, called [=ECDAA=] (see
+    [[FIDOEcdaaAlgorithm]]) in this specification.  Consequently we denote the DAA-Issuer as ECDAA-Issuer (see [[FIDOEcdaaAlgorithm]]).
 
 
 ### Generating an Attestation Object ### {#generating-an-attestation-object}
@@ -1559,8 +1559,8 @@ in several ways, including:
     attestation keys and attestation certificates.
 
 - A WebAuthn Authenticator can implement [=direct anonymous attestation=] (see [[FIDOEcdaaAlgorithm]]).  Using this scheme,
-    the authenticator generates a blinded attestation signature.  This allows the [RP] to verify the signature using the DAA
-    root key, but the attestation signature doesn't serve as a global correlation handle.
+    the authenticator generates a blinded attestation signature.  This allows the [RP] to verify the signature using the [=ECDAA-Issuer public key=], 
+    but the attestation signature doesn't serve as a global correlation handle.
 
 
 #### Attestation Certificate and Attestation Certificate CA Compromise #### {#ca-compromise}
@@ -1584,9 +1584,9 @@ the CA compromise date using an attestation certificate chaining up to the same 
 [RPS] remember intermediate attestation CA certificates during Authenticator registration in order to un-register related Scoped
 Credentials if the registration was performed after revocation of such certificates.
 
-If a DAA attestation key has been compromised, it can be added to the RogueList (i.e., the list of revoked authenticators)
-maintained by the related DAA-Issuer. The [RP] should verify whether an authenticator belongs to the RogueList when performing
-DAA-Verify. For example, the FIDO Metadata Service [[FIDOMetadataService]] provides one way to access such information.
+If an [=ECDAA=] attestation key has been compromised, it can be added to the RogueList (i.e., the list of revoked authenticators)
+maintained by the related ECDAA-Issuer. The [RP] should verify whether an authenticator belongs to the RogueList when performing
+ECDAA-Verify (see section 3.6 in [[!FIDOEcdaaAlgorithm]]). For example, the FIDO Metadata Service [[FIDOMetadataService]] provides one way to access such information.
 
 
 #### Attestation Certificate Hierarchy #### {#cert-hierarchy}
@@ -1641,14 +1641,14 @@ ceremony, a [RP] MUST proceed as follows:
     verification procedure given [=authenticator data=] |authData| and the [=hash of the serialized client data=] computed in
     step 6.
 
-11. If validation is successful, obtain a list of acceptable trust anchors (attestation root certificates or DAA root keys)
+11. If validation is successful, obtain a list of acceptable trust anchors (attestation root certificates or [=ECDAA-Issuer public key=]s)
     for that attestation type and attestation statement format |fmt|, from a trusted source or from policy. For example, the
     FIDO Metadata Service [[FIDOMetadataService]] provides one way to obtain such information, using the AAGUID in the
     [=attestation data=] contained in |authData|.
 
 12. Assess the attestation trustworthiness using the outputs of the verification procedure in step 10, as follows:
         - If self-attestation was used, check if self-attestation is acceptable under [RP] policy.
-        - If DAA was used, verify that the DAA key used is in the set of acceptable trust anchors obtained in step 11.
+        - If [=ECDAA=] was used, verify that the [=identifier of the ECDAA-Issuer public key=] used is included in the set of acceptable trust anchors obtained in step 11.
         - Otherwise, use the X.509 certificates returned by the verification procedure to verify that the attestation public key
             correctly chains up to an acceptable root certificate.
 
@@ -1768,7 +1768,7 @@ implementable by [=authenticators=] with limited resources (e.g., secure element
                        {
                            alg: "ED256" / "ED512",
                            sig: bytes,
-                           daaKey: eccPubKey
+                           ecdaaKeyId: bytes
                        }
     ```
     
@@ -1786,8 +1786,10 @@ implementable by [=authenticators=] with limited resources (e.g., secure element
     :: The elements of this array contain the attestation certificate and its certificate chain, each encoded in X.509 format.
         The attestation certificate must be the first element in the array.
 
-    : daaKey
-    :: The DAA root key. The syntax for `eccPubKey` is defined in [[#sec-attestation-data]].
+    : ecdaaKeyId
+    :: The <dfn>identifier of the ECDAA-Issuer public key</dfn>.  This is the  
+        BigNumberToB encoding of the component "c" of the <dfn>ECDAA-Issuer public key</dfn> 
+        as defined section 3.3, step 3.5 in [[!FIDOEcdaaAlgorithm]]. 
 
 : Signing procedure
 :: The signing procedure for this attestation statement format is similar to [the procedure for generating assertion
@@ -1801,9 +1803,9 @@ implementable by [=authenticators=] with limited resources (e.g., secure element
     mechanism. It sets |x5c| to the certificate chain of the attestation public key and |alg| to the algorithm of the
     attestation private key.
 
-    If DAA is in use, the authenticator produces |sig| by concatenating |authenticatorData| and |clientDataHash|, and signing
-    the result using DAA-Sign with a DAA root key selected through an authenticator-specific mechanism (see
-    [[!FIDOEcdaaAlgorithm]]). It sets |alg| to the algorithm of the DAA root key and |daaKey| to the DAA root key.
+    If [=ECDAA=] is in use, the authenticator produces |sig| by concatenating |authenticatorData| and |clientDataHash|, and signing
+    the result using ECDAA-Sign (see section 3.5 of [[!FIDOEcdaaAlgorithm]]) with a [=ECDAA-Issuer public key=] selected through an authenticator-specific mechanism (see
+    [[!FIDOEcdaaAlgorithm]]). It sets |alg| to the algorithm of the [=ECDAA-Issuer public key=] and |ecdaaKeyId| to the [=identifier of the ECDAA-Issuer public key=] (see above).
 
     If self attestation is in use, the authenticator produces |sig| by concatenating |authenticatorData| and |clientDataHash|,
     and signing the result using the credential private key. It sets |alg| to the algorithm of the credential private key, and
@@ -1815,7 +1817,7 @@ implementable by [=authenticators=] with limited resources (e.g., secure element
     Let |authenticatorData| denote the [=authenticator data claimed to have been used for the attestation=], and let
     |clientDataHash| denote the [=hash of the serialized client data=].
 
-    If |x5c| is present, this indicates that the attestation type is not DAA. In this case:
+    If |x5c| is present, this indicates that the attestation type is not [=ECDAA=]. In this case:
     - Verify that |sig| is a valid signature over the concatenation of |authenticatorData| and |clientDataHash| using the
         attestation public key in |x5c| with the algorithm specified in |alg|.
     - Verify that |x5c| meets the requirements in [[#packed-attestation-cert-requirements]].
@@ -1823,12 +1825,12 @@ implementable by [=authenticators=] with limited resources (e.g., secure element
         extension matches the AAGUID in |authenticatorData|.
     - If successful, return attestation type Basic and trust path |x5c|.
 
-    If |daaKey| is present, then the attestation type is DAA. In this case:
-    - Verify that |sig| is a valid signature over the concatenation of |authenticatorData| and |clientDataHash| using DAA-Verify
-        with |daaKey| (see [[!FIDOEcdaaAlgorithm]]).
-    - If successful, return attestation type DAA and trust path |daaKey|.
+    If |ecdaaKeyId| is present, then the attestation type is ECDAA. In this case:
+    - Verify that |sig| is a valid signature over the concatenation of |authenticatorData| and |clientDataHash| using ECDAA-Verify
+        with [=ECDAA-Issuer public key=] identified by |ecdaaKeyId| (see [[!FIDOEcdaaAlgorithm]]).
+    - If successful, return attestation type ECDAA and trust path |ecdaaKeyId|.
 
-    If neither |x5c| nor |daaKey| is present, self attestation is in use.
+    If neither |x5c| nor |ecdaaKeyId| is present, self attestation is in use.
     - Validate that |alg| matches the algorithm of the credential private key in |authenticatorData|.
     - Verify that |sig| is a valid signature over the concatenation of |authenticatorData| and |clientDataHash| using the
         credential public key with |alg|.
@@ -1869,7 +1871,7 @@ engine.
 :: tpm
 
 : Attestation types supported
-:: Privacy CA, DAA
+:: Privacy CA, ECDAA
 
 : Syntax
 :: The syntax of a TPM Attestation statement is as follows:
@@ -1888,7 +1890,7 @@ engine.
                         ) //
                         (
                             alg:  "ED256" / "ED512",
-                            daaKey: eccPubKey
+                            ecdaaKeyId: bytes
                         ),
                         sig: bytes,
                         certInfo: bytes,
@@ -1909,8 +1911,10 @@ engine.
     : x5c
     :: The AIK certificate used for the attestation and its certificate chain, in X.509 encoding.
 
-    : daaKey
-    :: The DAA root key. The syntax for `eccPubKey` is defined in [[#sec-attestation-data]].
+    : ecdaaKeyId
+    :: The [=identifier of the ECDAA-Issuer public key=]. This is the  
+        BigNumberToB encoding of the component "c" as defined section 3.3, 
+        step 3.5 in [[!FIDOEcdaaAlgorithm]]. 
 
     : sig
     :: The attestation signature, in the form of a TPMT_SIGNATURE structure as specified in [[TPMv2-Part2]] section 11.3.4.
@@ -1952,7 +1956,7 @@ engine.
         as computed using the algorithm in the `nameAlg` field of |pubArea| using the procedure specified in [[TPMv2-Part1]]
         section 16.
 
-    If |x5c| is present, this indicates that the attestation type is not DAA. In this case:
+    If |x5c| is present, this indicates that the attestation type is not [=ECDAA=]. In this case:
     - Verify the |sig| is a valid signature over |certInfo| using the attestation public key in |x5c| with the
         algorithm specified in |alg|.
     - Verify that |x5c| meets the requirements in [[#tpm-cert-requirements]].
@@ -1960,9 +1964,9 @@ engine.
         extension matches the AAGUID in |authenticatorData|.
     - If successful, return attestation type Privacy CA and trust path |x5c|.
 
-    If |daaKey| is present, then the attestation type is DAA.
-    - Perform DAA-Verify on |sig| to verify that it is a valid signature over |certInfo| (see [[!FIDOEcdaaAlgorithm]]).
-    - If successful, return attestation type DAA and trust path |daaKey|.
+    If |ecdaaKeyId| is present, then the attestation type is [=ECDAA=].
+    - Perform ECDAA-Verify on |sig| to verify that it is a valid signature over |certInfo| (see [[!FIDOEcdaaAlgorithm]]).
+    - If successful, return attestation type ECDAA and the [=identifier of the ECDAA-Issuer public key=] |ecdaaKeyId|.
 
 
 ### TPM attestation statement certificate requirements ### {#tpm-cert-requirements}
