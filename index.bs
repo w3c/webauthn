@@ -65,6 +65,21 @@ spec: WebCryptoAPI; urlPrefix: https://www.w3.org/TR/WebCryptoAPI/
         text: recognized algorithm name
     type: dictionary
         text: AlgorithmIdentifier; url: dfn-AlgorithmIdentifier
+
+<!-- Remove these once Shepherd picks up the changes -->
+spec: CREDENTIAL-MANAGEMENT-1; urlPrefix: https://w3c.github.io/webappsec-credential-management/
+    for: Credential
+        type: attribute
+            text: [[discovery]]
+        type: method
+            text: [[CollectFromCredentialStore]](options)
+            text: [[DiscoverFromExternalSource]](options)
+            text: [[Store]](credential)
+    for: Credential/[[discovery]]
+        type: enum-value 
+            text: credential store
+            text: remote
+
 </pre> <!-- class=anchors -->
 
 <pre class="link-defaults">
@@ -402,6 +417,10 @@ are returned to the caller when a new credential is created, or a new assertion 
 
         Note: This is reflected via the {{Credential/type}} attribute getter inherited from {{Credential}}.
 
+    :   {{Credential/[[discovery]]}}
+    ::  The {{ScopedCredential}} [=interface object=]'s {{Credential/[[discovery]]}} slot's value is
+        "{{Credential/[[discovery]]/remote}}".
+
     :   <dfn>\[[identifier]]</dfn>
     ::  This internal slot contains an identifier for the credential, chosen by the platform with help from the authenticator.
         This identifier is used to look up credentials for use, and is therefore expected to be globally unique with high
@@ -415,12 +434,11 @@ are returned to the caller when a new credential is created, or a new assertion 
         authenticator. The user agent will prompt the user to approve this operation. On success, the promise will be resolved
         with a {{ScopedCredential}} which contains an {{AuthenticatorAttestationResponse}} object. Implementation details are
         found in [[#createCredential]].
-
-    :   <dfn method>\[[Retrieve]](options, mediation)</dfn>
-    ::  The {{ScopedCredential}} [=interface object=] defines this internal method to override {{Credential}}'s implementation,
-        which will enable support for assertion generation through {{CredentialsContainer/get()}}. Implementation details are
-        found in [[#getAssertion]].
 </dl>
+
+{{ScopedCredential}}'s [=interface object=] inherits {{Credential}}'s implementation of
+{{Credential/[[CollectFromCredentialStore]](options)}} and {{Credential/[[Store]](credential)}}, and defines its own
+implementation of {{[[DiscoverFromExternalSource]](options)}}.
 
 ### `CredentialRequestOptions` Extension ### {#credentialrequestoptions-extension}
 
@@ -603,9 +621,9 @@ authorizing an authenticator.
 </div>
 
 
-### Use an existing credential - ScopedCredential::\[[Retrieve]](options, mediation) method ### {#getAssertion}
+### Use an existing credential - ScopedCredential::\[[DiscoverFromExternalSource]](options) method ### {#getAssertion}
 
-<div link-for-hint="ScopedCredential/[[Retrieve]](options, mediation)">
+<div link-for-hint="ScopedCredential/[[DiscoverFromExternalSource]](options)">
 This method is used to discover and use an existing scoped credential, with the user's consent. The script optionally specifies
 some criteria to indicate what credentials are acceptable to it. The user agent and/or platform locates credentials matching the
 specified criteria, and guides the user to pick one that the script should be allowed to use. The user may choose not to provide
@@ -616,13 +634,10 @@ This method takes the following parameters:
 
 *   |options| is a {{CredentialRequestOptions}} object, containing a challenge that the selected authenticator is expected to
     sign to produce the assertion, and additional options as described in [[#assertion-parameters]]
-*   |mediation| is either "`With User Mediation`" or "`Without User Mediation`".
 
 </div>
 
 When this method is invoked, the user agent MUST execute the following algorithm:
-
-1. If |mediation| is "`Without User Mediation`", return `null`.
 
 1. Let |scoped options| be the value of |options| {{CredentialRequestOptions/scoped}} member.
 
@@ -635,17 +650,15 @@ When this method is invoked, the user agent MUST execute the following algorithm
     [=global object|environment settings object's global object=].
 
 1. Let |callerOrigin| be the [=current settings object=]'s [=environment settings object/origin=]. If 
-    |callerOrigin| is an [=opaque origin=], return [=a promise rejected with=] a {{DOMException}} whose name is
+    |callerOrigin| is an [=opaque origin=], return {{DOMException}} whose name is
     "{{NotAllowedError}}", and terminate this algorithm.
 
 1. If the {{ScopedCredentialRequestOptions/rpId}} member of |scoped options| is [=present|not present=], then set |rpId| to |callerOrigin|.
     Otherwise:
     1. Let |effectiveDomain| be the |callerOrigin|'s [=effective domain=].
-    1. If |effectiveDomain| is null, then return [=a promise rejected with=] a {{DOMException}} whose name is 
-        "{{SecurityError}}" and terminate this algorithm.
+    1. If |effectiveDomain| is null, then return a {{DOMException}} whose name is "{{SecurityError}}" and terminate this algorithm.
     1. If {{ScopedCredentialRequestOptions/rpId}} [=is not a registrable domain suffix of and is not equal to=]
-        |effectiveDomain|, return [=a promise rejected with=] a {{DOMException}} whose name is "{{SecurityError}}", and
-        terminate this algorithm.
+        |effectiveDomain|, return a {{DOMException}} whose name is "{{SecurityError}}", and terminate this algorithm.
     1. Set |rpId| to the {{ScopedCredentialRequestOptions/rpId}}.
 
 1. Let |clientExtensions| be a new [=list=].
@@ -700,8 +713,8 @@ When this method is invoked, the user agent MUST execute the following algorithm
     
     1. [=set/Append=] |authenticator| to |issuedRequests|.
 
-1. Let |promise| be [=a new Promise=]. Return |promise| and start a timer for |adjustedTimeout| milliseconds. Then execute the
-    following steps [=in parallel=]. The [=task source=] for these [=tasks=] is the [=dom manipulation task source=].
+1. Start a timer for |adjustedTimeout| milliseconds. Then execute the following steps [=in parallel=]. The [=task source=] for
+    these [=tasks=] is the [=dom manipulation task source=].
 
 1. While |issuedRequests| [=list/is not empty=], perform the following actions depending upon the |adjustedTimeout| timer and
     responses from the authenticators:
@@ -742,11 +755,11 @@ When this method is invoked, the user agent MUST execute the following algorithm
                     {{signature}}
         3. [=set/For each=] remaining |authenticator| in |issuedRequests| invoke the [=authenticatorCancel=] operation on
             |authenticator| and [=set/remove=] it from |issuedRequests|.
-        4. [=Resolve=] |promise| with |value| and terminate this algorithm.
+        4. Return |value| and terminate this algorithm.
     </dd>
     </dl>
 
-1. [=Reject=] |promise| with a {{DOMException}} whose name is "{{NotAllowedError}}".
+1. Return a {{DOMException}} whose name is "{{NotAllowedError}}".
 
 During the above process, the user agent SHOULD show some UI to the user to guide them in the process of selecting and
 authorizing an authenticator with which to complete the operation.
