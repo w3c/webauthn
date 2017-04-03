@@ -988,7 +988,8 @@ following Web IDL.
 
 <pre class="idl">
     enum ScopedCredentialType {
-        "ScopedCred"
+        "ScopedCred",
+	"ScopedCred_FIDO_UAF"
     };
 </pre>
 
@@ -997,7 +998,7 @@ following Web IDL.
     more credential types are defined. The values of this enumeration are used for versioning the Authentication Assertion and
     attestation structures according to the type of the authenticator.
 
-    Currently one credential type is defined, namely "<dfn>ScopedCred</dfn>".
+    Currently two credential types are defined, namely "<dfn>ScopedCred</dfn>" and "<dfn>ScopedCred_FIDO_UAF</dfn>".
 </div>
 
 
@@ -1291,7 +1292,7 @@ input parameters:
 - A list of credentials acceptable to the [RP] (possibly filtered by the client).
 - Extension data created by the client based on the extensions requested by the [RP].
 
-When this method is invoked, the authenticator must perform the following procedure:
+When this method is invoked on a credential with ScopedCredentialType "ScopedCred", the authenticator must perform the following procedure:
 - Check if all the supplied parameters are syntactically well-formed and of the correct length. If not, return an error code
     equivalent to UnknownError and terminate the operation.
 - If a list of credentials was supplied by the client, filter it by removing those credentials that are not present on this
@@ -1319,6 +1320,17 @@ When this method is invoked, the authenticator must perform the following proced
 On successful completion, the authenticator returns to the user agent:
 - The identifier of the credential used to generate the signature.
 - The [=authenticator data=] used to generate the signature.
+- The assertion signature.
+
+If the authenticator cannot find any credential corresponding to the specified [RP] that matches the specified criteria, it
+terminates the operation and returns an error.
+
+If the user refuses consent, the authenticator returns an appropriate error status to the client.
+
+When this method is invoked on a credential with ScopedCredentialType "ScopedCred_FIDO_UAF", the authenticator must perform the procedure as specified in [[FIDO-UAF-Authenticator-Commands]] section 6.3.  
+On successful completion, the authenticator returns to the user agent:
+- The identifier of the credential used to generate the signature.
+- binary authenticator generated data according to the structure as specified in [[FIDO-UAF-Authenticator-Commands]] section 5.2.2.
 - The assertion signature.
 
 If the authenticator cannot find any credential corresponding to the specified [RP] that matches the specified criteria, it
@@ -1683,7 +1695,8 @@ or it MAY decide to accept the registration, e.g. while deleting the older regis
 
 ## Verifying an authentication assertion ## {#verifying-assertion}
 
-When requested to authenticate a given {{AuthenticationAssertion}} structure as part of an authentication ceremony, the [RP]
+When requested to authenticate a given {{AuthenticationAssertion}} structure as part of an 
+authentication ceremony related to a credential with ScopedCredentialType "ScopedCred", the [RP]
 MUST proceed as follows:
 
 1. Using the {{ScopedCredential/id}} attribute contained in the {{AuthenticationAssertion/credential}} attribute of the given
@@ -1716,6 +1729,25 @@ MUST proceed as follows:
 11. If all the above steps are successful, continue with the authentication ceremony as appropriate. Otherwise, fail the
     authentication ceremony.
 
+
+When requested to authenticate a given {{AuthenticationAssertion}} structure as part of an 
+authentication ceremony related to a credential with ScopedCredentialType "ScopedCred_FIDO_UAF", the [RP]
+MUST proceed as follows:
+
+TODO: to be adjusted to UAF
+1. Using the {{ScopedCredential/id}} attribute contained in the {{AuthenticationAssertion/credential}} attribute of the given
+    {{AuthenticationAssertion}} structure, look up the corresponding credential public key.
+
+2. Let |cData|, |aData| and |sig| denote the {{AuthenticationAssertion/clientDataJSON}},
+    authenticator generated binary data and authenticator generated signature attributes of the given
+    assertion structure, respectively.
+
+3. Perform JSON deserialization on |cData| to extract the [=client data=] |C| used for the signature.
+
+4. Perform the verification as described in [[FIDO-UAF-Protocol]] section 3.5.7.5.
+
+5. If all the above steps are successful, continue with the authentication ceremony as appropriate. Otherwise, fail the
+    authentication ceremony.
 
 # Defined Attestation Statement Formats # {#defined-attestation-formats}
 
