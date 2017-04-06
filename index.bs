@@ -2222,41 +2222,29 @@ This attestation statement format is used with FIDO UAF authenticators using the
 : Signing procedure
 :: If the credential public key of the given credential does not match a valid authentication algorithm as defined in [[FIDO-Registry]] section 3.6.1, stop and return an error.
 
-    Let |authenticatorData| denote the [=authenticator data for the attestation=], and let |clientDataHash| denote the
-    [=hash of the serialized client data=].
-
-    If |clientDataHash| is 256 bits long, set |tbsHash| to this value. Otherwise set |tbsHash| to the SHA-256 hash of
-    |clientDataHash|.
-
-    Generate a signature as specified in [[FIDO-UAF-Authenticator-Commands]] section 5.2.1, with the appID and the facetID 
-    parameters set to the SHA-256 hash of the RP ID associated with the given credential. Set Final Challenge Hash 
-    parameter set to |tbsHash|, and the keyID
-    parameter set to the credential ID of the given credential. Set this as |sig| and - in the case of 
-    attestation type "Basic" - set the attestation certificate of the attestation public key as |x5c|.
+    - Let |authenticatorData| denote the [=authenticator data claimed to have been used for the attestation=], and let
+        |fcp| denote the [=JSON-serialized client data=].
+    - Generate a signature as specified in [[FIDO-UAF-Authenticator-Commands]] section 5.2.1, with the appID and the facetID 
+        parameters set to the RP ID associated with the given credential. Set the keyID
+        parameter set to the credential ID of the given credential. Set this as |sig| and - in the case of 
+        attestation type "Basic" - set the attestation certificate of the attestation public key as |x5c|.
 
 : Verification procedure
 :: Verification is performed as follows:
     - Verify that the given attestation statement is valid CBOR conforming to the syntax defined above.
-    - Perform the verification steps described in [[FIDO-UAF-Protocol]] section 3.4.6.5.
-
     - Let |authenticatorData| denote the [=authenticator data claimed to have been used for the attestation=], and let
-        |clientDataHash| denote the [=hash of the serialized client data=].
-    - If |clientDataHash| is 256 bits long, set |tbsHash| to this value. Otherwise set |tbsHash| to the SHA-256
-        hash of |clientDataHash|.
-    - From |authenticatorData|, extract the claimed RP ID hash, the claimed credential ID and the claimed credential public key.
-    - Generate the claimed to-be-signed data as specified in [[FIDO-UAF-Authenticator-Commands]] section 5.2.1, with the application
-        parameter set to the claimed RP ID hash, the challenge parameter set to |tbsHash|, the keyID parameter set to the
-        claimed credential ID of the given credential, and the user public key parameter set to the claimed credential public key.
-    - If |x5c| is present, this indicates that the attestation type is not [=ECDAA=]. In this case:
-        - If |x5c| is not a certificate for a public key for a supported algorithm according to [[FIDO-Registry]] section 3.6.1, stop verification and return an error.
-        - Verify that |sig| is a valid signature for a supported algorithm according to [[FIDO-Registry]] section 3.6.1 over the to-be-signed data constructed above.
-        - If successful, return attestation type "Basic" with the trust path set to |x5c|. 
-    - If |ecdaaKeyId| is present, then the attestation type is ECDAA. In this case:
-        - Verify that |sig| is a valid signature for a supported algorithm according to [[FIDO-Registry]] section 3.6.1 over the to-be-signed data constructed above.
-        - If successful, return attestation type "ECDAA" with the ECDAA Issuer key identified by |ecdaaKeyId|. 
-    - If neither |x5c| nor |ecdaaKeyId| is present, self attestation is in use.
-        - Verify that |sig| is a valid signature for a supported algorithm according to [[FIDO-Registry]] section 3.6.1 over the to-be-signed data constructed above.
-        - If successful, return attestation type "Self-Attestation". 
+        |fcp| denote the [=JSON-serialized client data=].
+    - If |x5c| is present, the |claimed attestation type| is "FIDO Full Basic Attestation".
+    - If |ecdaaKeyId| is present, then the |claimed attestation type| is "ECDAA". 
+    - If neither |x5c| nor |ecdaaKeyId| is present, then the |claimed attestation type| if "Surrogate Basic Attestation".
+    - Compose the to-be-signed object |KRD| as specified in [[FIDO-UAF-Authenticator-Commands]] section 5.2.1 (1.2), 
+        by concatenating the tag TAG_UAFV1_KRD and the length of |authenticatorData| and |authenticatorData|.
+    - Compose the assertion to be verified as specified in [[FIDO-UAF-Authenticator-Commands]] section 5.2.1 by 
+        using the |KRD| object and the signature |sig| (taking into account the |claimed attestation type|).
+    - Perform the verification steps described in [[FIDO-UAF-Protocol]] section 3.4.6.5 and return the
+        |attestation type|, the |credential public key| as retrieved from object labeled TAG_PUB_KEY, and the 
+        |credential ID| as retrieved from object labeled TAG_KEYID.
+    - If successful, return |attestation type|, |credential ID| and |credential public key|.
 
 
 
