@@ -235,7 +235,7 @@ The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "S
     verification=].
 
 : <dfn>Authentication Assertion</dfn>
-:: The cryptographically signed {{AuthenticationAssertion}} object returned by an [=authenticator=] as the result of a
+:: The cryptographically signed {{AuthenticatorAssertionResponse}} object returned by an [=authenticator=] as the result of a
     [=authenticatorGetAssertion=] operation.
 
 : <dfn>Authenticator</dfn>
@@ -377,12 +377,8 @@ The Web Authentication API is defined by the union of the Web IDL fragments pres
 <xmp class="idl">
     [SecureContext]
     interface WebAuthentication {
-        Promise<ScopedCredentialInfo> makeCredential(MakeCredentialOptions options);
-
-        Promise<AuthenticationAssertion> getAssertion(
-            BufferSource                    assertionChallenge,
-            optional AssertionOptions       options
-        );
+        Promise<AuthenticatorAttestationResponse> makeCredential(MakeCredentialOptions options);
+        Promise<AuthenticatorAssertionResponse> getAssertion(AssertionOptions options);
     };
 </xmp>
 
@@ -394,7 +390,7 @@ This interface has two methods, which are described in the following subsections
 <div link-for-hint="WebAuthentication/makeCredential(options)">
 With this method, a script can request the User Agent to create a new credential of a given type and persist it to the
 underlying platform, which may involve data storage managed by the browser or the OS. The user agent will prompt the user to
-approve this operation. On success, the promise will be resolved with a {{ScopedCredentialInfo}} object describing the newly
+approve this operation. On success, the promise will be resolved with a {{AuthenticatorAttestationResponse}} object describing the newly
 created credential.
 
 <div class="note" dfn-type="argument" dfn-for="WebAuthentication/makeCredential(options)">
@@ -464,7 +460,7 @@ When this method is invoked, the user agent MUST execute the following algorithm
 
 1. Let |collectedclientData| be a new {{CollectedClientData}} instance whose fields are:
     : {{CollectedClientData/challenge}}
-    :: The [=base64url encoding=] of{{options}}.{{MakeCredentialOptions/challenge}} 
+    :: The [=base64url encoding=] of {{options}}.{{MakeCredentialOptions/challenge}} 
     : {{origin}}
     :: The [=unicode serialization of an origin|unicode serialization=] of |rpId|
     : {{hashAlg}}
@@ -520,10 +516,10 @@ When this method is invoked, the user agent MUST execute the following algorithm
     <dt>If any |authenticator| indicates success,</dt>
     <dd>
         1. [=set/Remove=] |authenticator| from |issuedRequests|.
-        2. Let |value| be a new {{ScopedCredentialInfo}} object associated with |global| whose fields are:
-            : {{ScopedCredentialInfo/clientDataJSON}}
+        2. Let |value| be a new {{AuthenticatorAttestationResponse}} object associated with |global| whose fields are:
+            : {{AuthenticatorResponse/clientDataJSON}}
             :: A new {{ArrayBuffer}}, created using |global|'s [=%ArrayBuffer%=], containing the bytes of |clientDataJSON|.
-            : {{ScopedCredentialInfo/attestationObject}}
+            : {{AuthenticatorAttestationResponse/attestationObject}}
             :: A new {{ArrayBuffer}}, created using |global|'s [=%ArrayBuffer%=], containing the bytes of the value returned
                 from the successful [=authenticatorMakeCredential=] operation
         3. [=set/For each=] remaining |authenticator| in |issuedRequests| invoke the [=authenticatorCancel=] operation on
@@ -541,23 +537,17 @@ authorizing an authenticator.
 
 ### Use an existing credential - getAssertion() method ### {#getAssertion}
 
-<div link-for-hint="WebAuthentication/getAssertion(assertionChallenge, options)">
+<div link-for-hint="WebAuthentication/getAssertion(options)">
 This method is used to discover and use an existing scoped credential, with the user's consent. The script optionally specifies
 some criteria to indicate what credentials are acceptable to it. The user agent and/or platform locates credentials matching the
 specified criteria, and guides the user to pick one that the script should be allowed to use. The user may choose not to provide
 a credential even if one is present, for example to maintain privacy.
 
-<div class="note">
-This method takes the following parameters:
+<div class="note" dfn-type="argument" dfn-for="WebAuthentication/getAssertion(options)">
+    This method takes the following parameters:
 
-<ul dfn-type="argument" dfn-for="WebAuthentication/getAssertion(assertionChallenge, options)">
-- The <dfn>assertionChallenge</dfn> parameter contains a challenge that the selected authenticator is expected to sign to
-    produce the assertion.
-
-- The optional <dfn>options</dfn> parameter specifies additional options, as described in
-    [[#assertion-options]].
-
-</ul>
+    :   <dfn>options</dfn>
+    ::  This dictionary contains the data necessary to generate an assertion, as described in [[#assertion-options]].
 </div>
 
 When this method is invoked, the user agent MUST execute the following algorithm:
@@ -595,7 +585,7 @@ When this method is invoked, the user agent MUST execute the following algorithm
 
 1. Let |collectedclientData| be a new {{CollectedClientData}} instance whose fields are:
     : {{CollectedClientData/challenge}}
-    :: The [=base64url encoding=] of {{assertionChallenge}}
+    :: The [=base64url encoding=] of {{options}}.{{AssertionOptions/challenge}}
     : {{origin}}
     :: The [=unicode serialization of an origin|unicode serialization=] of |rpId|
     : {{hashAlg}}
@@ -660,20 +650,20 @@ When this method is invoked, the user agent MUST execute the following algorithm
     <dt>If any |authenticator| indicates success,</dt>
     <dd>
         1. [=set/Remove=] |authenticator| from |issuedRequests|.
-        2. Let |value| be a new {{AuthenticationAssertion}} object associated with |global| whose fields are:
-            : {{AuthenticationAssertion/credential}}
+        2. Let |value| be a new {{AuthenticatorAssertionResponse}} object associated with |global| whose fields are:
+            : {{AuthenticatorAssertionResponse/credential}}
             :: A new {{ScopedCredential}} object associated with |global| whose fields are:
                 1. {{ScopedCredential/type}} whose value is the {{ScopedCredentialType}} representing this [=scoped 
                     credential=]'s type.
                 1. {{ScopedCredential/id}} whose value is a new {{ArrayBuffer}}, created using |global|'s [=%ArrayBuffer%=],
                     containing the bytes of the credential ID returned from the successful [=authenticatorGetAssertion=]
                     operation.
-            : {{AuthenticationAssertion/clientDataJSON}}
+            : {{AuthenticatorResponse/clientDataJSON}}
             :: A new {{ArrayBuffer}}, created using |global|'s [=%ArrayBuffer%=], containing the bytes of |clientDataJSON|
-            : {{AuthenticationAssertion/authenticatorData}}
+            : {{AuthenticatorAssertionResponse/authenticatorData}}
             :: A new {{ArrayBuffer}}, created using |global|'s [=%ArrayBuffer%=], containing the bytes of the returned
                 {{authenticatorData}}
-            : {{AuthenticationAssertion/signature}}
+            : {{AuthenticatorAssertionResponse/signature}}
             :: A new {{ArrayBuffer}}, created using |global|'s [=%ArrayBuffer%=], containing the bytes of the returned
                 {{signature}}
         3. [=set/For each=] remaining |authenticator| in |issuedRequests| invoke the [=authenticatorCancel=] operation on
@@ -688,34 +678,86 @@ During the above process, the user agent SHOULD show some UI to the user to guid
 authorizing an authenticator with which to complete the operation.
 </div>
 
+## Authenticator Responses (interface <dfn interface>AuthenticatorResponse</dfn>) ## {#iface-authenticatorresponse}
 
-## Information about Scoped Credential (interface <dfn interface>ScopedCredentialInfo</dfn>) ## {#iface-credentialInfo}
+[=Authenticators=] respond to relying party requests by returning an object derived from the
+{{AuthenticatorResponse}} interface:
 
 <pre class="idl">
     [SecureContext]
-    interface ScopedCredentialInfo {
-        readonly    attribute ArrayBuffer   clientDataJSON;
-        readonly    attribute ArrayBuffer   attestationObject;
+    interface AuthenticatorResponse {
+        readonly attribute ArrayBuffer clientDataJSON;
     };
 </pre>
-
-<div dfn-type="attribute" dfn-for="ScopedCredentialInfo">
-    This interface represents a newly-created scoped credential. It contains information about the credential that can be used
-    to locate it later for use, and also contains metadata that can be used by the [=[RP]=] to assess the strength of the
-    credential during registration.
-
-    The <dfn>clientDataJSON</dfn> attribute contains the [=JSON-serialized client data=] (see [[#cred-attestation]]) passed to
-    the authenticator by the client in order to generate this credential. The exact JSON serialization must be preserved as the
-    [=hash of the serialized client data=] has been computed over it.
-
-    The <dfn>attestationObject</dfn> attribute contains an [=attestation object=]. The contents of this object are
-    determined by the [=attestation statement format=] used by the authenticator. This object is opaque to, and
-    cryptographically protected against tampering by, the client. It contains the credential's unique identifier, [=credential
-    public key=], and attestation statement. It also contains any additional information that the [RP]'s server requires to
-    validate the attestation statement, as well as to decode and validate the bindings of both the client and authenticator
-    data. For more details, see [[#cred-attestation]].
+<div dfn-type="attribute" dfn-for="AuthenticatorResponse">
+    :   <dfn>clientDataJSON</dfn>
+    ::  This attribute contains a [=JSON-serialized client data|JSON serialization=] of the [=client data=] passed to the
+        authenticator by the client in its call to either {{makeCredential()}} or {{getAssertion()}}.
 </div>
 
+### Information about Scoped Credential (interface <dfn interface>AuthenticatorAttestationResponse</dfn>) ### {#iface-authenticatorattestationresponse}
+
+The {{AuthenticatorAttestationResponse}} interface represents the [=authenticator=]'s response to a client's request
+for the creation of a new [=scoped credential=]. It contains information about the new credential that can be used to
+identify it for later use, and metadata that can be used by the [=[RP]=] to assess the characteristics of the credential
+during registration.
+
+<pre class="idl">
+    [SecureContext]
+    interface AuthenticatorAttestationResponse : AuthenticatorResponse {
+        readonly attribute ArrayBuffer attestationObject;
+    };
+</pre>
+<div dfn-type="attribute" dfn-for="AuthenticatorAttestationResponse">
+    :   {{AuthenticatorResponse/clientDataJSON}}
+    ::  This attribute, inherited from {{AuthenticatorResponse}}, contains the [=JSON-serialized client data=] (see
+        [[#cred-attestation]]) passed to the authenticator by the client in order to generate this credential. The
+        exact JSON serialization must be preserved, as the [=hash of the serialized client data=] has been computed
+        over it.
+
+    :   <dfn>attestationObject</dfn>
+    ::  This attribute contains an [=attestation object=], which is opaque to, and cryptographically protected against
+        tampering by, the client. The [=attestation object=] contains both [=authenticator data=] and an attestation
+        statement. The former contains the AAGUID, a unique credential ID, and the [=credential public key=]. The
+        contents of the attestation statement are determined by the [=attestation statement format=] used by the
+        [=authenticator=]. It also contains any additional information that the [RP]'s server requires to validate the
+        attestation statement, as well as to decode and validate the [=authenticator data=] along with the
+        [=JSON-serialized client data=]. For more details, see [[#cred-attestation]] as well as
+        [Figure 3](#fig-attStructs).
+</div>
+
+
+### Web Authentication Assertion (interface <dfn interface>AuthenticatorAssertionResponse</dfn>) ### {#iface-authenticatorassertionresponse}
+
+The {{AuthenticatorAssertionResponse}} interface represents an [=authenticator=]'s response to a client's request for
+generation of a new [=authentication assertion=] given the [=[RP]=]'s challenge and optional list of credentials it is
+aware of. This response contains a cryptographic signature proving possession of the [=credential private key=], and
+optionally evidence of [=user consent=] to a specific transaction.
+
+<pre class="idl">
+    [SecureContext]
+    interface AuthenticatorAssertionResponse : AuthenticatorResponse {
+        readonly attribute ScopedCredential credential;
+        readonly attribute ArrayBuffer      authenticatorData;
+        readonly attribute ArrayBuffer      signature;
+    };
+</pre>
+<div dfn-type="attribute" dfn-for="AuthenticatorAssertionResponse">
+    :   {{AuthenticatorResponse/clientDataJSON}}
+    ::  This attribute, inherited from {{AuthenticatorResponse}}, contains the [=JSON-serialized client data=] (see
+        [[#sec-client-data]]) passed to the authenticator by the client in order to generate this assertion. The
+        exact JSON serialization must be preserved, as the [=hash of the serialized client data=] has been computed
+        over it.
+
+    :   <dfn>credential</dfn>
+    ::  This attribute represents the [=scoped credential=] that was used to generate this assertion.
+
+    :   <dfn>authenticatorData</dfn>
+    ::  This attribute contains the [=authenticator data=] returned by the authenticator. See [[#sec-authenticator-data]].
+
+    :   <dfn>signature</dfn>
+    ::  This attribute contains the raw signature returned from the authenticator. See [[#op-get-assertion]].
+</div>
 
 ## Parameters for Credential Generation (dictionary <dfn dictionary>ScopedCredentialParameters</dfn>) ## {#credential-params}
 
@@ -770,35 +812,7 @@ example of the latter, when the user is accessing the [RP] from a given client f
 use a [=roaming authenticator=] which was originally registered with the [RP] using a different client.
 
 
-## Web Authentication Assertion (interface <dfn interface>AuthenticationAssertion</dfn>) ## {#iface-assertion}
-
-<pre class="idl">
-    [SecureContext]
-    interface AuthenticationAssertion {
-        readonly attribute ScopedCredential  credential;
-        readonly attribute ArrayBuffer       clientDataJSON;
-        readonly attribute ArrayBuffer       authenticatorData;
-        readonly attribute ArrayBuffer       signature;
-    };
-</pre>
-
-Scoped credentials produce a cryptographic signature that provides proof of possession of a private key as well as evidence of
-user consent to a specific transaction. The structure of these signatures is defined as follows.
-
-<div dfn-type="attribute" dfn-for="AuthenticationAssertion">
-    The <dfn>credential</dfn> attribute represents the credential that was used to generate this assertion.
-
-    The <dfn>clientDataJSON</dfn> attribute contains the parameters sent to the authenticator by the client, in serialized form.
-    See [[#sec-client-data]] for the format of this parameter and how it is generated.
-
-    The <dfn>authenticatorData</dfn> attribute contains the [=authenticator data=] returned by the authenticator. See
-    [[#sec-authenticator-data]].
-
-    The <dfn>signature</dfn> attribute contains the raw signature returned from the authenticator. See
-    [[#op-get-assertion]].
-</div>
-
-## Parameters for Credential Creation (dictionary <dfn dictionary>MakeCredentialOptions</dfn>) ## {#dictionary-makecredentialoptions}
+## Options for Credential Creation (dictionary <dfn dictionary>MakeCredentialOptions</dfn>) ## {#dictionary-makecredentialoptions}
 
 <xmp class="idl">
     dictionary MakeCredentialOptions {
@@ -892,10 +906,15 @@ The {{ScopedCredentialEntity}} dictionary describes a user account or a [=relyin
         a user's avatar or a [=relying party=]'s logo.
 </div>
 
-## Additional options for Assertion Generation (dictionary <dfn dictionary>AssertionOptions</dfn>) ## {#assertion-options}
+
+## Options for Assertion Generation (dictionary <dfn dictionary>AssertionOptions</dfn>) ## {#assertion-options}
+
+The {{AssertionOptions}} dictionary supplies {{getAssertion()}} with the data it needs to generate an assertion. Its
+member {{AssertionOptions/challenge}} must be present, while its other members are optional.
 
 <xmp class="idl">
     dictionary AssertionOptions {
+        required BufferSource                challenge;
         unsigned long                        timeout;
         USVString                            rpId;
         sequence<ScopedCredentialDescriptor> allowList = [];
@@ -904,20 +923,28 @@ The {{ScopedCredentialEntity}} dictionary describes a user account or a [=relyin
 </xmp>
 
 <div dfn-type="dict-member" dfn-for="AssertionOptions">
-    This dictionary is used to supply additional options when generating an assertion. All these parameters are optional.
+    :   <dfn>challenge</dfn>
+    ::  This member represents a challenge that the selected [=authenticator=] is expected to sign in order to produce an
+        [=authentication assertion=].
 
-    - The optional <dfn>timeout</dfn> parameter specifies a time, in milliseconds, that the caller is willing to wait for the
-        call to complete. This is treated as a hint, and may be overridden by the platform.
+    :   <dfn>timeout</dfn>
+    ::  This optional member specifies a time, in milliseconds, that the caller is willing to wait for the call to complete.
+        The value is treated as a hint, and may be overridden by the platform.
 
-    - The optional <dfn>rpId</dfn> parameter specifies the rpId claimed by the caller. If it is omitted, it will be assumed to
-        be equal to the [=origin=] specified by the {{WebAuthentication}} object's [=relevant settings object=].
+    :   <dfn>rpId</dfn>
+    ::  This optional member specifies the [=relying party identifier=] claimed by the caller. If omitted, its value will
+        be the [=ASCII serialization of an origin|ASCII serialization=] of the {{WebAuthentication}} object's [=relevant
+        settings object=]'s [=environment settings object/origin=].
 
-    - The optional <dfn>allowList</dfn> member contains a list of credentials acceptable to the caller, in order of the
-        caller's preference.
+    :   <dfn>allowList</dfn>
+    ::  This optional member contains a list of {{ScopedCredentialDescriptor}} object representing [=scoped credentials=]
+        acceptable to the caller, in decending order of the caller's preference (the first item in the list is the most
+        preferred credential, and so on down the line).
 
-    - The optional <dfn>extensions</dfn> parameter contains additional parameters requesting additional processing by the client
-        and authenticator. For example, if transaction confirmation is sought from the user, then the prompt string would be
-        included in an extension.
+    :   <dfn>extensions</dfn>
+    ::  This optional member contains additional parameters requesting additional processing by the client and authenticator.
+        For example, if transaction confirmation is sought from the user, then the prompt string might be included as an
+        extension.
 </div>
 
 
@@ -978,8 +1005,7 @@ following Web IDL.
 
     : <dfn dfn>JSON-serialized client data</dfn>
     :: This is the [=UTF-8 encoding=] of the result of calling the initial value of {{JSON/stringify|JSON.stringify}} on a
-        {{CollectedClientData}} dictionary. To avoid ambiguity, the {{ScopedCredentialInfo}} and {{AuthenticationAssertion}} structures
-        contain the actual serializations used by the client to generate them.
+        {{CollectedClientData}} dictionary.
 
     : <dfn dfn>Hash of the serialized client data</dfn>
     :: This is the hash (computed using {{hashAlg}}) of the [=JSON-serialized client data=], as constructed by the client.
@@ -1610,17 +1636,17 @@ should be specified in the attestation certificate itself, so that it can be ver
 # [RP] Operations # {#rp-operations}
 
 Upon successful execution of a {{makeCredential()}} or {{getAssertion()}} call, the [RP]'s script receives a
-{{ScopedCredentialInfo}} or {{AuthenticationAssertion}} structure respectively from the client. It must then deliver the
-contents of this structure to the [=[RP]=], using methods outside the scope of this specification. This section describes the
-operations that the [RP] must perform upon receipt of these structures.
+{{AuthenticatorAttestationResponse}} or {{AuthenticatorAssertionResponse}} structure respectively from the client. It must then
+deliver the contents of this structure to the [=[RP]=], using methods outside the scope of this specification. This section
+describes the operations that the [RP] must perform upon receipt of these structures.
 
 
 ## Registering a new credential ## {#registering-a-new-credential}
 
-When requested to register a new credential, represented by a {{ScopedCredentialInfo}} structure, as part of a registration
+When requested to register a new credential, represented by a {{AuthenticatorAttestationResponse}} structure, as part of registration
 ceremony, a [RP] MUST proceed as follows:
 
-1. Perform JSON deserialization on the {{ScopedCredentialInfo/clientDataJSON}} field of the {{ScopedCredentialInfo}} object to
+1. Perform JSON deserialization on the {{AuthenticatorResponse/clientDataJSON}} field of the {{AuthenticatorAttestationResponse}} object to
     extract the [=client data=] |C| claimed to have been used for the credential's attestation.
 
 2. Verify that the {{CollectedClientData/challenge}} in |C| matches the challenge that was sent to the authenticator in the
@@ -1633,10 +1659,10 @@ ceremony, a [RP] MUST proceed as follows:
 
 5. Verify that the {{CollectedClientData/extensions}} in |C| is a proper subset of the extensions requested by the RP.
 
-6. Compute the hash of {{ScopedCredentialInfo/clientDataJSON}} using the algorithm identified by
+6. Compute the hash of {{AuthenticatorResponse/clientDataJSON}} using the algorithm identified by
     <code>|C|.{{CollectedClientData/hashAlg}}</code>.
 
-7. Perform CBOR decoding on the {{ScopedCredentialInfo/attestationObject}} field of the {{ScopedCredentialInfo}} structure to
+7. Perform CBOR decoding on the {{AuthenticatorAttestationResponse/attestationObject}} field of the {{AuthenticatorAttestationResponse}} structure to
     obtain the attestation statement format |fmt|, the [=authenticator data=] |authData|, and the attestation statement
     |attStmt|.
 
@@ -1688,15 +1714,15 @@ or it MAY decide to accept the registration, e.g. while deleting the older regis
 
 ## Verifying an authentication assertion ## {#verifying-assertion}
 
-When requested to authenticate a given {{AuthenticationAssertion}} structure as part of an authentication ceremony, the [RP]
-MUST proceed as follows:
+When requested to authenticate a given {{AuthenticatorAssertionResponse}} structure as part of an authentication ceremony, the
+[RP] MUST proceed as follows:
 
-1. Using the {{ScopedCredential/id}} attribute contained in the {{AuthenticationAssertion/credential}} attribute of the given
-    {{AuthenticationAssertion}} structure, look up the corresponding credential public key.
+1. Using the {{ScopedCredential/id}} attribute contained in the {{AuthenticatorAssertionResponse/credential}} attribute of the given
+    {{AuthenticatorAssertionResponse}} structure, look up the corresponding credential public key.
 
-2. Let |cData|, |aData| and |sig| denote the {{AuthenticationAssertion/clientDataJSON}},
-    {{AuthenticationAssertion/authenticatorData}} and {{AuthenticationAssertion/signature}} attributes of the given
-    {{AuthenticationAssertion}} structure, respectively.
+2. Let |cData|, |aData| and |sig| denote the {{AuthenticatorResponse/clientDataJSON}},
+    {{AuthenticatorAssertionResponse/authenticatorData}} and {{AuthenticatorAssertionResponse/signature}} attributes of the given
+    {{AuthenticatorAssertionResponse}} structure, respectively.
 
 3. Perform JSON deserialization on |cData| to extract the [=client data=] |C| used for the signature.
 
@@ -2912,13 +2938,13 @@ then the sample code for performing such an authentication might look like this:
 
     if (!webauthnAPI) { /* Platform not capable. Handle error. */ }
 
-    var challenge = new TextEncoder().encode("climb a mountain");
     var options = {
-                    timeout = 60000,  // 1 minute
+                    challenge: new TextEncoder().encode("climb a mountain"),
+                    timeout: 60000,  // 1 minute
                     allowList: [{ type: "ScopedCred" }]
                   };
 
-    webauthnAPI.getAssertion(challenge, options)
+    webauthnAPI.getAssertion(options)
         .then(function (assertion) {
         // Send assertion to server for verification
     }).catch(function (err) {
@@ -2936,7 +2962,6 @@ extension for transaction authorization.
     if (!webauthnAPI) { /* Platform not capable. Handle error. */ }
 
     var encoder = new TextEncoder();
-    var challenge = encoder.encode("climb a mountain");
     var acceptableCredential1 = {
         type: "ScopedCred",
         id: encoder.encode("!!!!!!!hi there!!!!!!!\n")
@@ -2947,6 +2972,7 @@ extension for transaction authorization.
     };
 
     var options = {
+                    challenge: encoder.encode("climb a mountain"),
                     timeout: 60000,  // 1 minute
                     allowList: [acceptableCredential1, acceptableCredential2];
                     extensions: { 'webauthn.txauth.simple':
