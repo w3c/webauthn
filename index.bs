@@ -384,7 +384,7 @@ The Web Authentication API is defined by the union of the Web IDL fragments pres
             optional ScopedCredentialOptions     options
         );
 
-        Promise<AuthenticationAssertion> getAssertion(AssertionRequest request);
+        Promise<AuthenticationAssertion> getAssertion(AssertionOptions options);
     };
 </xmp>
 
@@ -409,9 +409,9 @@ This method takes the following parameters:
     authenticator already has a credential for the specified value of {{RelyingPartyUserInfo/id}} in {{accountInformation}}, and if this
     credential is not listed in the {{ScopedCredentialOptions/excludeList}} member of {{options}}, then after successful
     execution of this method:
-    - Any calls to {{getAssertion()}} that do not specify {{AssertionRequest/allowList}} will not result in the older
+    - Any calls to {{getAssertion()}} that do not specify {{AssertionOptions/allowList}} will not result in the older
         credential being offered to the user.
-    - Any calls to {{getAssertion()}} that specify the older credential in the {{AssertionRequest/allowList}} may also not
+    - Any calls to {{getAssertion()}} that specify the older credential in the {{AssertionOptions/allowList}} may also not
         result in it being offered to the user.
 
 - The <dfn>cryptoParameters</dfn> parameter supplies information about the desired properties of the credential to be created.
@@ -560,18 +560,18 @@ some criteria to indicate what credentials are acceptable to it. The user agent 
 specified criteria, and guides the user to pick one that the script should be allowed to use. The user may choose not to provide
 a credential even if one is present, for example to maintain privacy.
 
-<div class="note" dfn-type="argument" dfn-for="WebAuthentication/getAssertion(request)">
+<div class="note" dfn-type="argument" dfn-for="WebAuthentication/getAssertion(options)">
     This method takes the following parameters:
 
     :   <dfn>options</dfn>
-    ::  This dictionary contains the data necessary to generate an assertion, as described in [[#assertion-request]].
+    ::  This dictionary contains the data necessary to generate an assertion, as described in [[#assertion-options]].
 </div>
 
 When this method is invoked, the user agent MUST execute the following algorithm:
 
-1. If the {{AssertionRequest/timeout}} member of {{request}} is [=present=], check if its value lies within a reasonable range
+1. If the {{AssertionOptions/timeout}} member of {{options}} is [=present=], check if its value lies within a reasonable range
     as defined by the platform and if not, correct it to the closest value lying within that range. Set |adjustedTimeout| to
-    this adjusted value. If the {{AssertionRequest/timeout}} member of {{request}} is [=present|not present=], then set
+    this adjusted value. If the {{AssertionOptions/timeout}} member of {{options}} is [=present|not present=], then set
     |adjustedTimeout| to a platform-specific default.
 
 1. Let |global| be this {{WebAuthentication}} object's [=global object|environment settings object's global object=].
@@ -580,20 +580,20 @@ When this method is invoked, the user agent MUST execute the following algorithm
     |callerOrigin| is an [=opaque origin=], return [=a promise rejected with=] a {{DOMException}} whose name is
     "{{NotAllowedError}}", and terminate this algorithm.
 
-1. If the {{AssertionRequest/rpId}} member of {{request}} is [=present|not present=], then set |rpId| to |callerOrigin|.
+1. If the {{AssertionOptions/rpId}} member of {{options}} is [=present|not present=], then set |rpId| to |callerOrigin|.
     Otherwise:
     1. Let |effectiveDomain| be the |callerOrigin|'s [=effective domain=].
     1. If |effectiveDomain| is null, then return [=a promise rejected with=] a {{DOMException}} whose name is 
         "{{SecurityError}}" and terminate this algorithm.
-    1. If {{AssertionRequest/rpId}} [=is not a registrable domain suffix of and is not equal to=]
+    1. If {{AssertionOptions/rpId}} [=is not a registrable domain suffix of and is not equal to=]
         |effectiveDomain|, return [=a promise rejected with=] a {{DOMException}} whose name is "{{SecurityError}}", and
         terminate this algorithm.
-    1. Set |rpId| to the {{AssertionRequest/rpId}}.
+    1. Set |rpId| to the {{AssertionOptions/rpId}}.
 
 1. Let |clientExtensions| be a new [=list=].
 
-1. If the {{AssertionRequest/extensions}} member of {{request}} is [=present=], then [=map/for each=]
-    |extension| → |argument| of <code>{{request}}.{{AssertionRequest/extensions}}</code>:
+1. If the {{AssertionOptions/extensions}} member of {{options}} is [=present=], then [=map/for each=]
+    |extension| → |argument| of <code>{{options}}.{{AssertionOptions/extensions}}</code>:
     1. If |extension| is not supported by this client platform, then [=continue=].
     1. Otherwise, let |result| be the result of running |extension|'s [=client processing=] algorithm on |argument|. If the
         algorithm returned an error, [=continue=].
@@ -602,7 +602,7 @@ When this method is invoked, the user agent MUST execute the following algorithm
 
 1. Let |collectedclientData| be a new {{CollectedClientData}} instance whose fields are:
     : {{CollectedClientData/challenge}}
-    :: The [=base64url encoding=] of {{request}}.{{AssertionRequest/challenge}}
+    :: The [=base64url encoding=] of {{options}}.{{AssertionOptions/challenge}}
     : {{origin}}
     :: The [=unicode serialization of an origin|unicode serialization=] of |rpId|
     : {{hashAlg}}
@@ -623,11 +623,11 @@ When this method is invoked, the user agent MUST execute the following algorithm
 
     1. Let |credentialList| be a new [=list=].
 
-    1. If <code>{{request}}.{{AssertionRequest/allowList}}</code> [=list/is not empty=], execute a 
+    1. If <code>{{options}}.{{AssertionOptions/allowList}}</code> [=list/is not empty=], execute a 
         platform-specific procedure to determine which, if any, credentials in
-        <code>{{request}}.{{AssertionRequest/allowList}}</code> are present on this |authenticator| by matching with 
-        <code>{{request}}.{{AssertionRequest/allowList}}.{{ScopedCredentialDescriptor/id}}</code> and 
-        <code>{{request}}.{{AssertionRequest/allowList}}.{{ScopedCredentialDescriptor/type}}</code>, and set |credentialList| to
+        <code>{{options}}.{{AssertionOptions/allowList}}</code> are present on this |authenticator| by matching with 
+        <code>{{options}}.{{AssertionOptions/allowList}}.{{ScopedCredentialDescriptor/id}}</code> and 
+        <code>{{options}}.{{AssertionOptions/allowList}}.{{ScopedCredentialDescriptor/type}}</code>, and set |credentialList| to
         this filtered list.
     
     1. If |credentialList| [=list/is empty=] then [=continue=].
@@ -881,13 +881,13 @@ user consent to a specific transaction. The structure of these signatures is def
 </div>
 
 
-## Options for Assertion Generation (dictionary <dfn dictionary>AssertionRequest</dfn>) ## {#assertion-request}
+## Options for Assertion Generation (dictionary <dfn dictionary>AssertionOptions</dfn>) ## {#assertion-options}
 
-The {{AssertionRequest}} dictionary supplies {{getAssertion()}} with the data it needs to generate an assertion. Its
-member {{AssertionRequest/challenge}} must be present, while its other members are optional.
+The {{AssertionOptions}} dictionary supplies {{getAssertion()}} with the data it needs to generate an assertion. Its
+member {{AssertionOptions/challenge}} must be present, while its other members are optional.
 
 <xmp class="idl">
-    dictionary AssertionRequest {
+    dictionary AssertionOptions {
         required BufferSource                challenge;
         unsigned long                        timeout;
         USVString                            rpId;
@@ -896,7 +896,7 @@ member {{AssertionRequest/challenge}} must be present, while its other members a
     };
 </xmp>
 
-<div dfn-type="dict-member" dfn-for="AssertionRequest">
+<div dfn-type="dict-member" dfn-for="AssertionOptions">
     :   <dfn>challenge</dfn>
     ::  This member represents a challenge that the selected [=authenticator=] is expected to sign in order to produce an
         [=authentication assertion=].
@@ -2385,7 +2385,7 @@ error.
 :: A single [=UTF-8 encoded=] string specifying a FIDO |appId|.
 
 : Client processing
-:: If {{AssertionRequest/rpId}} is present, reject promise with a DOMException
+:: If {{AssertionOptions/rpId}} is present, reject promise with a DOMException
     whose name is "{{NotAllowedError}}", and terminate this algorithm.
     Replace the calculation of |rpId| in Step 3 of [[#getAssertion]] with the
     following procedure:  The client uses the value of |appid| to perform
