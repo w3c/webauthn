@@ -384,10 +384,7 @@ The Web Authentication API is defined by the union of the Web IDL fragments pres
             optional ScopedCredentialOptions     options
         );
 
-        Promise<AuthenticatorAssertionResponse> getAssertion(
-            BufferSource                    assertionChallenge,
-            optional AssertionOptions       options
-        );
+        Promise<AuthenticatorAssertionResponse> getAssertion(AssertionOptions options);
     };
 </xmp>
 
@@ -480,7 +477,7 @@ When this method is invoked, the user agent MUST execute the following algorithm
     1. [=list/Append=] |result| to |clientExtensions|.
 
 1. Let |collectedclientData| be a new {{CollectedClientData}} instance whose fields are:
-    : {{challenge}}
+    : {{CollectedClientData/challenge}}
     :: The [=base64url encoding=] of {{attestationChallenge}}
     : {{origin}}
     :: The [=unicode serialization of an origin|unicode serialization=] of |rpId|
@@ -557,23 +554,17 @@ authorizing an authenticator.
 
 ### Use an existing credential - getAssertion() method ### {#getAssertion}
 
-<div link-for-hint="WebAuthentication/getAssertion(assertionChallenge, options)">
+<div link-for-hint="WebAuthentication/getAssertion(options)">
 This method is used to discover and use an existing scoped credential, with the user's consent. The script optionally specifies
 some criteria to indicate what credentials are acceptable to it. The user agent and/or platform locates credentials matching the
 specified criteria, and guides the user to pick one that the script should be allowed to use. The user may choose not to provide
 a credential even if one is present, for example to maintain privacy.
 
-<div class="note">
-This method takes the following parameters:
+<div class="note" dfn-type="argument" dfn-for="WebAuthentication/getAssertion(options)">
+    This method takes the following parameters:
 
-<ul dfn-type="argument" dfn-for="WebAuthentication/getAssertion(assertionChallenge, options)">
-- The <dfn>assertionChallenge</dfn> parameter contains a challenge that the selected authenticator is expected to sign to
-    produce the assertion.
-
-- The optional <dfn>options</dfn> parameter specifies additional options, as described in
-    [[#assertion-options]].
-
-</ul>
+    :   <dfn>options</dfn>
+    ::  This dictionary contains the data necessary to generate an assertion, as described in [[#assertion-options]].
 </div>
 
 When this method is invoked, the user agent MUST execute the following algorithm:
@@ -610,8 +601,8 @@ When this method is invoked, the user agent MUST execute the following algorithm
     1. [=list/Append=] |result| to |clientExtensions|.
 
 1. Let |collectedclientData| be a new {{CollectedClientData}} instance whose fields are:
-    : {{challenge}}
-    :: The [=base64url encoding=] of {{assertionChallenge}}
+    : {{CollectedClientData/challenge}}
+    :: The [=base64url encoding=] of {{options}}.{{AssertionOptions/challenge}}
     : {{origin}}
     :: The [=unicode serialization of an origin|unicode serialization=] of |rpId|
     : {{hashAlg}}
@@ -913,10 +904,14 @@ example of the latter, when the user is accessing the [RP] from a given client f
 use a [=roaming authenticator=] which was originally registered with the [RP] using a different client.
 
 
-## Additional options for Assertion Generation (dictionary <dfn dictionary>AssertionOptions</dfn>) ## {#assertion-options}
+## Options for Assertion Generation (dictionary <dfn dictionary>AssertionOptions</dfn>) ## {#assertion-options}
+
+The {{AssertionOptions}} dictionary supplies {{getAssertion()}} with the data it needs to generate an assertion. Its
+member {{AssertionOptions/challenge}} must be present, while its other members are optional.
 
 <xmp class="idl">
     dictionary AssertionOptions {
+        required BufferSource                challenge;
         unsigned long                        timeout;
         USVString                            rpId;
         sequence<ScopedCredentialDescriptor> allowList = [];
@@ -925,20 +920,28 @@ use a [=roaming authenticator=] which was originally registered with the [RP] us
 </xmp>
 
 <div dfn-type="dict-member" dfn-for="AssertionOptions">
-    This dictionary is used to supply additional options when generating an assertion. All these parameters are optional.
+    :   <dfn>challenge</dfn>
+    ::  This member represents a challenge that the selected [=authenticator=] is expected to sign in order to produce an
+        [=authentication assertion=].
 
-    - The optional <dfn>timeout</dfn> parameter specifies a time, in milliseconds, that the caller is willing to wait for the
-        call to complete. This is treated as a hint, and may be overridden by the platform.
+    :   <dfn>timeout</dfn>
+    ::  This optional member specifies a time, in milliseconds, that the caller is willing to wait for the call to complete.
+        The value is treated as a hint, and may be overridden by the platform.
 
-    - The optional <dfn>rpId</dfn> parameter specifies the rpId claimed by the caller. If it is omitted, it will be assumed to
-        be equal to the [=origin=] specified by the {{WebAuthentication}} object's [=relevant settings object=].
+    :   <dfn>rpId</dfn>
+    ::  This optional member specifies the [=relying party identifier=] claimed by the caller. If omitted, its value will
+        be the [=ASCII serialization of an origin|ASCII serialization=] of the {{WebAuthentication}} object's [=relevant
+        settings object=]'s [=environment settings object/origin=].
 
-    - The optional <dfn>allowList</dfn> member contains a list of credentials acceptable to the caller, in order of the
-        caller's preference.
+    :   <dfn>allowList</dfn>
+    ::  This optional member contains a list of {{ScopedCredentialDescriptor}} object representing [=scoped credentials=]
+        acceptable to the caller, in decending order of the caller's preference (the first item in the list is the most
+        preferred credential, and so on down the line).
 
-    - The optional <dfn>extensions</dfn> parameter contains additional parameters requesting additional processing by the client
-        and authenticator. For example, if transaction confirmation is sought from the user, then the prompt string would be
-        included in an extension.
+    :   <dfn>extensions</dfn>
+    ::  This optional member contains additional parameters requesting additional processing by the client and authenticator.
+        For example, if transaction confirmation is sought from the user, then the prompt string might be included as an
+        extension.
 </div>
 
 
@@ -2929,13 +2932,13 @@ then the sample code for performing such an authentication might look like this:
 
     if (!webauthnAPI) { /* Platform not capable. Handle error. */ }
 
-    var challenge = new TextEncoder().encode("climb a mountain");
     var options = {
-                    timeout = 60000,  // 1 minute
+                    challenge: new TextEncoder().encode("climb a mountain"),
+                    timeout: 60000,  // 1 minute
                     allowList: [{ type: "ScopedCred" }]
                   };
 
-    webauthnAPI.getAssertion(challenge, options)
+    webauthnAPI.getAssertion(options)
         .then(function (assertion) {
         // Send assertion to server for verification
     }).catch(function (err) {
@@ -2953,7 +2956,6 @@ extension for transaction authorization.
     if (!webauthnAPI) { /* Platform not capable. Handle error. */ }
 
     var encoder = new TextEncoder();
-    var challenge = encoder.encode("climb a mountain");
     var acceptableCredential1 = {
         type: "ScopedCred",
         id: encoder.encode("!!!!!!!hi there!!!!!!!\n")
@@ -2964,6 +2966,7 @@ extension for transaction authorization.
     };
 
     var options = {
+                    challenge: encoder.encode("climb a mountain"),
                     timeout: 60000,  // 1 minute
                     allowList: [acceptableCredential1, acceptableCredential2];
                     extensions: { 'webauthn.txauth.simple':
