@@ -606,7 +606,7 @@ When this method is invoked, the user agent MUST execute the following algorithm
             :   {{ScopedCredential/[[identifier]]}}
             ::  |id|
             :   {{ScopedCredential/response}}
-            ::  A new {{AuthenticatorAttestationResponse}} object whose fields are:
+            ::  A new {{AuthenticatorAttestationResponse}} object associated with |global| whose fields are:
                 :   {{AuthenticatorResponse/clientDataJSON}}
                 ::  A new {{ArrayBuffer}}, created using |global|'s [=%ArrayBuffer%=], containing the bytes of |clientDataJSON|.
                 :   {{AuthenticatorAttestationResponse/attestationObject}}
@@ -636,7 +636,7 @@ a credential even if one is present, for example to maintain privacy.
 This method takes the following parameters:
 
 *   |options| is a {{CredentialRequestOptions}} object, containing a challenge that the selected authenticator is expected to
-    sign to produce the assertion, and additional options as described in [[#assertion-parameters]]
+    sign to produce the assertion, and additional options as described in [[#assertion-options]]
 
 </div>
 
@@ -747,7 +747,7 @@ When this method is invoked, the user agent MUST execute the following algorithm
             ::  A new {{ArrayBuffer}}, created using |global|'s [=%ArrayBuffer%=], containing the bytes of the credential ID
                 returned from the successful [=authenticatorGetAssertion=] operation.
             :   {{ScopedCredential/response}}
-            ::  A new {{AuthenticatorAssertionResponse}} object whose fields are:
+            ::  A new {{AuthenticatorAssertionResponse}} object associated with |global| whose fields are:
                 : {{AuthenticatorResponse/clientDataJSON}}
                 :: A new {{ArrayBuffer}}, created using |global|'s [=%ArrayBuffer%=], containing the bytes of |clientDataJSON|
                 : {{AuthenticatorAssertionResponse/authenticatorData}}
@@ -756,6 +756,7 @@ When this method is invoked, the user agent MUST execute the following algorithm
                 : {{AuthenticatorAssertionResponse/signature}}
                 :: A new {{ArrayBuffer}}, created using |global|'s [=%ArrayBuffer%=], containing the bytes of the returned
                     {{signature}}
+
         3. [=set/For each=] remaining |authenticator| in |issuedRequests| invoke the [=authenticatorCancel=] operation on
             |authenticator| and [=set/remove=] it from |issuedRequests|.
         4. Return |value| and terminate this algorithm.
@@ -768,78 +769,81 @@ During the above process, the user agent SHOULD show some UI to the user to guid
 authorizing an authenticator with which to complete the operation.
 </div>
 
-### <dfn interface>AuthenticatorResponse</dfn> interfaces ### {#iface-authenticatorresponse}
+## Authenticator Responses (interface <dfn interface>AuthenticatorResponse</dfn>) ## {#iface-authenticatorresponse}
 
-The {{AuthenticatorResponse}} interface represents the data returned from an [=authenticator=] in response to a client's
-request. This base interface contains common attributes for all response types, while derived interfaces like
-{{AuthenticatorAttestationResponse}} and {{AuthenticatorAssertionResponse}} add attribute specific to a particular kind
-of response.
+[=Authenticators=] respond to relying party requests by returning an object derived from the
+{{AuthenticatorResponse}} interface:
 
-<xmp class="idl">
-  [SecureContext]
-  interface AuthenticatorResponse {
-    readonly attribute ArrayBuffer clientDataJSON;
-  };
-</xmp>
-<dl dfn-for="AuthenticatorResponse">
-    :   <dfn attribute>clientDataJSON</dfn>
-    ::  This attribute contains a representation of the data sent from the client to the authenticator in order to generate
-        a given response. The format of the provided data depends on the type of request. See the definitions of
-        {{AuthenticatorAttestationResponse}} and {{AuthenticatorAssertionResponse}} for more detail.
-</dl>
+<pre class="idl">
+    [SecureContext]
+    interface AuthenticatorResponse {
+        readonly attribute ArrayBuffer clientDataJSON;
+    };
+</pre>
+<div dfn-type="attribute" dfn-for="AuthenticatorResponse">
+    :   <dfn>clientDataJSON</dfn>
+    ::  This attribute contains a [=JSON-serialized client data|JSON serialization=] of the [=client data=] passed to the
+        authenticator by the client in its call to either {{ScopedCredential/create()}} or {{CredentialsContainer/get()}}.
+</div>
 
-#### <dfn interface>AuthenticatorAttestationResponse</dfn> interface #### {#iface-authenticatorattestationresponse}
+### Information about Scoped Credential (interface <dfn interface>AuthenticatorAttestationResponse</dfn>) ### {#iface-authenticatorattestationresponse}
 
-This interface contains the [=authenticator=]'s response to a client's request to created a new scoped credential. It contains
-information about the credential that can be used to locate it later for use, and also contains metadata that can be used by
-the [=[RP]=] to assess the strength of the credential during registration.
+The {{AuthenticatorAttestationResponse}} interface represents the [=authenticator=]'s response to a client's request
+for the creation of a new [=scoped credential=]. It contains information about the new credential that can be used to
+identify it for later use, and metadata that can be used by the [=[RP]=] to assess the characteristics of the credential
+during registration.
 
-<xmp class="idl">
-  [SecureContext]
-  interface AuthenticatorAttestationResponse : AuthenticatorResponse {
-    readonly attribute ArrayBuffer attestationObject;
-  };
-</xmp>
-<dl dfn-for="AuthenticatorAttestationResponse">
+<pre class="idl">
+    [SecureContext]
+    interface AuthenticatorAttestationResponse : AuthenticatorResponse {
+        readonly attribute ArrayBuffer attestationObject;
+    };
+</pre>
+<div dfn-type="attribute" dfn-for="AuthenticatorAttestationResponse">
     :   {{AuthenticatorResponse/clientDataJSON}}
-    ::  Here, this attribute contains the [=JSON-serialized client data=] (see [[#cred-attestation]]) passed to the
-        authenticator by the client in order to generate this credential. The exact JSON serialization must be preserved
-        as the [=hash of the serialized client data=] has been computed over it.
+    ::  This attribute, inherited from {{AuthenticatorResponse}}, contains the [=JSON-serialized client data=] (see
+        [[#cred-attestation]]) passed to the authenticator by the client in order to generate this credential. The
+        exact JSON serialization must be preserved, as the [=hash of the serialized client data=] has been computed
+        over it.
 
-    :   <dfn attribute>attestationObject</dfn>
-    ::  This attribute contains an [=attestation object=]. The contents of this object are determined by the
-        [=attestation statement format=] used by the authenticator. This object is opaque to, and cryptographically protected
-        against tampering by, the client. It contains the credential's unique identifier, [=credential public key=], and
-        attestation statement. It also contains any additional information that the [RP]'s server requires to validate the
-        attestation statement, as well as to decode and validate the bindings of both the client and authenticator data. For
-        more details, see [[#cred-attestation]].
-</dl>
+    :   <dfn>attestationObject</dfn>
+    ::  This attribute contains an [=attestation object=], which is opaque to, and cryptographically protected against
+        tampering by, the client. The [=attestation object=] contains both [=authenticator data=] and an attestation
+        statement. The former contains the AAGUID, a unique credential ID, and the [=credential public key=]. The
+        contents of the attestation statement are determined by the [=attestation statement format=] used by the
+        [=authenticator=]. It also contains any additional information that the [RP]'s server requires to validate the
+        attestation statement, as well as to decode and validate the [=authenticator data=] along with the
+        [=JSON-serialized client data=]. For more details, see [[#cred-attestation]] as well as
+        [Figure 3](#fig-attStructs).
+</div>
 
-#### <dfn interface>AuthenticatorAssertionResponse</dfn> interface #### {#iface-authenticatorassertionresponse}
+### Web Authentication Assertion (interface <dfn interface>AuthenticatorAssertionResponse</dfn>) ### {#iface-authenticatorassertionresponse}
 
-The {{AuthenticatorAttestationResponse}} interface contains the [=authenticator=]'s response to a client's request to
+The {{AuthenticatorAssertionResponse}} interface represents an [=authenticator=]'s response to a client's request for
+generation of a new [=authentication assertion=] given the [=[RP]=]'s challenge and optional list of credentials it is
+aware of. This response contains a cryptographic signature proving possession of the [=credential private key=], and
+optionally evidence of [=user consent=] to a specific transaction.
 
-Scoped credentials produce a cryptographic signature that provides proof of possession of a private key as well as
-evidence of user consent to a specific transaction. The structure of these signatures is defined as follows:
-
-<xmp class="idl">
-  [SecureContext]
-  interface AuthenticatorAssertionResponse : AuthenticatorResponse {
-    readonly attribute ArrayBuffer       authenticatorData;
-    readonly attribute ArrayBuffer       signature;
-  };
-</xmp>
-<dl dfn-for="AuthenticatorAssertionResponse">
+<pre class="idl">
+    [SecureContext]
+    interface AuthenticatorAssertionResponse : AuthenticatorResponse {
+        readonly attribute ArrayBuffer      authenticatorData;
+        readonly attribute ArrayBuffer      signature;
+    };
+</pre>
+<div dfn-type="attribute" dfn-for="AuthenticatorAssertionResponse">
     :   {{AuthenticatorResponse/clientDataJSON}}
-    ::  Here, this attribute contains the parameters sent to the authenticator by the client, in serialized form. See
-        [[#sec-client-data]] for the format of this parameter and how it is generated.
+    ::  This attribute, inherited from {{AuthenticatorResponse}}, contains the [=JSON-serialized client data=] (see
+        [[#sec-client-data]]) passed to the authenticator by the client in order to generate this assertion. The
+        exact JSON serialization must be preserved, as the [=hash of the serialized client data=] has been computed
+        over it.
 
-    :   <dfn attribute>authenticatorData</dfn>
+    :   <dfn>authenticatorData</dfn>
     ::  This attribute contains the [=authenticator data=] returned by the authenticator. See [[#sec-authenticator-data]].
 
-    :   <dfn attribute>signature</dfn>
-    ::   This attribute contains the raw signature returned from the authenticator. See [[#op-get-assertion]].
-</dl>
+    :   <dfn>signature</dfn>
+    ::  This attribute contains the raw signature returned from the authenticator. See [[#op-get-assertion]].
+</div>
 
 ## User Account Information (dictionary <dfn dictionary>RelyingPartyUserInfo</dfn>) ## {#iface-userinfo}
 
@@ -967,7 +971,7 @@ a minimum of friction, e.g., the user will not have to dig around in their pocke
 example of the latter, when the user is accessing the [RP] from a given client for the first time, they may be required to
 use a [=roaming authenticator=] which was originally registered with the [RP] using a different client.
 
-## Parameters for Assertion Generation (dictionary <dfn dictionary>ScopedCredentialRequestOptions</dfn>) ## {#assertion-parameters}
+## Options for Assertion Generation (dictionary <dfn dictionary>ScopedCredentialRequestOptions</dfn>) ## {#assertion-options}
 
 <xmp class="idl">
     dictionary ScopedCredentialRequestOptions {
@@ -1659,7 +1663,7 @@ should be specified in the attestation certificate itself, so that it can be ver
 
 # [RP] Operations # {#rp-operations}
 
-Upon successful execution of a {{create()}} or {{CredentialsContainer/get()}} call, the [RP]'s script receives a {{ScopedCredential}} containing a
+Upon successful execution of a {{create()}} or {{CredentialsContainer/get()}} call, the [RP]'s script receives a {{ScopedCredential}} containing an
 {{AuthenticatorAttestationResponse}} or {{AuthenticatorAssertionResponse}} structure respectively from the client. It must then
 deliver the contents of this structure to the [=[RP]=], using methods outside the scope of this specification. This section
 describes the operations that the [RP] must perform upon receipt of these structures.
@@ -1747,7 +1751,6 @@ When requested to authenticate a given {{ScopedCredential}} structure (|credenti
 2. Let |cData|, |aData| and |sig| denote the value of |credential|'s {{ScopedCredential/response}}'s
     {{AuthenticatorResponse/clientDataJSON}}, {{AuthenticatorAssertionResponse/authenticatorData}}, and
     {{AuthenticatorAssertionResponse/signature}} respectively.
-    {{AuthenticatorAssertionResponse}} structure in |credential|'s, respectively.
 
 3. Perform JSON deserialization on |cData| to extract the [=client data=] |C| used for the signature.
 
