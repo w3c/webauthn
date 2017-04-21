@@ -326,7 +326,7 @@ The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "S
 
 : <dfn>Resident Key</dfn>
 : <dfn>RK</dfn>
-:: A [=resident key=] is a [=credential private keys=] that can be found and used by the authenticator based on only the 
+:: A [=resident key=] is a [=credential private key=] that can be found and used by the authenticator based on only the 
     associated RP ID. 
 
 : <dfn>User Consent</dfn>
@@ -556,12 +556,13 @@ When this method is invoked, the user agent MUST execute the following algorithm
 
 1. Let |issuedRequests| and |currentlyAvailableAuthenticators| be new [=ordered sets=].
 
+1. Let |keyStorageDevice| be the value of <code>|options|.{{MakeCredentialOptions/requireResidentKey}}</code>. 
+
 1. For each |authenticator| currently available on this platform:
     1. If <code>|options|.{{MakeCredentialOptions/attachment}}</code> is [=present|not present=] or its value matches
-        |authenticator|'s attachment modality, continue to next step. Otherwise, do not [=set/append=] |authenticator|
-        to |currentlyAvailableAuthenticators|.
-    1. If <code>|options|.{{MakeCredentialOptions/requireResidentKey}}</code> flag is not [=present=] or its value
-        is set to [=true=], [=set/append=] |authenticator| to |currentlyAvailableAuthenticators|.
+        |authenticator|'s attachment modality, [=continue=].
+    1. If |keyStorageDevice| flag is not [=present|not present=] or its value matches the |authenticator|'s keyStorageDevice
+        modality, [=set/append=] |authenticator| to |currentlyAvailableAuthenticators|.
 
 1. [=set/For each=] |authenticator| in |currentlyAvailableAuthenticators|:
     1. Let |excludeList| be a new [=list=].
@@ -571,7 +572,7 @@ When this method is invoked, the user agent MUST execute the following algorithm
         1. Otherwise, [=list/Append=] |C| to |excludeList|.
     1. [=In parallel=], invoke the [=authenticatorMakeCredential=] operation on |authenticator| with |rpId|,
         |clientDataHash|, |options|.{{MakeCredentialOptions/rp}}, |options|.{{MakeCredentialOptions/user}},
-        |normalizedParameters|, |excludeList| and |clientExtensions| as parameters.
+        |normalizedParameters|, |excludeList|, |clientExtensions|, and |keyStorageDevice| as parameters.
     1. [=set/Append=] |authenticator| to |issuedRequests|.
 
 1. Start a timer for |adjustedTimeout| milliseconds. Then execute the following steps [=in parallel=]. The [=task source=] for
@@ -1353,6 +1354,7 @@ input parameters:
 - A list of {{ScopedCredential}} objects provided by the [RP] with the intention that, if any of these are known to the
     authenticator, it should not create a new credential.
 - Extension data created by the client based on the extensions requested by the [RP].
+- The keyStorageDevice flag requested by [RP] using {{requireResidentKey}} parameter. 
 
 When this operation is invoked, the authenticator must perform the following procedure:
 - Check if all the supplied parameters are syntactically well-formed and of the correct length. If not, return an error code
@@ -1361,6 +1363,8 @@ When this operation is invoked, the authenticator must perform the following pro
     not, return an error code equivalent to NotSupportedError and terminate the operation.
 - Check if a credential matching any of the supplied {{ScopedCredential}} identifiers is present on this authenticator. If so,
     return an error code equivalent to NotAllowedError and terminate the operation.
+- Check if the keyStorageDevice flag is true, process the flag. If the authenticator cannot store the credential private key,
+    return an error code equivalent to NotAllowedError and terminate the operation. 
 - Prompt the user for consent to create a new credential. The prompt for obtaining this consent is shown by the authenticator
     if it has its own output capability, or by the user agent otherwise. If the user denies consent, return an error code
     equivalent to NotAllowedError and terminate the operation.
@@ -1397,8 +1401,8 @@ When this method is invoked, the authenticator must perform the following proced
 - Check if all the supplied parameters are syntactically well-formed and of the correct length. If not, return an error code
     equivalent to UnknownError and terminate the operation.
 - If a list of credentials was supplied by the client, filter it by removing those credentials that are not present on this
-    authenticator. If no list was supplied, create a list with all credentials stored for the caller's RP ID (as determined by
-    an exact match of the RP ID).
+    authenticator. If no list was supplied, create a list with all credentials with [=credential private key=] stored for the 
+    caller's RP ID (as determined by an exact match of the RP ID).
 - If the previous step resulted in an empty list, return an error code equivalent to NotAllowedError and terminate the
     operation.
 - Prompt the user to select a credential from among the above list. Obtain user consent for using this credential. The prompt
