@@ -521,16 +521,22 @@ When this method is invoked, the user agent MUST execute the following algorithm
     cancel the timer started in step 2, return a {{DOMException}} whose name is "{{NotSupportedError}}", and terminate this
     algorithm.
 
-1. Let |clientExtensions| be a new [=list=].
+1. Let |clientExtensions| be a new [=list=] and let |authenticatorExtensions| be a new [=list=].
 
 1. If the {{MakeCredentialOptions/extensions}} member of |options| is [=present=], then [=map/for each=]
-    |extension| → |argument| of <code>|options|.{{MakeCredentialOptions/extensions}}</code>:
-    1. If |extension| is not supported by this client platform, then [=continue=].
+    |extensionId| → |clientExtensionInput| of <code>|options|.{{MakeCredentialOptions/extensions}}</code>:
+    1. If |extensionId| is not supported by this client platform or is not a [=registration extension=], then [=continue=].
 
-    1. Otherwise, let |result| be the result of running |extension|'s [=client extension processing=] algorithm on |argument|. If the
+    1. [=list/Append=] the entry |extensionId| → |clientExtensionInput| to |clientExtensions|.
+
+    1. If |extensionId| is not an [=authenticator extension=], then [=continue=].
+
+    1. Let |result| be the base64url encoded representation of 
+        the result of running |extensionId|'s [=client extension processing=] algorithm
+	on |clientExtensionInput| to produce the [=authenticator extension input=]. If the
         algorithm returned an error, [=continue=].
 
-    1. [=list/Append=] |result| to |clientExtensions|.
+    1. [=list/Append=] the entry |extensionId| → |result| to |authenticatorExtensions|.
 
 1. Let |collectedClientData| be a new {{CollectedClientData}} instance whose fields are:
     : {{CollectedClientData/challenge}}
@@ -542,8 +548,10 @@ When this method is invoked, the user agent MUST execute the following algorithm
         [=hash of the serialized client data=]
     : {{tokenBinding}}
     :: The [=Token Binding ID=] associated with |callerOrigin|, if one is available. 
-    : {{CollectedClientData/extensions}}
+    : {{CollectedClientData/clientExtensions}}
     :: |clientExtensions|
+    : {{CollectedClientData/authenticatorExtensions}}
+    :: |authenticatorExtensions|
 
 1. Let |clientDataJSON| be the [=JSON-serialized client data=] constructed from |collectedClientData|.
 
@@ -563,7 +571,7 @@ When this method is invoked, the user agent MUST execute the following algorithm
         1. Otherwise, [=list/Append=] |C| to |excludeList|.
     1. [=In parallel=], invoke the [=authenticatorMakeCredential=] operation on |authenticator| with |rpId|,
         |clientDataHash|, |options|.{{MakeCredentialOptions/rp}}, |options|.{{MakeCredentialOptions/user}},
-        |normalizedParameters|, |excludeList| and |clientExtensions| as parameters.
+        |normalizedParameters|, |excludeList|, and |authenticatorExtensions| as parameters.
     1. [=set/Append=] |authenticator| to |issuedRequests|.
 
 1. Start a timer for |adjustedTimeout| milliseconds. Then execute the following steps [=in parallel=]. The [=task source=] for
@@ -661,15 +669,22 @@ When this method is invoked, the user agent MUST execute the following algorithm
         |effectiveDomain|, return a {{DOMException}} whose name is "{{SecurityError}}", and terminate this algorithm.
     1. Set |rpId| to the {{ScopedCredentialRequestOptions/rpId}}.
 
-1. Let |clientExtensions| be a new [=list=].
+1. Let |clientExtensions| be a new [=list=] and let |authenticatorExtensions| be a new [=list=].
 
 1. If the {{ScopedCredentialRequestOptions/extensions}} member of |scopedOptions| is [=present=], then [=map/for each=]
-    |extension| → |argument| of <code>|scopedOptions|.{{ScopedCredentialRequestOptions/extensions}}</code>:
-    1. If |extension| is not supported by this client platform, then [=continue=].
-    1. Otherwise, let |result| be the result of running |extension|'s [=client extension processing=] algorithm on |argument|. If the
+    |extensionId| → |clientExtensionInput| of <code>|scopedOptions|.{{ScopedCredentialRequestOptions/extensions}}</code>:
+    1. If |extensionId| is not supported by this client platform or is not an [=authentication extension=], then [=continue=].
+
+    1. [=list/Append=] the entry |extensionId| → |clientExtensionInput| to |clientExtensions|.
+
+    1. If |extensionId| is not an [=authenticator extension=], then [=continue=].
+
+    1. Let |result| be the base64url encoded representation of
+        the result of running |extensionId|'s [=client extension processing=] algorithm
+	on |clientExtensionInput| to produce the [=authenticator extension input=]. If the
         algorithm returned an error, [=continue=].
 
-    1. [=list/Append=] |result| to |clientExtensions|.
+    1. [=list/Append=] the entry |extensionId| → |result| to |clientExtensions|.
 
 1. Let |collectedClientData| be a new {{CollectedClientData}} instance whose fields are:
     : {{CollectedClientData/challenge}}
@@ -681,8 +696,10 @@ When this method is invoked, the user agent MUST execute the following algorithm
         [=hash of the serialized client data=]
     : {{tokenBinding}}
     :: The [=Token Binding ID=] associated with |callerOrigin|, if one is available.
-    : {{CollectedClientData/extensions}}
+    : {{CollectedClientData/clientExtensions}}
     :: |clientExtensions|
+    : {{CollectedClientData/authenticatorExtensions}}
+    :: |authenticatorExtensions|
 
 1. Let |clientDataJSON| be the [=JSON-serialized client data=] constructed from |collectedClientData|.
 
@@ -706,7 +723,7 @@ When this method is invoked, the user agent MUST execute the following algorithm
     1. [=In parallel=], [=list/for each=] credential |C| in |credentialList|:
         1. If <code>|C|.{{transports}}</code> [=list/is not empty=], the client SHOULD select one |transport| from
             {{transports}}. Then, using |transport|, invoke the [=authenticatorGetAssertion=] operation on |authenticator|, with
-            |rpId|, |clientDataHash|, |credentialList|, and |clientExtensions| as parameters.
+            |rpId|, |clientDataHash|, |credentialList|, and |authenticatorExtensions| as parameters.
         1. Otherwise, using local configuration knowledge of the appropriate transport to use with |authenticator|, invoke the 
             [=authenticatorGetAssertion=] operation on |authenticator| with |rpId|, |clientDataHash|, |credentialList|, and
             |clientExtensions| as parameters.
@@ -1030,19 +1047,15 @@ assertion. Its {{ScopedCredentialRequestOptions/challenge}} member must be prese
 </dl>
 
 
-## Authentication Assertion Extensions (dictionary <dfn dictionary>AuthenticationExtensions</dfn>) ## {#iface-assertion-extensions}
+## Authentication Extensions (dictionary <dfn dictionary>AuthenticationExtensions</dfn>) ## {#iface-authentication-extensions}
 
 <pre class="idl">
     dictionary AuthenticationExtensions {
     };
 </pre>
 
-This is a dictionary containing zero or more extensions as defined in [[#extensions]]. An extension is an additional parameter
-that can be passed to the {{CredentialsContainer/get()}} method as part of a {{ScopedCredentialRequestOptions}} object, and
-triggers additional processing by the client platform and/or the authenticator.
-
-If the caller wishes to pass extensions to the platform, it does so by adding one entry per extension to this dictionary
-with the [=extension identifier=] as the key, and the extension's [=client extension input=] value as the value (see [[#extensions]] for details).
+This is a dictionary containing zero or more WebAuthn extensions, as defined in [[#extensions]].
+An AuthenticationExtensions instance can contain either [=client extensions=] or [=authenticator extensions=], depending upon context.
 
 
 ## Supporting Data Structures ## {#supporting-data-structures}
@@ -1062,7 +1075,8 @@ following Web IDL.
         required DOMString           origin;
         required DOMString           hashAlg;
         DOMString                    tokenBinding;
-        AuthenticationExtensions     extensions;
+	AuthenticationExtensions     clientExtensions;
+        AuthenticationExtensions     authenticatorExtensions;
     };
 </pre>
 
