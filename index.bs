@@ -324,6 +324,16 @@ The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "S
     that this does not constitute [=user verification=] because [=TUP=], by definition, is not capable of [=biometric
     recognition=], nor does it involve the presentation of a shared secret such as a password or PIN.
 
+: <dfn>Client-side-resident Credential Private Key</dfn>
+:: A [=Client-side-resident Credential Private Key=] is stored either on the client platform, or in some cases on the authenticator
+    itself, e.g., in the case of a discrete first-factor roaming authenticator. Such <dfn>client-side credential private key 
+    storage</dfn> has the property that the authenticator is able to select the [=credential private key=] given only an RP ID, 
+    possibly with user assistance (e.g., by providing the user a pick list of credentials associated with the RP ID).
+
+:<dfn>Client-Side</dfn>
+:: This refers in general to the combination of the user's platform device, user agent, authenticators, and everything gluing
+    it all together.
+
 : <dfn>User Consent</dfn>
 :: User consent means the user agrees with what they are being asked, i.e., it encompasses reading and understanding prompts.
     An [=authorization gesture=] is a [=ceremony=] component often employed to indicate [=user consent=].
@@ -555,6 +565,11 @@ When this method is invoked, the user agent MUST execute the following algorithm
     <code>|options|.{{MakeCredentialOptions/attachment}}</code> is [=present|not present=] or its value matches
     |authenticator|'s attachment modality, [=set/append=] |authenticator| to |currentlyAvailableAuthenticators|.
 
+1. For each |authenticator| in |currentlyAvailableAuthenticators|, if 
+    |options|.{{MakeCredentialOptions/requireResidentKey}} is set to |true|, check if the |authenticator| is capable
+    of storing [=Client-Side-Resident Credential Private Key=]. If not, remove the |authenticator| from 
+    |currentlyAvailableAuthenticators|. 
+
 1. [=set/For each=] |authenticator| in |currentlyAvailableAuthenticators|:
     1. Let |excludeList| be a new [=list=].
     1. [=list/For each=] credential |C| in <code>|options|.{{MakeCredentialOptions/excludeList}}</code>:
@@ -563,7 +578,8 @@ When this method is invoked, the user agent MUST execute the following algorithm
         1. Otherwise, [=list/Append=] |C| to |excludeList|.
     1. [=In parallel=], invoke the [=authenticatorMakeCredential=] operation on |authenticator| with |rpId|,
         |clientDataHash|, |options|.{{MakeCredentialOptions/rp}}, |options|.{{MakeCredentialOptions/user}},
-        |normalizedParameters|, |excludeList| and |clientExtensions| as parameters.
+        |normalizedParameters|, |excludeList|, |clientExtensions|, and |options|.{{MakeCredentialOptions/requireResidentKey}}
+        as parameters.
     1. [=set/Append=] |authenticator| to |issuedRequests|.
 
 1. Start a timer for |adjustedTimeout| milliseconds. Then execute the following steps [=in parallel=]. The [=task source=] for
@@ -874,6 +890,7 @@ optionally evidence of [=user consent=] to a specific transaction.
         unsigned long                        timeout;
         sequence<ScopedCredentialDescriptor> excludeList;
         Attachment                           attachment;
+        boolean                              requireResidentKey;
         AuthenticationExtensions             extensions;
     };
 </xmp>
@@ -921,6 +938,13 @@ optionally evidence of [=user consent=] to a specific transaction.
     ::  This member contains authenticator attachment descriptions, which are used as an additional constraint on which
         authenticators are eligible to participate in a {{CredentialsContainer/create()}} or {{CredentialsContainer/get()}}
         operation. See [[#attachment]] for a description of the attachment values and their meanings.
+
+    :   <dfn>requireResidentKey</dfn>
+    ::  This member describes the [=[RPS]=]' requirements regarding availability of the [=Client-side-resident Credential 
+        Private Key=]. If the parameter is set to <a>true</a>, the authenticator SHOULD create a 
+        [=Client-side-resident Credential Private Key=] when creating a [=scoped credential=]. Similiar to [=attachment=], 
+        the [=requireResidentKey=] parameter is an additional constraint on which authenticators are eligible for 
+        {{CredentialsContainer/create()|navigator.credentials.create()}} operation. 
 
     :   <dfn>extensions</dfn>
     ::  This member contains additional parameters requesting additional processing by the client and authenticator. For example,
@@ -1344,6 +1368,7 @@ input parameters:
 - A list of {{ScopedCredential}} objects provided by the [RP] with the intention that, if any of these are known to the
     authenticator, it should not create a new credential.
 - Extension data created by the client based on the extensions requested by the [RP].
+- The |options|.{{MakeCredentialOptions/requireResidentKey}} flag. 
 
 When this operation is invoked, the authenticator must perform the following procedure:
 - Check if all the supplied parameters are syntactically well-formed and of the correct length. If not, return an error code
@@ -1352,6 +1377,9 @@ When this operation is invoked, the authenticator must perform the following pro
     not, return an error code equivalent to NotSupportedError and terminate the operation.
 - Check if a credential matching any of the supplied {{ScopedCredential}} identifiers is present on this authenticator. If so,
     return an error code equivalent to NotAllowedError and terminate the operation.
+- Check if the |options|.{{MakeCredentialOptions/requireResidentKey}} flag is true, process the flag. If the authenticator 
+    cannot store the [=Client-side-resident Credential Private Key=] return an error code equivalent to NotAllowedError and 
+    terminate the operation. 
 - Prompt the user for consent to create a new credential. The prompt for obtaining this consent is shown by the authenticator
     if it has its own output capability, or by the user agent otherwise. If the user denies consent, return an error code
     equivalent to NotAllowedError and terminate the operation.
