@@ -324,6 +324,16 @@ The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "S
     that this does not constitute [=user verification=] because [=TUP=], by definition, is not capable of [=biometric
     recognition=], nor does it involve the presentation of a shared secret such as a password or PIN.
 
+: <dfn>Client-side-resident Credential Private Key</dfn>
+:: A [=Client-side-resident Credential Private Key=] is stored either on the client platform, or in some cases on the authenticator
+    itself, e.g., in the case of a discrete first-factor roaming authenticator. Such <dfn>client-side credential private key 
+    storage</dfn> has the property that the authenticator is able to select the [=credential private key=] given only an RP ID, 
+    possibly with user assistance (e.g., by providing the user a pick list of credentials associated with the RP ID).
+
+: <dfn>Client-Side</dfn>
+:: This refers in general to the combination of the user's platform device, user agent, authenticators, and everything gluing
+    it all together.
+
 : <dfn>User Consent</dfn>
 :: User consent means the user agrees with what they are being asked, i.e., it encompasses reading and understanding prompts.
     An [=authorization gesture=] is a [=ceremony=] component often employed to indicate [=user consent=].
@@ -551,9 +561,17 @@ When this method is invoked, the user agent MUST execute the following algorithm
 
 1. Let |issuedRequests| and |currentlyAvailableAuthenticators| be new [=ordered sets=].
 
-1. For each |authenticator| currently available on this platform, if
-    <code>|options|.{{MakeCredentialOptions/attachment}}</code> is [=present|not present=] or its value matches
-    |authenticator|'s attachment modality, [=set/append=] |authenticator| to |currentlyAvailableAuthenticators|.
+1. For each [=authenticator=] currently available on this platform, process each option in 
+    |options|.{{MakeCredentialOptions/authenticatorSelection}} by checking if the [=authenticator=] is satisfies the 
+    requirement. If the [=authenticator=] is capable of all criterias as listed in 
+    |options|.{{MakeCredentialOptions/authenticatorSelection}}, [=set/append=] [=authenticator=] to 
+    |currentlyAvailableAuthenticators|. 
+        1. If |requireResidentKey| is set to |true|, check if the 
+            |authenticator| is capable of storing [=Client-Side-Resident Credential Private Key=]. If not, return a 
+            {{DOMException}} whose name is "{{QuotaExceededError}}".
+        1. If there is no [=authenticator=] that satisfies the criterias listed in 
+            |options|.{{MakeCredentialOptions/authenticatorSelection}}, return a {{DOMException}} whose name is 
+            "{{ConstraintError}}", and terminate the algorithm.
 
 1. [=set/For each=] |authenticator| in |currentlyAvailableAuthenticators|:
     1. Let |excludeList| be a new [=list=].
@@ -563,7 +581,8 @@ When this method is invoked, the user agent MUST execute the following algorithm
         1. Otherwise, [=list/Append=] |C| to |excludeList|.
     1. [=In parallel=], invoke the [=authenticatorMakeCredential=] operation on |authenticator| with |rpId|,
         |clientDataHash|, |options|.{{MakeCredentialOptions/rp}}, |options|.{{MakeCredentialOptions/user}},
-        |normalizedParameters|, |excludeList| and |clientExtensions| as parameters.
+        |normalizedParameters|, |excludeList|, |clientExtensions|, and |options|.{{MakeCredentialOptions/authenticatorSelection}}
+        as parameters.
     1. [=set/Append=] |authenticator| to |issuedRequests|.
 
 1. Start a timer for |adjustedTimeout| milliseconds. Then execute the following steps [=in parallel=]. The [=task source=] for
@@ -873,6 +892,7 @@ optionally evidence of [=user consent=] to a specific transaction.
 
         unsigned long                        timeout;
         sequence<ScopedCredentialDescriptor> excludeList;
+        AuthenticatorSelectionCriteria       authenticatorSelection;
         Attachment                           attachment;
         AuthenticationExtensions             extensions;
     };
@@ -922,6 +942,11 @@ optionally evidence of [=user consent=] to a specific transaction.
         authenticators are eligible to participate in a {{CredentialsContainer/create()}} or {{CredentialsContainer/get()}}
         operation. See [[#attachment]] for a description of the attachment values and their meanings.
 
+    :   <dfn>authenticatorSelection</dfn>
+    ::  This member is intended for use by [=[RPS]=] that wish to select the appropriate authenticators to participate in 
+        the {{CredentialsContainer/create()}} or {{CredentialsContainer/get()}} operation based on their unique needs. 
+        See [[#Authenticator Selection Criteria]] for a description of all of the criterias that the [=[RPS]=] may impose. 
+
     :   <dfn>extensions</dfn>
     ::  This member contains additional parameters requesting additional processing by the client and authenticator. For example,
         the caller may request that only authenticators with certain capabilies be used to create the credential, or that
@@ -954,6 +979,27 @@ The {{ScopedCredentialEntity}} dictionary describes a user account or a [=relyin
     ::  A [=URL serializer|serialized=] URL which resolves to an image associated with the entity. For example, this could be
         a user's avatar or a [=relying party=]'s logo.
 </div>
+
+
+### Authenticator Selection Criteria ### {#authenticatorSelection}
+
+The {{AuthenticatorSelectionCriteria}} dictionary describes a set of criterias for which the [RPS] can use to find the appropriate
+authenticator 
+
+<xmp class="idl">
+    dictionary AuthenticatorSelectionCriteria {
+        boolean   requireResidentKey;
+    };
+</xmp>
+
+<div dfn-type="dict-member" dfn-for="AuthenticatorSelectionCriteria">
+    :   <dfn>requireResidentKey</dfn>
+    ::  This member describes the [=[RPS]=]' requirements regarding availability of the [=Client-side-resident Credential 
+        Private Key=]. If the parameter is set to <a>true</a>, the authenticator SHOULD create a 
+        [=Client-side-resident Credential Private Key=] when creating a [=scoped credential=].
+
+</div>
+
 
 ### Credential Attachment enumeration (enum <dfn enum>Attachment</dfn>) ### {#attachment}
 
@@ -1344,6 +1390,7 @@ input parameters:
 - A list of {{ScopedCredential}} objects provided by the [RP] with the intention that, if any of these are known to the
     authenticator, it should not create a new credential.
 - Extension data created by the client based on the extensions requested by the [RP].
+- The |requireResidentKey| parameter of the |options|.{{MakeCredentialOptions/authenticatorSelection}} dictionary.  
 
 When this operation is invoked, the authenticator must perform the following procedure:
 - Check if all the supplied parameters are syntactically well-formed and of the correct length. If not, return an error code
@@ -1352,6 +1399,11 @@ When this operation is invoked, the authenticator must perform the following pro
     not, return an error code equivalent to NotSupportedError and terminate the operation.
 - Check if a credential matching any of the supplied {{ScopedCredential}} identifiers is present on this authenticator. If so,
     return an error code equivalent to NotAllowedError and terminate the operation.
+- Check if the |requireResidentKey| flag is set to |true|, check if the authenticator can store 
+    [=Client-side-resident Credential Private Key=]. If not, return an error code equivalent to QuotaExceededError and  
+    terminate the operation.   
+- Check if the [=authenticator=] is capable of storing  return a {{DOMException}} whose name is equivalent to 
+    ConstraintError and terminate the operation. 
 - Prompt the user for consent to create a new credential. The prompt for obtaining this consent is shown by the authenticator
     if it has its own output capability, or by the user agent otherwise. If the user denies consent, return an error code
     equivalent to NotAllowedError and terminate the operation.
