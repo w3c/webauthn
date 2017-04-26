@@ -527,7 +527,7 @@ When this method is invoked, the user agent MUST execute the following algorithm
     |extension| → |argument| of <code>|options|.{{MakeCredentialOptions/extensions}}</code>:
     1. If |extension| is not supported by this client platform, then [=continue=].
 
-    1. Otherwise, let |result| be the result of running |extension|'s [=client processing=] algorithm on |argument|. If the
+    1. Otherwise, let |result| be the result of running |extension|'s [=client extension processing=] algorithm on |argument|. If the
         algorithm returned an error, [=continue=].
 
     1. [=list/Append=] |result| to |clientExtensions|.
@@ -668,7 +668,7 @@ When this method is invoked, the user agent MUST execute the following algorithm
 1. If the {{ScopedCredentialRequestOptions/extensions}} member of |scopedOptions| is [=present=], then [=map/for each=]
     |extension| → |argument| of <code>|scopedOptions|.{{ScopedCredentialRequestOptions/extensions}}</code>:
     1. If |extension| is not supported by this client platform, then [=continue=].
-    1. Otherwise, let |result| be the result of running |extension|'s [=client processing=] algorithm on |argument|. If the
+    1. Otherwise, let |result| be the result of running |extension|'s [=client extension processing=] algorithm on |argument|. If the
         algorithm returned an error, [=continue=].
 
     1. [=list/Append=] |result| to |clientExtensions|.
@@ -1046,8 +1046,8 @@ This is a dictionary containing zero or more extensions as defined in [[#extensi
 that can be passed to the {{CredentialsContainer/get()}} method as part of a {{ScopedCredentialRequestOptions}} object, and
 triggers additional processing by the client platform and/or the authenticator.
 
-If the caller wishes to pass extensions to the platform, it MUST do so by adding one entry per extension to this dictionary
-with the extension identifier as the key, and the extension's value as the value (see [[#extensions]] for details).
+If the caller wishes to pass extensions to the platform, it does so by adding one entry per extension to this dictionary
+with the [=extension identifier=] as the key, and the extension's [=client extension input=] value as the value (see [[#extensions]] for details).
 
 
 ## Supporting Data Structures ## {#supporting-data-structures}
@@ -1268,7 +1268,8 @@ The [=authenticator data=] structure is a byte array of 37 bytes or more, as fol
         <td>
             Flags (bit 0 is the least significant bit):
             - Bit 0: [=Test of User Presence=] (`TUP`) result.
-            - Bits 1-5: Reserved for future use (`RFU`).
+            - Bit 1: [=User Verified=] (`UV`) result. 
+            - Bits 2-5: Reserved for future use (`RFU`).
             - Bit 6: [=Attestation data=] included (`AT`). Indicates whether the authenticator added [=attestation data=].
             - Bit 7: Extension data included (`ED`). Indicates if the [=authenticator data=] has extensions.
         </td>
@@ -1287,8 +1288,8 @@ The [=authenticator data=] structure is a byte array of 37 bytes or more, as fol
     <tr>
         <td>variable (if present)</td>
         <td>
-            Extension-defined [=authenticator data=]. This is a CBOR [[RFC7049]] map with extension identifiers as keys, and
-            extension [=authenticator data=] values as values. See [[#extensions]] for details.
+            Extension-defined [=authenticator data=]. This is a CBOR [[RFC7049]] map with [=extension identifiers=] as keys, and
+            [=authenticator extension outputs=] as values. See [[#extensions]] for details.
         </td>
     </tr>
 </table>
@@ -1299,8 +1300,13 @@ does not change between operations but instead remains the same for the lifetime
 by the authenticator during the [=authenticatorGetAssertion=] operation, by verifying that the RP ID associated with the
 requested credential exactly matches the RP ID supplied by the client.
 
-The `TUP` flag SHALL be set if and only if the authenticator detected a user through an authenticator specific gesture. The
-`RFU` bits in the flags byte SHALL be set to zero.
+Bit 0: Test of User Presence (`TUP`) Flag. This flag bit is set if the [=authenticator=] obtained a positive [=Test of User Presence=] result during either an [=authenticatorMakeCredential=] or an [=authenticatorGetAssertion=] operation.
+
+Bit 1: User Verified (`UV`) Flag. This flag bit is set if the [=authenticator=] is both capable of [=user verification=], 
+and obtained a positive [=user verification=] result during either an [=authenticatorMakeCredential=] or an [=authenticatorGetAssertion=] operation. If the [=authenticator=]'s [=user verification=] procedure also obtained a positive 
+[=Test of User Presence] result, the `TUP` flag would be set as well. 
+
+Bit 2-5: RFU bits. The `RFU` bits SHALL be set to zero.
 
 For attestation signatures, the authenticator MUST set the AT flag and include the [=attestation data=]. For authentication
 signatures, the AT flag MUST NOT be set and the [=attestation data=] MUST NOT be included.
@@ -1731,7 +1737,9 @@ When registering a new credential, represented by a {{AuthenticatorAttestationRe
 8. Verify that the RP ID hash in |authData| is indeed the SHA-256 hash of the RP ID expected by the RP.
 
 9. Determine the attestation statement format by performing an USASCII case-sensitive match on |fmt| against the set of
-    WebAuthn Attestation Statement Format Identifier values in the IANA registry of the same name [[!WebAuthn-Registries]].
+    supported WebAuthn Attestation Statement Format Identifier values.
+    The up-to-date list of registered WebAuthn Attestation Statement Format Identifier values
+    is maintained in the in the IANA registry of the same name [[!WebAuthn-Registries]].
 
 10. Verify that |attStmt| is a correct, validly-signed attestation statement, using the attestation statement format |fmt|'s
     verification procedure given [=authenticator data=] |authData| and the [=hash of the serialized client data=] computed in
@@ -2272,26 +2280,42 @@ This attestation statement format is used with FIDO U2F authenticators using the
 
 The mechanism for generating scoped credentials, as well as requesting and generating Authentication assertions, as defined in
 [[#api]], can be extended to suit particular use cases. Each case is addressed by defining a <dfn>registration extension</dfn>
-and/or an <dfn>authentication extension</dfn>. Extensions can define additions to the following steps and data:
+and/or an <dfn>authentication extension</dfn>. 
 
-- {{CredentialsContainer/create()|navigator.credentials.create()}} request parameters for [=registration extension=].
+Every extension is a <dfn>client extension</dfn>, meaning that the extension involves communication with and processing by the client.
+[=Client extensions=] define the following steps and data:
 
-- {{CredentialsContainer/get()|navigator.credentials.get()}} request parameters for [=authentication extensions=].
+- {{CredentialsContainer/create()|navigator.credentials.create()}} extension request parameters and response values for [=registration extensions=].
 
-- Client processing, and the [=client data=], for [=registration extensions=] and [=authentication extensions=].
+- {{CredentialsContainer/get()|navigator.credentials.get()}} extension request parameters and response values for [=authentication extensions=].
 
-- Authenticator processing, and the [=authenticator data=], for [=registration extensions=] and [=authentication extensions=].
+- [=Client extension processing=] for [=registration extensions=] and [=authentication extensions=].
 
-When requesting an assertion for a scoped credential, a [RP] can list a set of extensions to be used, if they are supported by
-the client and/or the authenticator. It sends the client arguments for each extension in the {{CredentialsContainer/get()}} call (for
-authentication extensions) or {{CredentialsContainer/create()}} call (for [=registration extensions=]) to the client platform.
-The client platform performs additional processing for each extension that it supports, and augments the [=client data=] as
-required by the extension. In addition, the client collects the authenticator arguments for the above extensions, and passes
-them to the authenticator in the [=authenticatorMakeCredential=] call (for [=registration extensions=]) or
-[=authenticatorGetAssertion=] call (for [=authentication extensions=]). These authenticator arguments are passed as name-value
-pairs, with the extension identifier as the name, and the corresponding authenticator argument as the value. The authenticator,
-in turn, performs additional processing for the extensions that it supports, and augments the [=authenticator data=] as
+When creating a [=scoped credential=] or requesting an [=authentication assertion=], a [RP] can request the use of a set of extensions.
+These extensions will be invoked during the requested operation if they are supported by the client and/or the authenticator.
+The [RP] sends the [=client extension input=] for each extension in the {{CredentialsContainer/get()}} call (for
+[=authentication extensions=]) or {{CredentialsContainer/create()}} call (for [=registration extensions=]) to the client platform.
+The client platform performs [=client extension processing=] for each extension that it supports, and augments the [=client data=] as
+specified by each extension, by including the [=extension identifier=] and [=client extension output=] values.
+
+An extension can also be an <dfn>authenticator extension</dfn>, meaning that the extension invoves communication with and processing by the authenticator.
+[=Authenticator extensions=] define the following steps and data:
+
+- [=authenticatorMakeCredential=] extension request parameters and response values for [=registration extensions=].
+
+- [=authenticatorGetAssertion=] extension request parameters and response values for [=authentication extensions=].
+
+- [=Authenticator extension processing=] for [=registration extensions=] and [=authentication extensions=].
+
+For [=authenticator extensions=], as part of the [=client extension processing=],
+the client also creates the [=authenticator extension input=] value for each extension (often based on the corresponding [=client extension input=] value),
+and passes them to the authenticator in the {{CredentialsContainer/create()}} call (for [=registration extensions=]) or
+the {{CredentialsContainer/get()}} call (for [=authentication extensions=]). These [=authenticator extension input=] values are passed as name-value
+pairs, with the [=extension identifier=] as the name, and the corresponding [=authenticator extension input=] as the value. The authenticator,
+in turn, performs additional processing for the extensions that it supports, and returns the [=authenticator extension output=] for each as
 specified by the extension.
+Part of the [=client extension processing=] for [=authenticator extensions=] is to use the [=authenticator extension output=] as an input
+to creating the [=client extension output=].
 
 All WebAuthn extensions are optional for both clients and authenticators. Thus, any extensions requested by a [RP] may be
 ignored by the client browser or OS and not passed to the authenticator at all, or they may be ignored by the authenticator.
@@ -2299,17 +2323,19 @@ Ignoring an extension is never considered a failure in WebAuthn API processing, 
 calls, they must be prepared to handle cases where some or all of those extensions are ignored.
 
 Clients wishing to support the widest possible range of extensions may choose to pass through any extensions that they do not
-recognize to authenticators, generating the authenticator argument by simply encoding the client argument in CBOR. All
+recognize to authenticators, generating the [=authenticator extension input=] by simply encoding the [=client extension input=] in CBOR. All
 WebAuthn extensions MUST be defined in such a way that this implementation choice does not endanger the user's security or
 privacy. For instance, if an extension requires client processing, it could be defined in a manner that ensures such a naïve
-pass-through will produce a semantically invalid authenticator argument, resulting in the extension being ignored by the
+pass-through will produce a semantically invalid [=authenticator extension input=] value, resulting in the extension being ignored by the
 authenticator. Since all extensions are optional, this will not cause a functional failure in the API operation.
+Likewise, clients can choose to produce a [=client extension output=] value for an extension that it does not understand by encoding the
+[=authenticator extension output=] value into JSON, provided that the CBOR output uses only types present in JSON.
 
 The IANA "WebAuthn Extension Identifier" registry established by [[!WebAuthn-Registries]] should be consulted
 for an up-to-date list of registered WebAuthn Extensions.
 
 
-## Extension Identifiers ## {#extension-id}
+## Extension Identifiers ## {#sctn-extension-id}
 
 Extensions are identified by a string, called an <dfn>extension identifier</dfn>, chosen by the extension author.
 
@@ -2331,28 +2357,35 @@ See the IANA "WebAuthn Extension Identifier" registry established by [[!WebAuthn
 for an up-to-date list of registered WebAuthn Extension Identifiers.
 
 
-## Defining extensions ## {#extension-specification}
+## Defining extensions ## {#sctn-extension-specification}
 
-A definition of an extension must specify, at minimum, an extension identifier and an extension client argument sent via the
-{{CredentialsContainer/get()}} or {{CredentialsContainer/create()}} call. Additionally, extensions may specify additional
-values in the [=client data=], [=authenticator data=] (in the case of [=authentication extensions=]), or both. Finally, if the
-extension requires any authenticator processing, it must also specify an authenticator argument to be sent via the
-[=authenticatorGetAssertion=] or [=authenticatorMakeCredential=] call.
+A definition of an extension must specify an [=extension identifier=], a [=client extension input=] argument
+to be sent via the {{CredentialsContainer/get()}} or {{CredentialsContainer/create()}} call,
+the [=client extension processing=] rules, and a [=client extension output=] value.
+If the extension communicates with the authenticator (meaning it is an [=authenticator extension=]),
+it must also specify an [=authenticator extension input=] argument
+sent via the [=authenticatorGetAssertion=] or [=authenticatorMakeCredential=] call,
+the [=authenticator extension processing=] rules, and the [=authenticator extension output=] value.
 
-Any extension that requires client processing MUST specify a method of augmenting the [=client data=] that unambiguously lets
-the [RP] know that the extension was honored by the client. Similarly, any extension that requires authenticator processing MUST
-specify a method of augmenting the [=authenticator data=] to let the [RP] know that the extension was honored by the
-authenticator.
+Any [=client extension=] that is processed by the client MUST return a [=client extension output=] value so that
+the [RP] knows that the extension was honored by the client. Similarly, any extension that requires authenticator processing MUST
+return an [=authenticator extension output=] to let the [RP] know that the extension was honored by the authenticator.
+If an extension does not otherwise require any result values, it SHOULD be defined as returning a JSON Boolean [=client extension output=] result,
+set to `true` to signify that the extension was understood and processed.
+Likewise, any [=authenticator extension=] that does not otherwise require any result values
+MUST return a value and
+SHOULD return a CBOR Boolean [=authenticator extension output=] result,
+set to `true` to signify that the extension was understood and processed.
 
-## Extending request parameters ## {#extension-request-parameters}
+## Extending request parameters ## {#sctn-extension-request-parameters}
 
-An extension defines up to two request arguments. The <dfn>client argument</dfn> is passed from the [=[RP]=] to the client
-in the {{CredentialsContainer/get()}} or {{CredentialsContainer/create()}} call, while the <dfn>authenticator argument</dfn> is
-passed from the client to the authenticator during the processing of these calls.
+An extension defines one or two request arguments. The <dfn>client extension input</dfn> is passed from the [=[RP]=] to the client
+in the {{CredentialsContainer/get()}} or {{CredentialsContainer/create()}} call, while the <dfn>authenticator extension input</dfn> is
+passed from the client to the authenticator for [=authenticator extensions=] during the processing of these calls.
 
-A [RP] simultaneously requests the use of an extension and sets its client argument by including an entry in the
+A [RP] simultaneously requests the use of an extension and sets its [=client extension input=] by including an entry in the
 {{MakeCredentialOptions/extensions}} option to the {{CredentialsContainer/create()}} or {{CredentialsContainer/get()}} call.
-The entry key MUST be the extension identifier, and the value MUST be the [=client argument=].
+The entry key is the [=extension identifier=] and the value is the [=client extension input=].
 
 <pre class="example" highlight="js">
     var assertionPromise = navigator.credentials.get({
@@ -2365,53 +2398,59 @@ The entry key MUST be the extension identifier, and the value MUST be the [=clie
     });
 </pre>
 
-Extension definitions MUST specify the valid values for their client argument. Clients SHOULD ignore extensions with an invalid
-client argument. If an extension does not require any parameters from the [RP], it SHOULD be defined as taking a Boolean client
+Extension definitions MUST specify the valid values for their [=client extension input=]. Clients SHOULD ignore extensions with an invalid
+[=client extension input=]. If an extension does not require any parameters from the [RP], it SHOULD be defined as taking a Boolean client
 argument, set to `true` to signify that the extension is requested by the [RP].
 
-Extensions that only affect client processing need not specify an authenticator argument. Extensions that affect authenticator
-processing MUST specify a method of computing the authenticator argument from the client argument. For extensions that do not
-require additional parameters, and are defined as taking a Boolean client argument set to `true`, this method SHOULD consist of
-passing an authenticator argument of `true` (CBOR major type 7, value 21).
+Extensions that only affect client processing need not specify [=authenticator extension input=]. Extensions that have authenticator
+processing MUST specify the method of computing the [=authenticator extension input=] from the [=client extension input=]. For extensions that do not
+require input parameters and are defined as taking a Boolean [=client extension input=] value set to `true`, this method SHOULD consist of
+passing an [=authenticator extension input=] value of `true` (CBOR major type 7, value 21).
 
 Note: Extensions should aim to define authenticator arguments that are as small as possible. Some authenticators communicate
     over low-bandwidth links such as Bluetooth Low-Energy or NFC.
 
 
-## Extending <dfn>client processing</dfn> ## {#extension-client-processing}
+## <dfn>Client extension processing</dfn> ## {#sctn-client-extension-processing}
 
 Extensions may define additional processing requirements on the client platform during the creation of credentials or the
 generation of an assertion. In order for the [=[RP]=] to verify the processing took place, or if the processing has a result
-value that the [RP] needs to be aware of, the extension should specify a key-value pair to be included in the [=client data=].
+value that the [RP] needs to be aware of, the extension specifies a extension key-value pair to be included in the [=client data=] extensions field,
+which is returned to the [RP] via {{AuthenticatorResponse/clientDataJSON}}.
 
-The [=client data=] value may be any value that can be encoded using JSON. If any extension processed by a client defines such a
-value, the client SHOULD include a dictionary in its [=client data=] with the key {{CollectedClientData/extensions}}. For each such
-extension, the client SHOULD add an entry to this dictionary with the extension identifier as the key, and the extension's
-[=client data=] value.
+If any extension processed by a client defines such a
+value, the client includes a dictionary in its [=client data=] with the key {{CollectedClientData/extensions}}. For each such
+extension, the client adds an entry to this dictionary with the [=extension identifier=] as the key, and the extension's
+[=client extension input=] as the value.
+The [=client extension input=] value may be any value that can be encoded using JSON.
 
-Extensions that require authenticator processing MUST define the process by which the client argument can be used to determine
-the authenticator argument.
+Likewise, the extension output is represented in the [=client data=] as a CBOR map
+with [=extension identifiers=] as keys, and the <dfn>client extension output</dfn> value of each extension as the value.
 
+Extensions that require authenticator processing MUST define
+the process by which the [=client extension input=] can be used to determine the [=authenticator extension input=] and
+the process by which the [=authenticator extension output=] can be used to determine the [=client extension output=].
 
-## Extending authenticator processing ## {#extension-authenticator-processing}
+## <dfn>Authenticator extension processing</dfn> ## {#sctn-authenticator-extension-processing}
 
-Extensions that define additional authenticator processing may similarly define an [=authenticator data=] value. The value may
-be any data that can be encoded in CBOR. An authenticator that processes an [=authentication extension=] that defines such a
-value must include it in the [=authenticator data=].
+As specified in [[#sec-authenticator-data]], the [=authenticator extension input=] value of each processed [=authenticator extension=]
+is included in the extensions data part of the [=authenticator data=]. This part is a CBOR map,
+with [=extension identifier=] values as keys, and the [=authenticator extension input=] value of each extension as the value.
 
-As specified in [[#sec-authenticator-data]], the [=authenticator data=] value of each processed extension is included in the
-extended data part of the [=authenticator data=]. This part is a CBOR map, with extension identifiers as keys, and the
-[=authenticator data=] value of each extension as the value.
+Likewise, the extension output is represented in the [=authenticator data=] as a CBOR map
+with [=extension identifiers=] as keys, and the <dfn>authenticator extension output</dfn> value of each extension as the value.
 
+The [=authenticator extension processing=] rules are used create the [=authenticator extension output=]
+from the [=authenticator extension input=], and possibly also other inputs, for each extension.
 
 ## Example Extension ## {#sctn-example-extension}
 
 [INFORMATIVE]
 
 To illustrate the requirements above, consider a hypothetical [=registration extension=] and [=authentication extension=] "Geo". This
-extension, if supported, lets both clients and authenticators embed their geolocation in assertions.
+extension, if supported, enables a geolocation location to be returned from the authenticator or client to the [RP].
 
-The extension identifier is chosen as `webauthnExample_geo`. The client argument is the constant value `true`, since the
+The [=extension identifier=] is chosen as `webauthnExample_geo`. The [=client extension input=] is the constant value `true`, since the
 extension does not require the [=[RP]=] to pass any particular information to the client, other than that it requests the use
 of the extension. The [RP] sets this value in its request for an assertion:
 
@@ -2426,24 +2465,9 @@ of the extension. The [RP] sets this value in its request for an assertion:
         });
 </pre>
 
-The extension defines the additional [=client data=] to be the client's location, if known, as a GeoJSON [[GeoJSON]] point. The
-client constructs the following [=client data=]:
-
-<pre highlight="js">
-    {
-        ...,
-        'extensions': {
-            'webauthnExample_geo': {
-                'type': 'Point',
-                'coordinates': [65.059962, -13.993041]
-            }
-        }
-    }
-</pre>
-
 The extension also requires the client to set the authenticator parameter to the fixed value `true`.
 
-Finally, the extension requires the authenticator to specify its geolocation in the [=authenticator data=], if known. The
+The extension requires the authenticator to specify its geolocation in the [=authenticator extension output=], if known. The
 extension e.g. specifies that the location shall be encoded as a two-element array of floating point numbers, encoded with CBOR.
 An authenticator does this by including it in the [=authenticator data=]. As an example, [=authenticator data=] may be as
 follows (notation taken from [[RFC7049]]):
@@ -2458,6 +2482,21 @@ follows (notation taken from [[RFC7049]]):
         82                                      -- Value 1: CBOR array of two elements
             FA 42 82 1E B3                      -- Element 1: Latitude as CBOR encoded float
             FA C1 5F E3 7F                      -- Element 2: Longitude as CBOR encoded float
+</pre>
+
+The extension defines the [=client extension output=] to be the geolocation information, if known, as a GeoJSON [[GeoJSON]] point. The
+client constructs the following [=client data=]:
+
+<pre highlight="js">
+    {
+        ...,
+        'extensions': {
+            'webauthnExample_geo': {
+                'type': 'Point',
+                'coordinates': [65.059962, -13.993041]
+            }
+        }
+    }
 </pre>
 
 
@@ -2480,10 +2519,10 @@ error.
 : Extension identifier
 :: `appid`
 
-: Client argument
-:: A single [=UTF-8 encoded=] string specifying a FIDO |appId|.
+: Client extension input
+:: A single JSON string specifying a FIDO |appId|.
 
-: Client processing
+: Client extension processing
 :: If {{ScopedCredentialRequestOptions/rpId}} is present, reject promise with a DOMException
     whose name is "{{NotAllowedError}}", and terminate this algorithm.
     Replace the calculation of |rpId| in Step 3 of [[#getAssertion]] with the
@@ -2492,14 +2531,17 @@ error.
     the value of |rpId| for all client processing should be replaced by the
     value of |appid|.
 
-: Authenticator argument
-:: none
+: Client extension output
+:: Returns the JSON value `true` to indicate to the RP that the extension was acted upon
 
-: Authenticator processing
-:: none
+: Authenticator extension input
+:: None.
 
-: Authenticator data
-:: none
+: Authenticator extension processing
+:: None.
+
+: Authenticator extension output
+:: None.
 
 
 ## Simple Transaction Authorization Extension (txAuthSimple) ## {#sctn-simple-txauth-extension}
@@ -2510,21 +2552,24 @@ prompt string, intended for display on a trusted device on the authenticator.
 : Extension identifier
 :: `txAuthSimple`
 
-: Client argument
-:: A single [=UTF-8 encoded=] string prompt.
+: Client extension input
+:: A single JSON string prompt.
 
-: Client processing
-:: None, except default forwarding of client argument to authenticator argument.
+: Client extension processing
+:: None, except creating the authenticator extension input from the client extension input.
 
-: Authenticator argument
-:: The client argument encoded as a CBOR text string (major type 3).
+: Client extension output
+:: Returns the authenticator extension output string UTF-8 decoded into a JSON string
 
-: Authenticator processing
+: Authenticator extension input
+:: The client extension input encoded as a CBOR text string (major type 3).
+
+: Authenticator extension processing
 :: The authenticator MUST display the prompt to the user before performing either [=user verification=] or [=test of user
     presence=]. The authenticator may insert line breaks if needed.
 
-: Authenticator data
-:: A single [=UTF-8 encoded=] string, representing the prompt as displayed (including any eventual line breaks).
+: Authenticator extension output
+:: A single CBOR string, representing the prompt as displayed (including any eventual line breaks).
 
 ## Generic Transaction Authorization Extension (txAuthGeneric) ## {#sctn-generic-txauth-extension}
 
@@ -2534,7 +2579,7 @@ allows authenticators without a font rendering engine to be used and also suppor
 : Extension identifier
 :: `txAuthGeneric`
 
-: Client argument
+: Client extension input
 :: A CBOR map defined as follows:
     ```
     txAuthGenericArg = {
@@ -2543,18 +2588,21 @@ allows authenticators without a font rendering engine to be used and also suppor
                        }
     ```
 
-: Client processing
-:: None, except default forwarding of client argument to authenticator argument.
+: Client extension processing
+:: None, except creating the authenticator extension input from the client extension input.
 
-: Authenticator argument
-:: The client argument encoded as a CBOR map.
+: Client extension output
+:: Returns the base64url encoding of the authenticator extension output value as a JSON string
 
-: Authenticator processing
+: Authenticator extension input
+:: The client extension input encoded as a CBOR map.
+
+: Authenticator extension processing
 :: The authenticator MUST display the `content` to the user before performing either [=user verification=] or [=test of 
     user presence=]. The authenticator may add other information below the `content`. No changes are allowed to the `content`
     itself, i.e., inside `content` boundary box.
 
-: Authenticator data
+: Authenticator extension output
 :: The hash value of the `content` which was displayed. The authenticator MUST use the same hash algorithm as it uses for the
     signature itself.
 
@@ -2567,7 +2615,7 @@ the credential. It is intended primarily for [RPS] that wish to tightly control 
 : Extension identifier
 :: `authnSel`
 
-: Client argument
+: Client extension input
 :: A sequence of AAGUIDs:
 
     <xmp class="idl">
@@ -2583,18 +2631,23 @@ the credential. It is intended primarily for [RPS] that wish to tightly control 
         typedef BufferSource AAGUID;
     </pre>
 
-: Client processing
+: Client extension processing
 :: This extension can only be used during {{CredentialsContainer/create()}}. If the client supports the Authenticator Selection
     Extension, it MUST use the first available authenticator whose AAGUID is present in the {{AuthenticatorSelectionList}}. If
     none of the available authenticators match a provided AAGUID, the client MUST select an authenticator from among the
     available authenticators to generate the credential.
 
-: Authenticator argument
-:: There is no authenticator argument.
+: Client extension output
+:: Returns the JSON value `true` to indicate to the RP that the extension was acted upon
 
-: Authenticator processing
+: Authenticator extension input
 :: None.
 
+: Authenticator extension processing
+:: None.
+
+: Authenticator extension output
+:: None.
 
 ## Supported Extensions Extension (exts) ## {#sctn-supported-extensions-extension}
 
@@ -2603,21 +2656,24 @@ This [=registration extension=] enables the [RP] to determine which extensions t
 : Extension identifier
 :: `exts`
 
-: Client argument
+: Client extension input
 :: The Boolean value `true` to indicate that this extension is requested by the [RP].
 
-: Client processing
-:: None, except default forwarding of client argument to authenticator argument.
+: Client extension processing
+:: None, except creating the authenticator extension input from the client extension input.
 
-: Authenticator argument
+: Client extension output
+:: Returns the list of supported extensions as a JSON array of [=extension identifier=] strings
+
+: Authenticator extension input
 :: The Boolean value `true`, encoded in CBOR (major type 7, value 21).
 
-: Authenticator processing
-:: The [=authenticator=] augments the [=authenticator data=] with a list of extensions that the authenticator supports, as
+: Authenticator extension processing
+:: The [=authenticator=] sets the [=authenticator extension output=] to be a list of extensions that the authenticator supports, as
     defined below. This extension can be added to attestation objects.
 
-: Authenticator data
-:: The SupportedExtensions extension is a list (CBOR array) of extension identifiers ([=UTF-8 encoded=] strings).
+: Authenticator extension output
+:: The SupportedExtensions extension is a list (CBOR array) of [=extension identifier=] ([=UTF-8 encoded=] strings).
 
 
 ## User Verification Index Extension (uvi) ## {#sctn-uvi-extension}
@@ -2627,20 +2683,23 @@ This [=registration extension=] and [=authentication extension=] enables use of 
 : Extension identifier
 :: `uvi`
 
-: Client argument
+: Client extension input
 :: The Boolean value `true` to indicate that this extension is requested by the [RP].
 
-: Client processing
-:: None, except default forwarding of client argument to authenticator argument.
+: Client extension processing
+:: None, except creating the authenticator extension input from the client extension input.
 
-: Authenticator argument
+: Client extension output
+:: Returns a JSON string containing the base64url encoding of the authenticator extension output
+
+: Authenticator extension input
 :: The Boolean value `true`, encoded in CBOR (major type 7, value 21).
 
-: Authenticator processing
-:: The [=authenticator=] augments the [=authenticator data=] with a user verification index indicating the method used by the
+: Authenticator extension processing
+:: The [=authenticator=] sets the [=authenticator extension output=] to be a user verification index indicating the method used by the
     user to authorize the operation, as defined below. This extension can be added to attestation objects and assertions.
 
-: Authenticator data
+: Authenticator extension output
 :: The user verification index (UVI) is a value uniquely identifying a user verification data record. The UVI is encoded as CBOR
     byte string (type 0x58). Each UVI value MUST be specific to the related key (in order to provide unlinkability). It also
     must contain sufficient entropy that makes guessing impractical. UVI values MUST NOT be reused by the Authenticator (for
@@ -2680,23 +2739,27 @@ party.
 : Extension identifier
 :: `loc`
 
-: Client argument
+: Client extension input
 :: The Boolean value `true` to indicate that this extension is requested by the [RP].
 
-: Client processing
-:: None, except default forwarding of client argument to authenticator argument.
+: Client extension processing
+:: None, except creating the authenticator extension input from the client extension input.
 
-: Authenticator argument
+: Client extension output
+:: Returns a JSON object that encodes the location information in the authenticator extension output as a Coordinates value,
+    as defined by [The W3C Geolocation API Specification](https://dev.w3.org/geo/api/spec-source.html#coordinates_interface).
+
+: Authenticator extension input
 :: The Boolean value `true`, encoded in CBOR (major type 7, value 21).
 
-: Authenticator processing
+: Authenticator extension processing
 :: If the [=authenticator=] does not support the extension, then the authenticator MUST ignore the extension request.
     If the [=authenticator=] accepts the extension, then the authenticator SHOULD only add this extension data to a packed
     attestation or assertion.
 
-: Authenticator data
-:: If the [=authenticator=] accepts the extension request, then [=authenticator data=] SHOULD provide location data in the form 
-    of a CBOR-encoded map, with the first value being the extension identifier and the second being an array of returned values.
+: Authenticator extension output
+:: If the [=authenticator=] accepts the extension request, then [=authenticator extension output=] SHOULD provide location data in the form 
+    of a CBOR-encoded map, with the first value being the [=extension identifier=] and the second being an array of returned values.
     The array elements SHOULD be derived from (key,value) pairings for each location attribute that the [=authenticator=]
     supports. The following is an example of [=authenticator data=] where the returned array is comprised of a {longitude,
     latitude, altitude} triplet, following the coordinate representation defined in [The W3C Geolocation API
@@ -2722,28 +2785,30 @@ party.
                 FB ...                  -- Element 6:  Altitude as CBOR encoded double-precision float
     </pre>
 
+## User Verification Method Extension (uvm) ## {#sctn-uvm-extension}
 
-## User Verification Mode Extension (uvm) ## {#sctn-uvm-extension}
-
-This [=registration extension=] and [=authentication extension=] enables use of a user verification mode.
+This [=registration extension=] and [=authentication extension=] enables use of a user verification method.
 
 : Extension identifier
 :: `uvm`
 
-: Client argument
+: Client extension input
 :: The Boolean value true to indicate that this extension is requested by the WebAuthn Relying Party.
 
-: Client processing
-:: None, except default forwarding of client argument to authenticator argument.
+: Client extension processing
+:: None, except creating the authenticator extension input from the client extension input.
 
-: Authenticator argument
+: Client extension output
+:: Returns a JSON array of 3-element arrays of numbers that encodes the factors in the authenticator extension output
+
+: Authenticator extension input
 :: The Boolean value `true`, encoded in CBOR (major type 7, value 21).
 
-: Authenticator processing
-:: The [=authenticator=] augments the [=authenticator data=] with a user verification index indicating the method used by the
+: Authenticator extension processing
+:: The [=authenticator=] sets the [=authenticator extension output=] to be a user verification index indicating the method used by the
     user to authorize the operation, as defined below. This extension can be added to attestation objects and assertions.
 
-: Authenticator data
+: Authenticator extension output
 :: Authenticators can report up to 3 different user verification methods (factors) used in a single authentication instance,
     using the CBOR syntax defined below:
     
@@ -2827,7 +2892,7 @@ IANA "WebAuthn Attestation Statement Format Identifier" registry established by 
 
 ## WebAuthn Extension Identifier Registrations ## {#sctn-extensions-reg}
 
-This section registers the extension identifiers defined in Section [[#extensions]] in the
+This section registers the [=extension identifier=] values defined in Section [[#extensions]] in the
 IANA "WebAuthn Extension Identifier" registry established by [[!WebAuthn-Registries]].
 
 - WebAuthn Extension Identifier: appid
@@ -2871,9 +2936,8 @@ IANA "WebAuthn Extension Identifier" registry established by [[!WebAuthn-Registr
 - Specification Document: Section [[#sctn-location-extension]] of this specification
     <br/><br/>
 - WebAuthn Extension Identifier: uvm
-- Description: This [=registration extension=] and [=authentication extension=] enables use of a user verification mode. The user verification
-    mode extension returns to the Webauthn relying party which user verification methods (factors) were used for the WebAuthn
-    operation.
+- Description: This [=registration extension=] and [=authentication extension=] enables use of a user verification method.
+    The user verification method extension returns to the Webauthn relying party which user verification methods (factors) were used for the WebAuthn operation.
 - Specification Document: Section [[#sctn-uvm-extension]] of this specification
 
 # Sample scenarios # {#sample-scenarios}
