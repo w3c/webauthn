@@ -451,7 +451,7 @@ the {{CredentialCreationOptions}} dictionary as follows:
     }; 
 </pre>
 
-### Create a new credential - ScopedCredential's `\[[Create]](options)` method ### {#createCredential}
+### Create a new credential - ScopedCredential's `[[Create]](options)` method ### {#createCredential}
 
 {{ScopedCredential}}'s [=interface object=]'s implementation of the
 <dfn for="ScopedCredential" method>\[[Create]](options)</dfn> method allows scripts to call
@@ -617,7 +617,7 @@ authorizing an authenticator.
 </div>
 
 
-### Use an existing credential - ScopedCredential::\[[DiscoverFromExternalSource]](options) method ### {#getAssertion}
+### Use an existing credential - ScopedCredential::[[DiscoverFromExternalSource]](options) method ### {#getAssertion}
 
 <div link-for-hint="ScopedCredential/[[DiscoverFromExternalSource]](options)">
 The <dfn for="ScopedCredential" method>\[[DiscoverFromExternalSource]](options)</dfn> method is used to discover and use an
@@ -692,44 +692,75 @@ When this method is invoked, the user agent MUST execute the following algorithm
 
 1. For each |authenticator| currently available on this platform, perform the following steps:
 
-    <span class="note">Note: the procedure to determine the [=authenticators=] present on a platform is 
-        platform-specific.</span>
-
-    1. Let |credentialList| be a new [=ordered set=].
+    1. Let |credentialDescriptorList| be a new [=ordered set=] of {{ScopedCredentialDescriptor}}.
 
     1. If <code>|scopedOptions|.{{ScopedCredentialRequestOptions/allowList}}</code>:
         <dl class="switch">
             : [=list/is not empty=]
-            :: [=set/For each=] credential |C| in <code>|scopedOptions|.{{ScopedCredentialRequestOptions/allowList}}</code>:
-                1. If there is any credential |X| present on this |authenticator| that:
+            :: [=set/For each=] {{ScopedCredentialDescriptor}} |C| in
+                <code>|scopedOptions|.{{ScopedCredentialRequestOptions/allowList}}</code>:
+                1. For each credential |X| present on this |authenticator| that:
                     - is mapped to |rpId|, and,
                     - matches with <code>|C|.{{ScopedCredentialDescriptor/id}}</code> and 
                         <code>|C|.{{ScopedCredentialDescriptor/type}}</code>,
 
-                    then [=set/append=] |X| to |credentialList|.
+                    then:
+                        1. let |Y| be a new {{ScopedCredentialDescriptor}}.
 
-                <span class="note">Note: the procedures to determine which credentials present on |authenticator| map to 
-                    |rpId|, and to match credentials present on |authenticator| with values in
-                    {{ScopedCredentialRequestOptions/allowList}}, are platform-specific.</span>
+                        1. Set |Y|'s members according to the corresponding properties of |X|.
+
+                        1. [=set/append=] |Y| to |credentialDescriptorList|.
 
             : [=list/is empty=]
-            :: If there is any credential |X| present on this |authenticator| that is mapped to |rpId| then [=set/append=] |X| 
-                to |credentialList|.
+            :: For each credential |X| present on this |authenticator| that is mapped to |rpId| then:
 
-                <span class="note">Note: the procedure to determine which credentials present on |authenticator| map to 
-                    |rpId|, is platform-specific.</span>
+                1. let |Y| be a new {{ScopedCredentialDescriptor}}.
+
+                1. Set |Y|'s members according to the corresponding properties of |X|.
+
+                1. [=set/append=] |Y| to |credentialDescriptorList|.
+
         </dl>
-    
-    1. If |credentialList| [=list/is empty=] then [=continue=].
+        <span class="note">Note: the procedures to: determine the [=authenticators=] present on a platform,
+            determine which credentials present on |authenticator| map to a given |rpId|,
+            match credentials present on |authenticator| with values of members of {{ScopedCredentialDescriptor}},
+            and obtain the properties of credentials present on an |authenticator|,
+            are platform-specific.</span>
 
-    1. [=In parallel=], [=list/for each=] credential |C| in |credentialList|:
-        1. If <code>|C|.{{transports}}</code> [=list/is not empty=], the client SHOULD select one |transport| from
-            {{transports}}. Then, using |transport|, invoke the [=authenticatorGetAssertion=] operation on |authenticator|, with
-            |rpId|, |clientDataHash|, |credentialList|, and |clientExtensions| as parameters.
-        1. Otherwise, using local configuration knowledge of the appropriate transport to use with |authenticator|, invoke the 
-            [=authenticatorGetAssertion=] operation on |authenticator| with |rpId|, |clientDataHash|, |credentialList|, and
-            |clientExtensions| as parameters.
-    
+    1. If |credentialDescriptorList| [=list/is empty=] then [=continue=].
+
+    1. Let |credentialsPerTransportMap| be a new [=ordered map=] whose [=map/keys=] are values of {{Transport}}, and whose
+        [=map/values=] are [=ordered sets=] of {{ScopedCredentialDescriptor}}.
+
+    1. [=list/For each=] {{ScopedCredentialDescriptor}} |C| in |credentialDescriptorList|:
+        1. If <code>|C|.{{transports}}</code>
+            <dl class="switch">
+                : [=list/is not empty=]
+                :: [=list/For each=] value |T| of <code>|C|.{{transports}}</code>, [=set/append=] |C| to
+                    <code>|credentialsPerTransportMap|[|T|]</code>.
+
+                : [=list/is empty=]
+                :: [=list/For each=] value |T| of {{Transport}}, [=set/append=] |C| to
+                    <code>|credentialsPerTransportMap|[|T|]</code>.
+            </dl>
+
+    1. If |credentialsPerTransportMap|
+        <dl class="switch">
+            : [=map/size=] is not 0
+            :: the client SHOULD:
+                1. Let |transportHintsList| be the result of [=map/getting the keys=] of |credentialsPerTransportMap|.
+                1. Set |transport| to one of the values in |transportHintsList|. The client MAY use local configuration
+                    knowledge of the appropriate transport to use with |authenticator| (if any) when making its selection.
+                1. [=In parallel=], using |transport|, invoke the [=authenticatorGetAssertion=] operation on |authenticator|,
+                    with |rpId|, |clientDataHash|, |credentialsPerTransportMap|[|transport|], and |clientExtensions| as
+                    parameters.
+
+            : [=map/is empty=]
+            :: [=In parallel=], using local configuration knowledge of the appropriate transport to use with |authenticator| (if
+                any), invoke the [=authenticatorGetAssertion=] operation on |authenticator| with |rpId|, |clientDataHash|,
+                |credentialDescriptorList|, and |clientExtensions| as parameters.
+        </dl>
+
     1. [=set/Append=] |authenticator| to |issuedRequests|.
 
 1. Start a timer for |adjustedTimeout| milliseconds. Then execute the following steps [=in parallel=]. The [=task source=] for
@@ -784,6 +815,7 @@ When this method is invoked, the user agent MUST execute the following algorithm
 During the above process, the user agent SHOULD show some UI to the user to guide them in the process of selecting and
 authorizing an authenticator with which to complete the operation.
 </div>
+
 
 ## Authenticator Responses (interface <dfn interface>AuthenticatorResponse</dfn>) ## {#iface-authenticatorresponse}
 
