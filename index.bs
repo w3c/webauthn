@@ -189,7 +189,7 @@ below and in [[#index-defined-elsewhere]].
 
 : CBOR
 :: A number of structures in this specification, including attestation statements and extensions, are encoded using the Compact
-    Binary Object Representation (CBOR) [[!RFC7049]].
+    Binary Object Representation (<dfn>CBOR</dfn>) [[!RFC7049]].
 
 : CDDL
 :: This specification describes the syntax of all CBOR-encoded data using the CBOR Data Definition Language (CDDL) [[!CDDL]].
@@ -398,6 +398,7 @@ are returned to the caller when a new credential is created, or a new assertion 
     interface ScopedCredential : Credential {
         readonly attribute ArrayBuffer           rawId;
         readonly attribute AuthenticatorResponse response;
+        readonly attribute AuthenticationExtensions clientExtensionResults;
     };
 </xmp>
 <dl dfn-type="attribute" dfn-for="ScopedCredential">
@@ -415,6 +416,10 @@ are returned to the caller when a new credential is created, or a new assertion 
         {{CredentialsContainer/create()}}, this attribute's value will be an {{AuthenticatorAttestationResponse}}, otherwise,
         the {{ScopedCredential}} was created in response to {{CredentialsContainer/get()}}, and this attribute's value
         will be an {{AuthenticatorAssertionResponse}}.
+
+    :   <dfn>clientExtensionResults</dfn>
+    ::  This attribute contains a [=map=] containing [=extension identifier=] → [=client extension output=] entries
+        produced by the extension's [=client extension processing=].
 
     :   <dfn>\[[type]]</dfn>
     ::  The {{ScopedCredential}} [=interface object=]'s {{Credential/[[type]]}} [=internal slot=]'s value is the string
@@ -488,7 +493,9 @@ When this method is invoked, the user agent MUST execute the following algorithm
 1. Let |options| be the value of |options|["{{CredentialRequestOptions/scoped}}"].
 
 1. If any of the {{ScopedCredentialEntity/name}} member of |options|.{{MakeCredentialOptions/rp}}, the
-    {{ScopedCredentialEntity/name}} member of |options|.{{MakeCredentialOptions/user}}, or the {{ScopedCredentialEntity/id}}
+    {{ScopedCredentialEntity/name}} member of |options|.{{MakeCredentialOptions/user}},
+    the {{ScopedCredentialUserEntity/displayName}} member of |options|.{{MakeCredentialOptions/user}},
+    or the {{ScopedCredentialEntity/id}}
     member of |options|.{{MakeCredentialOptions/user}} are [=present|not present=], return a {{TypeError}} [=simple exception=].
 
 1. If the {{MakeCredentialOptions/timeout}} member of |options| is [=present=], check if its value lies within a
@@ -531,16 +538,20 @@ When this method is invoked, the user agent MUST execute the following algorithm
     cancel the timer started in step 2, return a {{DOMException}} whose name is "{{NotSupportedError}}", and terminate this
     algorithm.
 
-1. Let |clientExtensions| be a new [=list=].
+1. Let |clientExtensions| be a new [=map=] and let |authenticatorExtensions| be a new [=map=].
 
 1. If the {{MakeCredentialOptions/extensions}} member of |options| is [=present=], then [=map/for each=]
-    |extension| → |argument| of <code>|options|.{{MakeCredentialOptions/extensions}}</code>:
-    1. If |extension| is not supported by this client platform, then [=continue=].
+    |extensionId| → |clientExtensionInput| of <code>|options|.{{MakeCredentialOptions/extensions}}</code>:
+    1. If |extensionId| is not supported by this client platform or is not a [=registration extension=], then [=continue=].
 
-    1. Otherwise, let |result| be the result of running |extension|'s [=client extension processing=] algorithm on |argument|. If the
-        algorithm returned an error, [=continue=].
+    1. [=map/Set=] |clientExtensions|[|extensionId|] to |clientExtensionInput|.
 
-    1. [=list/Append=] |result| to |clientExtensions|.
+    1. If |extensionId| is not an [=authenticator extension=], then [=continue=].
+
+    1. Let |authenticatorExtensionInput| be the ([=CBOR=]) result of running |extensionId|'s [=client extension processing=] algorithm on |clientExtensionInput|.
+        If the algorithm returned an error, [=continue=].
+
+    1. [=map/Set=] |authenticatorExtensions|[|extensionId|] to the [=base64url encoding=] of |authenticatorExtensionInput|.
 
 1. Let |collectedClientData| be a new {{CollectedClientData}} instance whose fields are:
     : {{CollectedClientData/challenge}}
@@ -552,8 +563,10 @@ When this method is invoked, the user agent MUST execute the following algorithm
         [=hash of the serialized client data=]
     : {{tokenBinding}}
     :: The [=Token Binding ID=] associated with |callerOrigin|, if one is available. 
-    : {{CollectedClientData/extensions}}
+    : {{CollectedClientData/clientExtensions}}
     :: |clientExtensions|
+    : {{CollectedClientData/authenticatorExtensions}}
+    :: |authenticatorExtensions|
 
 1. Let |clientDataJSON| be the [=JSON-serialized client data=] constructed from |collectedClientData|.
 
@@ -583,8 +596,7 @@ When this method is invoked, the user agent MUST execute the following algorithm
         1. Otherwise, [=list/Append=] |C| to |excludeList|.
     1. [=In parallel=], invoke the [=authenticatorMakeCredential=] operation on |authenticator| with |rpId|,
         |clientDataHash|, |options|.{{MakeCredentialOptions/rp}}, |options|.{{MakeCredentialOptions/user}},
-        |normalizedParameters|, |excludeList|, |clientExtensions|, and |options|.{{MakeCredentialOptions/authenticatorSelection}}
-        as parameters.
+        |normalizedParameters|, |excludeList|, and |authenticatorExtensions| as parameters.
     1. [=set/Append=] |authenticator| to |issuedRequests|.
 
 1. Start a timer for |adjustedTimeout| milliseconds. Then execute the following steps [=in parallel=]. The [=task source=] for
@@ -625,6 +637,11 @@ When this method is invoked, the user agent MUST execute the following algorithm
                 ::  A new {{ArrayBuffer}}, created using |global|'s [=%ArrayBuffer%=], containing the bytes of |clientDataJSON|.
                 :   {{AuthenticatorAttestationResponse/attestationObject}}
                 ::  |attestationObject|
+            :   {{ScopedCredential/clientExtensionResults}}
+            ::  A new {{AuthenticationExtensions}} object containing the [=extension identifier=] → [=client extension output=] entries
+                created by running each extension's [=client extension processing=] algorithm to create the [=client extension outputs=],
+                for each [=client extension=] in {{AuthenticatorResponse/clientDataJSON}}.clientExtensions.
+
         5. [=set/For each=] remaining |authenticator| in |issuedRequests| invoke the [=authenticatorCancel=] operation on
             |authenticator| and [=set/remove=] it from |issuedRequests|.
         6. Return |value| and terminate this algorithm.
@@ -682,15 +699,20 @@ When this method is invoked, the user agent MUST execute the following algorithm
         |effectiveDomain|, return a {{DOMException}} whose name is "{{SecurityError}}", and terminate this algorithm.
     1. Set |rpId| to the {{ScopedCredentialRequestOptions/rpId}}.
 
-1. Let |clientExtensions| be a new [=list=].
+1. Let |clientExtensions| be a new [=map=] and let |authenticatorExtensions| be a new [=map=].
 
 1. If the {{ScopedCredentialRequestOptions/extensions}} member of |scopedOptions| is [=present=], then [=map/for each=]
-    |extension| → |argument| of <code>|scopedOptions|.{{ScopedCredentialRequestOptions/extensions}}</code>:
-    1. If |extension| is not supported by this client platform, then [=continue=].
-    1. Otherwise, let |result| be the result of running |extension|'s [=client extension processing=] algorithm on |argument|. If the
-        algorithm returned an error, [=continue=].
+    |extensionId| → |clientExtensionInput| of <code>|scopedOptions|.{{ScopedCredentialRequestOptions/extensions}}</code>:
+    1. If |extensionId| is not supported by this client platform or is not an [=authentication extension=], then [=continue=].
 
-    1. [=list/Append=] |result| to |clientExtensions|.
+    1. [=map/Set=] |clientExtensions|[|extensionId|] to |clientExtensionInput|.
+
+    1. If |extensionId| is not an [=authenticator extension=], then [=continue=].
+
+    1. Let |authenticatorExtensionInput| be the ([=CBOR=]) result of running |extensionId|'s [=client extension processing=] algorithm on |clientExtensionInput|.
+        If the algorithm returned an error, [=continue=].
+
+    1. [=map/Set=] |authenticatorExtensions|[|extensionId|] to the [=base64url encoding=] of |authenticatorExtensionInput|.
 
 1. Let |collectedClientData| be a new {{CollectedClientData}} instance whose fields are:
     : {{CollectedClientData/challenge}}
@@ -702,8 +724,10 @@ When this method is invoked, the user agent MUST execute the following algorithm
         [=hash of the serialized client data=]
     : {{tokenBinding}}
     :: The [=Token Binding ID=] associated with |callerOrigin|, if one is available.
-    : {{CollectedClientData/extensions}}
+    : {{CollectedClientData/clientExtensions}}
     :: |clientExtensions|
+    : {{CollectedClientData/authenticatorExtensions}}
+    :: |authenticatorExtensions|
 
 1. Let |clientDataJSON| be the [=JSON-serialized client data=] constructed from |collectedClientData|.
 
@@ -727,7 +751,7 @@ When this method is invoked, the user agent MUST execute the following algorithm
     1. [=In parallel=], [=list/for each=] credential |C| in |credentialList|:
         1. If <code>|C|.{{transports}}</code> [=list/is not empty=], the client SHOULD select one |transport| from
             {{transports}}. Then, using |transport|, invoke the [=authenticatorGetAssertion=] operation on |authenticator|, with
-            |rpId|, |clientDataHash|, |credentialList|, and |clientExtensions| as parameters.
+            |rpId|, |clientDataHash|, |credentialList|, and |authenticatorExtensions| as parameters.
         1. Otherwise, using local configuration knowledge of the appropriate transport to use with |authenticator|, invoke the 
             [=authenticatorGetAssertion=] operation on |authenticator| with |rpId|, |clientDataHash|, |credentialList|, and
             |clientExtensions| as parameters.
@@ -774,6 +798,10 @@ When this method is invoked, the user agent MUST execute the following algorithm
                 : {{AuthenticatorAssertionResponse/signature}}
                 :: A new {{ArrayBuffer}}, created using |global|'s [=%ArrayBuffer%=], containing the bytes of the returned
                     {{signature}}
+            :   {{ScopedCredential/clientExtensionResults}}
+            ::  A new {{AuthenticationExtensions}} object containing the [=extension identifier=] → [=client extension output=] entries
+                created by running each extension's [=client extension processing=] algorithm to create the [=client extension outputs=],
+                for each [=client extension=] in {{AuthenticatorResponse/clientDataJSON}}.clientExtensions.
 
         3. [=set/For each=] remaining |authenticator| in |issuedRequests| invoke the [=authenticatorCancel=] operation on
             |authenticator| and [=set/remove=] it from |issuedRequests|.
@@ -881,13 +909,27 @@ optionally evidence of [=user consent=] to a specific transaction.
     will be used, and thus also the type of asymmetric key pair to be generated, e.g., RSA or Elliptic Curve.
 </div>
 
+## User Account Parameters for Credential Generation (dictionary <dfn dictionary>ScopedCredentialUserEntity</dfn>) ## {#sctn-user-credential-params}
+
+<pre class="idl">
+    dictionary ScopedCredentialUserEntity : ScopedCredentialEntity {
+        DOMString displayName;
+    };
+</pre>
+
+<div dfn-type="dict-member" dfn-for="ScopedCredentialUserEntity">
+    This dictionary is used to supply additional parameters about the user account when creating a new credential.
+
+    The <dfn>displayName</dfn> member contains a friendly name for the user account (e.g., "John P. Smith").
+</div>
+
 
 ## Options for Credential Creation (dictionary <dfn dictionary>MakeCredentialOptions</dfn>) ## {#dictionary-makecredentialoptions}
 
 <xmp class="idl">
     dictionary MakeCredentialOptions {
         required ScopedCredentialEntity rp;
-        required ScopedCredentialEntity user;
+        required ScopedCredentialUserEntity user;
 
         required BufferSource                         challenge;
         required sequence<ScopedCredentialParameters> parameters;
@@ -913,8 +955,10 @@ optionally evidence of [=user consent=] to a specific transaction.
     :   <dfn>user</dfn>
     ::  This member contains data about the user account for which the [=relying party=] is requesting attestation.
 
-        Its value's {{ScopedCredentialEntity/name}} member is required, and contains a friendly name for the user account (e.g.
-        "john.p.smith@example.com", or "John P. Smith").
+        Its value's {{ScopedCredentialEntity/name}} member is required, and contains a name for the user account 
+        (e.g., "john.p.smith@example.com" or "+14255551234").
+
+        Its value's {{ScopedCredentialEntity/displayName}} member is required, and contains a friendly name for the user account (e.g., "John P. Smith").
 
         Its value's {{ScopedCredentialEntity/id}} member is required, and contains an identifier for the account, specified by
         the [=relying party=]. This is not meant to be displayed to the user, but is used by the relying party to control the
@@ -1078,19 +1122,14 @@ assertion. Its {{ScopedCredentialRequestOptions/challenge}} member must be prese
 </dl>
 
 
-## Authentication Assertion Extensions (dictionary <dfn dictionary>AuthenticationExtensions</dfn>) ## {#iface-assertion-extensions}
+## Authentication Extensions (typedef <dfn>AuthenticationExtensions</dfn>) ## {#iface-authentication-extensions}
 
 <pre class="idl">
-    dictionary AuthenticationExtensions {
-    };
+    typedef record&lt;DOMString, any&gt; AuthenticationExtensions;
 </pre>
 
-This is a dictionary containing zero or more extensions as defined in [[#extensions]]. An extension is an additional parameter
-that can be passed to the {{CredentialsContainer/get()}} method as part of a {{ScopedCredentialRequestOptions}} object, and
-triggers additional processing by the client platform and/or the authenticator.
-
-If the caller wishes to pass extensions to the platform, it does so by adding one entry per extension to this dictionary
-with the [=extension identifier=] as the key, and the extension's [=client extension input=] value as the value (see [[#extensions]] for details).
+This is a dictionary containing zero or more WebAuthn extensions, as defined in [[#extensions]].
+An AuthenticationExtensions instance can contain either [=client extensions=] or [=authenticator extensions=], depending upon context.
 
 
 ## Supporting Data Structures ## {#supporting-data-structures}
@@ -1110,7 +1149,8 @@ following Web IDL.
         required DOMString           origin;
         required DOMString           hashAlg;
         DOMString                    tokenBinding;
-        AuthenticationExtensions     extensions;
+        AuthenticationExtensions     clientExtensions;
+        AuthenticationExtensions     authenticatorExtensions;
     };
 </pre>
 
@@ -1128,7 +1168,8 @@ following Web IDL.
     [=Token Binding=] protocol when communicating with the [RP]. This can be omitted if no [=Token Binding=] has been negotiated
     between the client and the [RP].
 
-    The optional <dfn>extensions</dfn> member contains additional parameters generated by processing the extensions passed in
+    The optional <dfn>clientExtensions</dfn> and <dfn>authenticatorExtensions</dfn> members contain additional parameters
+    generated by processing the extensions passed in
     by the [RP]. WebAuthn extensions are detailed in Section [[#extensions]].
 
     This structure is used by the client to compute the following quantities:
@@ -1331,7 +1372,7 @@ The [=authenticator data=] structure is a byte array of 37 bytes or more, as fol
     <tr>
         <td>variable (if present)</td>
         <td>
-            Extension-defined [=authenticator data=]. This is a CBOR [[RFC7049]] map with [=extension identifiers=] as keys, and
+            Extension-defined [=authenticator data=]. This is a [=CBOR=] [[RFC7049]] map with [=extension identifiers=] as keys, and
             [=authenticator extension outputs=] as values. See [[#extensions]] for details.
         </td>
     </tr>
@@ -1366,7 +1407,7 @@ The [figure below](#fig-authData) shows a visual representation of the [=authent
 
 Note that the [=authenticator data=] describes its own length: If the AT and ED flags are not set, it is always 37 bytes long.
 The [=attestation data=] (which is only present if the AT flag is set) describes its own length. If the ED flag is set, then the
-total length is 37 bytes plus the length of the [=attestation data=], plus the length of the CBOR map that follows.
+total length is 37 bytes plus the length of the [=attestation data=], plus the length of the [=CBOR=] map that follows.
 
 
 ## Authenticator operations ## {#authenticator-ops}
@@ -1774,7 +1815,8 @@ When registering a new credential, represented by a {{AuthenticatorAttestationRe
 4. Verify that the {{CollectedClientData/tokenBinding}} in |C| matches the [=Token Binding ID=] for the TLS connection over
     which the attestation was obtained.
 
-5. Verify that the {{CollectedClientData/extensions}} in |C| is a proper subset of the extensions requested by the RP.
+5. Verify that the {{CollectedClientData/clientExtensions}} in |C| is a proper subset of the extensions requested by the RP
+    and that the {{CollectedClientData/authenticatorExtensions}} in |C| is also a proper subset of the extensions requested by the RP.
 
 6. Compute the hash of {{AuthenticatorResponse/clientDataJSON}} using the algorithm identified by
     <code>|C|.{{CollectedClientData/hashAlg}}</code>.
@@ -1853,7 +1895,8 @@ MUST proceed as follows:
 6. Verify that the {{CollectedClientData/tokenBinding}} member of |C| (if present) matches the [=Token Binding ID=] for the TLS connection
     over which the signature was obtained.
 
-7. Verify that the {{CollectedClientData/extensions}} member of |C| is a proper subset of the extensions requested by the RP.
+7. Verify that the {{CollectedClientData/clientExtensions}} member of |C| is a proper subset of the extensions requested by the RP
+    and that the {{CollectedClientData/authenticatorExtensions}} in |C| is also a proper subset of the extensions requested by the RP.
 
 8. Verify that the RP ID hash in |aData| is the SHA-256 hash of the RP ID expected by the RP.
 
@@ -2357,11 +2400,11 @@ An extension can also be an <dfn>authenticator extension</dfn>, meaning that the
 - [=Authenticator extension processing=] for [=registration extensions=] and [=authentication extensions=].
 
 For [=authenticator extensions=], as part of the [=client extension processing=],
-the client also creates the [=authenticator extension input=] value for each extension (often based on the corresponding [=client extension input=] value),
+the client also creates the [=CBOR=] [=authenticator extension input=] value for each extension (often based on the corresponding [=client extension input=] value),
 and passes them to the authenticator in the {{CredentialsContainer/create()}} call (for [=registration extensions=]) or
-the {{CredentialsContainer/get()}} call (for [=authentication extensions=]). These [=authenticator extension input=] values are passed as name-value
+the {{CredentialsContainer/get()}} call (for [=authentication extensions=]). These [=authenticator extension input=] values are represented in [=CBOR=] and passed as name-value
 pairs, with the [=extension identifier=] as the name, and the corresponding [=authenticator extension input=] as the value. The authenticator,
-in turn, performs additional processing for the extensions that it supports, and returns the [=authenticator extension output=] for each as
+in turn, performs additional processing for the extensions that it supports, and returns the [=CBOR=] [=authenticator extension output=] for each as
 specified by the extension.
 Part of the [=client extension processing=] for [=authenticator extensions=] is to use the [=authenticator extension output=] as an input
 to creating the [=client extension output=].
@@ -2412,9 +2455,9 @@ A definition of an extension must specify an [=extension identifier=], a [=clien
 to be sent via the {{CredentialsContainer/get()}} or {{CredentialsContainer/create()}} call,
 the [=client extension processing=] rules, and a [=client extension output=] value.
 If the extension communicates with the authenticator (meaning it is an [=authenticator extension=]),
-it must also specify an [=authenticator extension input=] argument
+it must also specify the [=CBOR=] [=authenticator extension input=] argument
 sent via the [=authenticatorGetAssertion=] or [=authenticatorMakeCredential=] call,
-the [=authenticator extension processing=] rules, and the [=authenticator extension output=] value.
+the [=authenticator extension processing=] rules, and the [=CBOR=] [=authenticator extension output=] value.
 
 Any [=client extension=] that is processed by the client MUST return a [=client extension output=] value so that
 the [RP] knows that the extension was honored by the client. Similarly, any extension that requires authenticator processing MUST
@@ -2428,8 +2471,10 @@ set to `true` to signify that the extension was understood and processed.
 
 ## Extending request parameters ## {#sctn-extension-request-parameters}
 
-An extension defines one or two request arguments. The <dfn>client extension input</dfn> is passed from the [=[RP]=] to the client
-in the {{CredentialsContainer/get()}} or {{CredentialsContainer/create()}} call, while the <dfn>authenticator extension input</dfn> is
+An extension defines one or two request arguments. The <dfn>client extension input</dfn>,
+which is a value that can be encoded in JSON, is passed from the [=[RP]=] to the client
+in the {{CredentialsContainer/get()}} or {{CredentialsContainer/create()}} call,
+while the [=CBOR=] <dfn>authenticator extension input</dfn> is
 passed from the client to the authenticator for [=authenticator extensions=] during the processing of these calls.
 
 A [RP] simultaneously requests the use of an extension and sets its [=client extension input=] by including an entry in the
@@ -2463,31 +2508,29 @@ Note: Extensions should aim to define authenticator arguments that are as small 
 ## <dfn>Client extension processing</dfn> ## {#sctn-client-extension-processing}
 
 Extensions may define additional processing requirements on the client platform during the creation of credentials or the
-generation of an assertion. In order for the [=[RP]=] to verify the processing took place, or if the processing has a result
-value that the [RP] needs to be aware of, the extension specifies a extension key-value pair to be included in the [=client data=] extensions field,
-which is returned to the [RP] via {{AuthenticatorResponse/clientDataJSON}}.
-
-If any extension processed by a client defines such a
-value, the client includes a dictionary in its [=client data=] with the key {{CollectedClientData/extensions}}. For each such
+generation of an assertion.
+The [=client extension input=] for the extension is used an input to this client processing.
+Supported [=client extensions=] are recorded as a dictionary in the [=client data=] with the key {{CollectedClientData/clientExtensions}}.
+For each such
 extension, the client adds an entry to this dictionary with the [=extension identifier=] as the key, and the extension's
 [=client extension input=] as the value.
-The [=client extension input=] value may be any value that can be encoded using JSON.
 
-Likewise, the extension output is represented in the [=client data=] as a CBOR map
+Likewise, the [=client extension outputs=] are represented as a dictionary in the {{ScopedCredential/clientExtensionResults}}
 with [=extension identifiers=] as keys, and the <dfn>client extension output</dfn> value of each extension as the value.
+Like the [=client extension input=], the [=client extension output=] is a value that can be encoded in JSON.
 
 Extensions that require authenticator processing MUST define
-the process by which the [=client extension input=] can be used to determine the [=authenticator extension input=] and
-the process by which the [=authenticator extension output=] can be used to determine the [=client extension output=].
+the process by which the [=client extension input=] can be used to determine the [=CBOR=] [=authenticator extension input=] and
+the process by which the [=CBOR=] [=authenticator extension output=] can be used to determine the [=client extension output=].
 
 ## <dfn>Authenticator extension processing</dfn> ## {#sctn-authenticator-extension-processing}
 
-As specified in [[#sec-authenticator-data]], the [=authenticator extension input=] value of each processed [=authenticator extension=]
+As specified in [[#sec-authenticator-data]], the [=CBOR=] [=authenticator extension input=] value of each processed [=authenticator extension=]
 is included in the extensions data part of the [=authenticator data=]. This part is a CBOR map,
-with [=extension identifier=] values as keys, and the [=authenticator extension input=] value of each extension as the value.
+with [=CBOR=] [=extension identifier=] values as keys, and the [=CBOR=] [=authenticator extension input=] value of each extension as the value.
 
 Likewise, the extension output is represented in the [=authenticator data=] as a CBOR map
-with [=extension identifiers=] as keys, and the <dfn>authenticator extension output</dfn> value of each extension as the value.
+with [=CBOR=] [=extension identifiers=] as keys, and the [=CBOR=] <dfn>authenticator extension output</dfn> value of each extension as the value.
 
 The [=authenticator extension processing=] rules are used create the [=authenticator extension output=]
 from the [=authenticator extension input=], and possibly also other inputs, for each extension.
@@ -3048,7 +3091,8 @@ The sample code for generating and registering a new key follows:
       // User:
       user: {
         id: "1098237235409872"
-        name: "John P. Smith",
+        name: "john.p.smith@example.com",
+        displayName: "John P. Smith",
         icon: "https://pics.acme.com/00/p/aBjjjpqPb.png"
       },
 
