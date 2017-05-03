@@ -22,6 +22,7 @@ Editor: Rolf Lindemann, w3cid 84447, Nok Nok Labs, rolf@noknok.com
 Editor: J.C. Jones, w3cid 87240, Mozilla, jc@mozilla.com
 group: webauthn
 Issue Tracking: Github https://github.com/w3c/webauthn/issues
+!Tests: <a href=https://github.com/w3c/web-platform-tests/tree/master/webauthn>web-platform-tests webauthn/</a> (<a href=https://github.com/w3c/web-platform-tests/labels/webauthn>ongoing work</a>)
 Text Macro: RP Relying Party
 Text Macro: RPS Relying Parties
 Text Macro: INFORMATIVE <em>This section is not normative.</em>
@@ -347,6 +348,9 @@ The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "S
     [=authenticatorGetAssertion=] operations implies use of key material managed by the authenticator. Note that for
     security, [=user verification=] and use of [=credential private keys=] must occur within a single logical security boundary
     defining the [=authenticator=].
+    
+: <dfn id=concept-user-verified>User Verified</dfn>
+:: Upon successful completion of a [=user verification=] process, the user is said to be "verified".
 
 : <dfn>[WAC]</dfn>
 :: Also referred to herein as simply a [=client=]. See also [=Conforming User Agent=].
@@ -735,6 +739,9 @@ When this method is invoked, the user agent MUST execute the following algorithm
 
 1. Let |issuedRequests| be a new [=ordered set=]. 
 
+1. If there are no [=authenticators=] currently available on this platform, return a {{DOMException}} whose name is 
+    "{{NotFoundError}}", and terminate this algorithm.
+
 1. For each |authenticator| currently available on this platform, perform the following steps:
 
     1. Let |credentialList| be a new [=list=].
@@ -958,7 +965,8 @@ optionally evidence of [=user consent=] to a specific transaction.
         Its value's {{ScopedCredentialEntity/name}} member is required, and contains a name for the user account 
         (e.g., "john.p.smith@example.com" or "+14255551234").
 
-        Its value's {{ScopedCredentialEntity/displayName}} member is required, and contains a friendly name for the user account (e.g., "John P. Smith").
+        Its value's {{ScopedCredentialUserEntity/displayName}} member is required, and contains a friendly name for the user
+        account (e.g., "John P. Smith").
 
         Its value's {{ScopedCredentialEntity/id}} member is required, and contains an identifier for the account, specified by
         the [=relying party=]. This is not meant to be displayed to the user, but is used by the relying party to control the
@@ -966,7 +974,8 @@ optionally evidence of [=user consent=] to a specific transaction.
         same {{ScopedCredentialEntity/id}}.
 
     :   <dfn>challenge</dfn>
-    ::  This member contains a challenge intended to be used for generating the newly created credential's [=attestation object=].
+    ::  This member contains a challenge intended to be used for generating the newly created credential's [=attestation
+        object=].
 
     :   <dfn>parameters</dfn>
     ::  This member contains information about the desired properties of the credential to be created. The sequence is ordered
@@ -1059,7 +1068,8 @@ authenticator
 Clients may communicate with authenticators using a variety of mechanisms. For example, a client may use a platform-specific
 API to communicate with an authenticator which is physically bound to a platform. On the other hand, a client may use a
 variety of standardized cross-platform transport protocols such as Bluetooth (see [[#transport]]) to discover and
-communicate with [=cross-platform attached=] authenticators. We define authenticators that are part of the client's
+communicate with [=cross-platform attached=] authenticators. Therefore, we use {{Attachment}} to describe an 
+[=authenticator=]'s <dfn>attachment modality</dfn>. We define authenticators that are part of the client's
 platform as having a [=platform attachment=], and refer to them as <dfn>platform authenticators</dfn>. While those that
 are reachable via cross-platform transport protocols are defined as having [=cross-platform attachment=], and refer to
 them as <dfn>roaming authenticators</dfn>.
@@ -1352,8 +1362,7 @@ The [=authenticator data=] structure is a byte array of 37 bytes or more, as fol
         <td>
             Flags (bit 0 is the least significant bit):
             - Bit 0: [=Test of User Presence=] (`TUP`) result.
-            - Bit 1: [=User Verified=] (`UV`) result. 
-            - Bits 2-5: Reserved for future use (`RFU`).
+            - Bits 1-5: Reserved for future use (`RFU`).
             - Bit 6: [=Attestation data=] included (`AT`). Indicates whether the authenticator added [=attestation data=].
             - Bit 7: Extension data included (`ED`). Indicates if the [=authenticator data=] has extensions.
         </td>
@@ -1384,13 +1393,8 @@ does not change between operations but instead remains the same for the lifetime
 by the authenticator during the [=authenticatorGetAssertion=] operation, by verifying that the RP ID associated with the
 requested credential exactly matches the RP ID supplied by the client.
 
-Bit 0: Test of User Presence (`TUP`) Flag. This flag bit is set if the [=authenticator=] obtained a positive [=Test of User Presence=] result during either an [=authenticatorMakeCredential=] or an [=authenticatorGetAssertion=] operation.
-
-Bit 1: User Verified (`UV`) Flag. This flag bit is set if the [=authenticator=] is both capable of [=user verification=], 
-and obtained a positive [=user verification=] result during either an [=authenticatorMakeCredential=] or an [=authenticatorGetAssertion=] operation. If the [=authenticator=]'s [=user verification=] procedure also obtained a positive 
-[=Test of User Presence] result, the `TUP` flag would be set as well. 
-
-Bit 2-5: RFU bits. The `RFU` bits SHALL be set to zero.
+The `TUP` flag SHALL be set if and only if the authenticator detected a user through an authenticator specific gesture. The `RFU` bits
+SHALL be set to zero.
 
 For attestation signatures, the authenticator MUST set the AT flag and include the [=attestation data=]. For authentication
 signatures, the AT flag MUST NOT be set and the [=attestation data=] MUST NOT be included.
