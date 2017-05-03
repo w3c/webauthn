@@ -325,6 +325,19 @@ The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "S
     that this does not constitute [=user verification=] because [=TUP=], by definition, is not capable of [=biometric
     recognition=], nor does it involve the presentation of a shared secret such as a password or PIN.
 
+: <dfn>Client-side-resident Credential Private Key</dfn>
+:: A [=Client-side-resident Credential Private Key=] is stored either on the client platform, or in some cases on the authenticator
+    itself, e.g., in the case of a discrete first-factor roaming authenticator. Such <dfn>client-side credential private key 
+    storage</dfn> has the property that the authenticator is able to select the [=credential private key=] given only an RP ID, 
+    possibly with user assistance (e.g., by providing the user a pick list of credentials associated with the RP ID). By definition,
+    the private key is always exclusively controlled by the Authenticator. In the case of a [=Client-side-resident Credential Private
+    Key=], the Authenticator might offload storage of wrapped key material to the client platform, but the client platform is not 
+    expected to offload the key storage to remote entities (e.g. RP Server).
+
+: <dfn>Client-Side</dfn>
+:: This refers in general to the combination of the user's platform device, user agent, authenticators, and everything gluing
+    it all together.
+
 : <dfn>User Consent</dfn>
 :: User consent means the user agrees with what they are being asked, i.e., it encompasses reading and understanding prompts.
     An [=authorization gesture=] is a [=ceremony=] component often employed to indicate [=user consent=].
@@ -567,14 +580,32 @@ When this method is invoked, the user agent MUST execute the following algorithm
 
 1. Let |clientDataHash| be the [=hash of the serialized client data=] represented by |clientDataJSON|.
 
-1. Let |issuedRequests| and |currentlyAvailableAuthenticators| be new [=ordered sets=].
+1. Let |currentlyAvailableAuthenticators| be a new [=ordered set=] consisting of all [=authenticators=] 
+    available on this platform.
 
-1. For each |authenticator| currently available on this platform, if
-    <code>|options|.{{MakeCredentialOptions/attachment}}</code> is [=present|not present=] or its value matches
-    |authenticator|'s [=attachment modality=], [=set/append=] |authenticator| to |currentlyAvailableAuthenticators|.
+1. Let |selectedAuthenticators| be a new [=ordered set=].
+
+1. Let |selectionReasons| be a new list.
 
 1. If |currentlyAvailableAuthenticators| [=list/is empty=], return a {{DOMException}} whose name is
     "{{NotFoundError}}", and terminate this algorithm.
+
+1. If |options|.{{MakeCredentialOptions/authenticatorSelection}} is [=present|present=], iterate through 
+        |currentlyAvailableAuthenticators| and do the following [=set/for each=] |authenticator|:
+    1. If |attachment| is [=present|present=] and its value is not equal to |authenticator|'s attachment modality, 
+        [=iteration/continue=].
+    1. If |requireResidentKey| is set to |true| and the |authenticator| is not capable of storing 
+        a [=Client-Side-Resident Credential Private Key=], append a new {{DOMException}} whose name is 
+        "{{QuotaExceededError}}" to |selectionReasons| and [=iteration/continue=].
+    1. [=set/Append=] |authenticator| to |selectedAuthenticators|. 
+
+1. If |selectedAuthenticators| [=list/is empty=], then if |selectionReasons| is: 
+    :   [=list|empty=]:
+    ::  Return a {{DOMException}} whose name is "{{ConstraintError}}", and terminate this algoritm.
+    :   [=list|not empty=]:
+    ::  Return an arbitrary item of |selectionReasons|, and terminate this algorithm.
+
+1. Let |issuedRequests| be a new [=ordered set=].
 
 1. [=set/For each=] |authenticator| in |currentlyAvailableAuthenticators|:
     1. Let |excludeList| be a new [=list=].
@@ -931,7 +962,7 @@ optionally evidence of [=user consent=] to a specific transaction.
 
         unsigned long                        timeout;
         sequence<PublicKeyCredentialDescriptor> excludeList;
-        Attachment                           attachment;
+        AuthenticatorSelectionCriteria       authenticatorSelection;
         AuthenticationExtensions             extensions;
     };
 </xmp>
@@ -979,10 +1010,9 @@ optionally evidence of [=user consent=] to a specific transaction.
         account on a single authenticator. The platform is requested to return an error if the new credential would be created
         on an authenticator that also contains one of the credentials enumerated in this parameter.
 
-    :   <dfn>attachment</dfn>
-    ::  This member contains authenticator attachment descriptions, which are used as an additional constraint on which
-        authenticators are eligible to participate in a {{CredentialsContainer/create()}} or {{CredentialsContainer/get()}}
-        operation. See [[#attachment]] for a description of the attachment values and their meanings.
+    :   <dfn>authenticatorSelection</dfn>
+    ::  This member is intended for use by [=[RPS]=] that wish to select the appropriate authenticators to participate in 
+        the {{CredentialsContainer/create()}} or {{CredentialsContainer/get()}} operation. 
 
     :   <dfn>extensions</dfn>
     ::  This member contains additional parameters requesting additional processing by the client and authenticator. For example,
@@ -1017,6 +1047,31 @@ associated.
     ::  A [=URL serializer|serialized=] URL which resolves to an image associated with the entity. For example, this could be
         a user's avatar or a [=relying party=]'s logo.
 </div>
+
+
+### Authenticator Selection Criteria ### {#authenticatorSelection}
+
+[=[RPS]=] may use the {{AuthenticatorSelectionCriteria}} dictionary to specify their requirements regarding authenticator attributes.
+
+<xmp class="idl">
+    dictionary AuthenticatorSelectionCriteria {
+        Attachment    attachment;
+        boolean       requireResidentKey = false;
+    };
+</xmp>
+
+<div dfn-type="dict-member" dfn-for="AuthenticatorSelectionCriteria">
+    :   <dfn>attachment</dfn>
+    ::  If this memeber is [=present|present=], eligible authenticators are filtered to only authenticators attached with the 
+        specified [[#attachment]].
+
+    :   <dfn>requireResidentKey</dfn>
+    ::  This member describes the [=[RPS]=]' requirements regarding availability of the [=Client-side-resident Credential 
+        Private Key=]. If the parameter is set to <a>true</a>, the authenticator MUST create a 
+        [=Client-side-resident Credential Private Key=] when creating a [=scoped credential=].
+
+</div>
+
 
 ### Credential Attachment enumeration (enum <dfn enum>Attachment</dfn>) ### {#attachment}
 
@@ -1401,6 +1456,7 @@ input parameters:
 - A list of {{PublicKeyCredential}} objects provided by the [RP] with the intention that, if any of these are known to the
     authenticator, it should not create a new credential.
 - Extension data created by the client based on the extensions requested by the [RP].
+- The |requireResidentKey| parameter of the |options|.{{MakeCredentialOptions/authenticatorSelection}} dictionary.  
 
 When this operation is invoked, the authenticator must perform the following procedure:
 - Check if all the supplied parameters are syntactically well-formed and of the correct length. If not, return an error code
@@ -1409,6 +1465,8 @@ When this operation is invoked, the authenticator must perform the following pro
     If not, return an error code equivalent to NotSupportedError and terminate the operation.
 - Check if a credential matching any of the supplied {{PublicKeyCredential}} identifiers is present on this authenticator. If
     so, return an error code equivalent to NotAllowedError and terminate the operation.
+- If the |requireResidentKey| flag is set to |true| and the authenticator cannot store a [=Client-side-resident Credential 
+    Private Key=], return an error code equivalent to QuotaExceededError and terminate the operation.
 - Prompt the user for consent to create a new credential. The prompt for obtaining this consent is shown by the authenticator
     if it has its own output capability, or by the user agent otherwise. If the user denies consent, return an error code
     equivalent to NotAllowedError and terminate the operation.
