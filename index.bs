@@ -579,22 +579,21 @@ When this method is invoked, the user agent MUST execute the following algorithm
 
 1. Let |clientDataHash| be the [=hash of the serialized client data=] represented by |clientDataJSON|.
 
-1. Let |issuedRequests| and |currentlyAvailableAuthenticators| be new [=ordered sets=].
+1. Let |issuedRequests|, |currentlyAvailableAuthenticators|, and |acceptableAuthenticators| be new [=ordered sets=].
 
 1. If |currentlyAvailableAuthenticators| [=list/is empty=], return a {{DOMException}} whose name is 
     "{{NotFoundError}}", and terminate this algorithm.
 
 1. If |options|.{{MakeCredentialOptions/authenticatorSelection}} is [=present|present=], iterate through 
-        |currentlyAvailableAuthenticators| and doing the following for each [=authenticator=]:
-    1. If |attachment| is [=present|not present=] or its value matches |authenticator|'s attachment modality, continue
-        to the next step. Otherwise, [=iteration/continue=] to the next [=authenticator=].
-    1. If |requireResidentKey| is set to |true| and the |authenticator| is capable of storing 
-        [=Client-Side-Resident Credential Private Key=], continue to the next step. Otherwise, return a {{DOMException}} 
-        whose name is "{{QuotaExceededError}}" and [=iteration/continue=] to the next [=authenticator=]. 
-    1. [=set/Append=] [=authenticator=] to |currentlyAvailableAuthenticators|. 
+        |currentlyAvailableAuthenticators| and do the following [=set/for each=] |authenticator|:
+    1. If |attachment| is [=present|present=] and its value is not equal to |authenticator|'s attachment modality, 
+        [=iteration/continue=].
+    1. If |requireResidentKey| is set to |true| and the |authenticator| is not capable of storing 
+        a [=Client-Side-Resident Credential Private Key=], return a {{DOMException}} whose name is 
+        "{{QuotaExceededError}}" and [=iteration/continue=].
+    1. [=set/Append=] |authenticator| to |acceptableAuthenticators|. 
 
-1. If there is no [=authenticator=] that satisfies the criterias listed in |options|.{{MakeCredentialOptions/authenticatorSelection}}
-    on this platform, return a {{DOMException}} whose name is "{{ConstraintError}}", and terminate this algoritm.
+1. If |acceptableAuthenticators| [=list/is empty=], return a {{DOMException}} whose name is "{{ConstraintError}}", and terminate this algoritm.
 
 1. [=set/For each=] |authenticator| in |currentlyAvailableAuthenticators|:
     1. Let |excludeList| be a new [=list=].
@@ -1040,15 +1039,15 @@ authenticator
 
 <xmp class="idl">
     dictionary AuthenticatorSelectionCriteria {
-        Attachment    attachment = false;
-        boolean       requireResidentKey = false;
+        Attachment    attachment;
+        boolean       requireResidentKey;
     };
 </xmp>
 
 <div dfn-type="dict-member" dfn-for="AuthenticatorSelectionCriteria">
     :   <dfn>attachment</dfn>
-    :   If this memeber is [=present|present=], eligible authenticators are filter to only authenticators attached with the 
-        specified [[#attachment]] are eligible 
+    ::  If this memeber is [=present|present=], eligible authenticators are filtered to only authenticators attached with the 
+        specified [[#attachment]].
 
     :   <dfn>requireResidentKey</dfn>
     ::  This member describes the [=[RPS]=]' requirements regarding availability of the [=Client-side-resident Credential 
@@ -1448,7 +1447,7 @@ When this operation is invoked, the authenticator must perform the following pro
     not, return an error code equivalent to NotSupportedError and terminate the operation.
 - Check if a credential matching any of the supplied {{ScopedCredential}} identifiers is present on this authenticator. If so,
     return an error code equivalent to NotAllowedError and terminate the operation.
-- If the |requireResidentKey| flag is set to |true| and the authenticator can store [=Client-side-resident Credential 
+- If the |requireResidentKey| flag is set to |true| and the authenticator can store a [=Client-side-resident Credential 
     Private Key=], continue to the next step. Otherwise, return an error code equivalent to QuotaExceededError and  
     terminate the operation.   
 - Check if the [=authenticator=] is capable of storing, return a {{DOMException}} whose name is equivalent to 
