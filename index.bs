@@ -329,7 +329,10 @@ The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "S
 :: A [=Client-side-resident Credential Private Key=] is stored either on the client platform, or in some cases on the authenticator
     itself, e.g., in the case of a discrete first-factor roaming authenticator. Such <dfn>client-side credential private key 
     storage</dfn> has the property that the authenticator is able to select the [=credential private key=] given only an RP ID, 
-    possibly with user assistance (e.g., by providing the user a pick list of credentials associated with the RP ID).
+    possibly with user assistance (e.g., by providing the user a pick list of credentials associated with the RP ID). By definition,
+    the private key is always exclusively controlled by the Authenticator. In the case of a [=Client-side-resident Credential Private
+    Key=], the Authenticator might offload storage of wrapped key material to the client platform, but the client platform is not 
+    expected to offload the key storage to remote entities (e.g. RP Server).
 
 : <dfn>Client-Side</dfn>
 :: This refers in general to the combination of the user's platform device, user agent, authenticators, and everything gluing
@@ -581,15 +584,15 @@ When this method is invoked, the user agent MUST execute the following algorithm
 1. If |currentlyAvailableAuthenticators| [=list/is empty=], return a {{DOMException}} whose name is 
     "{{NotFoundError}}", and terminate this algorithm.
 
-1. For each [=authenticator=] currently available on this platform, process each option in 
-    |options|.{{MakeCredentialOptions/authenticatorSelection}} by checking if the [=authenticator=] satisfies the 
-    requirement of the option. 
-        1. If |attachment| is [=present|not present=] or its value matches
-            |authenticator|'s attachment modality, then [=iteration/continue=]. Otheriwse, [=iteration/break=].
-        1. If |requireResidentKey| is set to |true| and the |authenticator| is capable of storing 
-            [=Client-Side-Resident Credential Private Key=], then [=iteration/continue=]. Otheriwse, return a {{DOMException}} 
-            whose name is "{{QuotaExceededError}}" and [=iteration/break=].
-        1. [=set/Append=] [=authenticator=] to |currentlyAvailableAuthenticators|. 
+1. If |options|.{{MakeCredentialOptions/authenticatorSelection}} is [=present|present=], iterate through 
+        |currentlyAvailableAuthenticators| and doing the following for each [=authenticator=]:
+    1. If |attachment| is [=present|not present=] or its value matches |authenticator|'s attachment modality, continue
+        to the next step. Otherwise, [=iteration/continue=] to the next [=authenticator=].
+    1. If |requireResidentKey| is set to |true| and the |authenticator| is capable of storing 
+        [=Client-Side-Resident Credential Private Key=], continue to the next step. Otherwise, return a {{DOMException}} 
+        whose name is "{{QuotaExceededError}}" and [=iteration/continue=] to the next [=authenticator=]. 
+    1. [=set/Append=] [=authenticator=] to |currentlyAvailableAuthenticators|. 
+
 1. If there is no [=authenticator=] that satisfies the criterias listed in |options|.{{MakeCredentialOptions/authenticatorSelection}}
     on this platform, return a {{DOMException}} whose name is "{{ConstraintError}}", and terminate this algoritm.
 
@@ -1037,20 +1040,19 @@ authenticator
 
 <xmp class="idl">
     dictionary AuthenticatorSelectionCriteria {
-        Attachment    attachment;
-        boolean       requireResidentKey;
+        Attachment    attachment = false;
+        boolean       requireResidentKey = false;
     };
 </xmp>
 
 <div dfn-type="dict-member" dfn-for="AuthenticatorSelectionCriteria">
     :   <dfn>attachment</dfn>
-    ::  This member contains authenticator attachment descriptions, which are used as an additional constraint on which
-        authenticators are eligible to participate in a {{CredentialsContainer/create()}} or {{CredentialsContainer/get()}}
-        operation. See [[#attachment]] for a description of the attachment values and their meanings.
+    :   If this memeber is [=present|present=], eligible authenticators are filter to only authenticators attached with the 
+        specified [[#attachment]] are eligible 
 
     :   <dfn>requireResidentKey</dfn>
     ::  This member describes the [=[RPS]=]' requirements regarding availability of the [=Client-side-resident Credential 
-        Private Key=]. If the parameter is set to <a>true</a>, the authenticator SHOULD create a 
+        Private Key=]. If the parameter is set to <a>true</a>, the authenticator MUST create a 
         [=Client-side-resident Credential Private Key=] when creating a [=scoped credential=].
 
 </div>
@@ -1446,8 +1448,8 @@ When this operation is invoked, the authenticator must perform the following pro
     not, return an error code equivalent to NotSupportedError and terminate the operation.
 - Check if a credential matching any of the supplied {{ScopedCredential}} identifiers is present on this authenticator. If so,
     return an error code equivalent to NotAllowedError and terminate the operation.
-- Check if the |requireResidentKey| flag is set to |true|, check if the authenticator can store 
-    [=Client-side-resident Credential Private Key=]. If not, return an error code equivalent to QuotaExceededError and  
+- If the |requireResidentKey| flag is set to |true| and the authenticator can store [=Client-side-resident Credential 
+    Private Key=], continue to the next step. Otherwise, return an error code equivalent to QuotaExceededError and  
     terminate the operation.   
 - Check if the [=authenticator=] is capable of storing, return a {{DOMException}} whose name is equivalent to 
     ConstraintError and terminate the operation. 
