@@ -241,7 +241,7 @@ The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "S
     and capabilities. At [=registration=] time, the [=authenticator=] uses the <dfn>attestation private key</dfn> to sign
     the [=[RP]=]-specific [=credential public key=] (and additional data) that it generates and returns via the
     [=authenticatorMakeCredential=] operation. [=[RPS]=] use the <dfn>attestation public key</dfn> conveyed in the [=attestation
-    certificate=] to verify the attestation signature. Note that in the case of [=self attestation=], the
+    certificate=] to verify the [=attestation signature=]. Note that in the case of [=self attestation=], the
     [=authenticator=] has no distinct [=attestation key pair=] nor [=attestation certificate=], see [=self
     attestation=] for details.
 
@@ -1332,10 +1332,12 @@ The goals of this design can be summarized as follows.
 - The design aims to reuse as much as possible of existing encoding formats in order to aid adoption and implementation.
 
 Authenticators produce cryptographic signatures for two distinct purposes:
-1. An <dfn>attestation signature</dfn> is produced when a new credential is created, and provides cryptographic proof of certain
-    properties of the credential and the authenticator. For instance, an attestation signature asserts the type of authenticator
-    (as denoted by its AAGUID) and the public key of the credential. The attestation signature is signed by an attestation key,
-    which is chosen depending on the type of [=attestation=] desired. For more details on [=attestation=], see [[#sctn-attestation]].
+1. An <dfn>attestation signature</dfn> is produced when a new [=public key credential=] is created via an
+    [=authenticatorMakeCredential=] operation. An [=attestation signature=] provides cryptographic
+    proof of certain properties of the the [=authenticator=] and the credential. For instance, an [=attestation signature=]
+    asserts the [=authenticator=] type (as denoted by its AAGUID) and the [=credential public key=]. The [=attestation
+    signature=] is signed by an [=attestation private key=], which is chosen depending on the type of [=attestation=] desired.
+    For more details on [=attestation=], see [[#sctn-attestation]].
 2. An <dfn>assertion signature</dfn> is produced when the [=authenticatorGetAssertion=] method is invoked. It represents an
     assertion by the authenticator that the user has consented to a specific transaction, such as logging in, or completing a
     purchase. Thus, an assertion signature asserts that the authenticator which possesses a particular credential private key
@@ -1447,8 +1449,8 @@ input parameters:
 - The [=hash of the serialized client data=], provided by the client.
 - The [=[RP]=]'s {{PublicKeyCredentialEntity}}.
 - The user account's {{PublicKeyCredentialEntity}}.
-- The {{PublicKeyCredentialType}} and cryptographic parameters requested by the [=[RP]=], with the cryptographic algorithms normalized
-    as per the procedure in [[WebCryptoAPI#algorithm-normalization-normalize-an-algorithm]].
+- The {{PublicKeyCredentialType}} and cryptographic parameters requested by the [=[RP]=], with the cryptographic algorithms
+    normalized as per the procedure in [[WebCryptoAPI#algorithm-normalization-normalize-an-algorithm]].
 - A list of {{PublicKeyCredential}} objects provided by the [=[RP]=] with the intention that, if any of these are known to the
     authenticator, it should not create a new credential.
 - Extension data created by the client based on the extensions requested by the [=[RP]=].
@@ -1456,16 +1458,16 @@ input parameters:
 
 When this operation is invoked, the authenticator must perform the following procedure:
 - Check if all the supplied parameters are syntactically well-formed and of the correct length. If not, return an error code
-    equivalent to UnknownError and terminate the operation.
+    equivalent to "{{UnknownError}}" and terminate the operation.
 -  Check if at least one of the specified combinations of {{PublicKeyCredentialType}} and cryptographic parameters is supported.
-    If not, return an error code equivalent to NotSupportedError and terminate the operation.
+    If not, return an error code equivalent to "{{NotSupportedError}}" and terminate the operation.
 - Check if a credential matching any of the supplied {{PublicKeyCredential}} identifiers is present on this authenticator. If
-    so, return an error code equivalent to NotAllowedError and terminate the operation.
+    so, return an error code equivalent to "{{NotAllowedError}}" and terminate the operation.
 - If the |requireResidentKey| flag is set to |true| and the authenticator cannot store a [=Client-side-resident Credential 
-    Private Key=], return an error code equivalent to ConstraintError and terminate the operation.
+    Private Key=], return an error code equivalent to "{{ConstraintError}}" and terminate the operation.
 - Prompt the user for consent to create a new credential. The prompt for obtaining this consent is shown by the authenticator
     if it has its own output capability, or by the user agent otherwise. If the user denies consent, return an error code
-    equivalent to NotAllowedError and terminate the operation.
+    equivalent to "{{NotAllowedError}}" and terminate the operation.
 - Once user consent has been obtained, generate a new credential object:
     - Generate a set of cryptographic keys using the most preferred combination of {{PublicKeyCredentialType}} and cryptographic
         parameters supported by this authenticator.
@@ -1475,8 +1477,8 @@ When this operation is invoked, the authenticator must perform the following pro
         {{MakeCredentialOptions/user}}.{{PublicKeyCredentialEntity/id}}.
     - Delete any older credentials with the same RP ID and {{MakeCredentialOptions/user}}.{{PublicKeyCredentialEntity/id}} that
         are stored locally in the authenticator.
-- If any error occurred while creating the new credential object, return an error code equivalent to UnknownError and terminate
-    the operation.
+- If any error occurred while creating the new credential object, return an error code equivalent to "{{UnknownError}}" and 
+    terminate the operation.
 - Process all the supported extensions requested by the client, and generate the [=authenticator data=] with
     [=attestation data=] as specified in [[#sec-authenticator-data]]. Use this [=authenticator data=] and the
     [=hash of the serialized client data=] to create an [=attestation object=] for the new credential using the procedure
@@ -1497,11 +1499,11 @@ input parameters:
 
 When this method is invoked, the authenticator must perform the following procedure:
 - Check if all the supplied parameters are syntactically well-formed and of the correct length. If not, return an error code
-    equivalent to UnknownError and terminate the operation.
+    equivalent to "{{UnknownError}}" and terminate the operation.
 - If a list of credentials was supplied by the client, filter it by removing those credentials that are not present on this
     authenticator. If no list was supplied, create a list with all credentials stored for the caller's RP ID (as determined by
     an exact match of the RP ID).
-- If the previous step resulted in an empty list, return an error code equivalent to NotAllowedError and terminate the
+- If the previous step resulted in an empty list, return an error code equivalent to "{{NotAllowedError}}" and terminate the
     operation.
 - Prompt the user to select a credential from among the above list. Obtain user consent for using this credential. The prompt
     for obtaining this consent may be shown by the authenticator if it has its own output capability, or by the user agent
@@ -1512,8 +1514,8 @@ When this method is invoked, the authenticator must perform the following proced
     [as shown below](#fig-signature). A simple, undelimited concatenation is safe to use here because the
     [=authenticator data=] describes its own length. The [=hash of the serialized client data=] (which potentially has a
     variable length) is always the last element.
-- If any error occurred while generating the assertion signature, return an error code equivalent to UnknownError and terminate
-    the operation.
+- If any error occurred while generating the assertion signature, return an error code equivalent to "{{UnknownError}}" and 
+    terminate the operation.
 
 <figure id="fig-signature">
     <img src="images/fido-signature-formats-figure2.svg"/>
@@ -2362,7 +2364,7 @@ This attestation statement format is used with FIDO U2F authenticators using the
         The attestation certificate must be the first element in the array.
 
     : sig
-    :: The attestation signature.
+    :: The [=attestation signature=].
 
 : Signing procedure
 :: If the credential public key of the given credential is not of algorithm "ES256", stop and return an error.
