@@ -82,9 +82,11 @@ spec: CREDENTIAL-MANAGEMENT-1; urlPrefix: https://w3c.github.io/webappsec-creden
 </pre> <!-- class=anchors -->
 
 <pre class="link-defaults">
-spec:infra; type:dfn; text:list
-spec:webidl; type:interface; text:Promise
 spec:html; type:dfn; for:environment settings object; text:global object
+spec:infra; type:dfn; text:list
+spec:url; type:dfn; text:domain
+spec:webappsec-credential-management-1; type:dictionary; for:/; text:CredentialRequestOptions
+spec:webidl; type:interface; text:Promise
 </pre>
 
 
@@ -244,7 +246,6 @@ The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "S
     attestation=] for details.
 
 : <dfn>Authentication</dfn>
-: <dfn>Authentication Ceremony</dfn>
 :: The [=ceremony=] where a user, and the user's computing device(s) (containing at least one [=authenticator=]) work in
     concert to cryptographically prove to an [=[RP]=] that the user controls the [=credential private key=] associated with a
     previously-registered [=public key credential=] (see [=Registration=]). Note that this typically includes employing a [=test
@@ -304,7 +305,6 @@ The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "S
     for details.
 
 : <dfn>Registration</dfn>
-: <dfn>Registration Ceremony</dfn>
 :: The [=ceremony=] where a user, a [=[RP]=], and the user's computing device(s) (containing at least one
     [=authenticator=]) work in concert to create a [=public key credential=] and associate it with the user's [=[RP]=] account.
     Note that this typically includes employing a [=test of user presence=] or [=user verification=].
@@ -312,18 +312,21 @@ The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "S
 : <dfn>[RP]</dfn>
 :: The entity whose web application utilizes the [=Web Authentication API=] to register and authenticate users. See
     [=Registration=] and [=Authentication=], respectively.
-    <div class="note">
-    Note: While the term [=[RP]=] is used in other contexts (e.g., X.509 and OAuth), an entity acting as a [=[RP]=] in one context is not necessarily a [=[RP]=] in other contexts.
-    </div>
+
+        Note: While the term [=[RP]=] is used in other contexts (e.g., X.509 and OAuth), an entity acting as a [=[RP]=] in one
+        context is not necessarily a [=[RP]=] in other contexts.
+
 
 : <dfn>Relying Party Identifier</dfn>
 : <dfn>RP ID</dfn>
-:: An identifier for the [=[RP]=] on whose behalf a given [=registration=] or [=authentication ceremony=] 
-    is being performed. A [=public key
-    credential=] can only be used for [=authentication=] with the same entity (as identified by RP ID) it was registered
-    with. By default, the[=RP ID=]for a WebAuthn operation is set to the [=environment settings object/origin=] specified by the
-    [=relevant settings object=] of the {{CredentialsContainer}} object. This default can be overridden by the caller, subject
-    to certain restrictions, as specified in [[#createCredential]] and [[#getAssertion]].
+:: A [=domain=] identifier for the [=[RP]=] on whose behalf a given [=registration=] or 
+    [=authentication|authentication ceremony=] is being performed. A [=RP ID=] MUST be a [=valid domain string=]. A [=public key
+    credential=] can only be used for [=authentication=] with the same entity (as identified by [=RP ID=]) it was registered
+    with. By default, the [=RP ID=] for a WebAuthn operation is set to the [=environment settings object/origin=] of
+    the [=relevant settings object=] of the {{CredentialsContainer}} object, i.e., the caller's [=environment settings
+    object/origin=]. This default MAY be overridden by the caller, as long as the caller-specified [=RP ID=] value [=is a
+    registrable domain suffix of or is equal to=] the caller's [=environment settings object/origin=]'s [=effective domain=].
+    See also [[#createCredential]] and [[#getAssertion]].
 
 : <dfn>Public Key Credential</dfn>
 :: Generically, a credential is data one entity presents to another in order to authenticate the former's identity [[RFC4949]].
@@ -387,10 +390,10 @@ the full [=origin=] of the requester is included, and signed over, in the [=atte
 is created as well as in all assertions produced by WebAuthn credentials.
 
 Additionally, to maintain user privacy and prevent malicious [RPS] from probing for the presence of credentials belonging to
-other [RPS], each credential is also associated with a Relying Party Identifier, or [=RP ID=]. This [=RP ID=] is provided by the client
-to the authenticator for all operations, and the authenticator ensures that credentials created by a [=[RP]=] can only be used
-in operations requested by the same [=RP ID=]. Separating the [=origin=] from the [=RP ID=] in this way allows the API to be used in
-cases where a single [=[RP]=] maintains multiple [=origins=].
+other [=[RPS]=], each credential is also associated with a [=Relying Party Identifier=], or [=RP ID=]. This [=RP ID=] is
+provided by the client to the authenticator for all operations, and the authenticator ensures that credentials created by a
+[=[RP]=] can only be used in operations requested by the same [=RP ID=]. Separating the [=origin=] from the [=RP ID=] in this
+way allows the API to be used in cases where a single [=[RP]=] maintains multiple [=origins=].
 
 The client facilitates these security measures by providing correct [=origins=] and [=RP IDs=] to the [=authenticator=] for each
 operation. Since this is an integral part of the WebAuthn security model, user agents MUST only expose this API to callers in
@@ -478,16 +481,16 @@ the {{CredentialCreationOptions}} dictionary as follows:
     };
 </pre>
 
-### Create a new credential - PublicKeyCredential's `\[[Create]](options)` method ### {#createCredential}
+### Create a new credential - PublicKeyCredential's `[[Create]](options)` method ### {#createCredential}
 
 {{PublicKeyCredential}}'s [=interface object=]'s implementation of the
 <dfn for="PublicKeyCredential" method>\[[Create]](options)</dfn> method allows scripts to call
 {{CredentialsContainer/create()|navigator.credentials.create()}} to request the creation of a new [=credential key pair=]
-and {{PublicKeyCredential}}, managed by an authenticator. The user agent will prompt the user for [=user consent|consent=].
-On success, the returned promise will be resolved with a {{PublicKeyCredential}} containing an
+and {{PublicKeyCredential}}, managed by an [=authenticator=]. The user agent will prompt the user for [=user consent|consent=].
+On success, the returned {{promise}} will be resolved with a {{PublicKeyCredential}} containing an
 {{AuthenticatorAttestationResponse}} object.
 
-Note: This algorithm is synchronous; the {{Promise}} resolution/rejection is taken care of by
+Note: This algorithm is synchronous; the {{Promise}} resolution/rejection is handled by
 {{CredentialsContainer/create()|navigator.credentials.create()}}.
 
 This method accepts a single argument:
@@ -521,19 +524,22 @@ When this method is invoked, the user agent MUST execute the following algorithm
     [=relevant settings object=]. If |callerOrigin| is an [=opaque origin=], return a {{DOMException}} whose name is
     "{{NotAllowedError}}", and terminate this algorithm.
 
-1. If the {{PublicKeyCredentialEntity/id}} member of |options|.{{MakeCredentialOptions/rp}} is [=present|not present=], then set
-    |rpId| to |callerOrigin|.
-<!-- need to  set rpId to |callerOrigin|'s [=effective domain=] here -->
+1. Let |effectiveDomain| be the |callerOrigin|'s [=effective domain=]. If |effectiveDomain| is null, then return a 
+    {{DOMException}} whose name is "{{SecurityError}}" and terminate this algorithm.
+
+1. If |options|.{{MakeCredentialOptions/rp}}.{{PublicKeyCredentialEntity/id}} is [=present|not present=], then set
+    |rpId| to |effectiveDomain|.
+
     Otherwise:
 
-    1. Let |effectiveDomain| be the |callerOrigin|'s [=effective domain=].
-    1. If |effectiveDomain| is null, then return a {{DOMException}} whose name is "{{SecurityError}}" and terminate this
-        algorithm.
     1. If |options|.{{MakeCredentialOptions/rp}}.{{PublicKeyCredentialEntity/id}} [=is not a registrable domain suffix of and is
         not equal to=] |effectiveDomain|, return a {{DOMException}} whose name is "{{SecurityError}}", and terminate this
         algorithm.
     1. Set |rpId| to |options|.{{MakeCredentialOptions/rp}}.{{PublicKeyCredentialEntity/id}}.
-    <!-- this sets rpId to options.rp.id but rp.id is a host/effectivedomain not a (serialized) tuple -->
+
+        Note: |rpId| represents the caller's [=RP ID=]. The [=RP ID=] defaults to being the caller's [=effective domain=]
+        unless the caller has explicitly set |options|.{{MakeCredentialOptions/rp}}.{{PublicKeyCredentialEntity/id}} when
+        calling {{CredentialsContainer/create()}}.
 
 1. Let |normalizedParameters| be a new [=list=] whose [=list/items=] are pairs of {{PublicKeyCredentialType}} and a
     [=dictionary=] type (as returned by [=normalizing an algorithm=]).
@@ -1448,7 +1454,7 @@ The following operations can be invoked by the client in an authenticator sessio
 This operation must be invoked in an authenticator session which has no other operations in progress. It takes the following
 input parameters:
 
-- The caller's RP ID, as determined by the user agent and the client.
+- The caller's [=RP ID=], as determined by the user agent and the client.
 - The [=hash of the serialized client data=], provided by the client.
 - The [=relying party=]'s {{PublicKeyCredentialEntity}}.
 - The user account's {{PublicKeyCredentialEntity}}.
@@ -1884,8 +1890,8 @@ When registering a new credential, represented by a {{AuthenticatorAttestationRe
     the registration ceremony.
 
     NOTE: However, if permitted by policy, the [=[RP]=] MAY register the credential ID and credential public key but treat the
-        credential as one with self-attestation (see [[#sctn-attestation-types]]). If doing so, the [=[RP]=] is asserting there is
-        no cryptographic proof that the [=public key credential=] has been generated by a particular [=authenticator=] model.
+        credential as one with self-attestation (see [[#sctn-attestation-types]]). If doing so, the [=[RP]=] is asserting there
+        is no cryptographic proof that the [=public key credential=] has been generated by a particular [=authenticator=] model.
         See [[FIDOSecRef]] and [[UAFProtocol]] for a more detailed discussion.
 
 15. If verification of the attestation statement failed, the [=[RP]=] MUST fail the registration ceremony.
@@ -1953,9 +1959,11 @@ Attestation statement format identifiers SHOULD be registered per [[!WebAuthn-Re
 Unregistered attestation statement format identifiers SHOULD use lowercase reverse domain-name naming, using a domain name
 registered by the developer, in order to assure uniqueness of the identifier. All attestation statement format identifiers MUST
 be a maximum of 32 octets in length and MUST consist only of printable USASCII characters, excluding backslash and doublequote,
-i.e., VCHAR as defined in [[!RFC5234]] but without %x22 and %x5c. (Note: This means attestation statement format identifiers
-based on domain names MUST incorporate only LDH Labels [[!RFC5890]].) Implementations MUST match WebAuthn attestation statement
-format identifiers in a case-sensitive fashion.
+i.e., VCHAR as defined in [[!RFC5234]] but without %x22 and %x5c. 
+
+Note: This means attestation statement format identifiers based on domain names MUST incorporate only LDH Labels [[!RFC5890]].
+
+Implementations MUST match WebAuthn attestation statement format identifiers in a case-sensitive fashion.
 
 Attestation statement formats that may exist in multiple versions SHOULD include a version in their identifier. In effect,
 different versions are thus treated as different formats, e.g., `packed2` as a new version of the `packed` attestation statement
