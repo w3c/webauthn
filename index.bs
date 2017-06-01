@@ -803,16 +803,32 @@ When this method is invoked, the user agent MUST execute the following algorithm
 1. If there are no [=authenticators=] currently available on this platform, return a {{DOMException}} whose name is
     "{{NotFoundError}}", and terminate this algorithm.
 
+1. Let |authenticator| be a platform-specific handle whose value identifies an [=authenticator=].
+
+1. Let |credentialDescriptorList| be a new [=ordered set=] of {{PublicKeyCredentialDescriptor}} and |authenticator| pairs.
+
 1. For each |authenticator| currently available on this platform, perform the following steps:
 
-    1. Let |credentialDescriptorList| be a new [=ordered set=] of {{PublicKeyCredentialDescriptor}}.
+    <div class="note">
+        This step will generate a list of {{PublicKeyCredentialDescriptor}}s from all currently available authenticators that 
+            are appropriate for this [=RP=]'s invocation of this method, and list them in |credentialDescriptorList| along with
+            which [=authenticator=] they are bound to.
+    
+        Also, the procedures to:
+            - determine and identify the [=authenticators=] currently available on a platform, and,
+            - determine which [=public key credentials=] present on an [=authenticator=] map to a given |rpId|, and,
+            - match [=public key credential|credentials=] present on an [=authenticator=] with values of members of
+                {{PublicKeyCredentialDescriptor}}, and,
+            - obtain the properties of [=public key credential|credentials=] present on an |authenticator|,
+        are platform-specific.
+    </div>
 
     1. If <code>|options|.{{PublicKeyCredentialRequestOptions/allowList}}</code>:
         <dl class="switch">
             : [=list/is not empty=]
             :: [=set/For each=] {{PublicKeyCredentialDescriptor}} |C| in
                 <code>|options|.{{PublicKeyCredentialRequestOptions/allowList}}</code>:
-                1. For each credential |X| present on this |authenticator| that:
+                1. For each [=public key credential|credential=] |X| present on this |authenticator| that:
                     - is mapped to |rpId|, and,
                     - matches with <code>|C|.{{PublicKeyCredentialDescriptor/id}}</code> and 
                         <code>|C|.{{PublicKeyCredentialDescriptor/type}}</code>,
@@ -822,7 +838,7 @@ When this method is invoked, the user agent MUST execute the following algorithm
 
                         1. Set |Y|'s members according to the corresponding properties of |X|.
 
-                        1. [=set/append=] |Y| to |credentialDescriptorList|.
+                        1. [=set/append=] |Y| and |authenticator| to |credentialDescriptorList|.
 
             : [=list/is empty=]
             :: For each credential |X| present on this |authenticator| that is mapped to |rpId| then:
@@ -831,50 +847,46 @@ When this method is invoked, the user agent MUST execute the following algorithm
 
                 1. Set |Y|'s members according to the corresponding properties of |X|.
 
-                1. [=set/append=] |Y| to |credentialDescriptorList|.
+                1. [=set/append=] |Y| and |authenticator| to |credentialDescriptorList|.
 
         </dl>
-        <span class="note">Note: the procedures to: determine the [=authenticators=] present on a platform,
-            determine which credentials present on |authenticator| map to a given |rpId|,
-            match credentials present on |authenticator| with values of members of {{PublicKeyCredentialDescriptor}},
-            and obtain the properties of credentials present on an |authenticator|,
-            are platform-specific.</span>
 
-    1. If |credentialDescriptorList| [=list/is empty=] then [=continue=].
+1. If |credentialDescriptorList| [=list/is empty=] then, return a {{DOMException}} whose name is "{{NotFoundError}}", and 
+    terminate this algorithm.
 
-    1. Let |credentialsPerTransportMap| be a new [=ordered map=] whose [=map/keys=] are values of {{Transport}}, and whose
-        [=map/values=] are [=ordered sets=] of {{PublicKeyCredentialDescriptor}}.
+1. Let |credentialsPerTransportMap| be a new [=ordered map=] whose [=map/keys=] are values of {{Transport}}, and whose
+    [=map/values=] are [=ordered sets=] of {{PublicKeyCredentialDescriptor}}.
 
-    1. [=list/For each=] {{PublicKeyCredentialDescriptor}} |C| in |credentialDescriptorList|:
-        1. If <code>|C|.{{transports}}</code>
-            <dl class="switch">
-                : [=list/is not empty=]
-                :: [=list/For each=] value |T| of <code>|C|.{{transports}}</code>, [=set/append=] |C| to
-                    <code>|credentialsPerTransportMap|[|T|]</code>.
-
-                : [=list/is empty=]
-                :: [=list/For each=] value |T| of {{Transport}}, [=set/append=] |C| to
-                    <code>|credentialsPerTransportMap|[|T|]</code>.
-            </dl>
-
-    1. If |credentialsPerTransportMap|
+1. [=list/For each=] {{PublicKeyCredentialDescriptor}} |C| in |credentialDescriptorList|:
+    1. If <code>|C|.{{transports}}</code>
         <dl class="switch">
-            : [=map/size=] is not 0
-            :: the client SHOULD:
-                1. Let |transportHintsList| be the result of [=map/getting the keys=] of |credentialsPerTransportMap|.
-                1. Set |transport| to one of the values in |transportHintsList|. The client MAY use local configuration
-                    knowledge of the appropriate transport to use with |authenticator| (if any) when making its selection.
-                1. [=In parallel=], using |transport|, invoke the [=authenticatorGetAssertion=] operation on |authenticator|,
-                    with |rpId|, |clientDataHash|, |credentialsPerTransportMap|[|transport|], and |clientExtensions| as
-                    parameters.
+            : [=list/is not empty=]
+            :: [=list/For each=] value |T| of <code>|C|.{{transports}}</code>, [=set/append=] |C| to
+                <code>|credentialsPerTransportMap|[|T|]</code>.
 
-            : [=map/is empty=]
-            :: [=In parallel=], using local configuration knowledge of the appropriate transport to use with |authenticator| (if
-                any), invoke the [=authenticatorGetAssertion=] operation on |authenticator| with |rpId|, |clientDataHash|,
-                |credentialDescriptorList|, and |clientExtensions| as parameters.
+            : [=list/is empty=]
+            :: [=list/For each=] value |T| of {{Transport}}, [=set/append=] |C| to
+                <code>|credentialsPerTransportMap|[|T|]</code>.
         </dl>
 
-    1. [=set/Append=] |authenticator| to |issuedRequests|.
+1. If |credentialsPerTransportMap|
+    <dl class="switch">
+        : [=map/size=] is not 0
+        :: the client SHOULD:
+            1. Let |transportHintsList| be the result of [=map/getting the keys=] of |credentialsPerTransportMap|.
+            1. Set |transport| to one of the values in |transportHintsList|. The client MAY use local configuration
+                knowledge of the appropriate transport to use with |authenticator| (if any) when making its selection.
+            1. [=In parallel=], using |transport|, invoke the [=authenticatorGetAssertion=] operation on |authenticator|,
+                with |rpId|, |clientDataHash|, |credentialsPerTransportMap|[|transport|], and |clientExtensions| as
+                parameters.
+
+        : [=map/is empty=]
+        :: [=In parallel=], using local configuration knowledge of the appropriate transport to use with |authenticator| (if
+            any), invoke the [=authenticatorGetAssertion=] operation on |authenticator| with |rpId|, |clientDataHash|,
+            |credentialDescriptorList|, and |clientExtensions| as parameters.
+    </dl>
+
+1. [=set/Append=] |authenticator| to |issuedRequests|.
 
 1. Start a timer for |adjustedTimeout| milliseconds. Then execute the following steps [=in parallel=]. The [=task source=] for
     these [=tasks=] is the [=dom manipulation task source=].
@@ -1402,7 +1414,7 @@ Each authenticator stores some number of [=public key credentials=]. Each [=publ
 unique (or extremely unlikely to be duplicated) among all [=public key credentials=]. Each credential is also associated with a
 [=[RP]=], whose identity is represented by a [=Relying Party Identifier=] ([=RP ID=]).
 
-Each authenticator has an AAGUID, which is a 128-bit identifier that indicates the type (e.g. make and model) of the
+Each authenticator has an <dfn>AAGUID</dfn>, which is a 128-bit identifier that indicates the type (e.g. make and model) of the
 authenticator. The AAGUID MUST be chosen by the manufacturer to be identical across all substantially identical authenticators
 made by that manufacturer, and different (with probability 1-2<sup>-128</sup> or greater) from the AAGUIDs of all other types of
 authenticators. The RP MAY use the AAGUID to infer certain properties of the authenticator, such as certification level and
