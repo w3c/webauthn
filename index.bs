@@ -426,9 +426,9 @@ that are returned to the caller when a new credential is created, or a new asser
 <xmp class="idl">
     [SecureContext]
     interface PublicKeyCredential : Credential {
-        readonly attribute ArrayBuffer           rawId;
-        readonly attribute AuthenticatorResponse response;
-        readonly attribute AuthenticationExtensions clientExtensionResults;
+        [SameObject] readonly attribute ArrayBuffer              rawId;
+        [SameObject] readonly attribute AuthenticatorResponse    response;
+        [SameObject] readonly attribute AuthenticationExtensions clientExtensionResults;
     };
 </xmp>
 <dl dfn-type="attribute" dfn-for="PublicKeyCredential">
@@ -482,7 +482,7 @@ the {{CredentialCreationOptions}} dictionary as follows:
 
 <pre class="idl">
     partial dictionary CredentialCreationOptions {
-        MakeCredentialOptions? publicKey;
+        MakeCredentialOptions      publicKey;
     };
 </pre>
 
@@ -493,7 +493,7 @@ To support obtaining assertions via {{CredentialsContainer/get()|navigator.crede
 
 <pre class="idl">
     partial dictionary CredentialRequestOptions {
-        PublicKeyCredentialRequestOptions? publicKey;
+        PublicKeyCredentialRequestOptions      publicKey;
     };
 </pre>
 
@@ -577,8 +577,8 @@ When this method is invoked, the user agent MUST execute the following algorithm
     1. If <code>|current|.{{PublicKeyCredentialParameters/type}}</code> does not contain a {{PublicKeyCredentialType}} supported
         by this implementation, then [=continue=].
     1. Let |normalizedAlgorithm| be the result of [=normalizing an algorithm=] [[!WebCryptoAPI]], with |alg| set to
-        <code>|current|.{{algorithm}}</code> and |op| set to `"generateKey"`. If an error occurs during this procedure, then
-        [=continue=].
+        <code>|current|.{{PublicKeyCredentialParameters/alg}}</code> and |op| set to `"generateKey"`. If an error occurs during
+        this procedure, then [=continue=].
     1. [=list/Append=] the pair of <code>|current|.{{PublicKeyCredentialParameters/type}}</code> and |normalizedAlgorithm| to
         |normalizedParameters|.
 
@@ -606,7 +606,7 @@ When this method is invoked, the user agent MUST execute the following algorithm
     :: The [=base64url encoding=] of |options|.{{MakeCredentialOptions/challenge}}.
     : {{CollectedClientData/origin}}
     :: The [=ascii serialization of an origin|serialization of=] |callerOrigin|.
-    : {{CollectedClientData/hashAlg}}
+    : {{CollectedClientData/hashAlgorithm}}
     :: The [=recognized algorithm name=] of the hash algorithm selected by the client for generating the
         [=hash of the serialized client data=].
     : {{CollectedClientData/tokenBindingId}}
@@ -642,14 +642,14 @@ When this method is invoked, the user agent MUST execute the following algorithm
 1. Let |issuedRequests| be a new [=ordered set=].
 
 1. [=set/For each=] |authenticator| in |currentlyAvailableAuthenticators|:
-    1. Let |excludeList| be a new [=list=].
-    1. [=list/For each=] credential |C| in <code>|options|.{{MakeCredentialOptions/excludeList}}</code>:
+    1. Let |excludeCredentialDescriptorList| be a new [=list=].
+    1. [=list/For each=] credential descriptor |C| in <code>|options|.{{MakeCredentialOptions/excludeCredentials}}</code>:
         1. If <code>|C|.{{transports}}</code> [=list/is not empty=], and |authenticator| is connected over a transport not
             mentioned in <code>|C|.{{transports}}</code>, the client MAY [=continue=].
-        1. Otherwise, [=list/Append=] |C| to |excludeList|.
+        1. Otherwise, [=list/Append=] |C| to |excludeCredentialDescriptorList|.
     1. [=In parallel=], invoke the [=authenticatorMakeCredential=] operation on |authenticator| with |rpId|,
         |clientDataHash|, |options|.{{MakeCredentialOptions/rp}}, |options|.{{MakeCredentialOptions/user}},
-        |normalizedParameters|, |excludeList|, and |authenticatorExtensions| as parameters.
+        |normalizedParameters|, |excludeCredentialDescriptorList|, and |authenticatorExtensions| as parameters.
     1. [=set/Append=] |authenticator| to |issuedRequests|.
 
 1. Start a timer for |adjustedTimeout| milliseconds. Then execute the following steps [=in parallel=]. The [=task source=] for
@@ -792,7 +792,7 @@ When this method is invoked, the user agent MUST execute the following algorithm
     :: The [=base64url encoding=] of |options|.{{PublicKeyCredentialRequestOptions/challenge}}
     : {{CollectedClientData/origin}}
     :: The [=ascii serialization of an origin|serialization of=] |callerOrigin|.
-    : {{CollectedClientData/hashAlg}}
+    : {{CollectedClientData/hashAlgorithm}}
     :: The [=recognized algorithm name=] of the hash algorithm selected by the client for generating the
         [=hash of the serialized client data=]
     : {{CollectedClientData/tokenBindingId}}
@@ -815,28 +815,28 @@ When this method is invoked, the user agent MUST execute the following algorithm
 
 1. For each |authenticator| currently available on this platform, perform the following steps:
 
-    1. Let |credentialDescriptorList| be a new [=list=].
+    1. Let |allowCredentialDescriptorList| be a new [=list=].
 
-    1. If <code>|options|.{{PublicKeyCredentialRequestOptions/allowList}}</code> [=list/is not empty=], execute a
+    1. If <code>|options|.{{PublicKeyCredentialRequestOptions/allowCredentials}}</code> [=list/is not empty=], execute a
         platform-specific procedure to determine which, if any, [=public key credentials=] described by
-        <code>|options|.{{PublicKeyCredentialRequestOptions/allowList}}</code> are bound to this |authenticator|, by
+        <code>|options|.{{PublicKeyCredentialRequestOptions/allowCredentials}}</code> are bound to this |authenticator|, by
         matching with |rpId|,
-        <code>|options|.{{PublicKeyCredentialRequestOptions/allowList}}.{{PublicKeyCredentialDescriptor/id}}</code>, and
-        <code>|options|.{{PublicKeyCredentialRequestOptions/allowList}}.{{PublicKeyCredentialDescriptor/type}}</code>.
-        Set |credentialDescriptorList| to this filtered list.
+        <code>|options|.{{PublicKeyCredentialRequestOptions/allowCredentials}}.{{PublicKeyCredentialDescriptor/id}}</code>, and
+        <code>|options|.{{PublicKeyCredentialRequestOptions/allowCredentials}}.{{PublicKeyCredentialDescriptor/type}}</code>.
+        Set |allowCredentialDescriptorList| to this filtered list.
 
-    1. If |credentialDescriptorList| 
+    1. If |allowCredentialDescriptorList| 
         <dl class="switch">
             :   [=list/is not empty=]
-            ::  [=in parallel=], [=list/for each=] credential |C| in |credentialDescriptorList|:
+            ::  [=in parallel=], [=list/for each=] credential descriptor |C| in |allowCredentialDescriptorList|:
                 1. If <code>|C|.{{transports}}</code> [=list/is not empty=], the client SHOULD select one |transport| from
                     {{transports}}. Then, using |transport|, invoke the [=authenticatorGetAssertion=] operation on
-                    |authenticator|, with |rpId|, |clientDataHash|, |credentialDescriptorList|, and |authenticatorExtensions| as
-                    parameters.
+                    |authenticator|, with |rpId|, |clientDataHash|, |allowCredentialDescriptorList|, and
+                    |authenticatorExtensions| as parameters.
     
                 1. Otherwise, using local configuration knowledge of the appropriate transport to use with |authenticator|, 
                     invoke the [=authenticatorGetAssertion=] operation on |authenticator| with |rpId|,
-                    |clientDataHash|, |credentialDescriptorList|, and |clientExtensions| as parameters.
+                    |clientDataHash|, |allowCredentialDescriptorList|, and |clientExtensions| as parameters.
 
             :   [=list/is empty=]
             ::  Using local configuration knowledge of the appropriate transport to use with |authenticator|, invoke
@@ -913,7 +913,7 @@ authorizing an authenticator with which to complete the operation.
 <pre class="idl">
     [SecureContext]
     interface AuthenticatorResponse {
-        readonly attribute ArrayBuffer clientDataJSON;
+        [SameObject] readonly attribute ArrayBuffer      clientDataJSON;
     };
 </pre>
 <div dfn-type="attribute" dfn-for="AuthenticatorResponse">
@@ -932,7 +932,7 @@ during registration.
 <pre class="idl">
     [SecureContext]
     interface AuthenticatorAttestationResponse : AuthenticatorResponse {
-        readonly attribute ArrayBuffer attestationObject;
+        [SameObject] readonly attribute ArrayBuffer      attestationObject;
     };
 </pre>
 <div dfn-type="attribute" dfn-for="AuthenticatorAttestationResponse">
@@ -963,8 +963,8 @@ optionally evidence of [=user consent=] to a specific transaction.
 <pre class="idl">
     [SecureContext]
     interface AuthenticatorAssertionResponse : AuthenticatorResponse {
-        readonly attribute ArrayBuffer      authenticatorData;
-        readonly attribute ArrayBuffer      signature;
+        [SameObject] readonly attribute ArrayBuffer      authenticatorData;
+        [SameObject] readonly attribute ArrayBuffer      signature;
     };
 </pre>
 <div dfn-type="attribute" dfn-for="AuthenticatorAssertionResponse">
@@ -985,8 +985,8 @@ optionally evidence of [=user consent=] to a specific transaction.
 
 <pre class="idl">
     dictionary PublicKeyCredentialParameters {
-        required PublicKeyCredentialType  type;
-        required AlgorithmIdentifier   algorithm;
+        required PublicKeyCredentialType      type;
+        required AlgorithmIdentifier          alg;
     };
 </pre>
 
@@ -995,24 +995,27 @@ optionally evidence of [=user consent=] to a specific transaction.
 
     The <dfn>type</dfn> member specifies the type of credential to be created.
 
-    The <dfn>algorithm</dfn> member specifies the cryptographic signature algorithm with which the newly generated credential
+    The <dfn>alg</dfn> member specifies the cryptographic signature algorithm with which the newly generated credential
     will be used, and thus also the type of asymmetric key pair to be generated, e.g., RSA or Elliptic Curve.
+
+    Note: we use "alg" as the latter member name, rather than spelling-out "algorithm", because it will be serialized into
+        a message to the authenticator, which may be sent over a low-bandwidth link.
 </div>
 
 ## Options for Credential Creation (dictionary <dfn dictionary>MakeCredentialOptions</dfn>) ## {#dictionary-makecredentialoptions}
 
 <xmp class="idl">
     dictionary MakeCredentialOptions {
-        required PublicKeyCredentialEntity rp;
-        required PublicKeyCredentialUserEntity user;
+        required PublicKeyCredentialEntity           rp;
+        required PublicKeyCredentialUserEntity       user;
 
-        required BufferSource                         challenge;
-        required sequence<PublicKeyCredentialParameters> parameters;
+        required BufferSource                             challenge;
+        required sequence<PublicKeyCredentialParameters>  parameters;
 
-        unsigned long                        timeout;
-        sequence<PublicKeyCredentialDescriptor> excludeList;
-        AuthenticatorSelectionCriteria       authenticatorSelection;
-        AuthenticationExtensions             extensions;
+        unsigned long                                timeout;
+        sequence<PublicKeyCredentialDescriptor>      excludeCredentials;
+        AuthenticatorSelectionCriteria               authenticatorSelection;
+        AuthenticationExtensions                     extensions;
     };
 </xmp>
 <div dfn-type="dict-member" dfn-for="MakeCredentialOptions">
@@ -1053,7 +1056,7 @@ optionally evidence of [=user consent=] to a specific transaction.
     ::  This member specifies a time, in milliseconds, that the caller is willing to wait for the call to complete. This is
         treated as a hint, and may be overridden by the platform.
 
-    :   <dfn>excludeList</dfn>
+    :   <dfn>excludeCredentials</dfn>
     ::  This member is intended for use by [=[RPS]=] that wish to limit the creation of multiple credentials for the same
         account on a single authenticator. The platform is requested to return an error if the new credential would be created
         on an authenticator that also contains one of the credentials enumerated in this parameter.
@@ -1077,9 +1080,9 @@ associated.
 
 <xmp class="idl">
     dictionary PublicKeyCredentialEntity {
-        DOMString id;
-        DOMString name;
-        USVString icon;
+        DOMString      id;
+        DOMString      name;
+        USVString      icon;
     };
 </xmp>
 <div dfn-type="dict-member" dfn-for="PublicKeyCredentialEntity">
@@ -1104,7 +1107,7 @@ credential.
 
 <pre class="idl">
     dictionary PublicKeyCredentialUserEntity : PublicKeyCredentialEntity {
-        DOMString displayName;
+        DOMString      displayName;
     };
 </pre>
 
@@ -1121,8 +1124,8 @@ attributes.
 
 <xmp class="idl">
     dictionary AuthenticatorSelectionCriteria {
-        Attachment    attachment;
-        boolean       requireResidentKey = false;
+        AuthenticatorAttachment      attachment;
+        boolean                      requireResidentKey = false;
     };
 </xmp>
 
@@ -1138,10 +1141,10 @@ attributes.
 </div>
 
 
-### Credential Attachment enumeration (enum <dfn enum>Attachment</dfn>) ### {#attachment}
+### Authenticator Attachment enumeration (enum <dfn enum>AuthenticatorAttachment</dfn>) ### {#attachment}
 
 <pre class="idl">
-    enum Attachment {
+    enum AuthenticatorAttachment {
         "platform",
         "cross-platform"
     };
@@ -1150,7 +1153,7 @@ attributes.
 Clients may communicate with authenticators using a variety of mechanisms. For example, a client may use a platform-specific
 API to communicate with an authenticator which is physically bound to a platform. On the other hand, a client may use a
 variety of standardized cross-platform transport protocols such as Bluetooth (see [[#transport]]) to discover and
-communicate with [=cross-platform attached=] authenticators. Therefore, we use {{Attachment}} to describe an
+communicate with [=cross-platform attached=] authenticators. Therefore, we use {{AuthenticatorAttachment}} to describe an
 [=authenticator=]'s <dfn>attachment modality</dfn>. We define authenticators that are part of the client's
 platform as having a [=platform attachment=], and refer to them as <dfn>platform authenticators</dfn>. While those that
 are reachable via cross-platform transport protocols are defined as having [=cross-platform attachment=], and refer to
@@ -1183,7 +1186,7 @@ an assertion. Its {{PublicKeyCredentialRequestOptions/challenge}} member must be
         required BufferSource                challenge;
         unsigned long                        timeout;
         USVString                            rpId;
-        sequence<PublicKeyCredentialDescriptor> allowList = [];
+        sequence<PublicKeyCredentialDescriptor> allowCredentials = [];
         AuthenticationExtensions             extensions;
     };
 </xmp>
@@ -1202,7 +1205,7 @@ an assertion. Its {{PublicKeyCredentialRequestOptions/challenge}} member must be
         be the {{CredentialsContainer}} object's [=relevant settings object=]'s [=environment settings object/origin=]'s
         [=effective domain=].
 
-    :   <dfn>allowList</dfn>
+    :   <dfn>allowCredentials</dfn>
     ::  This optional member contains a list of {{PublicKeyCredentialDescriptor}} object representing [=public key credentials=]
         acceptable to the caller, in decending order of the caller's preference (the first item in the list is the most
         preferred credential, and so on down the list).
@@ -1217,7 +1220,7 @@ an assertion. Its {{PublicKeyCredentialRequestOptions/challenge}} member must be
 ## Authentication Extensions (typedef <dfn>AuthenticationExtensions</dfn>) ## {#iface-authentication-extensions}
 
 <pre class="idl">
-    typedef record&lt;DOMString, any&gt; AuthenticationExtensions;
+    typedef record&lt;DOMString, any&gt;       AuthenticationExtensions;
 </pre>
 
 This is a dictionary containing zero or more WebAuthn extensions, as defined in [[#extensions]].
@@ -1241,7 +1244,7 @@ following Web IDL.
     dictionary CollectedClientData {
         required DOMString           challenge;
         required DOMString           origin;
-        required DOMString           hashAlg;
+        required DOMString           hashAlgorithm;
         DOMString                    tokenBindingId;
         AuthenticationExtensions     clientExtensions;
         AuthenticationExtensions     authenticatorExtensions;
@@ -1254,9 +1257,9 @@ following Web IDL.
     The <dfn>origin</dfn> member contains the fully qualified [=origin=] of the requester, as provided to the authenticator by
     the client, in the syntax defined by [[RFC6454]].
 
-    The <dfn>hashAlg</dfn> member is a [=recognized algorithm name=] that supports the `"digest"` operation, which specifies the
-    algorithm used to compute the [=hash of the serialized client data=]. This algorithm is chosen by the client at its sole
-    discretion.
+    The <dfn>hashAlgorithm</dfn> member is a [=recognized algorithm name=] that supports the `"digest"` operation, which
+    specifies the algorithm used to compute the [=hash of the serialized client data=]. This algorithm is chosen by the client
+    at its sole discretion.
 
     The <dfn>tokenBindingId</dfn> member contains the base64url encoding of the [=Token Binding ID=] that this client uses for
     the [=Token Binding=] protocol when communicating with the [=[RP]=]. This can be omitted if no [=Token Binding=] has been
@@ -1273,7 +1276,7 @@ following Web IDL.
         {{CollectedClientData}} dictionary.
 
     : <dfn dfn>Hash of the serialized client data</dfn>
-    :: This is the hash (computed using {{hashAlg}}) of the [=JSON-serialized client data=], as constructed by the client.
+    :: This is the hash (computed using {{hashAlgorithm}}) of the [=JSON-serialized client data=], as constructed by the client.
 </div>
 
 
@@ -1298,9 +1301,9 @@ following Web IDL.
 
 <xmp class="idl">
     dictionary PublicKeyCredentialDescriptor {
-        required PublicKeyCredentialType type;
-        required BufferSource id;
-        sequence<Transport>   transports;
+        required PublicKeyCredentialType      type;
+        required BufferSource                 id;
+        sequence<AuthenticatorTransport>      transports;
     };
 </xmp>
 
@@ -1315,17 +1318,17 @@ the {{CredentialsContainer/create()}} or {{CredentialsContainer/get()}} methods.
 </div>
 
 
-### Credential Transport enumeration (enum <dfn enum>ExternalTransport</dfn>) ### {#transport}
+### Authenticator Transport enumeration (enum <dfn enum>AuthenticatorTransport</dfn>) ### {#transport}
 
 <pre class="idl">
-    enum Transport {
+    enum AuthenticatorTransport {
         "usb",
         "nfc",
         "ble"
     };
 </pre>
 
-<div dfn-type="enum-value" dfn-for="Transport">
+<div dfn-type="enum-value" dfn-for="AuthenticatorTransport">
     Authenticators may communicate with Clients using a variety of transports. This enumeration defines a hint as to how Clients
     might communicate with a particular Authenticator in order to obtain an assertion for a specific credential. Note that these
     hints represent the [=[RP]=]'s best belief as to how an Authenticator may be reached. A [=[RP]=] may obtain a list of
@@ -1754,7 +1757,7 @@ template:
     client data=], and returns either:
     - An error indicating that the attestation is invalid, or
     - The attestation type, and the trust path of the attestation. This trust path is either empty (in case of
-        self-attestation), an identifier of a [=ECDAA-Issuer public key=] (in the case of [=ECDAA=]), or a set of X.509
+        [=self attestation=]), an identifier of a [=ECDAA-Issuer public key=] (in the case of [=ECDAA=]), or a set of X.509
         certificates.
 
 The initial list of specified [=attestation statement formats=] is in [[#defined-attestation-formats]].
@@ -1772,7 +1775,7 @@ WebAuthn supports multiple attestation types:
     [[#sec-attestation-privacy]] for futher information.
 
 : <dfn>Self Attestation</dfn>
-:: In the case of self attestation, also known as surrogate basic attestation [[UAFProtocol]], the Authenticator doesn't have
+:: In the case of [=self attestation=], also known as surrogate basic attestation [[UAFProtocol]], the Authenticator doesn't have
     any specific attestation key. Instead it uses the authentication key itself to create the attestation signature.
     Authenticators without meaningful protection measures for an attestation private key typically use this attestation type.
 
@@ -1926,7 +1929,7 @@ When registering a new credential, represented by a {{AuthenticatorAttestationRe
     the RP.
 
 6. Compute the hash of {{AuthenticatorResponse/clientDataJSON}} using the algorithm identified by
-    <code>|C|.{{CollectedClientData/hashAlg}}</code>.
+    <code>|C|.{{CollectedClientData/hashAlgorithm}}</code>.
 
 7. Perform CBOR decoding on the {{AuthenticatorAttestationResponse/attestationObject}} field of the
     {{AuthenticatorAttestationResponse}} structure to obtain the attestation statement format |fmt|, the [=authenticator data=]
@@ -1949,7 +1952,7 @@ When registering a new credential, represented by a {{AuthenticatorAttestationRe
     the [=attestation data=] contained in |authData|.
 
 12. Assess the attestation trustworthiness using the outputs of the verification procedure in step 10, as follows:
-        - If self-attestation was used, check if self-attestation is acceptable under [=[RP]=] policy.
+        - If [=self attestation=] was used, check if [=self attestation=] is acceptable under [=[RP]=] policy.
         - If [=ECDAA=] was used, verify that the [=identifier of the ECDAA-Issuer public key=] used is included in the set of
             acceptable trust anchors obtained in step 11.
         - Otherwise, use the X.509 certificates returned by the verification procedure to verify that the attestation public key
@@ -1965,7 +1968,7 @@ When registering a new credential, represented by a {{AuthenticatorAttestationRe
     the registration ceremony.
 
     NOTE: However, if permitted by policy, the [=[RP]=] MAY register the credential ID and credential public key but treat the
-        credential as one with self-attestation (see [[#sctn-attestation-types]]). If doing so, the [=[RP]=] is asserting there
+        credential as one with [=self attestation=] (see [[#sctn-attestation-types]]). If doing so, the [=[RP]=] is asserting there
         is no cryptographic proof that the [=public key credential=] has been generated by a particular [=authenticator=] model.
         See [[FIDOSecRef]] and [[UAFProtocol]] for a more detailed discussion.
 
@@ -2010,7 +2013,7 @@ When verifying a given {{PublicKeyCredential}} structure (|credential|) as part 
 8. Verify that the [=RP ID=] hash in |aData| is the SHA-256 hash of the [=RP ID=] expected by the [=[RP]=].
 
 9. Let |hash| be the result of computing a hash over the |cData| using the algorithm represented by the
-    {{CollectedClientData/hashAlg}} member of |C|.
+    {{CollectedClientData/hashAlgorithm}} member of |C|.
 
 10. Using the credential public key looked up in step 1, verify that |sig| is a valid signature over the binary concatenation of
     |aData| and |hash|.
@@ -2116,7 +2119,7 @@ implementable by [=authenticators=] with limited resources (e.g., secure element
     through an authenticator-specific mechanism (see [[!FIDOEcdaaAlgorithm]]). It sets |alg| to the algorithm of the
     [=ECDAA-Issuer public key=] and |ecdaaKeyId| to the [=identifier of the ECDAA-Issuer public key=] (see above).
 
-    If self attestation is in use, the authenticator produces |sig| by concatenating |authenticatorData| and |clientDataHash|,
+    If [=self attestation=] is in use, the authenticator produces |sig| by concatenating |authenticatorData| and |clientDataHash|,
     and signing the result using the credential private key. It sets |alg| to the algorithm of the credential private key, and
     omits the other fields.
 
@@ -2139,7 +2142,7 @@ implementable by [=authenticators=] with limited resources (e.g., secure element
         ECDAA-Verify with [=ECDAA-Issuer public key=] identified by |ecdaaKeyId| (see [[!FIDOEcdaaAlgorithm]]).
     - If successful, return attestation type ECDAA and trust path |ecdaaKeyId|.
 
-    If neither |x5c| nor |ecdaaKeyId| is present, self attestation is in use.
+    If neither |x5c| nor |ecdaaKeyId| is present, [=self attestation=] is in use.
     - Validate that |alg| matches the algorithm of the credential private key in |authenticatorData|.
     - Verify that |sig| is a valid signature over the concatenation of |authenticatorData| and |clientDataHash| using the
         credential public key with |alg|.
@@ -2424,7 +2427,7 @@ This attestation statement format is used with FIDO U2F authenticators using the
 :: fido-u2f
 
 : Attestation types supported
-:: Basic
+:: Basic, [=self attestation=]
 
 : Syntax
 :: The syntax of a FIDO U2F attestation statement is defined as follows:
@@ -2665,7 +2668,7 @@ the use of the extension. The [=[RP]=] sets this value in its request for an ass
         navigator.credentials.get({
             publicKey: {
                 challenge: "SGFuIFNvbG8gc2hvdCBmaXJzdC4",
-                allowList: [], /* Empty filter */
+                allowCredentials: [], /* Empty filter */
                 extensions: { 'webauthnExample_geo': true }
             }
         });
@@ -2826,7 +2829,7 @@ creation.
 :: A sequence of AAGUIDs:
 
     <xmp class="idl">
-        typedef sequence<AAGUID> AuthenticatorSelectionList;
+        typedef sequence<AAGUID>      AuthenticatorSelectionList;
     </xmp>
 
     Each AAGUID corresponds to an authenticator model that is acceptable to the [=[RP]=] for this credential creation. The
@@ -2835,7 +2838,7 @@ creation.
     An AAGUID is defined as an array containing the globally unique identifier of the authenticator model being sought.
 
     <pre class="idl">
-        typedef BufferSource AAGUID;
+        typedef BufferSource      AAGUID;
     </pre>
 
 : Client extension processing
@@ -3228,7 +3231,7 @@ The sample code for generating and registering a new key follows:
       ],
 
       timeout: 60000,  // 1 minute
-      excludeList: [], // No excludeList
+      excludeCredentials: [], // No exclude list of PKCredDescriptors
       extensions: {"webauthn.location": true}  // Include location information
                                                // in attestation
     };
@@ -3289,7 +3292,7 @@ credentials, then the sample code for performing such an authentication might lo
     var options = {
                     challenge: new TextEncoder().encode("climb a mountain"),
                     timeout: 60000,  // 1 minute
-                    allowList: [{ type: "public-key" }]
+                    allowCredentials: [{ type: "public-key" }]
                   };
 
     navigator.credentials.get({ "publicKey": options })
@@ -3320,7 +3323,7 @@ extension for transaction authorization.
     var options = {
                     challenge: encoder.encode("climb a mountain"),
                     timeout: 60000,  // 1 minute
-                    allowList: [acceptableCredential1, acceptableCredential2];
+                    allowCredentials: [acceptableCredential1, acceptableCredential2];
                     extensions: { 'webauthn.txauth.simple':
                        "Wave your hands in the air like you just don't care" };
                   };
