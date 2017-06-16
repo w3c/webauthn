@@ -878,6 +878,10 @@ When this method is invoked, the user agent MUST execute the following algorithm
             :   [=list/is not empty=]
             ::  1. Let |distinctTransports| be a new [=ordered set=].
 
+                1. If |allowCredentialDescriptorList| has exactly one value, let |savedCredentialId| be a new {{ArrayBuffer}},
+                       created using |global|'s [=%ArrayBuffer%=], and containing the bytes of
+                       <code>|allowCredentialDescriptorList|[0].id</code>.
+
                 1. [=list/For each=] credential descriptor |C| in |allowCredentialDescriptorList|,
                     [=set/append=] each value, if any, of <code>|C|.{{transports}}</code> to |distinctTransports|.
 
@@ -922,28 +926,29 @@ When this method is invoked, the user agent MUST execute the following algorithm
 
     <dl class="switch">
 
-    <dt>If the |adjustedTimeout| timer expires,</dt>
-    <dd>[=set/For each=] |authenticator| in |issuedRequests| invoke the [=authenticatorCancel=] operation on |authenticator|
-        and [=set/remove=] |authenticator| from |issuedRequests|.</dd>
+    :   If the |adjustedTimeout| timer expires,
+    ::  [=set/For each=] |authenticator| in |issuedRequests| invoke the [=authenticatorCancel=] operation on |authenticator|
+        and [=set/remove=] |authenticator| from |issuedRequests|.
 
-    <dt>If any |authenticator| returns a status indicating that the user cancelled the operation,</dt>
-    <dd>
-        1. [=set/Remove=] |authenticator| from |issuedRequests|.
+    :   If any |authenticator| returns a status indicating that the user cancelled the operation,
+    ::  1. [=set/Remove=] |authenticator| from |issuedRequests|.
         2. [=set/For each=] remaining |authenticator| in |issuedRequests| invoke the [=authenticatorCancel=] operation on
             |authenticator| and [=set/remove=] it from |issuedRequests|.
-    </dd>
 
-    <dt>If any |authenticator| returns an error status,</dt>
-    <dd>[=set/Remove=] |authenticator| from |issuedRequests|.</dd>
 
-    <dt>If any |authenticator| indicates success,</dt>
-    <dd>
-        1.  [=set/Remove=] |authenticator| from |issuedRequests|.
+    :   If any |authenticator| returns an error status,
+    ::  [=set/Remove=] |authenticator| from |issuedRequests|.
+
+    :   If any |authenticator| indicates success,
+    ::  1.  [=set/Remove=] |authenticator| from |issuedRequests|.
         2.  Let |value| be a new {{PublicKeyCredential}} associated with |global| whose fields are:
 
             :   {{PublicKeyCredential/[[identifier]]}}
-            ::  A new {{ArrayBuffer}}, created using |global|'s [=%ArrayBuffer%=], containing the bytes of the credential ID
-                returned from the successful [=authenticatorGetAssertion=] operation, as defined in [[#op-get-assertion]].
+            ::  Create a new {{ArrayBuffer}}, using |global|'s [=%ArrayBuffer%=].
+                    If |savedCredentialId| exists, set the value of the new {{ArrayBuffer}} to be the bytes of
+                    |savedCredentialId|. Otherwise, set the value of the new {{ArrayBuffer}} to be the bytes of the credential
+                    ID returned from the successful [=authenticatorGetAssertion=] operation, as defined in
+                    [[#op-get-assertion]].
             :   {{PublicKeyCredential/response}}
             ::  A new {{AuthenticatorAssertionResponse}} object associated with |global| whose fields are:
                 : {{AuthenticatorResponse/clientDataJSON}}
@@ -962,7 +967,7 @@ When this method is invoked, the user agent MUST execute the following algorithm
         3.  [=set/For each=] remaining |authenticator| in |issuedRequests| invoke the [=authenticatorCancel=] operation on
             |authenticator| and [=set/remove=] it from |issuedRequests|.
         4.  Return |value| and terminate this algorithm.
-    </dd>
+
     </dl>
 
 1. Return a {{DOMException}} whose name is "{{NotAllowedError}}".
@@ -1746,7 +1751,12 @@ When this method is invoked, the [=authenticator=] must perform the following pr
 </figure>
 
 On successful completion, the authenticator returns to the user agent:
-- The identifier of the credential (credential ID) used to generate the [=assertion signature=].
+- The identifier of the credential (credential ID) used to generate the [=assertion signature=], if either a list of
+    credentials of length 2 or greater was supplied by the client, or no such list was supplied.
+
+    Note: If the client supplies a list of exactly one credential and it was successfully employed, then its credential ID
+        is not returned since the client already knows it.
+
 - The [=authenticator data=] used to generate the [=assertion signature=].
 - The [=assertion signature=].
 
