@@ -1,5 +1,5 @@
+<h1>Web Authentication:<br>An API for accessing Public Key Credentials<br>[Level 1]</h1>
 <pre class='metadata'>
-Title: Web Authentication: An API for accessing Public Key Credentials
 Status: ED
 Prepare for TR: true
 TR: https://www.w3.org/TR/webauthn/
@@ -11,7 +11,7 @@ Previous Version: https://www.w3.org/TR/2016/WD-webauthn-20160928/
 Previous Version: https://www.w3.org/TR/2016/WD-webauthn-20160902/
 Previous Version: https://www.w3.org/TR/2016/WD-webauthn-20160531/
 Shortname: webauthn
-Level:
+Level: 1
 Editor: Vijay Bharadwaj, w3cid 55440, Microsoft, vijay.bharadwaj@microsoft.com
 Editor: Hubert Le Van Gong, w3cid 84817, PayPal, hlevangong@paypal.com
 Editor: Dirk Balfanz, w3cid 47648, Google, balfanz@google.com
@@ -627,7 +627,7 @@ When this method is invoked, the user agent MUST execute the following algorithm
 1. Let |clientDataHash| be the [=hash of the serialized client data=] represented by |clientDataJSON|.
 
 1. Let |currentlyAvailableAuthenticators| be a new [=ordered set=] consisting of all [=authenticators=]
-    available on this platform.
+    currently available on this platform.
 
 1. Let |selectedAuthenticators| be a new [=ordered set=].
 
@@ -834,20 +834,39 @@ When this method is invoked, the user agent MUST execute the following algorithm
     1. If |allowCredentialDescriptorList| 
         <dl class="switch">
             :   [=list/is not empty=]
-            ::  [=in parallel=], [=list/for each=] credential descriptor |C| in |allowCredentialDescriptorList|:
-                1. If <code>|C|.{{transports}}</code> [=list/is not empty=], the client SHOULD select one |transport| from
-                    {{transports}}. Then, using |transport|, invoke the [=authenticatorGetAssertion=] operation on
-                    |authenticator|, with |rpId|, |clientDataHash|, |allowCredentialDescriptorList|, and
-                    |authenticatorExtensions| as parameters.
-    
-                1. Otherwise, using local configuration knowledge of the appropriate transport to use with |authenticator|, 
-                    invoke the [=authenticatorGetAssertion=] operation on |authenticator| with |rpId|,
-                    |clientDataHash|, |allowCredentialDescriptorList|, and |clientExtensions| as parameters.
+            ::  1. Let |distinctTransports| be a new [=ordered set=].
+
+                1. [=list/For each=] credential descriptor |C| in |allowCredentialDescriptorList|,
+                    [=set/append=] each value, if any, of <code>|C|.{{transports}}</code> to |distinctTransports|.
+
+                    Note: This will aggregate only distinct values of {{transports}} (for this [=authenticator=]) in
+                        |distinctTransports| due to the properties of [=ordered sets=].
+
+                1. If |distinctTransports|
+                    <dl class="switch">
+                        :   [=list/is not empty=]
+                        ::  The client selects one |transport| value from |distinctTransports|, possibly incorporating local
+                            configuration knowledge of the appropriate transport to use with |authenticator| in making its
+                            selection.
+
+                            Then, using |transport|, invoke [=in parallel=] the [=authenticatorGetAssertion=] operation on
+                            |authenticator|, with |rpId|, |clientDataHash|, |allowCredentialDescriptorList|, and
+                            |authenticatorExtensions| as parameters.
+
+                        :   [=list/is empty=]
+                        ::  Using local configuration knowledge of the appropriate transport to use with |authenticator|,
+                            invoke [=in parallel=] the [=authenticatorGetAssertion=] operation on |authenticator| with |rpId|,
+                            |clientDataHash|, |allowCredentialDescriptorList|, and |clientExtensions| as parameters.
+                    </dl>
 
             :   [=list/is empty=]
             ::  Using local configuration knowledge of the appropriate transport to use with |authenticator|, invoke
                 [=in parallel=] the [=authenticatorGetAssertion=] operation on |authenticator| with |rpId|, |clientDataHash|,
                 and |clientExtensions| as parameters.
+
+                Note: In this case, the [=[RP]=] did not supply a list of acceptable credential descriptors. Thus the
+                    authenticator is being asked to exercise any credential it may possess that is bound to 
+                    the [=[RP]=], as identified by |rpId|.
         </dl>
 
     1. [=set/Append=] |authenticator| to |issuedRequests|.
@@ -1019,7 +1038,7 @@ optionally evidence of [=user consent=] to a specific transaction.
         required sequence<PublicKeyCredentialParameters>  parameters;
 
         unsigned long                                timeout;
-        sequence<PublicKeyCredentialDescriptor>      excludeCredentials;
+        sequence<PublicKeyCredentialDescriptor>      excludeCredentials = [];
         AuthenticatorSelectionCriteria               authenticatorSelection;
         AuthenticationExtensions                     extensions;
     };
