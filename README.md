@@ -55,3 +55,8 @@ bikeshed echidna --u USERNAME --p PASSWORD --d DECISION_URL
 This will create a tarball of the HTML and images, and upload to Echidna. Status of the request can be tracked through the W3C API [as described in the Echidna documentation](https://github.com/w3c/echidna/wiki/How-to-use-Echidna). Note that on Windows, this will give an error about failing to delete a temporary file because it is in use by a different process. This error is harmless; it happens after the submission has completed.
 
 Overall info on echidna is here: https://github.com/w3c/echidna/wiki and here https://labs.w3.org/echidna/.
+
+# Taking meeting minutes
+
+* [Scribe instructions from the W3C Guidebook](https://www.w3.org/2008/04/scribe.html)
+* [Alternate instructions from the XML Security WG](https://www.w3.org/2008/xmlsec/Group/Scribe-Instructions.html)
