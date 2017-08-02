@@ -636,11 +636,13 @@ When this method is invoked, the user agent MUST execute the following algorithm
 
 1. If |options|.{{MakePublicKeyCredentialOptions/authenticatorSelection}} is [=present|present=], iterate through
         |currentlyAvailableAuthenticators| and do the following [=set/for each=] |authenticator|:
-    1. If {{AuthenticatorSelectionCriteria/attachment}} is [=present|present=] and its value is not equal
+    1. If {{AuthenticatorSelectionCriteria/aa}} is [=present|present=] and its value is not equal
         to |authenticator|'s attachment modality, [=iteration/continue=].
-    1. If {{AuthenticatorSelectionCriteria/requireResidentKey}} is set to |true| and the |authenticator|
+    1. If {{AuthenticatorSelectionCriteria/rk}} is set to |true| and the |authenticator|
         is not capable of storing a [=Client-Side-Resident Credential Private Key=], [=iteration/continue=].
-    1. [=set/Append=] |authenticator| to |selectedAuthenticators|.
+    1. If {{AuthenticatorSelectionCriteria/uv}} is set to |true| and the
+        |authenticator| is not capable of performing [=user verification=], [=iteration/continue=].
+    1. [=set/Append=] |authenticator| to |selectedAuthenticators|. 
 
 1. If |selectedAuthenticators| [=list/is empty=], return a {{DOMException}} whose name is
     "{{ConstraintError}}", and terminate this algoritm.
@@ -655,7 +657,7 @@ When this method is invoked, the user agent MUST execute the following algorithm
         1. Otherwise, [=list/Append=] |C| to |excludeCredentialDescriptorList|.
     1. [=In parallel=], invoke the [=authenticatorMakeCredential=] operation on |authenticator| with |rpId|,
         |clientDataHash|, |options|.{{MakePublicKeyCredentialOptions/rp}}, |options|.{{MakePublicKeyCredentialOptions/user}},
-        <code>|options|.{{MakePublicKeyCredentialOptions/authenticatorSelection}}.{{AuthenticatorSelectionCriteria/requireResidentKey}}</code>,
+        <code>|options|.{{MakePublicKeyCredentialOptions/authenticatorSelection}}.{{AuthenticatorSelectionCriteria/rk}}</code>,
         |normalizedParameters|, |excludeCredentialDescriptorList|, and |authenticatorExtensions| as parameters.
     1. [=set/Append=] |authenticator| to |issuedRequests|.
 
@@ -1150,20 +1152,30 @@ attributes.
 
 <xmp class="idl">
     dictionary AuthenticatorSelectionCriteria {
-        AuthenticatorAttachment      attachment;
-        boolean                      requireResidentKey = false;
+        AuthenticatorAttachment      aa;         // authenticatorAttachment
+        boolean                      rk = false; // requireResidentKey
+        boolean                      uv = false; // requireUserVerification
     };
 </xmp>
 
 <div dfn-type="dict-member" dfn-for="AuthenticatorSelectionCriteria">
-    :   <dfn>attachment</dfn>
+    :   <dfn>aa</dfn> (authenticatorAttachment)
     ::  If this member is [=present|present=], eligible authenticators are filtered to only authenticators attached with the
         specified [[#attachment]].
 
-    :   <dfn>requireResidentKey</dfn>
+    :   <dfn>rk</dfn> (requireResidentKey)
     ::  This member describes the [=[RPS]=]' requirements regarding availability of the [=Client-side-resident Credential
         Private Key=]. If the parameter is set to true, the authenticator MUST create a
         [=Client-side-resident Credential Private Key=] when creating a [=public key credential=].
+
+    :   <dfn>uv</dfn> (requireUserVerification)
+    ::  This member describes the [=[RPS]=]' requirements regarding the authenticator being capable of performing user verification.
+        If the parameter is set to true, the authenticator MUST perform user verification when performing
+        the {{CredentialsContainer/create()}} operation and future [[#getAssertion]] operations when it is
+        requested to verify the credential.
+
+    Note: These identifiers are intentionally short, rather than descriptive, because they will be serialized into
+        a message to the authenticator, which may be sent over a low-bandwidth link.
 </div>
 
 
@@ -1171,8 +1183,8 @@ attributes.
 
 <pre class="idl">
     enum AuthenticatorAttachment {
-        "platform",
-        "cross-platform"
+        "plat",  // Platform attachment
+        "xplat"  // Cross-platform attachment
     };
 </pre>
 
@@ -1477,8 +1489,14 @@ The [=authenticator data=] structure is a byte array of 37 bytes or more, as fol
         <td>1</td>
         <td>
             Flags (bit 0 is the least significant bit):
-            - Bit 0: [=Test of User Presence=] (`TUP`) result.
-            - Bits 1-5: Reserved for future use (`RFU`).
+            - Bit 0: [=test of user presence/User Present=] (`UP`) result.
+                `1` means the user is [=test of user presence/present=].
+                `0` means the user is not [=test of user presence/present=].
+            - Bit 1: Reserved for future use (`RFU1`).
+            - Bit 2: [=user verification/User Verified=] (`UV`) result.
+                `1` means [=user verification=] has been performed.
+                `0` means [=user verification=] has not been performed.
+            - Bits 3-5: Reserved for future use (`RFU2`).
             - Bit 6: [=Attestation data=] included (`AT`). Indicates whether the authenticator added [=attestation data=].
             - Bit 7: Extension data included (`ED`). Indicates if the [=authenticator data=] has extensions.
         </td>
@@ -1555,7 +1573,8 @@ input parameters:
     preferred. The platform makes a best-effort to create the most preferred credential that it can.
 - An optional list of {{PublicKeyCredentialDescriptor}} objects provided by the [=[RP]=] with the intention that, if any of
     these are known to the authenticator, it should not create a new credential.
-- The |requireResidentKey| parameter of the |options|.{{MakePublicKeyCredentialOptions/authenticatorSelection}} dictionary.
+- The |rk| parameter of the |options|.{{MakePublicKeyCredentialOptions/authenticatorSelection}} dictionary.
+- The |uv| parameter of the |options|.{{MakePublicKeyCredentialOptions/authenticatorSelection}} dictionary.
 - Extension data created by the client based on the extensions requested by the [=[RP]=], if any.
 
 When this operation is invoked, the authenticator must perform the following procedure:
@@ -1565,8 +1584,10 @@ When this operation is invoked, the authenticator must perform the following pro
     If not, return an error code equivalent to "{{NotSupportedError}}" and terminate the operation.
 - Check if a credential matching any of the supplied {{PublicKeyCredential}} identifiers is present on this authenticator. If
     so, return an error code equivalent to "{{NotAllowedError}}" and terminate the operation.
-- If the |requireResidentKey| flag is set to |true| and the authenticator cannot store a [=Client-side-resident Credential
+- If the |rk| flag is set to |true| and the authenticator cannot store a [=Client-side-resident Credential
     Private Key=], return an error code equivalent to "{{ConstraintError}}" and terminate the operation.
+- If the |uv| flag is set to |true| and the authenticator cannot perform user verification,
+    return an error code equivalent to "{{ConstraintError}}" and terminate the operation.
 - Prompt the user for consent to create a new credential. The prompt for obtaining this consent is shown by the authenticator
     if it has its own output capability, or by the user agent otherwise. If the user denies consent, return an error code
     equivalent to "{{NotAllowedError}}" and terminate the operation.
