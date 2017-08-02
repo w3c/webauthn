@@ -64,13 +64,6 @@ spec: TokenBinding; urlPrefix: https://tools.ietf.org/html/draft-ietf-tokbind-pr
         text: Token Binding
         text: Token Binding ID; url: section-3.2
 
-spec: WebCryptoAPI; urlPrefix: https://www.w3.org/TR/WebCryptoAPI/
-    type: dfn
-        text: normalizing an algorithm; url: dfn-normalize-an-algorithm
-        text: recognized algorithm name
-    type: dictionary
-        text: AlgorithmIdentifier; url: dfn-AlgorithmIdentifier
-
 <!-- Remove these once Shepherd picks up the changes -->
 spec: CREDENTIAL-MANAGEMENT-1; urlPrefix: https://w3c.github.io/webappsec-credential-management/
     type: dictionary
@@ -201,6 +194,9 @@ below and in [[#index-defined-elsewhere]].
 : CDDL
 :: This specification describes the syntax of all CBOR-encoded data using the CBOR Data Definition Language (CDDL) [[!CDDL]].
 
+: COSE
+:: CBOR Object Signing and Encryption (COSE) [[!RFC8152]].  The IANA COSE Algorithms registry established by this specification is also used.
+
 :  Credential Management
 :: The API described in this document is an extension of the {{Credential}} concept defined in [[!CREDENTIAL-MANAGEMENT-1]].
 
@@ -213,10 +209,6 @@ below and in [[#index-defined-elsewhere]].
 : HTML
 :: The concepts of [=relevant settings object=], [=origin=],
     [=opaque origin=], and [=is a registrable domain suffix of or is equal to=] are defined in [[!HTML52]].
-
-: Web Cryptography API
-:: The {{AlgorithmIdentifier}} type and the method for [=normalizing an algorithm=] are defined in
-    [[WebCryptoAPI#algorithm-dictionary]].
 
 : Web IDL
 :: Many of the interface definitions and all of the IDL in this specification depend on [[!WebIDL-1]]. This updated version of
@@ -576,16 +568,14 @@ When this method is invoked, the user agent MUST execute the following algorithm
             {{CredentialsContainer/create()}}.
     </li>
 
-1. Let |normalizedParameters| be a new [=list=] whose [=list/items=] are pairs of {{PublicKeyCredentialType}} and a
-    [=dictionary=] type (as returned by [=normalizing an algorithm=]).
+1. Let |normalizedParameters| be a new [=list=] whose [=list/items=] are pairs of {{PublicKeyCredentialType}} and
+    an {{AlgorithmIdentifier}}.
 
 1. [=list/For each=] |current| of |options|.{{MakePublicKeyCredentialOptions/pubKeyCredParams}}:
     1. If <code>|current|.{{PublicKeyCredentialParameters/type}}</code> does not contain a {{PublicKeyCredentialType}} supported
         by this implementation, then [=continue=].
-    1. Let |normalizedAlgorithm| be the result of [=normalizing an algorithm=] [[!WebCryptoAPI]], with |alg| set to
-        <code>|current|.{{PublicKeyCredentialParameters/alg}}</code> and |op| set to `"generateKey"`. If an error occurs during
-        this procedure, then [=continue=].
-    1. [=list/Append=] the pair of <code>|current|.{{PublicKeyCredentialParameters/type}}</code> and |normalizedAlgorithm| to
+    1. Let |alg| be <code>|current|.{{PublicKeyCredentialParameters/alg}}</code>.
+    1. [=list/Append=] the pair of <code>|current|.{{PublicKeyCredentialParameters/type}}</code> and |alg| to
         |normalizedParameters|.
 
 1. If |normalizedParameters| [=list/is empty=] and |options|.{{MakePublicKeyCredentialOptions/pubKeyCredParams}} [=list/is not empty=],
@@ -1369,11 +1359,13 @@ the {{CredentialsContainer/create()}} or {{CredentialsContainer/get()}} methods.
 </div>
 
 
-### Cryptographic Algorithm Identifier (type {{AlgorithmIdentifier}}) ### {#alg-identifier}
+### Cryptographic Algorithm Identifier (type <dfn>AlgorithmIdentifier</dfn>) ### {#alg-identifier}
 
-A string or dictionary identifying a cryptographic algorithm and optionally a set of parameters for that algorithm. This type is
-defined in [[!WebCryptoAPI]].
-
+A number or string identifying a cryptographic algorithm.
+The algorithm identifiers MUST be values registered in the IANA COSE Algorithms registry,
+when available, for instance, -7 for "ES256".
+For algorithms not present in the IANA COSE Algorithms registry, string values from the
+JSON Web Signature and Encryption Algorithms SHOULD be used, for instance "RS256".
 
 # WebAuthn Authenticator model # {#authenticator-model}
 
@@ -1549,9 +1541,8 @@ input parameters:
 - The [=hash of the serialized client data=], provided by the client.
 - The [=[RP]=]'s {{PublicKeyCredentialEntity}}.
 - The user account's {{PublicKeyCredentialUserEntity}}.
-- A sequence of pairs of {{PublicKeyCredentialType}} and cryptographic algorithms (a dictionary type) requested by the [=[RP]=],
-    where the cryptographic algorithms are normalized as per the procedure in
-    [[WebCryptoAPI#algorithm-normalization-normalize-an-algorithm]]. This sequence is ordered from most preferred to least
+- A sequence of pairs of {{PublicKeyCredentialType}} and {{AlgorithmIdentifier}} requested by the [=[RP]=].
+    This sequence is ordered from most preferred to least
     preferred. The platform makes a best-effort to create the most preferred credential that it can.
 - An optional list of {{PublicKeyCredentialDescriptor}} objects provided by the [=[RP]=] with the intention that, if any of
     these are known to the authenticator, it should not create a new credential.
@@ -1719,40 +1710,11 @@ credential. It has the following format:
         <td>The AAGUID of the authenticator.</td>
     </tr>
     <tr>
-        <td>2</td>
-        <td>Byte length L of Credential ID</td>
-    </tr>
-    <tr>
-        <td>L</td>
-        <td>Credential ID</td>
-    </tr>
-    <tr>
         <td>variable</td>
         <td>
-            Credential public key encoded in CBOR format. This is a CBOR map defined by the following CDDL rules:
-
-            ```
-            pubKey = $pubKeyFmt
-
-            ; All public key formats must include an alg name
-            pubKeyTemplate = { alg: text }
-            pubKeyTemplate .within $pubKeyFmt
-
-            pubKeyFmt /= rsaPubKey
-            rsaPubKey = { alg: rsaAlgName, n: biguint, e: uint }
-            rsaAlgName = "RS256" / "RS384" / "RS512" / "PS256" / "PS384" / "PS512"
-
-            pubKeyFmt /= eccPubKey
-            eccPubKey = { alg: eccAlgName, x: biguint, y: biguint }
-            eccAlgName = "ES256" / "ES384" / "ES512"
-            ```
-
-            Thus, each public key type is a CBOR map starting with an entry named `alg`, which contains a text string that
-            specifies the name of the signature algorithm associated with the credential private key, using values defined in
-            [[!RFC7518]] section 3.1. The semantics and naming of the other fields (though not their encoding) follows the
-            definitions in [[!RFC7518]] section 6. Specifically, for ECC keys, the semantics of the `x` and `y` fields are
-            defined in [[!RFC7518]] sections 6.2.1.2 and 6.2.1.3, while for RSA keys, the semantics of the `n` and `e` fields
-            are defined in [[!RFC7518]] sections 6.3.1.1 and 6.3.1.2.
+            The Credential ID is the credential public key encoded in COSE_Key format, as defined in Section 7 of [[!RFC8152]].
+	    The COSE_Key MUST contain the "alg" parameter and MUST NOT contain any other optional parameters.
+	    The "alg" parameter MUST contain an {{AlgorithmIdentifier}} value.
         </td>
     </tr>
 </table>
@@ -2480,7 +2442,7 @@ This attestation statement format is used with FIDO U2F authenticators using the
     :: The [=attestation signature=].
 
 : Signing procedure
-:: If the credential public key of the given credential is not of algorithm "ES256", stop and return an error.
+:: If the credential public key of the given credential is not of algorithm -7 ("ES256"), stop and return an error.
 
     Let |authenticatorData| denote the [=authenticator data for the attestation=], and let |clientDataHash| denote the
     [=hash of the serialized client data=].
@@ -3248,11 +3210,11 @@ The sample code for generating and registering a new key follows:
       pubKeyCredParams: [
         {
           type: "public-key",
-          alg: "ES256",
+          alg: -7 // "ES256" as registered in the IANA COSE Algorithms registry
         },
         {
           type: "public-key",
-          alg: "RS256",
+          alg: "RS256" // Use the IANA JOSE algorithm identifier since "RS256" not in COSE Algorithms registry
         }
       ],
 
