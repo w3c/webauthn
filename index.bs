@@ -977,6 +977,16 @@ Based on the result, the [=[RP]=] can take further actions to guide the user to 
 
 This method has no arguments and returns a boolean value.
 
+If the promise will return <i>False</i>,
+the [=client=] SHOULD wait a fixed period of time from the invocation of the method before returning <i>False</i>.
+This is done so that callers can not distinguish between
+the case where the user was unwilling to create a credential using one of the available [=platform authenticators=] and
+the case where no [=platform authenticator=] exists.
+Trying to make these cases indistinguishable is done in an attempt to not provide additional information that could be used for fingerprinting.
+A timeout value on the order of 10 minutes is recommended;
+this is enough time for successful user interactions to be performed
+but short enough that the dangling promise will still be resolved in a reasonably timely fashion.
+
 <pre class="idl">
     [SecureContext]
     partial interface PublicKeyCredential {
@@ -3362,7 +3372,9 @@ The sample code for generating and registering a new key follows:
 This is flow for when the [=[RP]=] is specifically interested in creating a public key credential with
 a [=platform authenticator=].
 
-1. The user visits example.com. At this point, the user is likely already logged in.
+1. The user visits example.com and clicks on the login button, which redirects the user to login.example.com.
+
+1. The user enters a username and password to log in. After successful login, the user is redirected back to example.com.
 
 1. The [=[RP]=] script runs the code snippet below.
 
@@ -3376,7 +3388,7 @@ a [=platform authenticator=].
 <pre class="example" highlight="js">
     if (!PublicKeyCredential) { /* Platform not capable of the API. Handle error. */ }
 
-    navigator.credentials.isPlatformAuthenticatorAvailable()
+    PublicKeyCredential.isPlatformAuthenticatorAvailable()
         .then(function (userIntent) {
 
             // If the user has affirmed willingness to register with RP using an available platform authenticator
@@ -3385,9 +3397,12 @@ a [=platform authenticator=].
 
                 // Create and register credentials.
                 return navigator.credentials.create({ "publicKey": publicKeyOptions });
+            } else {
+
+                // Record that the user does not intend to use a platform authenticator
+                // and default the user to a password-based flow in the future.
             }
 
-            // If user is not interested, don't ask the user to register.
         }).then(function (newCredentialInfo) {
             // Send new credential info to server for verification and registration.
         }).catch( function(err) {
