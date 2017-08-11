@@ -45,8 +45,8 @@ This repository uses `.deploy-output.sh` to generate the Editor's Draft on the `
 # Creating a new Working Draft
 
 To build a new WD and upload it to the W3C publishing system:
-- Register as a W3C member and join the Web Authentication working group. Note down your W3C username and password.
-- Copy the url of the meeting minutes in which the working group decided to publish a new draft
+- Register as a W3C member and join the Web Authentication working group. Note down your W3C USERNAME and PASSWORD to use in the command below. If you don't remember either one, please go [here](https://www.w3.org/accounts/recover) to retrieve it.
+- Copy the url of the meeting minutes in which the working group decided to publish a new draft as the DECISION_URL to be used below
 - Make sure Bikeshed is installed locally (follow the Bikeshed Installation and Setup section above)
 - Go into the ./bikeshed directory and use git pull to update Bikeshed.
 - Run the following command to update Bikeshed's datafiles: 
@@ -62,8 +62,6 @@ bikeshed spec
 ```
 bikeshed echidna --u USERNAME --p PASSWORD --d DECISION_URL
 ```
-
-The username and password in the command refer to your W3C username and password. If you don't remmeber your password, please go to this  link to retrieve it: https://www.w3.org/accounts/recover. The DECISION-URL refers to the url of the meeting minute. 
 
 The command above will create a tarball of the HTML and images, and upload to Echidna, W3C's automated publishing system. The command should return a url, thhrough which you can know whether you successfully publish the draft. Status of the request can also be tracked through the [Mailing List Archive](https://lists.w3.org/Archives/Public/public-tr-notifications/). You can also use W3C API [as described in the Echidna documentation](https://github.com/w3c/echidna/wiki/How-to-use-Echidna). Note that on Windows, this will give an error about failing to delete a temporary file because it is in use by a different process. This error is harmless; it happens after the submission has completed.
 
