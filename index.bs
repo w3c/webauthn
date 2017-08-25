@@ -96,6 +96,7 @@ spec: credential-management-1; urlPrefix: https://w3c.github.io/webappsec-creden
 <pre class="link-defaults">
 spec:html; type:dfn; for:environment settings object; text:global object
 spec:infra; type:dfn; text:list
+spec:infra; type:dfn; for:struct; text:item
 spec:url; type:dfn; text:domain
 spec:url; type:dfn; for:url; text:host
 spec:url; type:dfn; text:valid domain;
@@ -131,7 +132,7 @@ is [=Registration=], where a [=public key credential=] is created on an [=authen
 with the present user's account (the account may already exist or may be created at this time). The second is
 [=Authentication=], where the [=[RP]=] is presented with an <em>[=Authentication Assertion=]</em> proving the presence
 and consent of the user who registered the [=public key credential=]. Functionally, the [=Web Authentication API=] comprises
-a {{PublicKeyCredential}} which extends the Credential Management API [[CREDENTIAL-MANAGEMENT-1]], and infrastructure which
+a {{PublicKeyCredential}} which extends the Credential Management API [[!CREDENTIAL-MANAGEMENT-1]], and infrastructure which
 allows those credentials to be used with {{CredentialsContainer/create()|navigator.credentials.create()}} and
 {{CredentialsContainer/get()|navigator.credentials.get()}}. The former is used during [=Registration=], and the
 latter during [=Authentication=].
@@ -688,12 +689,12 @@ When this method is invoked, the user agent MUST execute the following algorithm
         1. Otherwise, [=list/Append=] |C| to |excludeCredentialDescriptorList|.
 
     1. [=In parallel=], invoke the [=authenticatorMakeCredential=] operation on |authenticator| with
-        |clientDataHash|, 
-        |options|.{{MakePublicKeyCredentialOptions/rp}}, 
+        |clientDataHash|,
+        |options|.{{MakePublicKeyCredentialOptions/rp}},
         |options|.{{MakePublicKeyCredentialOptions/user}},
         <code>|options|.{{MakePublicKeyCredentialOptions/authenticatorSelection}}.{{AuthenticatorSelectionCriteria/rk}}</code>,
-        |credTypesAndPubKeyAlgs|, 
-        |excludeCredentialDescriptorList|, 
+        |credTypesAndPubKeyAlgs|,
+        |excludeCredentialDescriptorList|,
         and |authenticatorExtensions| as parameters.
 
     1. [=set/Append=] |authenticator| to |issuedRequests|.
@@ -719,27 +720,40 @@ When this method is invoked, the user agent MUST execute the following algorithm
 
     :   If any |authenticator| indicates success,
     ::  1.  [=set/Remove=] |authenticator| from |issuedRequests|.
-        2.  Let |attestationObject| be a new {{ArrayBuffer}}, created using |global|'s [=%ArrayBuffer%=], containing the
-            bytes of the value returned from the successful [=authenticatorMakeCredential=] operation (which is
-            <code>attObj</code>, as defined in [[#generating-an-attestation-object]]).
-        3.  Let |id| be |attestationObject|<code>.authData.attestation data.credential ID</code> (see [[#sec-attestation-data]]
-            and [[#sec-authenticator-data]]).
-        4.  Let |value| be a new {{PublicKeyCredential}} object associated with |global| whose fields are:
-            :   {{PublicKeyCredential/[[identifier]]}}
-            ::  |id|
-            :   {{PublicKeyCredential/response}}
-            ::  A new {{AuthenticatorAttestationResponse}} object associated with |global| whose fields are:
-                :   {{AuthenticatorResponse/clientDataJSON}}
-                ::  A new {{ArrayBuffer}}, created using |global|'s [=%ArrayBuffer%=], containing the bytes of |clientDataJSON|.
-                :   {{AuthenticatorAttestationResponse/attestationObject}}
-                ::  |attestationObject|
-            :   {{PublicKeyCredential/clientExtensionResults}}
-            ::  A new {{AuthenticationExtensions}} object containing the [=extension identifier=] → [=client extension output=]
-                entries created by running each extension's [=client extension processing=] algorithm to create the [=client
+
+        2.  Let |credentialCreationData| be a [=struct=] whose [=items=] are:
+
+            :   <code><dfn>attestationObjectResult</dfn></code>
+            ::  whose value is the bytes returned from the successful [=authenticatorMakeCredential=] operation.
+
+                Note: this value is <code>attObj</code>, as defined in [[#generating-an-attestation-object]].
+
+            :   <code><dfn>clientDataJSONResult</dfn></code>
+            ::  whose value is the bytes of |clientDataJSON|.
+
+            :   <code><dfn>extensionOutputsMap</dfn></code>
+            ::  whose value is an [=ordered map=] with [=map/keys=] of type [=extension identifier=]
+                and [=map/values=] of type [=client extension output=].
+                <code>[=extensionOutputsMap=]</code>'s [=map/entries=] are
+                created by running each extension's [=client extension processing=] algorithm to create the [=client
                 extension outputs=], for each [=client extension=] in <code>{{AuthenticatorResponse/clientDataJSON}}.clientExtensions</code>.
+
+        3.  Let |value| be a [=struct=] whose [=items=] are:
+
+            :   <code><dfn>constructResultantCredentialCallback</dfn></code>
+            ::  whose value is a Web IDL {{Function}} [=callback function type=] value implementing the
+                steps defined in [[#constructResultantCredentialCallback]].
+
+            :   <code><dfn>credentialCreationDataInstance</dfn></code>
+            ::  whose value is |credentialCreationData|.
+
+            ISSUE: <code>[=constructResultantCredentialCallback=]</code> and
+                <code>[=credentialCreationDataInstance=]</code> should actually not be defined here (?) and link back
+                to their definitions in [[!CREDENTIAL-MANAGEMENT-1]] (?).
 
         5. [=set/For each=] remaining |authenticator| in |issuedRequests| invoke the [=authenticatorCancel=] operation on
             |authenticator| and [=set/remove=] it from |issuedRequests|.
+
         6. Return |value| and terminate this algorithm.
 
     </dl>
@@ -749,6 +763,49 @@ When this method is invoked, the user agent MUST execute the following algorithm
 During the above process, the user agent SHOULD show some UI to the user to guide them in the process of selecting and
 authorizing an authenticator.
 </div>
+
+
+#### Construct the resultant credential - `constructResultantCredentialCallback` algorithm #### {#constructResultantCredentialCallback}
+
+[=constructResultantCredentialCallback=] is a Web IDL {{Function}} [=callback function type=] value.
+Its purpose is to map |credentialCreationData|'s [=items=] into a new {{PublicKeyCredential}} object associated with the
+caller's [=environment settings object/global object=], while running on the main [=event loop=]. See also
+[[!CREDENTIAL-MANAGEMENT-1]].
+
+When [=constructResultantCredentialCallback=] is invoked, given <code>[=credentialCreationDataInstance=]</code>, (whose value is
+the [=struct=] |credentialCreationData| as defined in [[#createCredential]], above) and |global| (its caller's
+[=current settings object=]'s [=environment settings object/global object=]), run these steps:
+
+1.  Let |attestationObject| be a new {{ArrayBuffer}}, created using |global|'s [=%ArrayBuffer%=], containing the
+    bytes of |credentialCreationData|.<code>[=attestationObjectResult=]</code>'s value.
+
+3.  Let |id| be |attestationObject|<code>.authData.attestation data.credential ID</code> (see [[#sec-attestation-data]]
+    and [[#sec-authenticator-data]]).
+
+4.  Let |pubKeyCred| be a new {{PublicKeyCredential}} object associated with |global| whose fields are:
+
+    :   {{PublicKeyCredential/[[identifier]]}}
+    ::  |id|
+
+    :   {{PublicKeyCredential/response}}
+    ::  A new {{AuthenticatorAttestationResponse}} object associated with |global| whose fields are:
+
+        :   {{AuthenticatorResponse/clientDataJSON}}
+        ::  A new {{ArrayBuffer}}, created using |global|'s [=%ArrayBuffer%=], containing the bytes of
+            |credentialCreationData|.<code>[=clientDataJSONResult=]</code>.
+
+        :   {{AuthenticatorAttestationResponse/attestationObject}}
+        ::  |attestationObject|
+
+    :   {{PublicKeyCredential/clientExtensionResults}}
+    ::  A new {{AuthenticationExtensions}} object associated with |global| containing the bytes
+        of |credentialCreationData|.<code>[=extensionOutputsMap=]</code>'s value.
+
+        Note: |credentialCreationData|.<code>[=extensionOutputsMap=]</code> is an [=ordered map=] whose [=map/keys=] are all
+        of type [=extension identifiers=] and [=map/values=] are all of type [=client extension output=]. Thus the
+        latter is implicitly a [=record type=], which is the {{AuthenticationExtensions}}'s type.
+
+5.  Return |pubKeyCred|.
 
 
 ### Use an existing credential to make an assertion - PublicKeyCredential's `[[DiscoverFromExternalSource]](options)` method ### {#getAssertion}
