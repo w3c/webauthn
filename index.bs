@@ -2549,10 +2549,13 @@ This attestation statement format is used with FIDO U2F authenticators using the
         The attestation certificate must be the first element in the array.
 
     : sig
-    :: The [=attestation signature=].
+    :: The [=attestation signature=].  It contains the (raw) U2F registration response message [[!FIDO-U2F-Message-Formats]].
 
 : Signing procedure
 :: If the credential public key of the given credential is not of algorithm -7 ("ES256"), stop and return an error.
+    The authenticator returns a cryptographically signed (raw) registration response message that has a different format
+    than the one expected for |authenticatorData|.  As a consequence, the platform needs to synthesize the
+    |authenticatorData| based on the (raw) U2F registration response message (u2fresp).
 
     Let |authenticatorData| denote the [=authenticator data for the attestation=], and let |clientDataHash| denote the
     [=hash of the serialized client data=].
@@ -2560,10 +2563,24 @@ This attestation statement format is used with FIDO U2F authenticators using the
     If |clientDataHash| is 256 bits long, set |tbsHash| to this value. Otherwise set |tbsHash| to the SHA-256 hash of
     |clientDataHash|.
 
-    Generate a signature as specified in [[FIDO-U2F-Message-Formats]] section 4.3, with the application parameter set to the
-    SHA-256 hash of the [=RP ID=] associated with the given credential, the challenge parameter set to |tbsHash|, and the key handle
-    parameter set to the credential ID of the given credential. Set this as |sig| and set the attestation certificate of
-    the attestation public key as |x5c|.
+    Let the authenticator generate a signed object as specified in [[FIDO-U2F-Message-Formats]] 
+    section 4.3, with the application parameter set to the SHA-256 hash of the [=RP ID=] 
+    associated with the given credential, the challenge parameter set to |tbsHash|, and the key handle
+    parameter set to the credential ID of the given credential. 
+
+    Let the platform generate |authenticatorData| as follows:
+    1. Set RP ID hash to the SHA-256 hash of the [=RP ID=]
+    2. Set Flags to <code>u2fresp.reserved_byte</code>.
+    3. Set counter to all zeros.
+    4. Set attestationData.AAGUID to all zeros
+    5. Set length L of credential ID to length of <code>u2fresp.keyHandle</code>
+    6. Set credential ID to <code>u2fresp.keyHandle</code>
+    7. Set credential public key to <code>u2fresp.userPublicKey</code>
+
+    Let the platform set:
+    1. |x5c| to <code>u2fresp.attestationCertificate</code>.
+    2. |sig| to <code>u2fresp.signature</code>.
+
 
 : Verification procedure
 :: Verification is performed as follows:
