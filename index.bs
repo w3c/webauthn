@@ -53,6 +53,10 @@ Markup Shorthands: css off, markdown on
 
 <pre class="anchors">
 
+spec: DOM; urlPrefix: https://dom.spec.whatwg.org/
+    type: interface
+        text: AbortSignal; url: #abortsignal
+
 spec: ECMAScript; urlPrefix: https://tc39.github.io/ecma262/#
     type: method
         for: JSON; text: stringify; url: sec-json.stringify
@@ -539,7 +543,8 @@ To support obtaining assertions via {{CredentialsContainer/get()|navigator.crede
 {{CredentialsContainer/create()|navigator.credentials.create()}} to request the creation of a new [=credential key pair=]
 and {{PublicKeyCredential}}, managed by an [=authenticator=]. The user agent will prompt the user for [=user consent|consent=].
 On success, the returned {{promise}} will be resolved with a {{PublicKeyCredential}} containing an
-{{AuthenticatorAttestationResponse}} object.
+{{AuthenticatorAttestationResponse}} object. This method can be <dfn id="concept-webauthn-terminated">terminated</dfn> 
+with flag [=AbortSignal/aborted flag=], which is unset unless otherwise specificed.
 
 Note: This algorithm is synchronous; the {{Promise}} resolution/rejection is handled by
 {{CredentialsContainer/create()|navigator.credentials.create()}}.
@@ -701,13 +706,19 @@ When this method is invoked, the user agent MUST execute the following algorithm
 
 1. Start a timer for |adjustedTimeout| milliseconds.
 
-1. [=While=] |issuedRequests| [=list/is not empty=], perform the following actions depending upon the |adjustedTimeout| timer
-    and responses from the authenticators:
+1. [=While=] |issuedRequests| [=list/is not empty=], perform the following actions in parallel depending upon the |adjustedTimeout| 
+    timer and responses from the authenticators but abort if the operation is [=terminated=]:
     <dl class="switch">
 
     :   If the |adjustedTimeout| timer expires,
     ::  [=set/For each=] |authenticator| in |issuedRequests| invoke the [=authenticatorCancel=] operation on |authenticator|
         and [=set/remove=] |authenticator| from |issuedRequests|.</dd>
+
+    :   If the <code>|options|.{{MakePublicKeyCredentialOptions/signal}}</code> is [=present=] and and the 
+        [=AbortSignal/aborted flag=] is set to false,
+    ::  [=set/For each=] |authenticator| in |issuedRequests| invoke the [=authenticatorCancel=] operation on |authenticator|
+        and [=set/remove=] |authenticator| from |issuedRequests|.</dd> Set the [=AbortSignal/aborted flag=] be true. Then 
+        reject the promise with an {{AbortError}} {{DOMException}}. 
 
     :   If any |authenticator| returns a status indicating that the user cancelled the operation,</dt>
     ::  1. [=set/Remove=] |authenticator| from |issuedRequests|.
@@ -974,8 +985,8 @@ When this method is invoked, the user agent MUST execute the following algorithm
     1. [=set/Append=] |authenticator| to |issuedRequests|.
 
 
-1. Start a timer for |adjustedTimeout| milliseconds. Then execute the following steps [=in parallel=]. The [=task source=] for
-    these [=tasks=] is the [=dom manipulation task source=].
+1. Start a timer for |adjustedTimeout| milliseconds. Then execute the following steps [=in parallel=] but abort if the steps are
+    [=terminated=]. The [=task source=] for these [=tasks=] is the [=dom manipulation task source=].
 
     1. While |issuedRequests| [=list/is not empty=], perform the following actions depending upon the |adjustedTimeout| timer
         and responses from the authenticators:
@@ -986,11 +997,16 @@ When this method is invoked, the user agent MUST execute the following algorithm
         ::  [=set/For each=] |authenticator| in |issuedRequests| invoke the [=authenticatorCancel=] operation on |authenticator|
             and [=set/remove=] |authenticator| from |issuedRequests|.
 
+        :   If the {{PublicKeyCredentialRequestOptions/signal}} member is [=present=] and the [=AbortSignal/aborted flag=] is set to 
+            false,
+        ::  [=set/For each=] |authenticator| in |issuedRequests| invoke the [=authenticatorCancel=] operation on |authenticator|
+            and [=set/remove=] |authenticator| from |issuedRequests|.</dd> Set the [=AbortSignal/aborted flag=] be true. Then 
+            reject the promise with an {{AbortError}} {{DOMException}}. 
+
         :   If any |authenticator| returns a status indicating that the user cancelled the operation,
         ::  1. [=set/Remove=] |authenticator| from |issuedRequests|.
             2. [=set/For each=] remaining |authenticator| in |issuedRequests| invoke the [=authenticatorCancel=] operation on
                 |authenticator| and [=set/remove=] it from |issuedRequests|.
-
 
         :   If any |authenticator| returns an error status,
         ::  [=set/Remove=] |authenticator| from |issuedRequests|.
@@ -1184,6 +1200,7 @@ optionally evidence of [=user consent=] to a specific transaction.
         unsigned long                                timeout;
         sequence<PublicKeyCredentialDescriptor>      excludeCredentials = [];
         AuthenticatorSelectionCriteria               authenticatorSelection;
+        AbortSignal                                  signal;
         AuthenticationExtensions                     extensions;
     };
 </xmp>
@@ -1233,6 +1250,11 @@ optionally evidence of [=user consent=] to a specific transaction.
     :   <dfn>authenticatorSelection</dfn>
     ::  This member is intended for use by [=[RPS]=] that wish to select the appropriate authenticators to participate in
         the {{CredentialsContainer/create()}} or {{CredentialsContainer/get()}} operation.
+
+    :   <dfn>signal</dfn>
+    ::  This member is intended to be used by developers to [=terminated|terminate=] an 
+        ongoing {{PublicKeyCredential/[[Create]](options)/options}} operation. The object is initially a new AbortSignal
+        object.
 
     :   <dfn>extensions</dfn>
     ::  This member contains additional parameters requesting additional processing by the client and authenticator. For
@@ -1366,6 +1388,7 @@ an assertion. Its {{PublicKeyCredentialRequestOptions/challenge}} member must be
         unsigned long                        timeout;
         USVString                            rpId;
         sequence<PublicKeyCredentialDescriptor> allowCredentials = [];
+        AbortSignal                          signal;
         AuthenticationExtensions             extensions;
     };
 </xmp>
@@ -1389,6 +1412,11 @@ an assertion. Its {{PublicKeyCredentialRequestOptions/challenge}} member must be
         acceptable to the caller, in decending order of the caller's preference (the first item in the list is the most
         preferred credential, and so on down the list).
 
+    :   <dfn>signal</dfn>
+    ::  This member is intended to be used by developers to [=terminated|terminate=] an ongoing 
+        {{PublicKeyCredential/[[DiscoverFromExternalSource]](options)/options}} operation. The object is initially a new 
+        AbortSignal object. 
+    
     :   <dfn>extensions</dfn>
     ::  This optional member contains additional parameters requesting additional processing by the client and authenticator.
         For example, if transaction confirmation is sought from the user, then the prompt string might be included as an
