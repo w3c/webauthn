@@ -2611,7 +2611,7 @@ This attestation statement format is used with FIDO U2F authenticators using the
 
 : Signing procedure
 :: If the credential public key of the given credential is not of algorithm -7 ("ES256"), stop and return an error.
-    Let |authenticatorData| denote the [=authenticator data for the attestation=], and let |clientDataHash| denote the
+    Otherwise, let |authenticatorData| denote the [=authenticator data for the attestation=], and let |clientDataHash| denote the
     [=hash of the serialized client data=].
 
     If |clientDataHash| is 256 bits long, set |tbsHash| to this value. Otherwise set |tbsHash| to the SHA-256 hash of
@@ -2628,7 +2628,7 @@ This attestation statement format is used with FIDO U2F authenticators using the
     parameter set to the credential ID of the given credential. 
 
     Let the platform generate |authenticatorData| as follows:
-    1. Set RP ID hash to the SHA-256 hash of the [=RP ID=]
+    1. Set |RP ID hash| to the SHA-256 hash of the [=RP ID=]
     2. Set Flags to <code>u2fresp.reserved_byte</code>.
     3. Set counter to all zeros.
     4. Let the platform populate the |authenticatorData|'s [=attestation data=] as follows:
@@ -2643,19 +2643,26 @@ This attestation statement format is used with FIDO U2F authenticators using the
 
 : Verification procedure
 :: Verification is performed as follows:
-    - Verify that the given attestation statement is valid CBOR conforming to the syntax defined above.
-    - If |x5c| is not a certificate for an ECDSA public key over the P-256 curve, stop verification and return an error.
-    - Let |authenticatorData| denote the [=authenticator data claimed to have been used for the attestation=], and let
+    1. Verify that the given attestation statement is valid CBOR conforming to the syntax defined above.
+    2. Verify that |fmt| is "fido-u2f", fail otherwise.
+    3. Verify that the SHA-256 hash of the passed [=RP ID=] matches with |authenticatorData|’s |RP ID hash| field.
+    4. If |x5c| is not a certificate for an ECDSA public key over the P-256 curve, stop verification and return an error.
+    5. Extract the |public key| from the (leaf) certificate contained in |x5c|.
+    6. Let |authenticatorData| denote the [=authenticator data claimed to have been used for the attestation=], and let
         |clientDataHash| denote the [=hash of the serialized client data=].
-    - If |clientDataHash| is 256 bits long, set |tbsHash| to this value. Otherwise set |tbsHash| to the SHA-256
+    7. From |authenticatorData|, extract the claimed [=RP ID=] hash, the claimed credential ID and the claimed credential public k
+    8. If |clientDataHash| is 256 bits long, set |tbsHash| to this value. Otherwise set |tbsHash| to the SHA-256
         hash of |clientDataHash|.
-    - From |authenticatorData|, extract the claimed [=RP ID=] hash, the claimed credential ID and the claimed credential public key.
-    - Generate the claimed to-be-signed data as specified in [[FIDO-U2F-Message-Formats]] section 4.3, with the application
-        parameter set to the claimed [=RP ID=] hash, the challenge parameter set to |tbsHash|, the key handle parameter set to the
-        claimed credential ID of the given credential, and the user public key parameter set to the claimed credential public
-        key.
-    - Verify that the |sig| is a valid ECDSA P-256 signature over the to-be-signed data constructed above.
-    - If successful, return attestation type Basic with the trust path set to |x5c|.
+    9. Convert the COSE_KEY formatted credential public key to CTAP1/U2F public Key format.
+        - Let publicKeyU2F represents converted CTAP1/U2F public representation of 
+          COSE_KEY and set first byte as 0x04 which signifies uncompressed ECC key format
+        - Extract "-2" (representing x coordinate) from COSE_KEY representation, 
+          confirm its size to be of 32 bytes and concatenate it with publicKeyU2F
+        - Extract "-3" (representing y coordinate) from COSE_KEY representation, 
+          confirm its size to be of 32 bytes and concatenate it with publicKeyU2F
+    10. Calculate SHA-256 (0x00 | SHA-256([=RP ID=]) | |tbsHash| | CredentialID | publicKeyU2F).
+    11. Verify attestationStatement signature |sig| using above hash and |public key|.
+    12. If successful, return attestation type Basic with the trust path set to |x5c|.
 
 
 # WebAuthn Extensions # {#extensions}
