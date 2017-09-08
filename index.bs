@@ -1621,6 +1621,22 @@ Note that the [=authenticator data=] describes its own length: If the AT and ED 
 The [=attestation data=] (which is only present if the AT flag is set) describes its own length. If the ED flag is set, then the
 total length is 37 bytes plus the length of the [=attestation data=], plus the length of the [=CBOR=] map that follows.
 
+### <dfn>Signature Counter</dfn> Considerations ### {#sign-counter}
+
+Authenticators may implement a [=signature counter=].  The [=signature counter=] increases the likelihood that
+a cloned authenticator gets detected.  This is especially helpful for authenticators 
+with limited protection measures.
+
+The [=signature counter=] is incremented at each [=authenticatorGetAssertion=] operation. The relying party stores
+the [=signature counter=] of the last operation and compares the stored [=signature counter=] with the [=signature counter=]
+included in the current assertion.  If the current value is less or equal to the stored value, a cloned authenticator exists.
+
+Detecting a counter mismatch doesn't indicate whether the current operation was triggered by the cloned authenticator
+or the original authenticator.  But it is an indication that the authenticator was cloned.
+The relying party should handle this reduced trust in the current authenticator appropriately.
+
+Authenticators should ensure that the [=signature counter=] value doesn't accidentally decrease 
+(e.g. due to hardware failures).
 
 ## Authenticator operations ## {#authenticator-ops}
 
@@ -1674,7 +1690,10 @@ When this operation is invoked, the authenticator must perform the following pro
         that are stored locally by the [=authenticator=].
 - If any error occurred while creating the new credential object, return an error code equivalent to "{{UnknownError}}" and
     terminate the operation.
-- Process all the supported extensions requested by the client, and generate the [=authenticator data=] with
+- Process all the supported extensions requested by the client.
+- If the authenticator support a signature counter <i>per credential</i>, then initialize this counter with 0.  
+    (Alternatively, the authenticator might support a global signature counter).
+- Generate the [=authenticator data=] with
     [=attestation data=] as specified in [[#sec-authenticator-data]]. Use this [=authenticator data=] and the
     [=hash of the serialized client data=] to create an [=attestation object=] for the new credential using the procedure
     specified in [[#generating-an-attestation-object]]. For more details on attestation, see [[#sctn-attestation]].
@@ -1703,8 +1722,12 @@ When this method is invoked, the [=authenticator=] must perform the following pr
 - Prompt the user to select a [=public key credential|credential=] from among the above list. Obtain [=user consent=] for using
     this [=public key credential|credential=]. The prompt for obtaining this [=user consent|consent=] may be shown by the
     [=authenticator=] if it has its own output capability, or by the user agent otherwise.
-- Process all the supported extensions requested by the client, and generate the [=authenticator data=] as specified in
-    [[#sec-authenticator-data]], though without [=attestation data=]. Concatenate this [=authenticator data=] with the [=hash of
+- Process all the supported extensions requested by the client.
+- If the signature counter is supported, increment the signature counter.  
+    If a signature counter is not supported by this authenticator, assume a value of 0 for it.
+- Generate the [=authenticator data=] as specified in
+    [[#sec-authenticator-data]], though without [=attestation data=]. 
+- Concatenate this [=authenticator data=] with the [=hash of
     the serialized client data=] to generate an [=assertion signature=] using the [=credential private key|private key=] of the
     selected [=public key credential|credential=] as shown in [Figure 2](#fig-signature), below. A simple, undelimited
     concatenation is safe to use here because the [=authenticator data=] describes its own length. The [=hash of the serialized
@@ -2059,7 +2082,8 @@ When registering a new credential, represented by a {{AuthenticatorAttestationRe
 13. If the attestation statement |attStmt| verified successfully and is found to be trustworthy, then register the new
     credential with the account that was denoted in the
     {{PublicKeyCredential/[[Create]](options)/options}}.{{MakePublicKeyCredentialOptions/user}} passed to
-    {{CredentialsContainer/create()}}, by associating it with the credential ID and credential public key contained in
+    {{CredentialsContainer/create()}}, by associating it with the credential ID and credential public key, 
+    and the [=signature counter=] contained in
     |authData|'s [=attestation data=], as appropriate for the [=[RP]=]'s systems.
 
 14. If the attestation statement |attStmt| successfully verified but is not trustworthy per step 12 above, the [=[RP]=] SHOULD fail
@@ -2069,10 +2093,6 @@ When registering a new credential, represented by a {{AuthenticatorAttestationRe
         credential as one with [=self attestation=] (see [[#sctn-attestation-types]]). If doing so, the [=[RP]=] is asserting there
         is no cryptographic proof that the [=public key credential=] has been generated by a particular [=authenticator=] model.
         See [[FIDOSecRef]] and [[UAFProtocol]] for a more detailed discussion.
-
-15. If verification of the attestation statement failed, the [=[RP]=] MUST fail the registration ceremony.
-
-16. Store the public key and the signature counter included in the attestation statement for this authenticator.
 
 Verification of [=attestation objects=] requires that the [=[RP]=] has a trusted method of determining acceptable trust anchors
 in step 11 above. Also, if certificates are being used, the [=[RP]=] must have access to certificate status information for the
@@ -2118,9 +2138,31 @@ When verifying a given {{PublicKeyCredential}} structure (|credential|) as part 
 10. Using the credential public key looked up in step 1, verify that |sig| is a valid signature over the binary concatenation of
     |aData| and |hash|.
 
-11. Verify that the signature counter value is either (a) greater than the value stored or (b) it is equal to the value stored and the value stored is 0. If the signature counter violates this condition, this is an indication that the authenticator was cloned, i.e. at least two copies of the credential private key exist and are used in parallel.  This is a signal of potential fraud.
+11. If the [=signature counter=] value |adata|.|signCount| is nonzero or the value stored 
+    in conjunction with |credential|'s {{Credential/id}} attribute
+    is nonzero, then set |signatureCounterSupported| to true.
 
-12. If all the above steps are successful, continue with the authentication ceremony as appropriate. Otherwise, fail the
+12. If |signatureCounterSupported| is true 
+        If the [=signature counter=] value |adata|.|signCount| is
+          <dl class="switch">
+              <dt>greater than the [=signature counter=] value stored in conjunction 
+                  with |credential|'s {{Credential/id}} attribute.</dt>
+              <dd>Update the stored [=signature counter=] value, associated with 
+                  |credential|'s {{Credential/id}} attribute, to be the value of 
+                  |adata|.|signCount|.</dd>
+	      <dt>less than or equal to the [=signature counter=] value stored in conjunction 
+                  with |credential|'s {{Credential/id}} attribute.</dt>
+              <dd>This is an signal that 
+                  the authenticator may be cloned, i.e. at least 
+                  two copies of the [=credential private key=] may exist and are  
+                  being used in parallel. [=[RPS]=] should incorporate this information  
+                  into their risk scoring.  Whether the [=RP=] updates the 
+                  stored [=signature counter=] value in this case, or not, or fails the 
+                  authentication ceremony or not, is 
+                  [=RP=]-specific. </dd>
+      </dl>
+
+13. If all the above steps are successful, continue with the authentication ceremony as appropriate. Otherwise, fail the
     authentication ceremony.
 
 
@@ -2589,14 +2631,14 @@ This attestation statement format is used with FIDO U2F authenticators using the
     1. Set RP ID hash to the SHA-256 hash of the [=RP ID=]
     2. Set Flags to <code>u2fresp.reserved_byte</code>.
     3. Set counter to all zeros.
-    4. Set attestationData.AAGUID to all zeros
-    5. Set length L of credential ID to length of <code>u2fresp.keyHandle</code>
-    6. Set credential ID to <code>u2fresp.keyHandle</code>
-    7. Set credential public key to <code>u2fresp.userPublicKey</code>
-
-    Let the platform set:
-    1. |x5c| to <code>u2fresp.attestationCertificate</code>.
-    2. |sig| to <code>u2fresp.signature</code>.
+    4. Let the platform populate the |authenticatorData|'s [=attestation data=] as follows:
+         1. Set AAGUID to all zeros
+         2. Set L the length of credential ID to length of <code>u2fresp.keyHandle</code>
+         3. Set credentialID to <code>u2fresp.keyHandle</code>
+         4. Set credentialPublicKey to <code>u2fresp.userPublicKey</code>
+    5. Let the platform set the fields in u2fStmtFormat:
+         1. Set |x5c| to <code>u2fresp.attestationCertificate</code>.
+         2. Set |sig| to <code>u2fresp.signature</code>.
 
 
 : Verification procedure
