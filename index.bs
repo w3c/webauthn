@@ -1623,19 +1623,20 @@ total length is 37 bytes plus the length of the [=attestation data=], plus the l
 
 ### <dfn>Signature Counter</dfn> Considerations ### {#sign-counter}
 
-### Signature Counter Considerations ### {#sign-counter}
-
-Authenticators may implement a <dfn>signature counter<dfn> feature. The [=signature counter=] is incremented for each successful [=authenticatorGetAssertion=] operation by some positive value, and its value is returned to the [=RP=] within the [=authenticator data=]. The [=signature counter=]'s purpose is to aid [=[RPS]=] in detecting cloned authenticators. Clone detection is more important for authenticators with limited protection measures.
+Authenticators may implement a [=signature counter=] feature. The [=signature counter=] is incremented for each successful [=authenticatorGetAssertion=] operation by some positive value, and its value is returned to the [=RP=] within the [=authenticator data=]. The [=signature counter=]'s purpose is to aid [=[RPS]=] in detecting cloned authenticators. Clone detection is more important for authenticators with limited protection measures.
 
 An [=[RP]=] stores the [=signature counter=] of the most recent [=authenticatorGetAssertion=] operation. Upon a new [=authenticatorGetAssertion=] operation, the [=[RP]=] compares the stored [=signature counter=] value with the new [=signature counter=] value returned in the assertion's [=authenticator data=].  If this new [=signature counter=] value is less than or equal to the stored value, a cloned authenticator may exist, or the authenticator may be malfunctioning.
 
 Detecting a [=signature counter=]  mismatch does not indicate whether the current operation was performed by a cloned authenticator or the original authenticator.  [=[RPS]=] should address this situation appropriately relative to their individual situations, i.e., their risk tolerance. 
 
 Authenticators implementing the [=signature counter=] feature: 
+- should implement per-[=RP ID=] [=signature counters=].  This prevents the 
+    [=signature counter=] value from being shared between [=[RPS]=] and being possibly employed 
+    as a correlation handle for the user. Authenticators may implement a global [=signature counter=], 
+    i.e., on a per-authenticator basis, but this is less privacy-friendly for users. 
 
-- should implement per-[=RP ID=] [=signature counters=].  This prevents the [=signature counter=] value from being shared between [=[RPS]=] and being possibly employed as a correlation handle for the user. Authenticators may implement a global [=signature counter=], i.e., on a per-authenticator basis, but this is less privacy-friendly for users. 
-
-- should ensure that the [=signature counter=] value does not accidentally decrease  (e.g., due to hardware failures).
+- should ensure that the [=signature counter=] value does not 
+    accidentally decrease  (e.g., due to hardware failures).
 
 ## Authenticator operations ## {#authenticator-ops}
 
@@ -1690,6 +1691,16 @@ When this operation is invoked, the authenticator must perform the following pro
 - If any error occurred while creating the new credential object, return an error code equivalent to "{{UnknownError}}" and
     terminate the operation.
 - Process all the supported extensions requested by the client.
+- If the [=authenticator=] supports: 
+    <dl class="switch">
+        :   a per-[=RP ID=] [=signature counter=]
+        ::  allocate the counter, associate it with the 
+              [=RP ID=], and initialize the counter value as zero. 
+        :  a global [=signature counter=]
+        ::  Use the global [=signature counter=]'s actual value when generating 
+              [=authenticator data=].
+    </dl>
+
 - If the authenticator supports a signature counter <i>per credential</i>, then initialize this counter with 0.  
     (Alternatively, the authenticator might support a global signature counter).
 - Generate the [=authenticator data=] with
@@ -1722,8 +1733,10 @@ When this method is invoked, the [=authenticator=] must perform the following pr
     this [=public key credential|credential=]. The prompt for obtaining this [=user consent|consent=] may be shown by the
     [=authenticator=] if it has its own output capability, or by the user agent otherwise.
 - Process all the supported extensions requested by the client.
-- If the signature counter is supported, increment the signature counter.  
-    If a signature counter is not supported by this authenticator, assume a value of 0 for it.
+- If the [=signature counter=] feature is supported, increment the [=RP ID=]-associated 
+    [=signature counter=] or the global [=signature counter=] value, depending on 
+    which approach is implemented by the [=authenticator=].  Otherwise, use a value 
+    of zero (0) for the [=signature counter=] value when generating the [=authenticator data=].
 - Generate the [=authenticator data=] as specified in
     [[#sec-authenticator-data]], though without [=attestation data=]. 
 - Concatenate this [=authenticator data=] with the [=hash of
@@ -2082,8 +2095,7 @@ When registering a new credential, represented by a {{AuthenticatorAttestationRe
     credential with the account that was denoted in the
     {{PublicKeyCredential/[[Create]](options)/options}}.{{MakePublicKeyCredentialOptions/user}} passed to
     {{CredentialsContainer/create()}}, by associating it with the credential ID and credential public key, 
-    and the [=signature counter=] contained in
-    |authData|'s [=attestation data=], as appropriate for the [=[RP]=]'s systems.
+    and the [=signature counter=] contained in |authData|, as appropriate for the [=[RP]=]'s systems.
 
 14. If the attestation statement |attStmt| successfully verified but is not trustworthy per step 12 above, the [=[RP]=] SHOULD fail
     the registration ceremony.
