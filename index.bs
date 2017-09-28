@@ -565,7 +565,7 @@ When this method is invoked, the user agent MUST execute the following algorithm
 1. If any of the {{PublicKeyCredentialEntity/name}} member of |options|.{{MakePublicKeyCredentialOptions/rp}}, the
     {{PublicKeyCredentialEntity/name}} member of |options|.{{MakePublicKeyCredentialOptions/user}},
     the {{PublicKeyCredentialUserEntity/displayName}} member of |options|.{{MakePublicKeyCredentialOptions/user}},
-    or the {{PublicKeyCredentialEntity/id}}
+    or the {{PublicKeyCredentialUserEntity/id}}
     member of |options|.{{MakePublicKeyCredentialOptions/user}} are [=present|not present=], return a {{TypeError}} [=simple exception=].
 
 1. If the {{MakePublicKeyCredentialOptions/timeout}} member of |options| is [=present=], check if its value lies within a
@@ -593,17 +593,17 @@ When this method is invoked, the user agent MUST execute the following algorithm
 <!-- Note: this next step is actually a top-level step, but bikeshed wanted it indented this much in order to compile w/o errors
 -->
     <li id='CreateCred-DetermineRpId'>
-       If |options|.{{MakePublicKeyCredentialOptions/rp}}.{{PublicKeyCredentialEntity/id}} is [=present=]:
+       If |options|.{{MakePublicKeyCredentialOptions/rp}}.{{PublicKeyCredentialRpEntity/id}} is [=present=]:
 
-        1. If |options|.{{MakePublicKeyCredentialOptions/rp}}.{{PublicKeyCredentialEntity/id}} [=is not a registrable domain suffix of
+        1. If |options|.{{MakePublicKeyCredentialOptions/rp}}.{{PublicKeyCredentialRpEntity/id}} [=is not a registrable domain suffix of
             and is not equal to=] |effectiveDomain|, return a {{DOMException}} whose name is "{{SecurityError}}", and terminate
             this algorithm.
 
-        1. Set |rpId| to |options|.{{MakePublicKeyCredentialOptions/rp}}.{{PublicKeyCredentialEntity/id}}.
+        1. Set |rpId| to |options|.{{MakePublicKeyCredentialOptions/rp}}.{{PublicKeyCredentialRpEntity/id}}.
 
             Note: |rpId| represents the caller's [=RP ID=]. The [=RP ID=] defaults to being the caller's [=environment settings
             object/origin=]'s [=effective domain=] unless the caller has explicitly set
-            |options|.{{MakePublicKeyCredentialOptions/rp}}.{{PublicKeyCredentialEntity/id}} when calling
+            |options|.{{MakePublicKeyCredentialOptions/rp}}.{{PublicKeyCredentialRpEntity/id}} when calling
             {{CredentialsContainer/create()}}.
     </li>
 
@@ -1103,7 +1103,7 @@ optionally evidence of [=user consent=] to a specific transaction.
 
 <xmp class="idl">
     dictionary MakePublicKeyCredentialOptions {
-        required PublicKeyCredentialEntity           rp;
+        required PublicKeyCredentialRpEntity         rp;
         required PublicKeyCredentialUserEntity       user;
 
         required BufferSource                             challenge;
@@ -1122,7 +1122,7 @@ optionally evidence of [=user consent=] to a specific transaction.
         Its value's {{PublicKeyCredentialEntity/name}} member is required, and contains the friendly name of the [=[RP]=]
         (e.g. "Acme Corporation", "Widgets, Inc.", or "Awesome Site".
 
-        Its value's {{PublicKeyCredentialEntity/id}} member specifies the [=relying party identifier=] with which the credential
+        Its value's {{PublicKeyCredentialRpEntity/id}} member specifies the [=relying party identifier=] with which the credential
         should be associated. If omitted, its value will be the {{CredentialsContainer}} object's [=relevant
         settings object=]'s [=environment settings object/origin=]'s [=effective domain=].
 
@@ -1135,10 +1135,10 @@ optionally evidence of [=user consent=] to a specific transaction.
         Its value's {{PublicKeyCredentialUserEntity/displayName}} member is required, and contains a friendly name for the user
         account (e.g., "John P. Smith").
 
-        Its value's {{PublicKeyCredentialEntity/id}} member is required, and contains an identifier for the account, specified
+        Its value's {{PublicKeyCredentialUserEntity/id}} member is required, and contains an identifier for the account, specified
         by the [=[RP]=]. This is not meant to be displayed to the user, but is used by the [=[RP]=] to control the
         number of credentials - an authenticator will never contain more than one credential for a given [=[RP]=] under the
-        same {{PublicKeyCredentialEntity/id}}.
+        same {{PublicKeyCredentialUserEntity/id}}.
 
     :   <dfn>challenge</dfn>
     ::  This member contains a challenge intended to be used for generating the newly created credential's [=attestation
@@ -1177,16 +1177,11 @@ associated.
 
 <xmp class="idl">
     dictionary PublicKeyCredentialEntity {
-        DOMString      id;
         DOMString      name;
         USVString      icon;
     };
 </xmp>
 <div dfn-type="dict-member" dfn-for="PublicKeyCredentialEntity">
-    :   <dfn>id</dfn>
-    ::  A unique identifier for the entity. For a [=relying party=] entity, sets the [=RP ID=]. For a user account
-        entity, this will be an arbitrary string specified by the [=relying party=].
-
     :   <dfn>name</dfn>
     ::  A human-friendly identifier for the entity. For example, this could be a company name for a [=[RP]=], or a
         user's name. This identifier is intended for display.
@@ -1197,6 +1192,22 @@ associated.
 </div>
 
 
+### RP Parameters for Credential Generation (dictionary <dfn dictionary>PublicKeyCredentialRpEntity</dfn>) ### {#sctn-rp-credential-params}
+
+The {{PublicKeyCredentialRpEntity}} dictionary is used to supply additional [=[RP]=] attributes when creating a new credential.
+
+<pre class="idl">
+    dictionary PublicKeyCredentialRpEntity : PublicKeyCredentialEntity {
+        DOMString      id;
+    };
+</pre>
+
+<div dfn-type="dict-member" dfn-for="PublicKeyCredentialRpEntity">
+    :   <dfn>id</dfn>
+    ::  A unique identifier for the [=[RP]=] entity, which sets the [=RP ID=].
+</div>
+
+
 ### User Account Parameters for Credential Generation (dictionary <dfn dictionary>PublicKeyCredentialUserEntity</dfn>) ### {#sctn-user-credential-params}
 
 The {{PublicKeyCredentialUserEntity}} dictionary is used to supply additional user account attributes when creating a new
@@ -1204,11 +1215,17 @@ credential.
 
 <pre class="idl">
     dictionary PublicKeyCredentialUserEntity : PublicKeyCredentialEntity {
+        BufferSource   id;
         DOMString      displayName;
     };
 </pre>
 
 <div dfn-type="dict-member" dfn-for="PublicKeyCredentialUserEntity">
+    :   <dfn>id</dfn>
+    ::  A unique identifier for the user account entity.
+        This is a reference to an opaque byte array value specified by the [=[RP]=].
+        The maximum size of this array is 64 bytes.
+
     :   <dfn>displayName</dfn>
     ::  A friendly name for the user account (e.g., "John P. Smith").
 </div>
@@ -1639,7 +1656,7 @@ input parameters:
 
 - The caller's [=RP ID=], as <a href='#CreateCred-DetermineRpId'>determined</a> by the user agent and the client.
 - The [=hash of the serialized client data=], provided by the client.
-- The [=[RP]=]'s {{PublicKeyCredentialEntity}}.
+- The [=[RP]=]'s {{PublicKeyCredentialRpEntity}}.
 - The user account's {{PublicKeyCredentialUserEntity}}.
 - A sequence of pairs of {{PublicKeyCredentialType}} and {{COSEAlgorithmIdentifier}} requested by the [=[RP]=].
     This sequence is ordered from most preferred to least
@@ -1671,8 +1688,8 @@ When this operation is invoked, the authenticator must perform the following pro
     - Generate an identifier for this credential, such that this identifier is globally unique with high probability across all
         credentials with the same type across all authenticators.
     - Associate the credential with the specified [=RP ID=] and the user's account identifier
-        {{MakePublicKeyCredentialOptions/user}}.{{PublicKeyCredentialEntity/id}}.
-    - Delete any older credentials with the same [=RP ID=] and {{MakePublicKeyCredentialOptions/user}}.{{PublicKeyCredentialEntity/id}}
+        {{MakePublicKeyCredentialOptions/user}}.{{PublicKeyCredentialUserEntity/id}}.
+    - Delete any older credentials with the same [=RP ID=] and {{MakePublicKeyCredentialOptions/user}}.{{PublicKeyCredentialUserEntity/id}}
         that are stored locally by the [=authenticator=].
 - If any error occurred while creating the new credential object, return an error code equivalent to "{{UnknownError}}" and
     terminate the operation.
