@@ -717,7 +717,7 @@ When this method is invoked, the user agent MUST execute the following algorithm
         2.  Let |attestationObject| be a new {{ArrayBuffer}}, created using |global|'s [=%ArrayBuffer%=], containing the
             bytes of the value returned from the successful [=authenticatorMakeCredential=] operation (which is
             <code>attObj</code>, as defined in [[#generating-an-attestation-object]]).
-        3.  Let |id| be |attestationObject|<code>.authData.[=attestationData=].[=credentialId=]</code>.
+        3.  Let |id| be |attestationObject|<code>.authData.[=attestedCredentialData=].[=credentialId=]</code>.
         4.  Let |value| be a new {{PublicKeyCredential}} object associated with |global| whose fields are:
             :   {{PublicKeyCredential/[[identifier]]}}
             ::  |id|
@@ -1588,8 +1588,8 @@ The [=authenticator data=] structure is a byte array of 37 bytes or more, as fol
                 - `1` means the user is [=user verified|verified=].
                 - `0` means the user is not [=user verified|verified=].
             - Bits 3-5: Reserved for future use (`RFU2`).
-            - Bit 6: [=Attestation data=] included (`AT`).
-                - Indicates whether the authenticator added [=attestation data=].
+            - Bit 6: [=Attested credential data=] included (`AT`).
+                - Indicates whether the authenticator added [=attested credential data=].
             - Bit 7: Extension data included (`ED`).
                 - Indicates if the [=authenticator data=] has [=authDataExtensions|extensions=].
         </td>
@@ -1600,11 +1600,11 @@ The [=authenticator data=] structure is a byte array of 37 bytes or more, as fol
         <td>Signature counter, 32-bit unsigned big-endian integer.</td>
     </tr>
     <tr>
-        <td><dfn>attestationData</dfn></td>
+        <td><dfn>attestedCredentialData</dfn></td>
         <td>variable (if present)</td>
         <td>
-            [=attestation data=] (if present). See [[#sec-attestation-data]] for details. Its length depends on the
-            [=credentialIdLength|length=] of the [=credential public key=] and credential ID being attested.
+            [=attested credential data=] (if present). See [[#sec-attested-credential-data]] for details. Its length depends on
+            the [=credentialIdLength|length=] of the [=credential public key=] and credential ID being attested.
         </td>
     </tr>
     <tr>
@@ -1631,8 +1631,8 @@ domain suffix of or is equal to=] the [=effective domain=] of the RP's [=origin=
 The `UP` flag SHALL be set if and only if the authenticator detected a user through an authenticator specific gesture. The
 `RFU` bits SHALL be set to zero.
 
-For attestation signatures, the authenticator MUST set the AT flag and include the <code>[=attestationData=]</code>. For
-authentication signatures, the AT flag MUST NOT be set and the <code>[=attestationData=]</code> MUST NOT be included.
+For attestation signatures, the authenticator MUST set the AT flag and include the <code>[=attestedCredentialData=]</code>. For
+authentication signatures, the AT flag MUST NOT be set and the <code>[=attestedCredentialData=]</code> MUST NOT be included.
 
 If the authenticator does not include any extension data, it MUST set the `ED` flag to zero, and to one if
 extension data is included.
@@ -1645,8 +1645,9 @@ The [figure below](#fig-authData) shows a visual representation of the [=authent
 </figure>
 
 Note that the [=authenticator data=] describes its own length: If the AT and ED [=flags=] are not set, it is always 37 bytes long.
-The [=attestation data=] (which is only present if the AT flag is set) describes its own length. If the ED flag is set, then the
-total length is 37 bytes plus the length of the [=attestation data=], plus the length of the [=CBOR=] map that follows.
+The [=attested credential data=] (which is only present if the AT flag is set) describes its own length. If the ED flag is set,
+then the total length is 37 bytes plus the length of the [=attested credential data=], plus the length of the [=CBOR=] map that
+follows.
 
 
 ## Authenticator operations ## {#authenticator-ops}
@@ -1703,7 +1704,7 @@ When this operation is invoked, the authenticator must perform the following pro
 - If any error occurred while creating the new credential object, return an error code equivalent to "{{UnknownError}}" and
     terminate the operation.
 - Process all the supported extensions requested by the client, and generate the [=authenticator data=] with
-    [=attestation data=] as specified in [[#sec-authenticator-data]]. Use this [=authenticator data=] and the
+    [=attested credential data=] as specified in [[#sec-authenticator-data]]. Use this [=authenticator data=] and the
     [=hash of the serialized client data=] to create an [=attestation object=] for the new credential using the procedure
     specified in [[#generating-an-attestation-object]]. For more details on attestation, see [[#sctn-attestation]].
 
@@ -1732,9 +1733,9 @@ When this method is invoked, the [=authenticator=] must perform the following pr
     this [=public key credential|credential=]. The prompt for obtaining this [=user consent|consent=] may be shown by the
     [=authenticator=] if it has its own output capability, or by the user agent otherwise.
 - Process all the supported extensions requested by the client, and generate the [=authenticator data=] as specified in
-    [[#sec-authenticator-data]], though without [=attestation data=]. Concatenate this [=authenticator data=] with the [=hash of
-    the serialized client data=] to generate an [=assertion signature=] using the [=credential private key|private key=] of the
-    selected [=public key credential|credential=] as shown in [Figure 2](#fig-signature), below. A simple, undelimited
+    [[#sec-authenticator-data]], though without [=attested credential data=]. Concatenate this [=authenticator data=] with the
+    [=hash of the serialized client data=] to generate an [=assertion signature=] using the [=credential private key|private key=]
+    of the selected [=public key credential|credential=] as shown in [Figure 2](#fig-signature), below. A simple, undelimited
     concatenation is safe to use here because the [=authenticator data=] describes its own length. The [=hash of the serialized
     client data=] (which potentially has a variable length) is always the last element.
 - If any error occurred while generating the [=assertion signature=], return an error code equivalent to "{{UnknownError}}" and
@@ -1779,12 +1780,12 @@ enabling the [=[RP]=] to make a trust decision. However, if an [=attestation key
 MUST perform [=self attestation=] of the [=credential public key=] with the corresponding [=credential private key=]. All this
 information is returned by [=authenticators=] any time a new [=public key credential=] is generated, in the overall form of an
 <dfn>attestation object</dfn>. The relationship of the [=attestation object=] with [=authenticator data=] (containing
-[=attestation data=]) and the [=attestation statement=] is illustrated in [figure 3](#fig-attStructs), below.
+[=attested credential data=]) and the [=attestation statement=] is illustrated in [figure 3](#fig-attStructs), below.
 
 <figure id="fig-attStructs">
     <img src="images/fido-attestation-structures.svg"/>
-    <figcaption>[=Attestation object=] layout illustrating the included [=authenticator data=] (containing [=attestation data=])
-    and the [=attestation statement=].</figcaption>
+    <figcaption>[=Attestation object=] layout illustrating the included [=authenticator data=] (containing [=attested credential
+    data=]) and the [=attestation statement=].</figcaption>
     <div class="note">
         This figure illustrates only the `packed` [=attestation statement format=]. Several additional [=attestation statement
         formats=] are defined in [[#defined-attestation-formats]].
@@ -1825,9 +1826,9 @@ understand the characteristics of the [=authenticators=] that they trust, based 
 [=authenticators=]. For example, the FIDO Metadata Service [[FIDOMetadataService]] provides one way to access such information.
 
 
-### Attestation data ### {#sec-attestation-data}
+### Attested credential data ### {#sec-attested-credential-data}
 
-<dfn>Attestation data</dfn> is a variable-length byte array added to the [=authenticator data=] when generating an [=attestation
+<dfn>Attested credential data</dfn> is a variable-length byte array added to the [=authenticator data=] when generating an [=attestation
 object=] for a given credential. It has the following format:
 
 <table class="complex data longlastcol">
@@ -1863,7 +1864,7 @@ object=] for a given credential. It has the following format:
 </table>
 
   NOTE: The names in the Name column in the above table are only for reference within this document, and are not present in the
-  actual representation of the [=attestation data=].
+  actual representation of the [=attested credential data=].
 
 
 ### Attestation Statement Formats ### {#attestation-formats}
@@ -1925,10 +1926,10 @@ WebAuthn supports multiple attestation types:
 
 : <dfn>Elliptic Curve based Direct Anonymous Attestation</dfn> (<dfn>ECDAA</dfn>)
 :: In this case, the Authenticator receives direct anonymous attestation (<dfn>DAA</dfn>]) credentials from a single DAA-Issuer.
-    These DAA credentials are used along with blinding to sign the [=attestation data=]. The concept of blinding avoids the DAA
-    credentials being misused as global correlation handle. WebAuthn supports DAA using elliptic curve cryptography and bilinear
-    pairings, called [=ECDAA=] (see [[FIDOEcdaaAlgorithm]]) in this specification. Consequently we denote the DAA-Issuer as
-    ECDAA-Issuer (see [[FIDOEcdaaAlgorithm]]).
+    These DAA credentials are used along with blinding to sign the [=attested credential data=]. The concept of blinding avoids
+    the DAA credentials being misused as global correlation handle. WebAuthn supports DAA using elliptic curve cryptography and
+    bilinear pairings, called [=ECDAA=] (see [[FIDOEcdaaAlgorithm]]) in this specification. Consequently we denote the DAA-Issuer
+    as ECDAA-Issuer (see [[FIDOEcdaaAlgorithm]]).
 
 
 ### Generating an Attestation Object ### {#generating-an-attestation-object}
@@ -2083,7 +2084,7 @@ When registering a new credential, represented by a {{AuthenticatorAttestationRe
 11. If validation is successful, obtain a list of acceptable trust anchors (attestation root certificates or [=ECDAA-Issuer
     public key=]s) for that attestation type and attestation statement format |fmt|, from a trusted source or from policy. For
     example, the FIDO Metadata Service [[FIDOMetadataService]] provides one way to obtain such information, using the
-    <code>[=aaguid=]</code> in the <code>[=attestationData=]</code> in |authData|.
+    <code>[=aaguid=]</code> in the <code>[=attestedCredentialData=]</code> in |authData|.
 
 12. Assess the attestation trustworthiness using the outputs of the verification procedure in step 10, as follows:
         - If [=self attestation=] was used, check if [=self attestation=] is acceptable under [=[RP]=] policy.
@@ -2096,8 +2097,8 @@ When registering a new credential, represented by a {{AuthenticatorAttestationRe
     credential with the account that was denoted in the
     {{PublicKeyCredential/[[Create]](options)/options}}.{{MakePublicKeyCredentialOptions/user}} passed to
     {{CredentialsContainer/create()}}, by associating it with the <code>[=credentialId=]</code> and
-    <code>[=credentialPublicKey=]</code> in the <code>[=attestationData=]</code> in |authData|, as appropriate for the [=[RP]=]'s
-    system.
+    <code>[=credentialPublicKey=]</code> in the <code>[=attestedCredentialData=]</code> in |authData|, as appropriate for the
+    [=[RP]=]'s system.
 
 14. If the attestation statement |attStmt| successfully verified but is not trustworthy per step 12 above, the [=[RP]=] SHOULD fail
     the registration ceremony.
@@ -2387,7 +2388,7 @@ engine.
     |clientDataHash| denote the [=hash of the serialized client data=].
 
     Verify that the public key specified by the `parameters` and `unique` fields of |pubArea| is identical to the
-    <code>[=credentialPublicKey=]</code> in the <code>[=attestationData=]</code> in |authenticatorData|.
+    <code>[=credentialPublicKey=]</code> in the <code>[=attestedCredentialData=]</code> in |authenticatorData|.
 
     Concatenate |authenticatorData| and |clientDataHash| to form |attToBeSigned|.
 
@@ -2486,7 +2487,7 @@ the attestation=] is consistent with the fields of the attestation certificate's
     - Let |authenticatorData| denote the [=authenticator data claimed to have been used for the attestation=], and let
         |clientDataHash| denote the [=hash of the serialized client data=].
     - Verify that the public key in the first certificate in the series of certificates represented by the signature matches the
-        <code>[=credentialPublicKey=]</code> in the <code>[=attestationData=]</code> in |authenticatorData|.
+        <code>[=credentialPublicKey=]</code> in the <code>[=attestedCredentialData=]</code> in |authenticatorData|.
     - Verify that in the attestation certificate extension data:
         - The value of the `attestationChallenge` field is identical to the concatenation of |authenticatorData| and
             |clientDataHash|.
@@ -3215,9 +3216,9 @@ This section registers the attestation statement formats defined in Section [[#d
 IANA "WebAuthn Attestation Statement Format Identifier" registry established by [[!WebAuthn-Registries]].
 
 - WebAuthn Attestation Statement Format Identifier: packed
-- Description: The "packed" attestation statement format is a WebAuthn-optimized format for [=attestation data=]. It uses a very
-    compact but still extensible encoding method. This format is implementable by authenticators with limited resources (e.g.,
-    secure elements).
+- Description: The "packed" attestation statement format is a WebAuthn-optimized format for [=attested credential data=]. It uses
+    a very compact but still extensible encoding method. This format is implementable by authenticators with limited resources
+    (e.g., secure elements).
 - Specification Document: Section [[#packed-attestation]] of this specification
     <br/><br/>
 - WebAuthn Attestation Statement Format Identifier: tpm
