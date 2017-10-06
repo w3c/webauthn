@@ -395,6 +395,12 @@ The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "S
 :: User consent means the user agrees with what they are being asked, i.e., it encompasses reading and understanding prompts.
     An [=authorization gesture=] is a [=ceremony=] component often employed to indicate [=user consent=].
 
+: <dfn>User Handle</dfn>
+:: The user handle is specified by a [=[RP]=] and is a unique identifier for a user account with that [=[RP]=]. A user handle is
+    an opaque byte array with a maximum size of 64 bytes.
+:: The user handle is not meant to be displayed to the user, but is used by the [=[RP]=] to control the number of credentials - an
+    authenticator will never contain more than one credential for a given [=[RP]=] under the same user handle.
+
 : <dfn>User Verification</dfn>
 :: The technical process by which an [=authenticator=] <em>locally authorizes</em> the invocation of the
     [=authenticatorMakeCredential=] and [=authenticatorGetAssertion=] operations. [=User verification=] may be instigated
@@ -945,9 +951,9 @@ When this method is invoked, the user agent MUST execute the following algorithm
                 : {{AuthenticatorAssertionResponse/signature}}
                 :: A new {{ArrayBuffer}}, created using |global|'s [=%ArrayBuffer%=], containing the bytes of the returned
                     {{signature}}
-                : {{AuthenticatorAssertionResponse/userId}}
-                :: A new {{DOMString}} containing the user handle returned from the successful [=authenticatorGetAssertion=] operation, 
-                    as defined in [[#op-get-assertion]].   
+                : {{AuthenticatorAssertionResponse/userHandle}}
+                :: A new {{ArrayBuffer}} containing the [=user handle=] returned from the successful [=authenticatorGetAssertion=]
+                    operation, as defined in [[#op-get-assertion]].
             :   {{PublicKeyCredential/clientExtensionResults}}
             ::  A new {{AuthenticationExtensions}} object containing the [=extension identifier=] → [=client extension output=]
                 entries created by running each extension's [=client extension processing=] algorithm to create the [=client
@@ -1065,7 +1071,7 @@ optionally evidence of [=user consent=] to a specific transaction.
     interface AuthenticatorAssertionResponse : AuthenticatorResponse {
         [SameObject] readonly attribute ArrayBuffer      authenticatorData;
         [SameObject] readonly attribute ArrayBuffer      signature;
-        [SameObject] readonly attribute DOMString        userId;
+        [SameObject] readonly attribute ArrayBuffer      userHandle;
     };
 </pre>
 <div dfn-type="attribute" dfn-for="AuthenticatorAssertionResponse">
@@ -1080,6 +1086,9 @@ optionally evidence of [=user consent=] to a specific transaction.
 
     :   <dfn>signature</dfn>
     ::  This attribute contains the raw signature returned from the authenticator. See [[#op-get-assertion]].
+
+    :   <dfn>userHandle</dfn>
+    ::  This attribute contains the [=user handle=] returned from the authenticator. See [[#op-get-assertion]].
 </div>
 
 ## Parameters for Credential Generation (dictionary <dfn dictionary>PublicKeyCredentialParameters</dfn>) ## {#credential-params}
@@ -1139,10 +1148,8 @@ optionally evidence of [=user consent=] to a specific transaction.
         Its value's {{PublicKeyCredentialUserEntity/displayName}} member is required, and contains a friendly name for the user
         account (e.g., "John P. Smith").
 
-        Its value's {{PublicKeyCredentialUserEntity/id}} member is required, and contains an identifier for the account, specified
-        by the [=[RP]=]. This is not meant to be displayed to the user, but is used by the [=[RP]=] to control the
-        number of credentials - an authenticator will never contain more than one credential for a given [=[RP]=] under the
-        same {{PublicKeyCredentialUserEntity/id}}.
+        Its value's {{PublicKeyCredentialUserEntity/id}} member is required and contains the [=user handle=] for the account,
+        specified by the [=[RP]=].
 
     :   <dfn>challenge</dfn>
     ::  This member contains a challenge intended to be used for generating the newly created credential's [=attestation
@@ -1219,16 +1226,14 @@ credential.
 
 <pre class="idl">
     dictionary PublicKeyCredentialUserEntity : PublicKeyCredentialEntity {
-        BufferSource   id;
+        ArrayBuffer    id;
         DOMString      displayName;
     };
 </pre>
 
 <div dfn-type="dict-member" dfn-for="PublicKeyCredentialUserEntity">
     :   <dfn>id</dfn>
-    ::  A unique identifier for the user account entity.
-        This is a reference to an opaque byte array value specified by the [=[RP]=].
-        The maximum size of this array is 64 bytes.
+    ::  The [=user handle=] of the user account entity.
 
     :   <dfn>displayName</dfn>
     ::  A friendly name for the user account (e.g., "John P. Smith").
@@ -1661,7 +1666,7 @@ input parameters:
 - The caller's [=RP ID=], as <a href='#CreateCred-DetermineRpId'>determined</a> by the user agent and the client.
 - The [=hash of the serialized client data=], provided by the client.
 - The [=[RP]=]'s {{PublicKeyCredentialRpEntity}}.
-- The user account's {{PublicKeyCredentialUserEntity}}.
+- The user account's {{PublicKeyCredentialUserEntity}}, containing the [=user handle=] given by the [=[RP]=].
 - A sequence of pairs of {{PublicKeyCredentialType}} and {{COSEAlgorithmIdentifier}} requested by the [=[RP]=].
     This sequence is ordered from most preferred to least
     preferred. The platform makes a best-effort to create the most preferred credential that it can.
@@ -1691,10 +1696,8 @@ When this operation is invoked, the authenticator must perform the following pro
         parameters supported by this authenticator.
     1. Generate an identifier for this credential, such that this identifier is globally unique with high probability across all
         credentials with the same type across all authenticators.
-    1. Associate the credential with the specified [=RP ID=] and the user's account identifier
-        {{MakePublicKeyCredentialOptions/user}}.{{PublicKeyCredentialUserEntity/id}}.
-    1. Delete any older credentials with the same [=RP ID=] and {{MakePublicKeyCredentialOptions/user}}.{{PublicKeyCredentialUserEntity/id}}
-        that are stored locally by the [=authenticator=].
+    1. Associate the credential with the specified [=RP ID=] and [=user handle=].
+    1. Delete any older credentials with the same [=RP ID=] and [=user handle=] that are stored locally by the [=authenticator=].
 1. If any error occurred while creating the new credential object, return an error code equivalent to "{{UnknownError}}" and
     terminate the operation.
 1. Process all the supported extensions requested by the client, and generate the [=authenticator data=] with
@@ -1744,7 +1747,7 @@ On successful completion, the authenticator returns to the user agent:
 - The identifier of the credential (credential ID) used to generate the [=assertion signature=].
 - The [=authenticator data=] used to generate the [=assertion signature=].
 - The [=assertion signature=].
-- The user handle associated with the credential used to generate the [=assertion signature=].
+- The [=user handle=] associated with the credential used to generate the [=assertion signature=].
 
 If the authenticator cannot find any credential corresponding to the specified [=[RP]=] that matches the specified criteria, it
 terminates the operation and returns an error.
