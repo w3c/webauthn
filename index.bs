@@ -1741,52 +1741,60 @@ When this operation is invoked, the authenticator must perform the following pro
 On successful completion of this operation, the authenticator returns the [=attestation object=] to the client.
 
 
-### The <dfn>authenticatorGetAssertion</dfn> operation ### {#op-get-assertion}
+<h4 id="op-get-assertion" algorithm> The <dfn>authenticatorGetAssertion</dfn> operation</h4>
 
 This operation must be invoked in an authenticator session which has no other operations in progress. It takes the following
 input parameters:
 
-- The caller's [=RP ID=], as <a href='#GetAssn-DetermineRpId'>determined</a> by the user agent and the client.
-- The [=hash of the serialized client data=], provided by the client.
-- A list of credentials acceptable to the [=[RP]=] (possibly filtered by the client), if any.
-- Extension data created by the client based on the extensions requested by the [=[RP]=], if any.
+: |rpId|
+:: The caller's [=RP ID=], as <a href='#GetAssn-DetermineRpId'>determined</a> by the user agent and the client.
+: |hash|
+:: The [=hash of the serialized client data=], provided by the client.
+: |allowCredentialDescriptorList|
+:: An optional list of {{PublicKeyCredentialDescriptor}}s describing credentials acceptable to the [=[RP]=] (possibly filtered
+    by the client), if any.
+: |extensions|
+:: A [=map=] from [=extension identifiers=] to their [=authenticator extension inputs=], created by the client based on the
+    extensions requested by the [=[RP]=], if any.
 
 When this method is invoked, the [=authenticator=] must perform the following procedure:
 1. Check if all the supplied parameters are syntactically well-formed and of the correct length. If not, return an error code
     equivalent to "{{UnknownError}}" and terminate the operation.
-1. If a list of credentials was supplied by the client, filter it by removing those credentials that are not present on this
-    [=authenticator=]. If no list was supplied, create a list with all credentials stored for the caller's [=RP ID=] (as
-    determined by an exact match of the [=RP ID=]).
-1. If the previous step resulted in an empty list, return an error code equivalent to "{{NotAllowedError}}" and terminate the
+1. If |allowCredentialDescriptorList| was not supplied, set it to a list of all credentials stored for |rpId| (as determined by
+    an exact match of |rpId|).
+1. Remove any items from |allowCredentialDescriptorList| that are not present on this [=authenticator=].
+1. If |allowCredentialDescriptorList| is now empty, return an error code equivalent to "{{NotAllowedError}}" and terminate the
     operation.
-1. Prompt the user to select a [=public key credential|credential=] from among the above list. Obtain [=user consent=] for using
-    this [=public key credential|credential=]. The prompt for obtaining this [=user consent|consent=] may be shown by the
+1. Prompt the user to select a [=public key credential|credential=] |selectedCredential| from |allowCredentialDescriptorList|.
+    Obtain [=user consent=] for using |selectedCredential|. The prompt for obtaining this [=user consent|consent=] may be shown
+    by the
     [=authenticator=] if it has its own output capability, or by the user agent otherwise.
-1. Process all the supported extensions requested by the client.
+1. Let |processedExtensions| be the result of [=authenticator extension processing=] for each supported extension
+    identifier/input pair in |extensions|.
 1. If the [=signature counter=] feature is supported, increment the [=RP ID=]-associated 
     [=signature counter=] or the global [=signature counter=] value, depending on 
     which approach is implemented by the [=authenticator=] by some positive value.  Otherwise, use a value 
     of zero (0) for the [=signature counter=] value when generating the [=authenticator data=].
-1. Generate the [=authenticator data=] as specified in
-    [[#sec-authenticator-data]], though without [=attestation data=]. 
-1. Concatenate this [=authenticator data=] with the [=hash of
-    the serialized client data=] to generate an [=assertion signature=] using the [=credential private key|private key=] of the
-    selected [=public key credential|credential=] as shown in [Figure 2](#fig-signature), below. A simple, undelimited
+1. Let |authenticatorData| be the byte array specified in [[#sec-authenticator-data]] without [=attestation data=] but with any
+    |processedExtensions|.
+1. Let |signature| be the [=assertion signature=] of the concatenation <code>|authenticatorData| || |hash|</code> using the
+    [=credential private key|private key=] of |selectedCredential| as shown in [Figure 2](#fig-signature), below. A simple,
+    undelimited
     concatenation is safe to use here because the [=authenticator data=] describes its own length. The [=hash of the serialized
     client data=] (which potentially has a variable length) is always the last element.
+
+    <figure id="fig-signature">
+        <img src="images/fido-signature-formats-figure2.svg"/>
+        <figcaption>Generating an [=assertion signature=].</figcaption>
+    </figure>
+
 1. If any error occurred while generating the [=assertion signature=], return an error code equivalent to "{{UnknownError}}" and
     terminate the operation.
-
-<figure id="fig-signature">
-    <img src="images/fido-signature-formats-figure2.svg"/>
-    <figcaption>Generating an [=assertion signature=].</figcaption>
-</figure>
-
-On successful completion, the authenticator returns to the user agent:
-- The identifier of the credential (credential ID) used to generate the [=assertion signature=].
-- The [=authenticator data=] used to generate the [=assertion signature=].
-- The [=assertion signature=].
-- The [=user handle=] associated with the credential used to generate the [=assertion signature=].
+1. Return to the user agent:
+    - |selectedCredential|'s credential ID
+    - |authenticatorData|
+    - |signature|
+    - The [=user handle=] associated with |selectedCredential|.
 
 If the authenticator cannot find any credential corresponding to the specified [=[RP]=] that matches the specified criteria, it
 terminates the operation and returns an error.
