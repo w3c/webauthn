@@ -91,6 +91,10 @@ spec: credential-management-1; urlPrefix: https://w3c.github.io/webappsec-creden
     for: CredentialsContainer
         type: method
             text: create(); url: dom-credentialscontainer-create
+
+spec: mixed-content; urlPrefix: www.w3.org/TR/mixed-content/
+    type: dfn 
+        text: a priori authenticated
 </pre> <!-- class=anchors -->
 
 <pre class="link-defaults">
@@ -391,6 +395,13 @@ The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "S
 :: User consent means the user agrees with what they are being asked, i.e., it encompasses reading and understanding prompts.
     An [=authorization gesture=] is a [=ceremony=] component often employed to indicate [=user consent=].
 
+: <dfn>User Handle</dfn>
+:: The user handle is specified by a [=[RP]=] and is a unique identifier for a user account with that [=[RP]=]. A user handle is
+    an opaque [=byte sequence=] with a maximum size of 64 bytes.
+
+    The user handle is not meant to be displayed to the user, but is used by the [=[RP]=] to control the number of credentials - an
+    authenticator will never contain more than one credential for a given [=[RP]=] under the same user handle.
+
 : <dfn>User Verification</dfn>
 :: The technical process by which an [=authenticator=] <em>locally authorizes</em> the invocation of the
     [=authenticatorMakeCredential=] and [=authenticatorGetAssertion=] operations. [=User verification=] may be instigated
@@ -561,7 +572,7 @@ When this method is invoked, the user agent MUST execute the following algorithm
 1. If any of the {{PublicKeyCredentialEntity/name}} member of |options|.{{MakePublicKeyCredentialOptions/rp}}, the
     {{PublicKeyCredentialEntity/name}} member of |options|.{{MakePublicKeyCredentialOptions/user}},
     the {{PublicKeyCredentialUserEntity/displayName}} member of |options|.{{MakePublicKeyCredentialOptions/user}},
-    or the {{PublicKeyCredentialEntity/id}}
+    or the {{PublicKeyCredentialUserEntity/id}}
     member of |options|.{{MakePublicKeyCredentialOptions/user}} are [=present|not present=], return a {{TypeError}} [=simple exception=].
 
 1. If the {{MakePublicKeyCredentialOptions/timeout}} member of |options| is [=present=], check if its value lies within a
@@ -589,17 +600,17 @@ When this method is invoked, the user agent MUST execute the following algorithm
 <!-- Note: this next step is actually a top-level step, but bikeshed wanted it indented this much in order to compile w/o errors
 -->
     <li id='CreateCred-DetermineRpId'>
-       If |options|.{{MakePublicKeyCredentialOptions/rp}}.{{PublicKeyCredentialEntity/id}} is [=present=]:
+       If |options|.{{MakePublicKeyCredentialOptions/rp}}.{{PublicKeyCredentialRpEntity/id}} is [=present=]:
 
-        1. If |options|.{{MakePublicKeyCredentialOptions/rp}}.{{PublicKeyCredentialEntity/id}} [=is not a registrable domain suffix of
+        1. If |options|.{{MakePublicKeyCredentialOptions/rp}}.{{PublicKeyCredentialRpEntity/id}} [=is not a registrable domain suffix of
             and is not equal to=] |effectiveDomain|, return a {{DOMException}} whose name is "{{SecurityError}}", and terminate
             this algorithm.
 
-        1. Set |rpId| to |options|.{{MakePublicKeyCredentialOptions/rp}}.{{PublicKeyCredentialEntity/id}}.
+        1. Set |rpId| to |options|.{{MakePublicKeyCredentialOptions/rp}}.{{PublicKeyCredentialRpEntity/id}}.
 
             Note: |rpId| represents the caller's [=RP ID=]. The [=RP ID=] defaults to being the caller's [=environment settings
             object/origin=]'s [=effective domain=] unless the caller has explicitly set
-            |options|.{{MakePublicKeyCredentialOptions/rp}}.{{PublicKeyCredentialEntity/id}} when calling
+            |options|.{{MakePublicKeyCredentialOptions/rp}}.{{PublicKeyCredentialRpEntity/id}} when calling
             {{CredentialsContainer/create()}}.
     </li>
 
@@ -941,6 +952,9 @@ When this method is invoked, the user agent MUST execute the following algorithm
                 : {{AuthenticatorAssertionResponse/signature}}
                 :: A new {{ArrayBuffer}}, created using |global|'s [=%ArrayBuffer%=], containing the bytes of the returned
                     {{signature}}
+                : {{AuthenticatorAssertionResponse/userHandle}}
+                :: A new {{ArrayBuffer}}, created using |global|'s [=%ArrayBuffer%=], containing the [=user handle=] returned from the successful [=authenticatorGetAssertion=]
+                    operation, as defined in [[#op-get-assertion]].
             :   {{PublicKeyCredential/clientExtensionResults}}
             ::  A new {{AuthenticationExtensions}} object containing the [=extension identifier=] → [=client extension output=]
                 entries created by running each extension's [=client extension processing=] algorithm to create the [=client
@@ -1058,6 +1072,7 @@ optionally evidence of [=user consent=] to a specific transaction.
     interface AuthenticatorAssertionResponse : AuthenticatorResponse {
         [SameObject] readonly attribute ArrayBuffer      authenticatorData;
         [SameObject] readonly attribute ArrayBuffer      signature;
+        [SameObject] readonly attribute ArrayBuffer      userHandle;
     };
 </pre>
 <div dfn-type="attribute" dfn-for="AuthenticatorAssertionResponse">
@@ -1072,6 +1087,9 @@ optionally evidence of [=user consent=] to a specific transaction.
 
     :   <dfn>signature</dfn>
     ::  This attribute contains the raw signature returned from the authenticator. See [[#op-get-assertion]].
+
+    :   <dfn>userHandle</dfn>
+    ::  This attribute contains the [=user handle=] returned from the authenticator. See [[#op-get-assertion]].
 </div>
 
 ## Parameters for Credential Generation (dictionary <dfn dictionary>PublicKeyCredentialParameters</dfn>) ## {#credential-params}
@@ -1099,7 +1117,7 @@ optionally evidence of [=user consent=] to a specific transaction.
 
 <xmp class="idl">
     dictionary MakePublicKeyCredentialOptions {
-        required PublicKeyCredentialEntity           rp;
+        required PublicKeyCredentialRpEntity         rp;
         required PublicKeyCredentialUserEntity       user;
 
         required BufferSource                             challenge;
@@ -1118,7 +1136,7 @@ optionally evidence of [=user consent=] to a specific transaction.
         Its value's {{PublicKeyCredentialEntity/name}} member is required, and contains the friendly name of the [=[RP]=]
         (e.g. "Acme Corporation", "Widgets, Inc.", or "Awesome Site".
 
-        Its value's {{PublicKeyCredentialEntity/id}} member specifies the [=relying party identifier=] with which the credential
+        Its value's {{PublicKeyCredentialRpEntity/id}} member specifies the [=relying party identifier=] with which the credential
         should be associated. If omitted, its value will be the {{CredentialsContainer}} object's [=relevant
         settings object=]'s [=environment settings object/origin=]'s [=effective domain=].
 
@@ -1131,10 +1149,8 @@ optionally evidence of [=user consent=] to a specific transaction.
         Its value's {{PublicKeyCredentialUserEntity/displayName}} member is required, and contains a friendly name for the user
         account (e.g., "John P. Smith").
 
-        Its value's {{PublicKeyCredentialEntity/id}} member is required, and contains an identifier for the account, specified
-        by the [=[RP]=]. This is not meant to be displayed to the user, but is used by the [=[RP]=] to control the
-        number of credentials - an authenticator will never contain more than one credential for a given [=[RP]=] under the
-        same {{PublicKeyCredentialEntity/id}}.
+        Its value's {{PublicKeyCredentialUserEntity/id}} member is required and contains the [=user handle=] for the account,
+        specified by the [=[RP]=].
 
     :   <dfn>challenge</dfn>
     ::  This member contains a challenge intended to be used for generating the newly created credential's [=attestation
@@ -1173,23 +1189,34 @@ associated.
 
 <xmp class="idl">
     dictionary PublicKeyCredentialEntity {
-        DOMString      id;
         DOMString      name;
         USVString      icon;
     };
 </xmp>
 <div dfn-type="dict-member" dfn-for="PublicKeyCredentialEntity">
-    :   <dfn>id</dfn>
-    ::  A unique identifier for the entity. For a [=relying party=] entity, sets the [=RP ID=]. For a user account
-        entity, this will be an arbitrary string specified by the [=relying party=].
-
     :   <dfn>name</dfn>
     ::  A human-friendly identifier for the entity. For example, this could be a company name for a [=[RP]=], or a
         user's name. This identifier is intended for display.
 
     :   <dfn>icon</dfn>
     ::  A [=URL serializer|serialized=] URL which resolves to an image associated with the entity. For example, this could be
-        a user's avatar or a [=[RP]=]'s logo.
+        a user's avatar or a [=[RP]=]'s logo. This URL MUST be an [=a priori authenticated URL=].
+</div>
+
+
+### RP Parameters for Credential Generation (dictionary <dfn dictionary>PublicKeyCredentialRpEntity</dfn>) ### {#sctn-rp-credential-params}
+
+The {{PublicKeyCredentialRpEntity}} dictionary is used to supply additional [=[RP]=] attributes when creating a new credential.
+
+<pre class="idl">
+    dictionary PublicKeyCredentialRpEntity : PublicKeyCredentialEntity {
+        DOMString      id;
+    };
+</pre>
+
+<div dfn-type="dict-member" dfn-for="PublicKeyCredentialRpEntity">
+    :   <dfn>id</dfn>
+    ::  A unique identifier for the [=[RP]=] entity, which sets the [=RP ID=].
 </div>
 
 
@@ -1200,11 +1227,15 @@ credential.
 
 <pre class="idl">
     dictionary PublicKeyCredentialUserEntity : PublicKeyCredentialEntity {
+        BufferSource   id;
         DOMString      displayName;
     };
 </pre>
 
 <div dfn-type="dict-member" dfn-for="PublicKeyCredentialUserEntity">
+    :   <dfn>id</dfn>
+    ::  The [=user handle=] of the user account entity.
+
     :   <dfn>displayName</dfn>
     ::  A friendly name for the user account (e.g., "John P. Smith").
 </div>
@@ -1651,41 +1682,40 @@ input parameters:
 
 - The caller's [=RP ID=], as <a href='#CreateCred-DetermineRpId'>determined</a> by the user agent and the client.
 - The [=hash of the serialized client data=], provided by the client.
-- The [=[RP]=]'s {{PublicKeyCredentialEntity}}.
-- The user account's {{PublicKeyCredentialUserEntity}}.
+- The [=[RP]=]'s {{PublicKeyCredentialRpEntity}}.
+- The user account's {{PublicKeyCredentialUserEntity}}, containing the [=user handle=] given by the [=[RP]=].
 - A sequence of pairs of {{PublicKeyCredentialType}} and {{COSEAlgorithmIdentifier}} requested by the [=[RP]=].
     This sequence is ordered from most preferred to least
     preferred. The platform makes a best-effort to create the most preferred credential that it can.
 - An optional list of {{PublicKeyCredentialDescriptor}} objects provided by the [=[RP]=] with the intention that, if any of
-    these are known to the authenticator, it should not create a new credential.
+    these are known to the authenticator, it should not create a new credential. |excludeCredentialDescriptorList| contains a 
+    list of known credentials.
 - The |requireResidentKey| member of the |options|.{{MakePublicKeyCredentialOptions/authenticatorSelection}} dictionary.
 - The |requireUserVerification| member of the |options|.{{MakePublicKeyCredentialOptions/authenticatorSelection}} dictionary.
 - Extension data created by the client based on the extensions requested by the [=[RP]=], if any.
 
 When this operation is invoked, the authenticator must perform the following procedure:
-- Check if all the supplied parameters are syntactically well-formed and of the correct length. If not, return an error code
+1. Check if all the supplied parameters are syntactically well-formed and of the correct length. If not, return an error code
     equivalent to "{{UnknownError}}" and terminate the operation.
--  Check if at least one of the specified combinations of {{PublicKeyCredentialType}} and cryptographic parameters is supported.
+1. Check if at least one of the specified combinations of {{PublicKeyCredentialType}} and cryptographic parameters is supported.
     If not, return an error code equivalent to "{{NotSupportedError}}" and terminate the operation.
-- Check if a credential matching any of the supplied {{PublicKeyCredential}} identifiers is present on this authenticator. If
+1. Check if a credential matching any of the supplied {{PublicKeyCredential}} identifiers is present on this authenticator. If
     so, return an error code equivalent to "{{NotAllowedError}}" and terminate the operation.
-- If |requireResidentKey| is |true| and the authenticator cannot store a [=Client-side-resident Credential
+1. If |requireResidentKey| is |true| and the authenticator cannot store a [=Client-side-resident Credential
     Private Key=], return an error code equivalent to "{{ConstraintError}}" and terminate the operation.
-- If |requireUserVerification| is |true| and the authenticator cannot perform user verification,
+1. If |requireUserVerification| is |true| and the authenticator cannot perform user verification,
     return an error code equivalent to "{{ConstraintError}}" and terminate the operation.
-- Prompt the user for consent to create a new credential. The prompt for obtaining this consent is shown by the authenticator
+1. Prompt the user for consent to create a new credential. The prompt for obtaining this consent is shown by the authenticator
     if it has its own output capability, or by the user agent otherwise. If the user denies consent, return an error code
     equivalent to "{{NotAllowedError}}" and terminate the operation.
-- Once user consent has been obtained, generate a new credential object:
-    - Generate a set of cryptographic keys using the most preferred combination of {{PublicKeyCredentialType}} and cryptographic
+1. Once user consent has been obtained, generate a new credential object:
+    1. Generate a set of cryptographic keys using the most preferred combination of {{PublicKeyCredentialType}} and cryptographic
         parameters supported by this authenticator.
-    - Generate an identifier for this credential, such that this identifier is globally unique with high probability across all
+    1. Generate an identifier for this credential, such that this identifier is globally unique with high probability across all
         credentials with the same type across all authenticators.
-    - Associate the credential with the specified [=RP ID=] and the user's account identifier
-        {{MakePublicKeyCredentialOptions/user}}.{{PublicKeyCredentialEntity/id}}.
-    - Delete any older credentials with the same [=RP ID=] and {{MakePublicKeyCredentialOptions/user}}.{{PublicKeyCredentialEntity/id}}
-        that are stored locally by the [=authenticator=].
-- If any error occurred while creating the new credential object, return an error code equivalent to "{{UnknownError}}" and
+    1. Associate the credential with the specified [=RP ID=] and [=user handle=].
+    1. Delete any older credentials with the same [=RP ID=] and [=user handle=] that are stored locally by the [=authenticator=].
+1. If any error occurred while creating the new credential object, return an error code equivalent to "{{UnknownError}}" and
     terminate the operation.
 - Process all the supported extensions requested by the client.
 - If the [=authenticator=] supports: 
@@ -1719,29 +1749,29 @@ input parameters:
 - Extension data created by the client based on the extensions requested by the [=[RP]=], if any.
 
 When this method is invoked, the [=authenticator=] must perform the following procedure:
-- Check if all the supplied parameters are syntactically well-formed and of the correct length. If not, return an error code
+1. Check if all the supplied parameters are syntactically well-formed and of the correct length. If not, return an error code
     equivalent to "{{UnknownError}}" and terminate the operation.
-- If a list of credentials was supplied by the client, filter it by removing those credentials that are not present on this
+1. If a list of credentials was supplied by the client, filter it by removing those credentials that are not present on this
     [=authenticator=]. If no list was supplied, create a list with all credentials stored for the caller's [=RP ID=] (as
     determined by an exact match of the [=RP ID=]).
-- If the previous step resulted in an empty list, return an error code equivalent to "{{NotAllowedError}}" and terminate the
+1. If the previous step resulted in an empty list, return an error code equivalent to "{{NotAllowedError}}" and terminate the
     operation.
-- Prompt the user to select a [=public key credential|credential=] from among the above list. Obtain [=user consent=] for using
+1. Prompt the user to select a [=public key credential|credential=] from among the above list. Obtain [=user consent=] for using
     this [=public key credential|credential=]. The prompt for obtaining this [=user consent|consent=] may be shown by the
     [=authenticator=] if it has its own output capability, or by the user agent otherwise.
-- Process all the supported extensions requested by the client.
-- If the [=signature counter=] feature is supported, increment the [=RP ID=]-associated 
+1. Process all the supported extensions requested by the client.
+1. If the [=signature counter=] feature is supported, increment the [=RP ID=]-associated 
     [=signature counter=] or the global [=signature counter=] value, depending on 
     which approach is implemented by the [=authenticator=] by some positive value.  Otherwise, use a value 
     of zero (0) for the [=signature counter=] value when generating the [=authenticator data=].
-- Generate the [=authenticator data=] as specified in
+1. Generate the [=authenticator data=] as specified in
     [[#sec-authenticator-data]], though without [=attestation data=]. 
-- Concatenate this [=authenticator data=] with the [=hash of
+1. Concatenate this [=authenticator data=] with the [=hash of
     the serialized client data=] to generate an [=assertion signature=] using the [=credential private key|private key=] of the
     selected [=public key credential|credential=] as shown in [Figure 2](#fig-signature), below. A simple, undelimited
     concatenation is safe to use here because the [=authenticator data=] describes its own length. The [=hash of the serialized
     client data=] (which potentially has a variable length) is always the last element.
-- If any error occurred while generating the [=assertion signature=], return an error code equivalent to "{{UnknownError}}" and
+1. If any error occurred while generating the [=assertion signature=], return an error code equivalent to "{{UnknownError}}" and
     terminate the operation.
 
 <figure id="fig-signature">
@@ -1753,6 +1783,7 @@ On successful completion, the authenticator returns to the user agent:
 - The identifier of the credential (credential ID) used to generate the [=assertion signature=].
 - The [=authenticator data=] used to generate the [=assertion signature=].
 - The [=assertion signature=].
+- The [=user handle=] associated with the credential used to generate the [=assertion signature=].
 
 If the authenticator cannot find any credential corresponding to the specified [=[RP]=] that matches the specified criteria, it
 terminates the operation and returns an error.
@@ -1927,47 +1958,39 @@ WebAuthn supports multiple attestation types:
     ECDAA-Issuer (see [[FIDOEcdaaAlgorithm]]).
 
 
-### Generating an Attestation Object ### {#generating-an-attestation-object}
+<h4 id="generating-an-attestation-object" algorithm>Generating an Attestation Object</h4>
 
-This section specifies the algorithm for generating an [=attestation object=] (see: [Figure 3](#fig-attStructs)) for any
-[=attestation statement format=].
+To generate an [=attestation object=] (see: [Figure 3](#fig-attStructs)) given:
 
-In order to construct an [=attestation object=] for a given [=public key credential=] using a particular [=attestation statement
-format=], the [=authenticator=] MUST first generate the [=authenticator data=].
+: |attestationFormat|
+:: An [=attestation statement format=].
+: |authData|
+:: A byte array containing [=authenticator data=].
+: |hash|
+:: The [=hash of the serialized client data=].
 
-The [=authenticator=] MUST then run the signing procedure for the desired attestation statement format with this
-[=authenticator data=] and the [=hash of the serialized client data=] as input, and use this to construct an attestation
-statement in that attestation statement format.
+the [=authenticator=] MUST:
 
-Finally, the authenticator MUST construct the [=attestation object=] as a CBOR map with the following syntax:
+1. Let <var ignore>attStmt</var> be the result of running |attestationFormat|'s [=signing procedure=] given |authData| and
+    |hash|.
+1. Let <var ignore>fmt</var> be |attestationFormat|'s [=attestation statement format identifier=]
+1. Return the [=attestation object=] as a CBOR map with the following syntax, filled in with variables initialized by this
+    algorithm:
 
-```
-attObj = {
-            authData: bytes,
-            $$attStmtType
-         }
+    ```
+    attObj = {
+                authData: bytes,
+                $$attStmtType
+             }
 
-attStmtTemplate = (
-                      fmt: text,
-                      attStmt: bytes
-                  )
+    attStmtTemplate = (
+                          fmt: text,
+                          attStmt: { * tstr => any } ; Map is filled in by each concrete attStmtType
+                      )
 
-; Every attestation statement format must have the above fields
-attStmtTemplate .within $$attStmtType
-```
-
-The semantics of the fields in the [=attestation object=] are as follows:
-
-: fmt
-:: The [=attestation statement format identifier=] associated with the attestation statement. Each attestation statement
-    format defines its identifier.
-
-: authData
-:: The [=authenticator data=] used to generate the attestation statement.
-
-: attStmt
-:: The attestation statement constructed above. The syntax of this is defined by the attestation statement format used.
-
+    ; Every attestation statement format must have the above fields
+    attStmtTemplate .within $$attStmtType
+    ```
 
 ### Security Considerations ### {#sec-attestation-security-considerations}
 
@@ -2222,12 +2245,12 @@ implementable by [=authenticators=] with limited resources (e.g., secure element
                       )
 
     packedStmtFormat = {
-                           alg: rsaAlgName / eccAlgName,
+                           alg: COSEAlgorithmIdentifier,
                            sig: bytes,
                            x5c: [ attestnCert: bytes, * (caCert: bytes) ]
                        } //
                        {
-                           alg: "ED256" / "ED512",
+                           alg: COSEAlgorithmIdentifier, (-260 for ED256 / -261 for ED512)
                            sig: bytes,
                            ecdaaKeyId: bytes
                        }
@@ -2236,9 +2259,7 @@ implementable by [=authenticators=] with limited resources (e.g., secure element
     The semantics of the fields are as follows:
 
     : alg
-    :: A text string containing the name of the algorithm used to generate the attestation signature. The types `rsaAlgName` and
-        `eccAlgName` are as defined in [[#sec-attestation-data]]. "ED256" and "ED512" refer to algorithms defined in
-        [[!FIDOEcdaaAlgorithm]].
+    :: A {{COSEAlgorithmIdentifier}} containing the identifier of the algorithm used to generate the attestation signature.
 
     : sig
     :: A byte string containing the attestation signature.
@@ -2350,11 +2371,11 @@ engine.
     tpmStmtFormat = {
                         ver: "2.0",
                         (
-                            alg: rsaAlgName / eccAlgName,
+                            alg: COSEAlgorithmIdentifier,
                             x5c: [ aikCert: bytes, * (caCert: bytes) ]
                         ) //
                         (
-                            alg:  "ED256" / "ED512",
+                            alg:  COSEAlgorithmIdentifier, (-260 for ED256 / -261 for ED512)
                             ecdaaKeyId: bytes
                         ),
                         sig: bytes,
@@ -2369,9 +2390,7 @@ engine.
     :: The version of the TPM specification to which the signature conforms.
 
     : alg
-    :: The name of the algorithm used to generate the attestation signature. The types `rsaAlgName` and `eccAlgNAme` are as
-        defined in [[#sec-attestation-data]]. The types "ED256" and "ED512" refer to the algorithms specified in
-        [[!FIDOEcdaaAlgorithm]].
+    :: A {{COSEAlgorithmIdentifier}} containing the identifier of the algorithm used to generate the attestation signature.
 
     : x5c
     :: The AIK certificate used for the attestation and its certificate chain, in X.509 encoding.
@@ -2483,7 +2502,7 @@ the attestation=] is consistent with the fields of the attestation certificate's
                       )
 
     androidStmtFormat = {
-                          alg: rsaAlgName / eccAlgName,
+                          alg: COSEAlgorithmIdentifier,
                           sig: bytes,
                           x5c: [ credCert: bytes, * (caCert: bytes) ]
                         }
@@ -2554,7 +2573,7 @@ and the identity of the calling application.
     :: The version number of Google Play Services responsible for providing the SafetyNet API.
 
     : response
-    :: The value returned by the above SafetyNet API. This value is a JWS [[RFC7515]] object (see
+    :: The [=UTF-8 encoded=] result of the getJwsResult() call of the SafetyNet API. This value is a JWS [[RFC7515]] object (see
         [SafetyNet online documentation](https://developer.android.com/training/safetynet/index.html#compat-check-response))
         in Compact Serialization.
 
@@ -2623,7 +2642,11 @@ This attestation statement format is used with FIDO U2F authenticators using the
     If |clientDataHash| is 256 bits long, set |tbsHash| to this value. Otherwise set |tbsHash| to the SHA-256 hash of
     |clientDataHash|.
 
-    Follow the procedure described in section 7.1. in [[!FIDO-CTAP]].
+    Generate a Registration Response Message as specified in [[FIDO-U2F-Message-Formats]] section 4.3, with the application parameter set to the
+    SHA-256 hash of the [=RP ID=] associated with the given credential, the challenge parameter set to |tbsHash|, and the key handle
+    parameter set to the credential ID of the given credential. Set the raw signature part of this Registration Response Message (i.e., without the user public key,
+    key handle, and attestation certificates) as |sig| and set the attestation certificates of
+    the attestation public key as |x5c|.
 
 : Verification procedure
 :: Verification is performed as follows:
@@ -2816,8 +2839,8 @@ the process by which the [=CBOR=] [=authenticator extension output=] can be used
 
 ## <dfn>Authenticator extension processing</dfn> ## {#sctn-authenticator-extension-processing}
 
-As specified in [[#sec-authenticator-data]], the [=CBOR=] [=authenticator extension input=] value of each processed
-[=authenticator extension=] is included in the extensions data part of the [=authenticator data=]. This part is a CBOR map, with
+The [=CBOR=] [=authenticator extension input=] value of each processed
+[=authenticator extension=] is included in the extensions data part of the authenticator request. This part is a CBOR map, with
 [=CBOR=] [=extension identifier=] values as keys, and the [=CBOR=] [=authenticator extension input=] value of each extension as
 the value.
 
@@ -3350,6 +3373,18 @@ IANA COSE Algorithms registry [[!IANA-COSE-ALGS-REG]].
 - Description: RSASSA-PKCS1-v1_5 w/ SHA-512
 - Reference: Section 8.2 of [[RFC8017]]
 - Recommended: No
+    <br/><br/>
+- Name: ED256
+- Value: -260
+- Description: TPM_ECC_BN_P256 curve w/ SHA-256
+- Reference: Section 4.2 of [[!FIDOEcdaaAlgorithm]]
+- Recommended: Yes
+    <br/><br/>
+- Name: ED512
+- Value: -261
+- Description: ECC_BN_ISOP512 curve w/ SHA-512
+- Reference: Section 4.2 of [[!FIDOEcdaaAlgorithm]]
+- Recommended: Yes
 
 # Sample scenarios # {#sample-scenarios}
 
@@ -3411,7 +3446,7 @@ The sample code for generating and registering a new key follows:
 
       // User:
       user: {
-        id: "1098237235409872"
+        id: "1098237235409872",
         name: "john.p.smith@example.com",
         displayName: "John P. Smith",
         icon: "https://pics.acme.com/00/p/aBjjjpqPb.png"
@@ -3565,9 +3600,9 @@ extension for transaction authorization.
     var options = {
                     challenge: encoder.encode("climb a mountain"),
                     timeout: 60000,  // 1 minute
-                    allowCredentials: [acceptableCredential1, acceptableCredential2];
+                    allowCredentials: [acceptableCredential1, acceptableCredential2],
                     extensions: { 'webauthn.txauth.simple':
-                       "Wave your hands in the air like you just don't care" };
+                       "Wave your hands in the air like you just don't care" }
                   };
 
     navigator.credentials.get({ "publicKey": options })
