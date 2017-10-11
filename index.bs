@@ -1649,6 +1649,22 @@ Note that the [=authenticator data=] describes its own length: If the AT and ED 
 The [=attestation data=] (which is only present if the AT flag is set) describes its own length. If the ED flag is set, then the
 total length is 37 bytes plus the length of the [=attestation data=], plus the length of the [=CBOR=] map that follows.
 
+### <dfn>Signature Counter</dfn> Considerations ### {#sign-counter}
+
+Authenticators may implement a [=signature counter=] feature. The [=signature counter=] is incremented for each successful [=authenticatorGetAssertion=] operation by some positive value, and its value is returned to the [=RP=] within the [=authenticator data=]. The [=signature counter=]'s purpose is to aid [=[RPS]=] in detecting cloned authenticators. Clone detection is more important for authenticators with limited protection measures.
+
+An [=[RP]=] stores the [=signature counter=] of the most recent [=authenticatorGetAssertion=] operation. Upon a new [=authenticatorGetAssertion=] operation, the [=[RP]=] compares the stored [=signature counter=] value with the new [=signature counter=] value returned in the assertion's [=authenticator data=].  If this new [=signature counter=] value is less than or equal to the stored value, a cloned authenticator may exist, or the authenticator may be malfunctioning.
+
+Detecting a [=signature counter=]  mismatch does not indicate whether the current operation was performed by a cloned authenticator or the original authenticator.  [=[RPS]=] should address this situation appropriately relative to their individual situations, i.e., their risk tolerance. 
+
+Authenticators implementing the [=signature counter=] feature: 
+- should implement per-[=RP ID=] [=signature counters=].  This prevents the 
+    [=signature counter=] value from being shared between [=[RPS]=] and being possibly employed 
+    as a correlation handle for the user. Authenticators may implement a global [=signature counter=], 
+    i.e., on a per-authenticator basis, but this is less privacy-friendly for users. 
+
+- should ensure that the [=signature counter=] value does not 
+    accidentally decrease  (e.g., due to hardware failures).
 
 ## Authenticator operations ## {#authenticator-ops}
 
@@ -1701,7 +1717,20 @@ When this operation is invoked, the authenticator must perform the following pro
     1. Delete any older credentials with the same [=RP ID=] and [=user handle=] that are stored locally by the [=authenticator=].
 1. If any error occurred while creating the new credential object, return an error code equivalent to "{{UnknownError}}" and
     terminate the operation.
-1. Process all the supported extensions requested by the client, and generate the [=authenticator data=] with
+1. Process all the supported extensions requested by the client.
+1. If the [=authenticator=] supports: 
+    <dl class="switch">
+        :   a per-[=RP ID=] [=signature counter=]
+        ::  allocate the counter, associate it with the 
+              [=RP ID=], and initialize the counter value as zero. 
+        :  a global [=signature counter=]
+        ::  Use the global [=signature counter=]'s actual value when generating 
+              [=authenticator data=].
+    </dl>
+
+- If the authenticator supports a signature counter <i>per credential</i>, then initialize this counter with 0.  
+    (Alternatively, the authenticator might support a global signature counter).
+- Generate the [=authenticator data=] with
     [=attestation data=] as specified in [[#sec-authenticator-data]]. Use this [=authenticator data=] and the
     [=hash of the serialized client data=] to create an [=attestation object=] for the new credential using the procedure
     specified in [[#generating-an-attestation-object]]. For more details on attestation, see [[#sctn-attestation]].
@@ -1730,8 +1759,14 @@ When this method is invoked, the [=authenticator=] must perform the following pr
 1. Prompt the user to select a [=public key credential|credential=] from among the above list. Obtain [=user consent=] for using
     this [=public key credential|credential=]. The prompt for obtaining this [=user consent|consent=] may be shown by the
     [=authenticator=] if it has its own output capability, or by the user agent otherwise.
-1. Process all the supported extensions requested by the client, and generate the [=authenticator data=] as specified in
-    [[#sec-authenticator-data]], though without [=attestation data=]. Concatenate this [=authenticator data=] with the [=hash of
+1. Process all the supported extensions requested by the client.
+1. If the [=signature counter=] feature is supported, increment the [=RP ID=]-associated 
+    [=signature counter=] or the global [=signature counter=] value, depending on 
+    which approach is implemented by the [=authenticator=] by some positive value.  Otherwise, use a value 
+    of zero (0) for the [=signature counter=] value when generating the [=authenticator data=].
+1. Generate the [=authenticator data=] as specified in
+    [[#sec-authenticator-data]], though without [=attestation data=]. 
+1. Concatenate this [=authenticator data=] with the [=hash of
     the serialized client data=] to generate an [=assertion signature=] using the [=credential private key|private key=] of the
     selected [=public key credential|credential=] as shown in [Figure 2](#fig-signature), below. A simple, undelimited
     concatenation is safe to use here because the [=authenticator data=] describes its own length. The [=hash of the serialized
@@ -2079,8 +2114,8 @@ When registering a new credential, represented by a {{AuthenticatorAttestationRe
 13. If the attestation statement |attStmt| verified successfully and is found to be trustworthy, then register the new
     credential with the account that was denoted in the
     {{PublicKeyCredential/[[Create]](options)/options}}.{{MakePublicKeyCredentialOptions/user}} passed to
-    {{CredentialsContainer/create()}}, by associating it with the credential ID and credential public key contained in
-    |authData|'s [=attestation data=], as appropriate for the [=[RP]=]'s systems.
+    {{CredentialsContainer/create()}}, by associating it with the credential ID and credential public key, 
+    and the [=signature counter=] contained in |authData|, as appropriate for the [=[RP]=]'s systems.
 
 14. If the attestation statement |attStmt| successfully verified but is not trustworthy per step 12 above, the [=[RP]=] SHOULD fail
     the registration ceremony.
@@ -2089,8 +2124,6 @@ When registering a new credential, represented by a {{AuthenticatorAttestationRe
         credential as one with [=self attestation=] (see [[#sctn-attestation-types]]). If doing so, the [=[RP]=] is asserting there
         is no cryptographic proof that the [=public key credential=] has been generated by a particular [=authenticator=] model.
         See [[FIDOSecRef]] and [[UAFProtocol]] for a more detailed discussion.
-
-15. If verification of the attestation statement failed, the [=[RP]=] MUST fail the registration ceremony.
 
 Verification of [=attestation objects=] requires that the [=[RP]=] has a trusted method of determining acceptable trust anchors
 in step 11 above. Also, if certificates are being used, the [=[RP]=] must have access to certificate status information for the
@@ -2136,8 +2169,30 @@ When verifying a given {{PublicKeyCredential}} structure (|credential|) as part 
 10. Using the credential public key looked up in step 1, verify that |sig| is a valid signature over the binary concatenation of
     |aData| and |hash|.
 
-11. If all the above steps are successful, continue with the authentication ceremony as appropriate. Otherwise, fail the
-    authentication ceremony.
+11. If the [=signature counter=] value |adata|.|signCount| is nonzero or the value stored 
+    in conjunction with |credential|'s {{Credential/id}} attribute
+    is nonzero, then run the following substep: 
+      - If the [=signature counter=] value |adata|.|signCount| is
+           <dl class="switch">
+              <dt>greater than the [=signature counter=] value stored in conjunction 
+                  with |credential|'s {{Credential/id}} attribute.</dt>
+              <dd>Update the stored [=signature counter=] value, associated with 
+                  |credential|'s {{Credential/id}} attribute, to be the value of 
+                  |adata|.|signCount|.</dd>
+	      <dt>less than or equal to the [=signature counter=] value stored in conjunction 
+                  with |credential|'s {{Credential/id}} attribute.</dt>
+              <dd>This is an signal that 
+                  the authenticator may be cloned, i.e. at least 
+                  two copies of the [=credential private key=] may exist and are  
+                  being used in parallel. [=[RPS]=] should incorporate this information  
+                  into their risk scoring.  Whether the [=RP=] updates the 
+                  stored [=signature counter=] value in this case, or not, or fails the 
+                  [=authentication|authentication ceremony=] or not, is 
+                  [=RP=]-specific. </dd>
+           </dl>
+
+12. If all the above steps are successful, continue with the authentication ceremony as appropriate. Otherwise, fail the
+    [=authentication|authentication ceremony=].
 
 
 # Defined Attestation Statement Formats # {#defined-attestation-formats}
@@ -2219,50 +2274,53 @@ implementable by [=authenticators=] with limited resources (e.g., secure element
         as defined section 3.3, step 3.5 in [[!FIDOEcdaaAlgorithm]].
 
 : Signing procedure
-:: The signing procedure for this attestation statement format is similar to [the procedure for generating assertion
-    signatures](#fig-signature).
+:: The signing procedure for this attestation statement format is 
+    similar to [the procedure for generating assertion signatures](#fig-signature).
+        1. Let |authenticatorData| denote the [=authenticator data for the attestation=], 
+            and let |clientDataHash| denote the [=hash of the serialized client data=].
 
-    Let |authenticatorData| denote the [=authenticator data for the attestation=], and let |clientDataHash| denote the
-    [=hash of the serialized client data=].
+        2. If Basic or Privacy CA attestation is in use, the authenticator produces the |sig| by concatenating |authenticatorData| and
+            |clientDataHash|, and signing the result using an attestation private key selected through an authenticator-specific
+            mechanism. It sets |x5c| to the certificate chain of the attestation public key and |alg| to the algorithm of the
+            attestation private key.
 
-    If Basic or Privacy CA attestation is in use, the authenticator produces the |sig| by concatenating |authenticatorData| and
-    |clientDataHash|, and signing the result using an attestation private key selected through an authenticator-specific
-    mechanism. It sets |x5c| to the certificate chain of the attestation public key and |alg| to the algorithm of the
-    attestation private key.
+        3. If [=ECDAA=] is in use, the authenticator produces |sig| by concatenating |authenticatorData| and |clientDataHash|, and
+            signing the result using ECDAA-Sign (see section 3.5 of [[!FIDOEcdaaAlgorithm]]) with a [=ECDAA-Issuer public key=] selected
+            through an authenticator-specific mechanism (see [[!FIDOEcdaaAlgorithm]]). It sets |alg| to the algorithm of the
+            [=ECDAA-Issuer public key=] and |ecdaaKeyId| to the [=identifier of the ECDAA-Issuer public key=] (see above).
 
-    If [=ECDAA=] is in use, the authenticator produces |sig| by concatenating |authenticatorData| and |clientDataHash|, and
-    signing the result using ECDAA-Sign (see section 3.5 of [[!FIDOEcdaaAlgorithm]]) with a [=ECDAA-Issuer public key=] selected
-    through an authenticator-specific mechanism (see [[!FIDOEcdaaAlgorithm]]). It sets |alg| to the algorithm of the
-    [=ECDAA-Issuer public key=] and |ecdaaKeyId| to the [=identifier of the ECDAA-Issuer public key=] (see above).
-
-    If [=self attestation=] is in use, the authenticator produces |sig| by concatenating |authenticatorData| and |clientDataHash|,
-    and signing the result using the credential private key. It sets |alg| to the algorithm of the credential private key, and
-    omits the other fields.
+        4. If [=self attestation=] is in use, the authenticator produces |sig| by concatenating |authenticatorData| and |clientDataHash|,
+            and signing the result using the credential private key. It sets |alg| to the algorithm of the credential private key, and
+            omits the other fields.
 
 : Verification procedure
-:: Verify that the given attestation statement is valid CBOR conforming to the syntax defined above.
+:: The verification procedure is as follows:
 
-    Let |authenticatorData| denote the [=authenticator data claimed to have been used for the attestation=], and let
-    |clientDataHash| denote the [=hash of the serialized client data=].
+        1. Perform CBOR decoding on the given attestation statement|attStmt| structure 
+            to obtain the attestation certificate array |x5c|, 
+            and the signature value |sig|. If a decoding error occurs, 
+            terminate this algorithm and return an appropriate error.
+        2. Let |authenticatorData| denote the [=authenticator data claimed to have been used for the attestation=], and let
+            |clientDataHash| denote the [=hash of the serialized client data=].
 
-    If |x5c| is present, this indicates that the attestation type is not [=ECDAA=]. In this case:
-    - Verify that |sig| is a valid signature over the concatenation of |authenticatorData| and |clientDataHash| using the
-        attestation public key in |x5c| with the algorithm specified in |alg|.
-    - Verify that |x5c| meets the requirements in [[#packed-attestation-cert-requirements]].
-    - If |x5c| contains an extension with OID `1 3 6 1 4 1 45724 1 1 4` (id-fido-gen-ce-aaguid) verify that the value of this
-        extension matches the AAGUID in |authenticatorData|.
-    - If successful, return attestation type Basic and trust path |x5c|.
+        3. If |x5c| is present, this indicates that the attestation type is not [=ECDAA=]. In this case:
+            - Verify that |sig| is a valid signature over the concatenation of |authenticatorData| and |clientDataHash| using the
+                attestation public key in |x5c| with the algorithm specified in |alg|.
+            - Verify that |x5c| meets the requirements in [[#packed-attestation-cert-requirements]].
+            - If |x5c| contains an extension with OID `1 3 6 1 4 1 45724 1 1 4` (id-fido-gen-ce-aaguid) verify that the value of this
+                extension matches the AAGUID in |authenticatorData|.
+            - If successful, return attestation type Basic and trust path |x5c|.
 
-    If |ecdaaKeyId| is present, then the attestation type is ECDAA. In this case:
-    - Verify that |sig| is a valid signature over the concatenation of |authenticatorData| and |clientDataHash| using
-        ECDAA-Verify with [=ECDAA-Issuer public key=] identified by |ecdaaKeyId| (see [[!FIDOEcdaaAlgorithm]]).
-    - If successful, return attestation type ECDAA and trust path |ecdaaKeyId|.
+        4. If |ecdaaKeyId| is present, then the attestation type is ECDAA. In this case:
+            - Verify that |sig| is a valid signature over the concatenation of |authenticatorData| and |clientDataHash| using
+                ECDAA-Verify with [=ECDAA-Issuer public key=] identified by |ecdaaKeyId| (see [[!FIDOEcdaaAlgorithm]]).
+            - If successful, return attestation type ECDAA and trust path |ecdaaKeyId|.
 
-    If neither |x5c| nor |ecdaaKeyId| is present, [=self attestation=] is in use.
-    - Validate that |alg| matches the algorithm of the credential private key in |authenticatorData|.
-    - Verify that |sig| is a valid signature over the concatenation of |authenticatorData| and |clientDataHash| using the
-        credential public key with |alg|.
-    - If successful, return attestation type Self and empty trust path.
+        5. If neither |x5c| nor |ecdaaKeyId| is present, [=self attestation=] is in use.
+            - Validate that |alg| matches the algorithm of the credential private key in |authenticatorData|.
+            - Verify that |sig| is a valid signature over the concatenation of |authenticatorData| and |clientDataHash| using the
+                credential public key with |alg|.
+            - If successful, return attestation type Self and empty trust path.
 
 
 ### Packed attestation statement certificate requirements ### {#packed-attestation-cert-requirements}
@@ -2572,13 +2630,14 @@ This attestation statement format is used with FIDO U2F authenticators using the
         The attestation certificate must be the first element in the array.
 
     : sig
-    :: The [=attestation signature=].
+    :: The [=attestation signature=].  
+        The signature was calculated over the (raw) U2F registration response message [[!FIDO-U2F-Message-Formats]]
+        received by the platform from the authenticator.
 
 : Signing procedure
 :: If the credential public key of the given credential is not of algorithm -7 ("ES256"), stop and return an error.
-
-    Let |authenticatorData| denote the [=authenticator data for the attestation=], and let |clientDataHash| denote the
-    [=hash of the serialized client data=].
+    Otherwise, let |authenticatorData| denote the [=authenticator data for the attestation=], 
+    and let |clientDataHash| denote the [=hash of the serialized client data=].
 
     If |clientDataHash| is 256 bits long, set |tbsHash| to this value. Otherwise set |tbsHash| to the SHA-256 hash of
     |clientDataHash|.
@@ -2591,19 +2650,36 @@ This attestation statement format is used with FIDO U2F authenticators using the
 
 : Verification procedure
 :: Verification is performed as follows:
-    - Verify that the given attestation statement is valid CBOR conforming to the syntax defined above.
-    - If |x5c| is not a certificate for an ECDSA public key over the P-256 curve, stop verification and return an error.
-    - Let |authenticatorData| denote the [=authenticator data claimed to have been used for the attestation=], and let
-        |clientDataHash| denote the [=hash of the serialized client data=].
-    - If |clientDataHash| is 256 bits long, set |tbsHash| to this value. Otherwise set |tbsHash| to the SHA-256
+    1. Verify that the given attestation statement is valid CBOR conforming to the syntax defined above.
+    2. Perform CBOR decoding on the given attestation statement|attStmt| structure to obtain 
+        the attestation certificate array |x5c|, and the signature value |sig|. If a decoding error occurs, 
+        terminate this algorithm and return an appropriate error.
+    3. Let |attCert| be value of the first element of |x5c|. Let |certificate public key| be the public key 
+        conveyed by |attCert|. If |certificate public key| is not an Elliptic Curve (EC) public 
+        key over the P-256 curve, terminate this algorithm and return an appropriate error. 
+    4. Let |authenticatorData| denote the given [=authenticator data claimed to have been used for the attestation=], 
+        and let |clientDataHash| denote the given [=hash of the serialized client data=].
+    5. Extract the claimed [=RP ID=] hash from |authenticatorData|. Extract the claimed |CredentialID| and the 
+        claimed |credential public key| from |authenticatorData|.<code>[=attestation data=]</code>.
+    6. If |clientDataHash| is 256 bits long, set |tbsHash| to this value. Otherwise set |tbsHash| to the SHA-256
         hash of |clientDataHash|.
-    - From |authenticatorData|, extract the claimed [=RP ID=] hash, the claimed credential ID and the claimed credential public key.
-    - Generate the claimed to-be-signed data as specified in [[FIDO-U2F-Message-Formats]] section 4.3, with the application
-        parameter set to the claimed [=RP ID=] hash, the challenge parameter set to |tbsHash|, the key handle parameter set to the
-        claimed credential ID of the given credential, and the user public key parameter set to the claimed credential public
-        key.
-    - Verify that the |sig| is a valid ECDSA P-256 signature over the to-be-signed data constructed above.
-    - If successful, return attestation type Basic with the trust path set to |x5c|.
+    7. Convert the COSE_KEY formatted |credential public key| (see Section 7 of [[!RFC8152]]) to CTAP1/U2F public Key 
+        format [[!FIDO-CTAP]]. 
+        - Let |publicKeyU2F| represent the result of the 
+            conversion operation and set its first byte to 0x04.
+            Note: This signifies uncompressed ECC key format.
+        - Extract the value corresponding to the "-2" key 
+            (representing x coordinate) from the |credential public key|, 
+            confirm its size to be of 32 bytes and concatenate it with |publicKeyU2F|.
+            If size differs or "-2" key is not found, terminate this algorithm and return an appropriate error.
+        - Extract the value corresponding to the "-3" key 
+            (representing y coordinate) from the |credential public key|, 
+            confirm its size to be of 32 bytes and concatenate it with |publicKeyU2F|.
+            If size differs or "-3" key is not found, terminate this algorithm and return an appropriate error. 
+    8. Let |verificationData| be the concatenation of (0x00 || SHA-256([=RP ID=]) || 
+        |tbsHash| || |CredentialID| || |publicKeyU2F|) (see Section 4.3 of [[!FIDO-U2F-Message-Formats]]).
+    9. Verify the |sig| using |verificationData| and |certificate public key| per [[!SEC1]].
+    10. If successful, return attestation type Basic with the trust path set to |x5c|.
 
 
 # WebAuthn Extensions # {#extensions}
@@ -3687,6 +3763,13 @@ Axel Nennker, Kimberly Paulhamus, Adam Powers, Yaron Sheffer, Mike West, Jeffrey
     "title": "FIDO U2F Raw Message Formats",
     "href": "https://fidoalliance.org/specs/fido-u2f-v1.1-id-20160915/fido-u2f-raw-message-formats-v1.1-id-20160915.html",
     "status": "FIDO Alliance Implementation Draft"
+  },
+
+  "FIDO-CTAP": {
+    "authors": ["R. Lindemann", "V. Bharadwaj", "A. Czeskis", "M. B. Jones"],
+    "title": "FIDO 2.0: Client to Authenticator Protocol",
+    "href": "",
+    "status": "FIDO Alliance Working Draft"
   },
 
   "CDDL": {
