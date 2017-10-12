@@ -38,6 +38,9 @@ pip install --editable ./bikeshed
 cp -R .spec-data/* ./bikeshed/bikeshed/spec-data
 ```
 
+Alternatively, you can use the [Vagrant VM with `bikeshed` already installed](vagrant/bikeshed).
+
+
 # Continuous Integration & Branches
 
 This repository uses `.deploy-output.sh` to generate the Editor's Draft on the `gh-pages` branch upon every merge to `master`. In order to prevent failed merges during continuous integration, the formatted Editor's Draft should not be checked in to `master`, and it is in the `.gitignore` file.
