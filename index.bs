@@ -91,6 +91,10 @@ spec: credential-management-1; urlPrefix: https://w3c.github.io/webappsec-creden
     for: CredentialsContainer
         type: method
             text: create(); url: dom-credentialscontainer-create
+
+spec: mixed-content; urlPrefix: www.w3.org/TR/mixed-content/
+    type: dfn 
+        text: a priori authenticated
 </pre> <!-- class=anchors -->
 
 <pre class="link-defaults">
@@ -279,10 +283,10 @@ The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "S
     [=authenticatorGetAssertion=] operation.
 
 : <dfn>Authenticator</dfn>
-:: A cryptographic device used by a [=[WAC]=] to (i) generate a [=public key credential=] and register it with a [=[RP]=],
-    and (ii) subsequently used to cryptographically sign and return, in the form of an [=Authentication Assertion=], a
-    challenge and other data presented by a [=[RP]=] (in concert with the [=[WAC]=]) in order to effect
-    [=authentication=].
+:: A cryptographic entity used by a [=[WAC]=] to (i) generate a [=public key credential=] and register it with a [=[RP]=],
+    and (ii) [=authentication|authenticate=] by potentially [=user verification|verifying the user=], and then 
+    cryptographically signing and returning, in the form of an [=Authentication Assertion=], 
+    a challenge and other data presented by a [=[RP]=] (in concert with the [=[WAC]=]).
 
 : <dfn>Authorization Gesture</dfn>
 :: An [=authorization gesture=] is a physical interaction performed by a user with an authenticator as part of a [=ceremony=],
@@ -390,6 +394,13 @@ The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "S
 : <dfn>User Consent</dfn>
 :: User consent means the user agrees with what they are being asked, i.e., it encompasses reading and understanding prompts.
     An [=authorization gesture=] is a [=ceremony=] component often employed to indicate [=user consent=].
+
+: <dfn>User Handle</dfn>
+:: The user handle is specified by a [=[RP]=] and is a unique identifier for a user account with that [=[RP]=]. A user handle is
+    an opaque [=byte sequence=] with a maximum size of 64 bytes.
+
+    The user handle is not meant to be displayed to the user, but is used by the [=[RP]=] to control the number of credentials - an
+    authenticator will never contain more than one credential for a given [=[RP]=] under the same user handle.
 
 : <dfn>User Verification</dfn>
 :: The technical process by which an [=authenticator=] <em>locally authorizes</em> the invocation of the
@@ -536,7 +547,7 @@ To support obtaining assertions via {{CredentialsContainer/get()|navigator.crede
 {{PublicKeyCredential}}'s [=interface object=]'s implementation of the
 <dfn for="PublicKeyCredential" method>\[[Create]](options)</dfn> method allows scripts to call
 {{CredentialsContainer/create()|navigator.credentials.create()}} to request the creation of a new [=credential key pair=]
-and {{PublicKeyCredential}}, managed by an [=authenticator=]. The user agent will prompt the user for [=user consent|consent=].
+and {{PublicKeyCredential}}, managed by an [=authenticator=].
 On success, the returned {{promise}} will be resolved with a {{PublicKeyCredential}} containing an
 {{AuthenticatorAttestationResponse}} object.
 
@@ -561,7 +572,7 @@ When this method is invoked, the user agent MUST execute the following algorithm
 1. If any of the {{PublicKeyCredentialEntity/name}} member of |options|.{{MakePublicKeyCredentialOptions/rp}}, the
     {{PublicKeyCredentialEntity/name}} member of |options|.{{MakePublicKeyCredentialOptions/user}},
     the {{PublicKeyCredentialUserEntity/displayName}} member of |options|.{{MakePublicKeyCredentialOptions/user}},
-    or the {{PublicKeyCredentialEntity/id}}
+    or the {{PublicKeyCredentialUserEntity/id}}
     member of |options|.{{MakePublicKeyCredentialOptions/user}} are [=present|not present=], return a {{TypeError}} [=simple exception=].
 
 1. If the {{MakePublicKeyCredentialOptions/timeout}} member of |options| is [=present=], check if its value lies within a
@@ -589,17 +600,17 @@ When this method is invoked, the user agent MUST execute the following algorithm
 <!-- Note: this next step is actually a top-level step, but bikeshed wanted it indented this much in order to compile w/o errors
 -->
     <li id='CreateCred-DetermineRpId'>
-       If |options|.{{MakePublicKeyCredentialOptions/rp}}.{{PublicKeyCredentialEntity/id}} is [=present=]:
+       If |options|.{{MakePublicKeyCredentialOptions/rp}}.{{PublicKeyCredentialRpEntity/id}} is [=present=]:
 
-        1. If |options|.{{MakePublicKeyCredentialOptions/rp}}.{{PublicKeyCredentialEntity/id}} [=is not a registrable domain suffix of
+        1. If |options|.{{MakePublicKeyCredentialOptions/rp}}.{{PublicKeyCredentialRpEntity/id}} [=is not a registrable domain suffix of
             and is not equal to=] |effectiveDomain|, return a {{DOMException}} whose name is "{{SecurityError}}", and terminate
             this algorithm.
 
-        1. Set |rpId| to |options|.{{MakePublicKeyCredentialOptions/rp}}.{{PublicKeyCredentialEntity/id}}.
+        1. Set |rpId| to |options|.{{MakePublicKeyCredentialOptions/rp}}.{{PublicKeyCredentialRpEntity/id}}.
 
             Note: |rpId| represents the caller's [=RP ID=]. The [=RP ID=] defaults to being the caller's [=environment settings
             object/origin=]'s [=effective domain=] unless the caller has explicitly set
-            |options|.{{MakePublicKeyCredentialOptions/rp}}.{{PublicKeyCredentialEntity/id}} when calling
+            |options|.{{MakePublicKeyCredentialOptions/rp}}.{{PublicKeyCredentialRpEntity/id}} when calling
             {{CredentialsContainer/create()}}.
     </li>
 
@@ -661,11 +672,11 @@ When this method is invoked, the user agent MUST execute the following algorithm
 
 1. If |options|.{{MakePublicKeyCredentialOptions/authenticatorSelection}} is [=present|present=], iterate through
         |currentlyAvailableAuthenticators| and do the following [=set/for each=] |authenticator|:
-    1. If {{AuthenticatorSelectionCriteria/aa}} is [=present|present=] and its value is not equal
+    1. If {{AuthenticatorSelectionCriteria/authenticatorAttachment}} is [=present|present=] and its value is not equal
         to |authenticator|'s attachment modality, [=iteration/continue=].
-    1. If {{AuthenticatorSelectionCriteria/rk}} is set to |true| and the |authenticator|
+    1. If {{AuthenticatorSelectionCriteria/requireResidentKey}} is set to |true| and the |authenticator|
         is not capable of storing a [=Client-Side-Resident Credential Private Key=], [=iteration/continue=].
-    1. If {{AuthenticatorSelectionCriteria/uv}} is set to |true| and the
+    1. If {{AuthenticatorSelectionCriteria/requireUserVerification}} is set to |true| and the
         |authenticator| is not capable of performing [=user verification=], [=iteration/continue=].
     1. [=set/Append=] |authenticator| to |selectedAuthenticators|.
 
@@ -682,7 +693,7 @@ When this method is invoked, the user agent MUST execute the following algorithm
         1. Otherwise, [=list/Append=] |C| to |excludeCredentialDescriptorList|.
     1. [=In parallel=], invoke the [=authenticatorMakeCredential=] operation on |authenticator| with |rpId|,
         |clientDataHash|, |options|.{{MakePublicKeyCredentialOptions/rp}}, |options|.{{MakePublicKeyCredentialOptions/user}},
-        <code>|options|.{{MakePublicKeyCredentialOptions/authenticatorSelection}}.{{AuthenticatorSelectionCriteria/rk}}</code>,
+        <code>|options|.{{MakePublicKeyCredentialOptions/authenticatorSelection}}.{{AuthenticatorSelectionCriteria/requireResidentKey}}</code>,
         |credTypesAndPubKeyAlgs|, |excludeCredentialDescriptorList|, and |authenticatorExtensions| as parameters.
     1. [=set/Append=] |authenticator| to |issuedRequests|.
 
@@ -941,6 +952,9 @@ When this method is invoked, the user agent MUST execute the following algorithm
                 : {{AuthenticatorAssertionResponse/signature}}
                 :: A new {{ArrayBuffer}}, created using |global|'s [=%ArrayBuffer%=], containing the bytes of the returned
                     {{signature}}
+                : {{AuthenticatorAssertionResponse/userHandle}}
+                :: A new {{ArrayBuffer}}, created using |global|'s [=%ArrayBuffer%=], containing the [=user handle=] returned from the successful [=authenticatorGetAssertion=]
+                    operation, as defined in [[#op-get-assertion]].
             :   {{PublicKeyCredential/clientExtensionResults}}
             ::  A new {{AuthenticationExtensions}} object containing the [=extension identifier=] → [=client extension output=]
                 entries created by running each extension's [=client extension processing=] algorithm to create the [=client
@@ -991,7 +1005,7 @@ but short enough that the dangling promise will still be resolved in a reasonabl
 <pre class="idl">
     [SecureContext]
     partial interface PublicKeyCredential {
-        [Unscopable] Promise < boolean > isPlatformAuthenticatorAvailable();
+        static Promise < boolean > isPlatformAuthenticatorAvailable();
     };
 </pre>
 
@@ -1058,6 +1072,7 @@ optionally evidence of [=user consent=] to a specific transaction.
     interface AuthenticatorAssertionResponse : AuthenticatorResponse {
         [SameObject] readonly attribute ArrayBuffer      authenticatorData;
         [SameObject] readonly attribute ArrayBuffer      signature;
+        [SameObject] readonly attribute ArrayBuffer      userHandle;
     };
 </pre>
 <div dfn-type="attribute" dfn-for="AuthenticatorAssertionResponse">
@@ -1072,6 +1087,9 @@ optionally evidence of [=user consent=] to a specific transaction.
 
     :   <dfn>signature</dfn>
     ::  This attribute contains the raw signature returned from the authenticator. See [[#op-get-assertion]].
+
+    :   <dfn>userHandle</dfn>
+    ::  This attribute contains the [=user handle=] returned from the authenticator. See [[#op-get-assertion]].
 </div>
 
 ## Parameters for Credential Generation (dictionary <dfn dictionary>PublicKeyCredentialParameters</dfn>) ## {#credential-params}
@@ -1099,7 +1117,7 @@ optionally evidence of [=user consent=] to a specific transaction.
 
 <xmp class="idl">
     dictionary MakePublicKeyCredentialOptions {
-        required PublicKeyCredentialEntity           rp;
+        required PublicKeyCredentialRpEntity         rp;
         required PublicKeyCredentialUserEntity       user;
 
         required BufferSource                             challenge;
@@ -1118,7 +1136,7 @@ optionally evidence of [=user consent=] to a specific transaction.
         Its value's {{PublicKeyCredentialEntity/name}} member is required, and contains the friendly name of the [=[RP]=]
         (e.g. "Acme Corporation", "Widgets, Inc.", or "Awesome Site".
 
-        Its value's {{PublicKeyCredentialEntity/id}} member specifies the [=relying party identifier=] with which the credential
+        Its value's {{PublicKeyCredentialRpEntity/id}} member specifies the [=relying party identifier=] with which the credential
         should be associated. If omitted, its value will be the {{CredentialsContainer}} object's [=relevant
         settings object=]'s [=environment settings object/origin=]'s [=effective domain=].
 
@@ -1131,10 +1149,8 @@ optionally evidence of [=user consent=] to a specific transaction.
         Its value's {{PublicKeyCredentialUserEntity/displayName}} member is required, and contains a friendly name for the user
         account (e.g., "John P. Smith").
 
-        Its value's {{PublicKeyCredentialEntity/id}} member is required, and contains an identifier for the account, specified
-        by the [=[RP]=]. This is not meant to be displayed to the user, but is used by the [=[RP]=] to control the
-        number of credentials - an authenticator will never contain more than one credential for a given [=[RP]=] under the
-        same {{PublicKeyCredentialEntity/id}}.
+        Its value's {{PublicKeyCredentialUserEntity/id}} member is required and contains the [=user handle=] for the account,
+        specified by the [=[RP]=].
 
     :   <dfn>challenge</dfn>
     ::  This member contains a challenge intended to be used for generating the newly created credential's [=attestation
@@ -1173,23 +1189,34 @@ associated.
 
 <xmp class="idl">
     dictionary PublicKeyCredentialEntity {
-        DOMString      id;
         DOMString      name;
         USVString      icon;
     };
 </xmp>
 <div dfn-type="dict-member" dfn-for="PublicKeyCredentialEntity">
-    :   <dfn>id</dfn>
-    ::  A unique identifier for the entity. For a [=relying party=] entity, sets the [=RP ID=]. For a user account
-        entity, this will be an arbitrary string specified by the [=relying party=].
-
     :   <dfn>name</dfn>
     ::  A human-friendly identifier for the entity. For example, this could be a company name for a [=[RP]=], or a
         user's name. This identifier is intended for display.
 
     :   <dfn>icon</dfn>
     ::  A [=URL serializer|serialized=] URL which resolves to an image associated with the entity. For example, this could be
-        a user's avatar or a [=[RP]=]'s logo.
+        a user's avatar or a [=[RP]=]'s logo. This URL MUST be an [=a priori authenticated URL=].
+</div>
+
+
+### RP Parameters for Credential Generation (dictionary <dfn dictionary>PublicKeyCredentialRpEntity</dfn>) ### {#sctn-rp-credential-params}
+
+The {{PublicKeyCredentialRpEntity}} dictionary is used to supply additional [=[RP]=] attributes when creating a new credential.
+
+<pre class="idl">
+    dictionary PublicKeyCredentialRpEntity : PublicKeyCredentialEntity {
+        DOMString      id;
+    };
+</pre>
+
+<div dfn-type="dict-member" dfn-for="PublicKeyCredentialRpEntity">
+    :   <dfn>id</dfn>
+    ::  A unique identifier for the [=[RP]=] entity, which sets the [=RP ID=].
 </div>
 
 
@@ -1200,11 +1227,15 @@ credential.
 
 <pre class="idl">
     dictionary PublicKeyCredentialUserEntity : PublicKeyCredentialEntity {
+        BufferSource   id;
         DOMString      displayName;
     };
 </pre>
 
 <div dfn-type="dict-member" dfn-for="PublicKeyCredentialUserEntity">
+    :   <dfn>id</dfn>
+    ::  The [=user handle=] of the user account entity.
+
     :   <dfn>displayName</dfn>
     ::  A friendly name for the user account (e.g., "John P. Smith").
 </div>
@@ -1217,30 +1248,27 @@ attributes.
 
 <xmp class="idl">
     dictionary AuthenticatorSelectionCriteria {
-        AuthenticatorAttachment      aa;         // authenticatorAttachment
-        boolean                      rk = false; // requireResidentKey
-        boolean                      uv = false; // requireUserVerification
+        AuthenticatorAttachment      authenticatorAttachment;
+        boolean                      requireResidentKey = false;
+        boolean                      requireUserVerification = false;
     };
 </xmp>
 
 <div dfn-type="dict-member" dfn-for="AuthenticatorSelectionCriteria">
-    :   <dfn>aa</dfn> (authenticatorAttachment)
+    :   <dfn>authenticatorAttachment</dfn>
     ::  If this member is [=present|present=], eligible authenticators are filtered to only authenticators attached with the
         specified [[#attachment]].
 
-    :   <dfn>rk</dfn> (requireResidentKey)
+    :   <dfn>requireResidentKey</dfn>
     ::  This member describes the [=[RPS]=]' requirements regarding availability of the [=Client-side-resident Credential
         Private Key=]. If the parameter is set to true, the authenticator MUST create a
         [=Client-side-resident Credential Private Key=] when creating a [=public key credential=].
 
-    :   <dfn>uv</dfn> (requireUserVerification)
+    :   <dfn>requireUserVerification</dfn>
     ::  This member describes the [=[RPS]=]' requirements regarding the authenticator being capable of performing user verification.
         If the parameter is set to true, the authenticator MUST perform user verification when performing
         the {{CredentialsContainer/create()}} operation and future [[#getAssertion]] operations when it is
         requested to verify the credential.
-
-    Note: These identifiers are intentionally short, rather than descriptive, because they will be serialized into
-        a message to the authenticator, which may be sent over a low-bandwidth link.
 </div>
 
 
@@ -1248,8 +1276,8 @@ attributes.
 
 <pre class="idl">
     enum AuthenticatorAttachment {
-        "plat",  // Platform attachment
-        "xplat"  // Cross-platform attachment
+        "platform",       // Platform attachment
+        "cross-platform"  // Cross-platform attachment
     };
 </pre>
 
@@ -1621,6 +1649,25 @@ Note that the [=authenticator data=] describes its own length: If the AT and ED 
 The [=attestation data=] (which is only present if the AT flag is set) describes its own length. If the ED flag is set, then the
 total length is 37 bytes plus the length of the [=attestation data=], plus the length of the [=CBOR=] map that follows.
 
+### <dfn>Signature Counter</dfn> Considerations ### {#sign-counter}
+
+Authenticators MUST implement a [=signature counter=] feature. The [=signature counter=] is incremented for each successful
+[=authenticatorGetAssertion=] operation by some positive value, and its value is returned to the [=[RP]=] within the
+[=authenticator data=]. The [=signature counter=]'s purpose is to aid [=[RPS]=] in detecting cloned authenticators. Clone
+detection is more important for authenticators with limited protection measures.
+
+An [=[RP]=] stores the [=signature counter=] of the most recent [=authenticatorGetAssertion=] operation. Upon a new [=authenticatorGetAssertion=] operation, the [=[RP]=] compares the stored [=signature counter=] value with the new [=signature counter=] value returned in the assertion's [=authenticator data=].  If this new [=signature counter=] value is less than or equal to the stored value, a cloned authenticator may exist, or the authenticator may be malfunctioning.
+
+Detecting a [=signature counter=]  mismatch does not indicate whether the current operation was performed by a cloned authenticator or the original authenticator.  [=[RPS]=] should address this situation appropriately relative to their individual situations, i.e., their risk tolerance. 
+
+Authenticators:
+- should implement per-[=RP ID=] [=signature counters=].  This prevents the 
+    [=signature counter=] value from being shared between [=[RPS]=] and being possibly employed 
+    as a correlation handle for the user. Authenticators may implement a global [=signature counter=], 
+    i.e., on a per-authenticator basis, but this is less privacy-friendly for users. 
+
+- should ensure that the [=signature counter=] value does not 
+    accidentally decrease  (e.g., due to hardware failures).
 
 ## Authenticator operations ## {#authenticator-ops}
 
@@ -1638,43 +1685,56 @@ input parameters:
 
 - The caller's [=RP ID=], as <a href='#CreateCred-DetermineRpId'>determined</a> by the user agent and the client.
 - The [=hash of the serialized client data=], provided by the client.
-- The [=[RP]=]'s {{PublicKeyCredentialEntity}}.
-- The user account's {{PublicKeyCredentialUserEntity}}.
+- The [=[RP]=]'s {{PublicKeyCredentialRpEntity}}.
+- The user account's {{PublicKeyCredentialUserEntity}}, containing the [=user handle=] given by the [=[RP]=].
 - A sequence of pairs of {{PublicKeyCredentialType}} and {{COSEAlgorithmIdentifier}} requested by the [=[RP]=].
     This sequence is ordered from most preferred to least
     preferred. The platform makes a best-effort to create the most preferred credential that it can.
 - An optional list of {{PublicKeyCredentialDescriptor}} objects provided by the [=[RP]=] with the intention that, if any of
-    these are known to the authenticator, it should not create a new credential.
-- The |rk| member of the |options|.{{MakePublicKeyCredentialOptions/authenticatorSelection}} dictionary.
-- The |uv| member of the |options|.{{MakePublicKeyCredentialOptions/authenticatorSelection}} dictionary.
+    these are known to the authenticator, it should not create a new credential. |excludeCredentialDescriptorList| contains a 
+    list of known credentials.
+- The |requireResidentKey| member of the |options|.{{MakePublicKeyCredentialOptions/authenticatorSelection}} dictionary.
+- The |requireUserVerification| member of the |options|.{{MakePublicKeyCredentialOptions/authenticatorSelection}} dictionary.
 - Extension data created by the client based on the extensions requested by the [=[RP]=], if any.
 
 When this operation is invoked, the authenticator must perform the following procedure:
-- Check if all the supplied parameters are syntactically well-formed and of the correct length. If not, return an error code
+1. Check if all the supplied parameters are syntactically well-formed and of the correct length. If not, return an error code
     equivalent to "{{UnknownError}}" and terminate the operation.
--  Check if at least one of the specified combinations of {{PublicKeyCredentialType}} and cryptographic parameters is supported.
+1. Check if at least one of the specified combinations of {{PublicKeyCredentialType}} and cryptographic parameters is supported.
     If not, return an error code equivalent to "{{NotSupportedError}}" and terminate the operation.
-- Check if a credential matching any of the supplied {{PublicKeyCredential}} identifiers is present on this authenticator. If
+1. Check if a credential matching any of the supplied {{PublicKeyCredential}} identifiers is present on this authenticator. If
     so, return an error code equivalent to "{{NotAllowedError}}" and terminate the operation.
-- If |rk| is |true| and the authenticator cannot store a [=Client-side-resident Credential
+1. If |requireResidentKey| is |true| and the authenticator cannot store a [=Client-side-resident Credential
     Private Key=], return an error code equivalent to "{{ConstraintError}}" and terminate the operation.
-- If |uv| is |true| and the authenticator cannot perform user verification,
+1. If |requireUserVerification| is |true| and the authenticator cannot perform user verification,
     return an error code equivalent to "{{ConstraintError}}" and terminate the operation.
-- Prompt the user for consent to create a new credential. The prompt for obtaining this consent is shown by the authenticator
+1. Prompt the user for consent to create a new credential. The prompt for obtaining this consent is shown by the authenticator
     if it has its own output capability, or by the user agent otherwise. If the user denies consent, return an error code
-    equivalent to "{{NotAllowedError}}" and terminate the operation.
-- Once user consent has been obtained, generate a new credential object:
-    - Generate a set of cryptographic keys using the most preferred combination of {{PublicKeyCredentialType}} and cryptographic
+    equivalent to "{{NotAllowedError}}" and terminate the operation. The Authenticator and user agent MAY skip this prompt
+    if the Authenticator is a [=platform authenticator=] and |excludeCredentialDescriptorList| is empty.
+1. Once user consent has been obtained, generate a new credential object:
+    1. Generate a set of cryptographic keys using the most preferred combination of {{PublicKeyCredentialType}} and cryptographic
         parameters supported by this authenticator.
-    - Generate an identifier for this credential, such that this identifier is globally unique with high probability across all
+    1. Generate an identifier for this credential, such that this identifier is globally unique with high probability across all
         credentials with the same type across all authenticators.
-    - Associate the credential with the specified [=RP ID=] and the user's account identifier
-        {{MakePublicKeyCredentialOptions/user}}.{{PublicKeyCredentialEntity/id}}.
-    - Delete any older credentials with the same [=RP ID=] and {{MakePublicKeyCredentialOptions/user}}.{{PublicKeyCredentialEntity/id}}
-        that are stored locally by the [=authenticator=].
-- If any error occurred while creating the new credential object, return an error code equivalent to "{{UnknownError}}" and
+    1. Associate the credential with the specified [=RP ID=] and [=user handle=].
+    1. Delete any older credentials with the same [=RP ID=] and [=user handle=] that are stored locally by the [=authenticator=].
+1. If any error occurred while creating the new credential object, return an error code equivalent to "{{UnknownError}}" and
     terminate the operation.
-- Process all the supported extensions requested by the client, and generate the [=authenticator data=] with
+1. Process all the supported extensions requested by the client.
+1. If the [=authenticator=] implements:
+    <dl class="switch">
+        :   a per-[=RP ID=] [=signature counter=]
+        ::  allocate the counter, associate it with the 
+              [=RP ID=], and initialize the counter value as zero. 
+        :  a global [=signature counter=]
+        ::  Use the global [=signature counter=]'s actual value when generating 
+              [=authenticator data=].
+    </dl>
+
+- If the authenticator implements a <i>per credential</i> signature counter, then initialize this counter with 0.
+    (Otherwise, the authenticator implements a global signature counter.)
+- Generate the [=authenticator data=] with
     [=attestation data=] as specified in [[#sec-authenticator-data]]. Use this [=authenticator data=] and the
     [=hash of the serialized client data=] to create an [=attestation object=] for the new credential using the procedure
     specified in [[#generating-an-attestation-object]]. For more details on attestation, see [[#sctn-attestation]].
@@ -1693,23 +1753,28 @@ input parameters:
 - Extension data created by the client based on the extensions requested by the [=[RP]=], if any.
 
 When this method is invoked, the [=authenticator=] must perform the following procedure:
-- Check if all the supplied parameters are syntactically well-formed and of the correct length. If not, return an error code
+1. Check if all the supplied parameters are syntactically well-formed and of the correct length. If not, return an error code
     equivalent to "{{UnknownError}}" and terminate the operation.
-- If a list of credentials was supplied by the client, filter it by removing those credentials that are not present on this
+1. If a list of credentials was supplied by the client, filter it by removing those credentials that are not present on this
     [=authenticator=]. If no list was supplied, create a list with all credentials stored for the caller's [=RP ID=] (as
     determined by an exact match of the [=RP ID=]).
-- If the previous step resulted in an empty list, return an error code equivalent to "{{NotAllowedError}}" and terminate the
+1. If the previous step resulted in an empty list, return an error code equivalent to "{{NotAllowedError}}" and terminate the
     operation.
-- Prompt the user to select a [=public key credential|credential=] from among the above list. Obtain [=user consent=] for using
+1. Prompt the user to select a [=public key credential|credential=] from among the above list. Obtain [=user consent=] for using
     this [=public key credential|credential=]. The prompt for obtaining this [=user consent|consent=] may be shown by the
     [=authenticator=] if it has its own output capability, or by the user agent otherwise.
-- Process all the supported extensions requested by the client, and generate the [=authenticator data=] as specified in
-    [[#sec-authenticator-data]], though without [=attestation data=]. Concatenate this [=authenticator data=] with the [=hash of
+1. Process all the supported extensions requested by the client.
+1. Increment the [=RP ID=]-associated
+    [=signature counter=] or the global [=signature counter=] value, depending on 
+    which approach is implemented by the [=authenticator=] by some positive value.
+1. Generate the [=authenticator data=] as specified in
+    [[#sec-authenticator-data]], though without [=attestation data=]. 
+1. Concatenate this [=authenticator data=] with the [=hash of
     the serialized client data=] to generate an [=assertion signature=] using the [=credential private key|private key=] of the
     selected [=public key credential|credential=] as shown in [Figure 2](#fig-signature), below. A simple, undelimited
     concatenation is safe to use here because the [=authenticator data=] describes its own length. The [=hash of the serialized
     client data=] (which potentially has a variable length) is always the last element.
-- If any error occurred while generating the [=assertion signature=], return an error code equivalent to "{{UnknownError}}" and
+1. If any error occurred while generating the [=assertion signature=], return an error code equivalent to "{{UnknownError}}" and
     terminate the operation.
 
 <figure id="fig-signature">
@@ -1721,6 +1786,7 @@ On successful completion, the authenticator returns to the user agent:
 - The identifier of the credential (credential ID) used to generate the [=assertion signature=].
 - The [=authenticator data=] used to generate the [=assertion signature=].
 - The [=assertion signature=].
+- The [=user handle=] associated with the credential used to generate the [=assertion signature=].
 
 If the authenticator cannot find any credential corresponding to the specified [=[RP]=] that matches the specified criteria, it
 terminates the operation and returns an error.
@@ -1888,54 +1954,46 @@ WebAuthn supports multiple attestation types:
         is called "active".
 
 : <dfn>Elliptic Curve based Direct Anonymous Attestation</dfn> (<dfn>ECDAA</dfn>)
-:: In this case, the Authenticator receives direct anonymous attestation (<dfn>DAA</dfn>]) credentials from a single DAA-Issuer.
+:: In this case, the Authenticator receives direct anonymous attestation (<dfn>DAA</dfn>) credentials from a single DAA-Issuer.
     These DAA credentials are used along with blinding to sign the [=attestation data=]. The concept of blinding avoids the DAA
     credentials being misused as global correlation handle. WebAuthn supports DAA using elliptic curve cryptography and bilinear
     pairings, called [=ECDAA=] (see [[FIDOEcdaaAlgorithm]]) in this specification. Consequently we denote the DAA-Issuer as
     ECDAA-Issuer (see [[FIDOEcdaaAlgorithm]]).
 
 
-### Generating an Attestation Object ### {#generating-an-attestation-object}
+<h4 id="generating-an-attestation-object" algorithm>Generating an Attestation Object</h4>
 
-This section specifies the algorithm for generating an [=attestation object=] (see: [Figure 3](#fig-attStructs)) for any
-[=attestation statement format=].
+To generate an [=attestation object=] (see: [Figure 3](#fig-attStructs)) given:
 
-In order to construct an [=attestation object=] for a given [=public key credential=] using a particular [=attestation statement
-format=], the [=authenticator=] MUST first generate the [=authenticator data=].
+: |attestationFormat|
+:: An [=attestation statement format=].
+: |authData|
+:: A byte array containing [=authenticator data=].
+: |hash|
+:: The [=hash of the serialized client data=].
 
-The [=authenticator=] MUST then run the signing procedure for the desired attestation statement format with this
-[=authenticator data=] and the [=hash of the serialized client data=] as input, and use this to construct an attestation
-statement in that attestation statement format.
+the [=authenticator=] MUST:
 
-Finally, the authenticator MUST construct the [=attestation object=] as a CBOR map with the following syntax:
+1. Let <var ignore>attStmt</var> be the result of running |attestationFormat|'s [=signing procedure=] given |authData| and
+    |hash|.
+1. Let <var ignore>fmt</var> be |attestationFormat|'s [=attestation statement format identifier=]
+1. Return the [=attestation object=] as a CBOR map with the following syntax, filled in with variables initialized by this
+    algorithm:
 
-```
-attObj = {
-            authData: bytes,
-            $$attStmtType
-         }
+    ```
+    attObj = {
+                authData: bytes,
+                $$attStmtType
+             }
 
-attStmtTemplate = (
-                      fmt: text,
-                      attStmt: bytes
-                  )
+    attStmtTemplate = (
+                          fmt: text,
+                          attStmt: { * tstr => any } ; Map is filled in by each concrete attStmtType
+                      )
 
-; Every attestation statement format must have the above fields
-attStmtTemplate .within $$attStmtType
-```
-
-The semantics of the fields in the [=attestation object=] are as follows:
-
-: fmt
-:: The [=attestation statement format identifier=] associated with the attestation statement. Each attestation statement
-    format defines its identifier.
-
-: authData
-:: The [=authenticator data=] used to generate the attestation statement.
-
-: attStmt
-:: The attestation statement constructed above. The syntax of this is defined by the attestation statement format used.
-
+    ; Every attestation statement format must have the above fields
+    attStmtTemplate .within $$attStmtType
+    ```
 
 ### Security Considerations ### {#sec-attestation-security-considerations}
 
@@ -2059,8 +2117,8 @@ When registering a new credential, represented by a {{AuthenticatorAttestationRe
 13. If the attestation statement |attStmt| verified successfully and is found to be trustworthy, then register the new
     credential with the account that was denoted in the
     {{PublicKeyCredential/[[Create]](options)/options}}.{{MakePublicKeyCredentialOptions/user}} passed to
-    {{CredentialsContainer/create()}}, by associating it with the credential ID and credential public key contained in
-    |authData|'s [=attestation data=], as appropriate for the [=[RP]=]'s systems.
+    {{CredentialsContainer/create()}}, by associating it with the credential ID and credential public key, 
+    and the [=signature counter=] contained in |authData|, as appropriate for the [=[RP]=]'s systems.
 
 14. If the attestation statement |attStmt| successfully verified but is not trustworthy per step 12 above, the [=[RP]=] SHOULD fail
     the registration ceremony.
@@ -2069,8 +2127,6 @@ When registering a new credential, represented by a {{AuthenticatorAttestationRe
         credential as one with [=self attestation=] (see [[#sctn-attestation-types]]). If doing so, the [=[RP]=] is asserting there
         is no cryptographic proof that the [=public key credential=] has been generated by a particular [=authenticator=] model.
         See [[FIDOSecRef]] and [[UAFProtocol]] for a more detailed discussion.
-
-15. If verification of the attestation statement failed, the [=[RP]=] MUST fail the registration ceremony.
 
 Verification of [=attestation objects=] requires that the [=[RP]=] has a trusted method of determining acceptable trust anchors
 in step 11 above. Also, if certificates are being used, the [=[RP]=] must have access to certificate status information for the
@@ -2116,8 +2172,30 @@ When verifying a given {{PublicKeyCredential}} structure (|credential|) as part 
 10. Using the credential public key looked up in step 1, verify that |sig| is a valid signature over the binary concatenation of
     |aData| and |hash|.
 
-11. If all the above steps are successful, continue with the authentication ceremony as appropriate. Otherwise, fail the
-    authentication ceremony.
+11. If the [=signature counter=] value |adata|.|signCount| is nonzero or the value stored 
+    in conjunction with |credential|'s {{Credential/id}} attribute
+    is nonzero, then run the following substep: 
+      - If the [=signature counter=] value |adata|.|signCount| is
+           <dl class="switch">
+              <dt>greater than the [=signature counter=] value stored in conjunction 
+                  with |credential|'s {{Credential/id}} attribute.</dt>
+              <dd>Update the stored [=signature counter=] value, associated with 
+                  |credential|'s {{Credential/id}} attribute, to be the value of 
+                  |adata|.|signCount|.</dd>
+	      <dt>less than or equal to the [=signature counter=] value stored in conjunction 
+                  with |credential|'s {{Credential/id}} attribute.</dt>
+              <dd>This is an signal that 
+                  the authenticator may be cloned, i.e. at least 
+                  two copies of the [=credential private key=] may exist and are  
+                  being used in parallel. [=[RPS]=] should incorporate this information  
+                  into their risk scoring.  Whether the [=[RP]=] updates the 
+                  stored [=signature counter=] value in this case, or not, or fails the 
+                  [=authentication|authentication ceremony=] or not, is 
+                  [=[RP]=]-specific. </dd>
+           </dl>
+
+12. If all the above steps are successful, continue with the authentication ceremony as appropriate. Otherwise, fail the
+    [=authentication|authentication ceremony=].
 
 
 # Defined Attestation Statement Formats # {#defined-attestation-formats}
@@ -2170,12 +2248,12 @@ implementable by [=authenticators=] with limited resources (e.g., secure element
                       )
 
     packedStmtFormat = {
-                           alg: rsaAlgName / eccAlgName,
+                           alg: COSEAlgorithmIdentifier,
                            sig: bytes,
                            x5c: [ attestnCert: bytes, * (caCert: bytes) ]
                        } //
                        {
-                           alg: "ED256" / "ED512",
+                           alg: COSEAlgorithmIdentifier, (-260 for ED256 / -261 for ED512)
                            sig: bytes,
                            ecdaaKeyId: bytes
                        }
@@ -2184,9 +2262,7 @@ implementable by [=authenticators=] with limited resources (e.g., secure element
     The semantics of the fields are as follows:
 
     : alg
-    :: A text string containing the name of the algorithm used to generate the attestation signature. The types `rsaAlgName` and
-        `eccAlgName` are as defined in [[#sec-attestation-data]]. "ED256" and "ED512" refer to algorithms defined in
-        [[!FIDOEcdaaAlgorithm]].
+    :: A {{COSEAlgorithmIdentifier}} containing the identifier of the algorithm used to generate the attestation signature.
 
     : sig
     :: A byte string containing the attestation signature.
@@ -2201,50 +2277,53 @@ implementable by [=authenticators=] with limited resources (e.g., secure element
         as defined section 3.3, step 3.5 in [[!FIDOEcdaaAlgorithm]].
 
 : Signing procedure
-:: The signing procedure for this attestation statement format is similar to [the procedure for generating assertion
-    signatures](#fig-signature).
+:: The signing procedure for this attestation statement format is 
+    similar to [the procedure for generating assertion signatures](#fig-signature).
+        1. Let |authenticatorData| denote the [=authenticator data for the attestation=], 
+            and let |clientDataHash| denote the [=hash of the serialized client data=].
 
-    Let |authenticatorData| denote the [=authenticator data for the attestation=], and let |clientDataHash| denote the
-    [=hash of the serialized client data=].
+        2. If Basic or Privacy CA attestation is in use, the authenticator produces the |sig| by concatenating |authenticatorData| and
+            |clientDataHash|, and signing the result using an attestation private key selected through an authenticator-specific
+            mechanism. It sets |x5c| to the certificate chain of the attestation public key and |alg| to the algorithm of the
+            attestation private key.
 
-    If Basic or Privacy CA attestation is in use, the authenticator produces the |sig| by concatenating |authenticatorData| and
-    |clientDataHash|, and signing the result using an attestation private key selected through an authenticator-specific
-    mechanism. It sets |x5c| to the certificate chain of the attestation public key and |alg| to the algorithm of the
-    attestation private key.
+        3. If [=ECDAA=] is in use, the authenticator produces |sig| by concatenating |authenticatorData| and |clientDataHash|, and
+            signing the result using ECDAA-Sign (see section 3.5 of [[!FIDOEcdaaAlgorithm]]) with a [=ECDAA-Issuer public key=] selected
+            through an authenticator-specific mechanism (see [[!FIDOEcdaaAlgorithm]]). It sets |alg| to the algorithm of the
+            [=ECDAA-Issuer public key=] and |ecdaaKeyId| to the [=identifier of the ECDAA-Issuer public key=] (see above).
 
-    If [=ECDAA=] is in use, the authenticator produces |sig| by concatenating |authenticatorData| and |clientDataHash|, and
-    signing the result using ECDAA-Sign (see section 3.5 of [[!FIDOEcdaaAlgorithm]]) with a [=ECDAA-Issuer public key=] selected
-    through an authenticator-specific mechanism (see [[!FIDOEcdaaAlgorithm]]). It sets |alg| to the algorithm of the
-    [=ECDAA-Issuer public key=] and |ecdaaKeyId| to the [=identifier of the ECDAA-Issuer public key=] (see above).
-
-    If [=self attestation=] is in use, the authenticator produces |sig| by concatenating |authenticatorData| and |clientDataHash|,
-    and signing the result using the credential private key. It sets |alg| to the algorithm of the credential private key, and
-    omits the other fields.
+        4. If [=self attestation=] is in use, the authenticator produces |sig| by concatenating |authenticatorData| and |clientDataHash|,
+            and signing the result using the credential private key. It sets |alg| to the algorithm of the credential private key, and
+            omits the other fields.
 
 : Verification procedure
-:: Verify that the given attestation statement is valid CBOR conforming to the syntax defined above.
+:: The verification procedure is as follows:
 
-    Let |authenticatorData| denote the [=authenticator data claimed to have been used for the attestation=], and let
-    |clientDataHash| denote the [=hash of the serialized client data=].
+        1. Perform CBOR decoding on the given attestation statement|attStmt| structure 
+            to obtain the attestation certificate array |x5c|, 
+            and the signature value |sig|. If a decoding error occurs, 
+            terminate this algorithm and return an appropriate error.
+        2. Let |authenticatorData| denote the [=authenticator data claimed to have been used for the attestation=], and let
+            |clientDataHash| denote the [=hash of the serialized client data=].
 
-    If |x5c| is present, this indicates that the attestation type is not [=ECDAA=]. In this case:
-    - Verify that |sig| is a valid signature over the concatenation of |authenticatorData| and |clientDataHash| using the
-        attestation public key in |x5c| with the algorithm specified in |alg|.
-    - Verify that |x5c| meets the requirements in [[#packed-attestation-cert-requirements]].
-    - If |x5c| contains an extension with OID `1 3 6 1 4 1 45724 1 1 4` (id-fido-gen-ce-aaguid) verify that the value of this
-        extension matches the AAGUID in |authenticatorData|.
-    - If successful, return attestation type Basic and trust path |x5c|.
+        3. If |x5c| is present, this indicates that the attestation type is not [=ECDAA=]. In this case:
+            - Verify that |sig| is a valid signature over the concatenation of |authenticatorData| and |clientDataHash| using the
+                attestation public key in |x5c| with the algorithm specified in |alg|.
+            - Verify that |x5c| meets the requirements in [[#packed-attestation-cert-requirements]].
+            - If |x5c| contains an extension with OID `1 3 6 1 4 1 45724 1 1 4` (id-fido-gen-ce-aaguid) verify that the value of this
+                extension matches the AAGUID in |authenticatorData|.
+            - If successful, return attestation type Basic and trust path |x5c|.
 
-    If |ecdaaKeyId| is present, then the attestation type is ECDAA. In this case:
-    - Verify that |sig| is a valid signature over the concatenation of |authenticatorData| and |clientDataHash| using
-        ECDAA-Verify with [=ECDAA-Issuer public key=] identified by |ecdaaKeyId| (see [[!FIDOEcdaaAlgorithm]]).
-    - If successful, return attestation type ECDAA and trust path |ecdaaKeyId|.
+        4. If |ecdaaKeyId| is present, then the attestation type is ECDAA. In this case:
+            - Verify that |sig| is a valid signature over the concatenation of |authenticatorData| and |clientDataHash| using
+                ECDAA-Verify with [=ECDAA-Issuer public key=] identified by |ecdaaKeyId| (see [[!FIDOEcdaaAlgorithm]]).
+            - If successful, return attestation type ECDAA and trust path |ecdaaKeyId|.
 
-    If neither |x5c| nor |ecdaaKeyId| is present, [=self attestation=] is in use.
-    - Validate that |alg| matches the algorithm of the credential private key in |authenticatorData|.
-    - Verify that |sig| is a valid signature over the concatenation of |authenticatorData| and |clientDataHash| using the
-        credential public key with |alg|.
-    - If successful, return attestation type Self and empty trust path.
+        5. If neither |x5c| nor |ecdaaKeyId| is present, [=self attestation=] is in use.
+            - Validate that |alg| matches the algorithm of the credential private key in |authenticatorData|.
+            - Verify that |sig| is a valid signature over the concatenation of |authenticatorData| and |clientDataHash| using the
+                credential public key with |alg|.
+            - If successful, return attestation type Self and empty trust path.
 
 
 ### Packed attestation statement certificate requirements ### {#packed-attestation-cert-requirements}
@@ -2295,11 +2374,11 @@ engine.
     tpmStmtFormat = {
                         ver: "2.0",
                         (
-                            alg: rsaAlgName / eccAlgName,
+                            alg: COSEAlgorithmIdentifier,
                             x5c: [ aikCert: bytes, * (caCert: bytes) ]
                         ) //
                         (
-                            alg:  "ED256" / "ED512",
+                            alg:  COSEAlgorithmIdentifier, (-260 for ED256 / -261 for ED512)
                             ecdaaKeyId: bytes
                         ),
                         sig: bytes,
@@ -2314,9 +2393,7 @@ engine.
     :: The version of the TPM specification to which the signature conforms.
 
     : alg
-    :: The name of the algorithm used to generate the attestation signature. The types `rsaAlgName` and `eccAlgNAme` are as
-        defined in [[#sec-attestation-data]]. The types "ED256" and "ED512" refer to the algorithms specified in
-        [[!FIDOEcdaaAlgorithm]].
+    :: A {{COSEAlgorithmIdentifier}} containing the identifier of the algorithm used to generate the attestation signature.
 
     : x5c
     :: The AIK certificate used for the attestation and its certificate chain, in X.509 encoding.
@@ -2427,19 +2504,26 @@ the attestation=] is consistent with the fields of the attestation certificate's
                           attStmt: androidStmtFormat
                       )
 
-    androidStmtFormat = bytes
+    androidStmtFormat = {
+                          alg: COSEAlgorithmIdentifier,
+                          sig: bytes,
+                          x5c: [ credCert: bytes, * (caCert: bytes) ]
+                        }
+
     ```
 
 : Signing procedure
 :: Let |authenticatorData| denote the [=authenticator data for the attestation=], and let |clientDataHash| denote the
     [=hash of the serialized client data=].
 
-    Concatenate |authenticatorData| and |clientDataHash| to form |attToBeSigned|.
-
-    Request an Android Key Attestation by calling "keyStore.getCertificateChain(myKeyUUID)") providing |attToBeSigned| as the
+    Request an Android Key Attestation by calling "keyStore.getCertificateChain(myKeyUUID)") providing |clientDataHash| as the
     challenge value (e.g., by using <a
     href="https://developer.android.com/reference/android/security/keystore/KeyGenParameterSpec.Builder.html#setAttestationChallenge(byte%5B%5D)">
-    setAttestationChallenge</a>), and set the attestation statement to the returned value.
+    setAttestationChallenge</a>). Set x5c to the returned value.
+
+    The authenticator produces |sig| by concatenating |authenticatorData| and |clientDataHash|,
+    and signing the result using the credential private key. It sets |alg| to the algorithm of the signature format.
+    
 
 : Verification procedure
 :: Verification is performed as follows:
@@ -2492,7 +2576,7 @@ and the identity of the calling application.
     :: The version number of Google Play Services responsible for providing the SafetyNet API.
 
     : response
-    :: The value returned by the above SafetyNet API. This value is a JWS [[RFC7515]] object (see
+    :: The [=UTF-8 encoded=] result of the getJwsResult() call of the SafetyNet API. This value is a JWS [[RFC7515]] object (see
         [SafetyNet online documentation](https://developer.android.com/training/safetynet/index.html#compat-check-response))
         in Compact Serialization.
 
@@ -2549,37 +2633,56 @@ This attestation statement format is used with FIDO U2F authenticators using the
         The attestation certificate must be the first element in the array.
 
     : sig
-    :: The [=attestation signature=].
+    :: The [=attestation signature=].  
+        The signature was calculated over the (raw) U2F registration response message [[!FIDO-U2F-Message-Formats]]
+        received by the platform from the authenticator.
 
 : Signing procedure
 :: If the credential public key of the given credential is not of algorithm -7 ("ES256"), stop and return an error.
-
-    Let |authenticatorData| denote the [=authenticator data for the attestation=], and let |clientDataHash| denote the
-    [=hash of the serialized client data=].
+    Otherwise, let |authenticatorData| denote the [=authenticator data for the attestation=], 
+    and let |clientDataHash| denote the [=hash of the serialized client data=].
 
     If |clientDataHash| is 256 bits long, set |tbsHash| to this value. Otherwise set |tbsHash| to the SHA-256 hash of
     |clientDataHash|.
 
-    Generate a signature as specified in [[FIDO-U2F-Message-Formats]] section 4.3, with the application parameter set to the
+    Generate a Registration Response Message as specified in [[FIDO-U2F-Message-Formats]] section 4.3, with the application parameter set to the
     SHA-256 hash of the [=RP ID=] associated with the given credential, the challenge parameter set to |tbsHash|, and the key handle
-    parameter set to the credential ID of the given credential. Set this as |sig| and set the attestation certificate of
+    parameter set to the credential ID of the given credential. Set the raw signature part of this Registration Response Message (i.e., without the user public key,
+    key handle, and attestation certificates) as |sig| and set the attestation certificates of
     the attestation public key as |x5c|.
 
 : Verification procedure
 :: Verification is performed as follows:
-    - Verify that the given attestation statement is valid CBOR conforming to the syntax defined above.
-    - If |x5c| is not a certificate for an ECDSA public key over the P-256 curve, stop verification and return an error.
-    - Let |authenticatorData| denote the [=authenticator data claimed to have been used for the attestation=], and let
-        |clientDataHash| denote the [=hash of the serialized client data=].
-    - If |clientDataHash| is 256 bits long, set |tbsHash| to this value. Otherwise set |tbsHash| to the SHA-256
+    1. Verify that the given attestation statement is valid CBOR conforming to the syntax defined above.
+    2. Perform CBOR decoding on the given attestation statement|attStmt| structure to obtain 
+        the attestation certificate array |x5c|, and the signature value |sig|. If a decoding error occurs, 
+        terminate this algorithm and return an appropriate error.
+    3. Let |attCert| be value of the first element of |x5c|. Let |certificate public key| be the public key 
+        conveyed by |attCert|. If |certificate public key| is not an Elliptic Curve (EC) public 
+        key over the P-256 curve, terminate this algorithm and return an appropriate error. 
+    4. Let |authenticatorData| denote the given [=authenticator data claimed to have been used for the attestation=], 
+        and let |clientDataHash| denote the given [=hash of the serialized client data=].
+    5. Extract the claimed [=RP ID=] hash from |authenticatorData|. Extract the claimed |CredentialID| and the 
+        claimed |credential public key| from |authenticatorData|.<code>[=attestation data=]</code>.
+    6. If |clientDataHash| is 256 bits long, set |tbsHash| to this value. Otherwise set |tbsHash| to the SHA-256
         hash of |clientDataHash|.
-    - From |authenticatorData|, extract the claimed [=RP ID=] hash, the claimed credential ID and the claimed credential public key.
-    - Generate the claimed to-be-signed data as specified in [[FIDO-U2F-Message-Formats]] section 4.3, with the application
-        parameter set to the claimed [=RP ID=] hash, the challenge parameter set to |tbsHash|, the key handle parameter set to the
-        claimed credential ID of the given credential, and the user public key parameter set to the claimed credential public
-        key.
-    - Verify that the |sig| is a valid ECDSA P-256 signature over the to-be-signed data constructed above.
-    - If successful, return attestation type Basic with the trust path set to |x5c|.
+    7. Convert the COSE_KEY formatted |credential public key| (see Section 7 of [[!RFC8152]]) to CTAP1/U2F public Key 
+        format [[!FIDO-CTAP]]. 
+        - Let |publicKeyU2F| represent the result of the 
+            conversion operation and set its first byte to 0x04.
+            Note: This signifies uncompressed ECC key format.
+        - Extract the value corresponding to the "-2" key 
+            (representing x coordinate) from the |credential public key|, 
+            confirm its size to be of 32 bytes and concatenate it with |publicKeyU2F|.
+            If size differs or "-2" key is not found, terminate this algorithm and return an appropriate error.
+        - Extract the value corresponding to the "-3" key 
+            (representing y coordinate) from the |credential public key|, 
+            confirm its size to be of 32 bytes and concatenate it with |publicKeyU2F|.
+            If size differs or "-3" key is not found, terminate this algorithm and return an appropriate error. 
+    8. Let |verificationData| be the concatenation of (0x00 || SHA-256([=RP ID=]) || 
+        |tbsHash| || |CredentialID| || |publicKeyU2F|) (see Section 4.3 of [[!FIDO-U2F-Message-Formats]]).
+    9. Verify the |sig| using |verificationData| and |certificate public key| per [[!SEC1]].
+    10. If successful, return attestation type Basic with the trust path set to |x5c|.
 
 
 # WebAuthn Extensions # {#extensions}
@@ -2739,8 +2842,8 @@ the process by which the [=CBOR=] [=authenticator extension output=] can be used
 
 ## <dfn>Authenticator extension processing</dfn> ## {#sctn-authenticator-extension-processing}
 
-As specified in [[#sec-authenticator-data]], the [=CBOR=] [=authenticator extension input=] value of each processed
-[=authenticator extension=] is included in the extensions data part of the [=authenticator data=]. This part is a CBOR map, with
+The [=CBOR=] [=authenticator extension input=] value of each processed
+[=authenticator extension=] is included in the extensions data part of the authenticator request. This part is a CBOR map, with
 [=CBOR=] [=extension identifier=] values as keys, and the [=CBOR=] [=authenticator extension input=] value of each extension as
 the value.
 
@@ -3016,9 +3119,10 @@ This [=registration extension=] and [=authentication extension=] enables use of 
     The UVI data can be used by servers to understand whether an authentication was authorized by the exact same biometric data
     as the initial key generation. This allows the detection and prevention of "friendly fraud".
 
-    As an example, the UVI could be computed as SHA256(KeyID | SHA256(rawUVI)), where the rawUVI reflects (a) the biometric
-    reference data, (b) the related OS level user ID and (c) an identifier which changes whenever a factory reset is performed
-    for the device, e.g. rawUVI = biometricReferenceData | OSLevelUserID | FactoryResetCounter.
+    As an example, the UVI could be computed as SHA256(KeyID || SHA256(rawUVI)), where `||` represents concatenation, and the
+    rawUVI reflects (a) the biometric reference data, (b) the related OS level user ID and (c) an identifier which changes
+    whenever a factory reset is performed for the device, e.g. rawUVI = biometricReferenceData || OSLevelUserID ||
+    FactoryResetCounter.
 
     Servers supporting UVI extensions MUST support a length of up to 32 bytes for the UVI value.
 
@@ -3186,7 +3290,7 @@ IANA "WebAuthn Attestation Statement Format Identifier" registry established by 
 - Specification Document: Section [[#tpm-attestation]] of this specification
     <br/><br/>
 - WebAuthn Attestation Statement Format Identifier: android-key
-- Description: Platform-provided authenticators based on Android versions "N", and later, may provide this proprietary "hardware
+- Description: Platform-provided authenticators based on versions "N", and later, may provide this proprietary "hardware
     attestation" statement.
 - Specification Document: Section [[#android-key-attestation]] of this specification
     <br/><br/>
@@ -3273,6 +3377,18 @@ IANA COSE Algorithms registry [[!IANA-COSE-ALGS-REG]].
 - Description: RSASSA-PKCS1-v1_5 w/ SHA-512
 - Reference: Section 8.2 of [[RFC8017]]
 - Recommended: No
+    <br/><br/>
+- Name: ED256
+- Value: -260
+- Description: TPM_ECC_BN_P256 curve w/ SHA-256
+- Reference: Section 4.2 of [[!FIDOEcdaaAlgorithm]]
+- Recommended: Yes
+    <br/><br/>
+- Name: ED512
+- Value: -261
+- Description: ECC_BN_ISOP512 curve w/ SHA-512
+- Reference: Section 4.2 of [[!FIDOEcdaaAlgorithm]]
+- Recommended: Yes
 
 # Sample scenarios # {#sample-scenarios}
 
@@ -3334,7 +3450,7 @@ The sample code for generating and registering a new key follows:
 
       // User:
       user: {
-        id: "1098237235409872"
+        id: "1098237235409872",
         name: "john.p.smith@example.com",
         displayName: "John P. Smith",
         icon: "https://pics.acme.com/00/p/aBjjjpqPb.png"
@@ -3488,9 +3604,9 @@ extension for transaction authorization.
     var options = {
                     challenge: encoder.encode("climb a mountain"),
                     timeout: 60000,  // 1 minute
-                    allowCredentials: [acceptableCredential1, acceptableCredential2];
+                    allowCredentials: [acceptableCredential1, acceptableCredential2],
                     extensions: { 'webauthn.txauth.simple':
-                       "Wave your hands in the air like you just don't care" };
+                       "Wave your hands in the air like you just don't care" }
                   };
 
     navigator.credentials.get({ "publicKey": options })
@@ -3650,6 +3766,13 @@ Axel Nennker, Kimberly Paulhamus, Adam Powers, Yaron Sheffer, Mike West, Jeffrey
     "title": "FIDO U2F Raw Message Formats",
     "href": "https://fidoalliance.org/specs/fido-u2f-v1.1-id-20160915/fido-u2f-raw-message-formats-v1.1-id-20160915.html",
     "status": "FIDO Alliance Implementation Draft"
+  },
+
+  "FIDO-CTAP": {
+    "authors": ["R. Lindemann", "V. Bharadwaj", "A. Czeskis", "M. B. Jones"],
+    "title": "FIDO 2.0: Client to Authenticator Protocol",
+    "href": "",
+    "status": "FIDO Alliance Working Draft"
   },
 
   "CDDL": {
