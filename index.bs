@@ -1678,31 +1678,42 @@ session to exist at any particular time, or by providing more complicated sessio
 The following operations can be invoked by the client in an authenticator session.
 
 
-### The <dfn>authenticatorMakeCredential</dfn> operation ### {#op-make-cred}
+<h4 id="op-make-cred" algorithm>The <dfn>authenticatorMakeCredential</dfn> operation</h4>
 
 This operation must be invoked in an authenticator session which has no other operations in progress. It takes the following
 input parameters:
 
-- The caller's [=RP ID=], as <a href='#CreateCred-DetermineRpId'>determined</a> by the user agent and the client.
-- The [=hash of the serialized client data=], provided by the client.
-- The [=[RP]=]'s {{PublicKeyCredentialRpEntity}}.
-- The user account's {{PublicKeyCredentialUserEntity}}, containing the [=user handle=] given by the [=[RP]=].
-- A sequence of pairs of {{PublicKeyCredentialType}} and {{COSEAlgorithmIdentifier}} requested by the [=[RP]=].
-    This sequence is ordered from most preferred to least
-    preferred. The platform makes a best-effort to create the most preferred credential that it can.
-- An optional list of {{PublicKeyCredentialDescriptor}} objects provided by the [=[RP]=] with the intention that, if any of
+: |rpId|
+:: The caller's [=RP ID=], as <a href='#CreateCred-DetermineRpId'>determined</a> by the user agent and the client.
+: |hash|
+:: The [=hash of the serialized client data=], provided by the client.
+: |rpEntity|
+:: The [=[RP]=]'s {{PublicKeyCredentialRpEntity}}.
+: |userEntity|
+:: The user account's {{PublicKeyCredentialUserEntity}}, containing the [=user handle=] given by the [=[RP]=].
+: |credTypesAndPubKeyAlgs|
+:: A sequence of pairs of {{PublicKeyCredentialType}} and public key algorithms ({{COSEAlgorithmIdentifier}}) requested by the
+    [=[RP]=]. This sequence is ordered from most preferred to least preferred. The platform makes a best-effort to create the most
+    preferred credential that it can.
+: |excludeCredentialDescriptorList|
+:: An optional list of {{PublicKeyCredentialDescriptor}} objects provided by the [=[RP]=] with the intention that, if any of
     these are known to the authenticator, it should not create a new credential. |excludeCredentialDescriptorList| contains a 
     list of known credentials.
-- The |requireResidentKey| member of the |options|.{{MakePublicKeyCredentialOptions/authenticatorSelection}} dictionary.
-- The |requireUserVerification| member of the |options|.{{MakePublicKeyCredentialOptions/authenticatorSelection}} dictionary.
-- Extension data created by the client based on the extensions requested by the [=[RP]=], if any.
+: |requireResidentKey|
+:: |options|.{{MakePublicKeyCredentialOptions/authenticatorSelection}}.{{requireResidentKey}}.
+: |requireUserVerification|
+:: |options|.{{MakePublicKeyCredentialOptions/authenticatorSelection}}.{{requireUserVerification}}
+: |extensions|
+:: A [=map=] from [=extension identifiers=] to their [=authenticator extension inputs=], created by the client based on the
+    extensions requested by the [=[RP]=], if any.
 
 When this operation is invoked, the authenticator must perform the following procedure:
 1. Check if all the supplied parameters are syntactically well-formed and of the correct length. If not, return an error code
     equivalent to "{{UnknownError}}" and terminate the operation.
-1. Check if at least one of the specified combinations of {{PublicKeyCredentialType}} and cryptographic parameters is supported.
+1. Check if at least one of the specified combinations of {{PublicKeyCredentialType}} and cryptographic parameters in
+    |credTypesAndPubKeyAlgs| is supported.
     If not, return an error code equivalent to "{{NotSupportedError}}" and terminate the operation.
-1. Check if a credential matching any of the supplied {{PublicKeyCredential}} identifiers is present on this authenticator. If
+1. Check if a credential matching an [=list/item=] of |excludeCredentialDescriptorList| is present on this authenticator. If
     so, return an error code equivalent to "{{NotAllowedError}}" and terminate the operation.
 1. If |requireResidentKey| is |true| and the authenticator cannot store a [=Client-side-resident Credential
     Private Key=], return an error code equivalent to "{{ConstraintError}}" and terminate the operation.
@@ -1713,16 +1724,19 @@ When this operation is invoked, the authenticator must perform the following pro
     equivalent to "{{NotAllowedError}}" and terminate the operation. The Authenticator and user agent MAY skip this prompt
     if the Authenticator is a [=platform authenticator=] and |excludeCredentialDescriptorList| is empty.
 1. Once user consent has been obtained, generate a new credential object:
-    1. Generate a set of cryptographic keys using the most preferred combination of {{PublicKeyCredentialType}} and cryptographic
-        parameters supported by this authenticator.
-    1. Generate an identifier for this credential, such that this identifier is globally unique with high probability across all
+    1. Let (|publicKey|,|privateKey|) be a new set of cryptographic keys using the combination of {{PublicKeyCredentialType}}
+        and cryptographic parameters represented by the first [=list/item=] in |credTypesAndPubKeyAlgs| that is supported by
+        this authenticator.
+    1. Let |credentialId| be a new identifier for this credential that is globally unique with high probability across all
         credentials with the same type across all authenticators.
-    1. Associate the credential with the specified [=RP ID=] and [=user handle=].
-    1. Delete any older credentials with the same [=RP ID=] and [=user handle=] that are stored locally by the [=authenticator=].
+    1. Let |userHandle| be <code>|userEntity|.{{PublicKeyCredentialUserEntity/id}}</code>.
+    1. Associate the |credentialId| and |privateKey| with |rpId| and |userHandle|.
+    1. Delete any older credentials with the same |rpId| and |userHandle| that are stored locally by the [=authenticator=].
 1. If any error occurred while creating the new credential object, return an error code equivalent to "{{UnknownError}}" and
     terminate the operation.
-1. Process all the supported extensions requested by the client.
-1. If the [=authenticator=] implements:
+1. Let |processedExtensions| be the result of [=authenticator extension processing=] for each supported extension identifier/input
+    pair in |extensions|.
+1. If the [=authenticator=] supports:
     <dl class="switch">
         :   a per-[=RP ID=] [=signature counter=]
         ::  allocate the counter, associate it with the 
@@ -1730,14 +1744,15 @@ When this operation is invoked, the authenticator must perform the following pro
         :  a global [=signature counter=]
         ::  Use the global [=signature counter=]'s actual value when generating 
               [=authenticator data=].
+        : a per credential [=signature counter=]
+        :: allocate the counter, associate it with the new credential, and initialize the counter value as zero.
     </dl>
 
-- If the authenticator implements a <i>per credential</i> signature counter, then initialize this counter with 0.
-    (Otherwise, the authenticator implements a global signature counter.)
-- Generate the [=authenticator data=] with
-    [=attestation data=] as specified in [[#sec-authenticator-data]]. Use this [=authenticator data=] and the
-    [=hash of the serialized client data=] to create an [=attestation object=] for the new credential using the procedure
-    specified in [[#generating-an-attestation-object]]. For more details on attestation, see [[#sctn-attestation]].
+1. Let |attestationData| be the [=attestation data=] byte array including the |credentialId| and |publicKey|.
+1. Let |authenticatorData| be the byte array specified in [[#sec-authenticator-data]] including |attestationData| and any |processedExtensions|.
+1. Return the [=attestation object=] for the new credential created by the procedure specified in
+    [[#generating-an-attestation-object]] using an authenticator-chosen [=attestation statement format=], |authenticatorData|,
+    and |hash|. For more details on attestation, see [[#sctn-attestation]].
 
 On successful completion of this operation, the authenticator returns the [=attestation object=] to the client.
 
