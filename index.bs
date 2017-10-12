@@ -283,10 +283,10 @@ The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "S
     [=authenticatorGetAssertion=] operation.
 
 : <dfn>Authenticator</dfn>
-:: A cryptographic device used by a [=[WAC]=] to (i) generate a [=public key credential=] and register it with a [=[RP]=],
-    and (ii) subsequently used to cryptographically sign and return, in the form of an [=Authentication Assertion=], a
-    challenge and other data presented by a [=[RP]=] (in concert with the [=[WAC]=]) in order to effect
-    [=authentication=].
+:: A cryptographic entity used by a [=[WAC]=] to (i) generate a [=public key credential=] and register it with a [=[RP]=],
+    and (ii) [=authentication|authenticate=] by potentially [=user verification|verifying the user=], and then 
+    cryptographically signing and returning, in the form of an [=Authentication Assertion=], 
+    a challenge and other data presented by a [=[RP]=] (in concert with the [=[WAC]=]).
 
 : <dfn>Authorization Gesture</dfn>
 :: An [=authorization gesture=] is a physical interaction performed by a user with an authenticator as part of a [=ceremony=],
@@ -1004,7 +1004,7 @@ but short enough that the dangling promise will still be resolved in a reasonabl
 <pre class="idl">
     [SecureContext]
     partial interface PublicKeyCredential {
-        [Unscopable] Promise < boolean > isPlatformAuthenticatorAvailable();
+        static Promise < boolean > isPlatformAuthenticatorAvailable();
     };
 </pre>
 
@@ -1661,7 +1661,10 @@ follows.
 
 ### <dfn>Signature Counter</dfn> Considerations ### {#sign-counter}
 
-Authenticators may implement a [=signature counter=] feature. The [=signature counter=] is incremented for each successful [=authenticatorGetAssertion=] operation by some positive value, and its value is returned to the [=RP=] within the [=authenticator data=]. The [=signature counter=]'s purpose is to aid [=[RPS]=] in detecting cloned authenticators. Clone detection is more important for authenticators with limited protection measures.
+Authenticators MUST implement a [=signature counter=] feature. The [=signature counter=] is incremented for each successful
+[=authenticatorGetAssertion=] operation by some positive value, and its value is returned to the [=[RP]=] within the
+[=authenticator data=]. The [=signature counter=]'s purpose is to aid [=[RPS]=] in detecting cloned authenticators. Clone
+detection is more important for authenticators with limited protection measures.
 
 An [=[RP]=] stores the [=signature counter=] of the most recent [=authenticatorGetAssertion=] operation. Upon a new
 [=authenticatorGetAssertion=] operation, the [=[RP]=] compares the stored [=signature counter=] value with the new
@@ -1669,7 +1672,7 @@ An [=[RP]=] stores the [=signature counter=] of the most recent [=authenticatorG
 
 Detecting a [=signature counter=]  mismatch does not indicate whether the current operation was performed by a cloned authenticator or the original authenticator.  [=[RPS]=] should address this situation appropriately relative to their individual situations, i.e., their risk tolerance. 
 
-Authenticators implementing the [=signature counter=] feature: 
+Authenticators:
 - should implement per-[=RP ID=] [=signature counters=].  This prevents the 
     [=signature counter=] value from being shared between [=[RPS]=] and being possibly employed 
     as a correlation handle for the user. Authenticators may implement a global [=signature counter=], 
@@ -1719,7 +1722,8 @@ When this operation is invoked, the authenticator must perform the following pro
     return an error code equivalent to "{{ConstraintError}}" and terminate the operation.
 1. Prompt the user for consent to create a new credential. The prompt for obtaining this consent is shown by the authenticator
     if it has its own output capability, or by the user agent otherwise. If the user denies consent, return an error code
-    equivalent to "{{NotAllowedError}}" and terminate the operation.
+    equivalent to "{{NotAllowedError}}" and terminate the operation. The Authenticator and user agent MAY skip this prompt
+    if the Authenticator is a [=platform authenticator=] and |excludeCredentialDescriptorList| is empty.
 1. Once user consent has been obtained, generate a new credential object:
     1. Generate a set of cryptographic keys using the most preferred combination of {{PublicKeyCredentialType}} and cryptographic
         parameters supported by this authenticator.
@@ -1730,7 +1734,7 @@ When this operation is invoked, the authenticator must perform the following pro
 1. If any error occurred while creating the new credential object, return an error code equivalent to "{{UnknownError}}" and
     terminate the operation.
 1. Process all the supported extensions requested by the client.
-1. If the [=authenticator=] supports: 
+1. If the [=authenticator=] implements:
     <dl class="switch">
         :   a per-[=RP ID=] [=signature counter=]
         ::  allocate the counter, associate it with the 
@@ -1740,8 +1744,8 @@ When this operation is invoked, the authenticator must perform the following pro
               [=authenticator data=].
     </dl>
 
-- If the authenticator supports a signature counter <i>per credential</i>, then initialize this counter with 0.  
-    (Alternatively, the authenticator might support a global signature counter).
+- If the authenticator implements a <i>per credential</i> signature counter, then initialize this counter with 0.
+    (Otherwise, the authenticator implements a global signature counter.)
 - Generate the [=authenticator data=] with
     [=attested credential data=] as specified in [[#sec-authenticator-data]]. Use this [=authenticator data=] and the
     [=hash of the serialized client data=] to create an [=attestation object=] for the new credential using the procedure
@@ -1772,10 +1776,9 @@ When this method is invoked, the [=authenticator=] must perform the following pr
     this [=public key credential|credential=]. The prompt for obtaining this [=user consent|consent=] may be shown by the
     [=authenticator=] if it has its own output capability, or by the user agent otherwise.
 1. Process all the supported extensions requested by the client.
-1. If the [=signature counter=] feature is supported, increment the [=RP ID=]-associated 
+1. Increment the [=RP ID=]-associated
     [=signature counter=] or the global [=signature counter=] value, depending on 
-    which approach is implemented by the [=authenticator=] by some positive value.  Otherwise, use a value 
-    of zero (0) for the [=signature counter=] value when generating the [=authenticator data=].
+    which approach is implemented by the [=authenticator=] by some positive value.
 1. Generate the [=authenticator data=] as specified in
     [[#sec-authenticator-data]], though without [=attested credential data=]. 
 1. Concatenate this [=authenticator data=] with the [=hash of
@@ -1971,7 +1974,7 @@ WebAuthn supports multiple attestation types:
         is called "active".
 
 : <dfn>Elliptic Curve based Direct Anonymous Attestation</dfn> (<dfn>ECDAA</dfn>)
-:: In this case, the Authenticator receives direct anonymous attestation (<dfn>DAA</dfn>]) credentials from a single DAA-Issuer.
+:: In this case, the Authenticator receives direct anonymous attestation (<dfn>DAA</dfn>) credentials from a single DAA-Issuer.
     These DAA credentials are used along with blinding to sign the [=attested credential data=]. The concept of blinding avoids
     the DAA credentials being misused as global correlation handle. WebAuthn supports DAA using elliptic curve cryptography and
     bilinear pairings, called [=ECDAA=] (see [[FIDOEcdaaAlgorithm]]) in this specification. Consequently we denote the DAA-Issuer
@@ -2206,10 +2209,10 @@ When verifying a given {{PublicKeyCredential}} structure (|credential|) as part 
                   the authenticator may be cloned, i.e. at least 
                   two copies of the [=credential private key=] may exist and are  
                   being used in parallel. [=[RPS]=] should incorporate this information  
-                  into their risk scoring.  Whether the [=RP=] updates the 
+                  into their risk scoring.  Whether the [=[RP]=] updates the 
                   stored [=signature counter=] value in this case, or not, or fails the 
                   [=authentication|authentication ceremony=] or not, is 
-                  [=RP=]-specific. </dd>
+                  [=[RP]=]-specific. </dd>
            </dl>
 
 12. If all the above steps are successful, continue with the authentication ceremony as appropriate. Otherwise, fail the
