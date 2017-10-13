@@ -7,7 +7,8 @@ fi
 
 bikeshed/bikeshed.py update
 cp -a bikeshed/bikeshed/spec-data/* .spec-data/
+cp -a bikeshed/bikeshed/boilerplate/webauthn/* .bikeshed-include/
 
 echo "Now be sure to run:"
-echo " git add .spec-data/"
+echo " git add .spec-data/ ./bikeshed-include/"
 echo ""
