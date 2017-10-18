@@ -682,30 +682,25 @@ When this method is invoked, the user agent MUST execute the following algorithm
 
 1. Let |clientDataHash| be the [=hash of the serialized client data=] represented by |clientDataJSON|.
 
-1. Let |currentlyAvailableAuthenticators| be a new [=ordered set=] consisting of all [=authenticators=]
-    currently available on this platform.
+1. Let |lifetimeTimer| be a timer for |adjustedTimeout| milliseconds.
 
-1. Let |selectedAuthenticators| be a new [=ordered set=].
+1. Let |issuedRequests| be a new [=ordered set=].
 
-1. If |currentlyAvailableAuthenticators| [=list/is empty=], return a {{DOMException}} whose name is
-    "{{NotFoundError}}", and terminate this algorithm.
+1. If <code>|options|.{{MakePublicKeyCredentialOptions/authenticatorSelection}}</code> is
+    [=present|present=], [=set/for each=] |authenticator| that becomes available on this
+    platform during the lifetime of |lifetimeTimer| and do the following:
 
-1. If <code>|options|.{{MakePublicKeyCredentialOptions/authenticatorSelection}}</code> is [=present|present=], iterate through
-        |currentlyAvailableAuthenticators| and do the following [=set/for each=] |authenticator|:
+    Issue: The definitions of "lifetime of" and "becomes available" are intended to represent how
+    devices are hotplugged into browsers, and are under-specified. Resolving this with good definitions
+    or some other means will be addressed by resolving [Issue #613](https://github.com/w3c/webauthn/issues/613).
+
     1. If {{AuthenticatorSelectionCriteria/authenticatorAttachment}} is [=present|present=] and its value is not equal
         to |authenticator|'s attachment modality, [=iteration/continue=].
     1. If {{AuthenticatorSelectionCriteria/requireResidentKey}} is set to |true| and the |authenticator|
         is not capable of storing a [=Client-Side-Resident Credential Private Key=], [=iteration/continue=].
     1. If {{AuthenticatorSelectionCriteria/requireUserVerification}} is set to |true| and the
         |authenticator| is not capable of performing [=user verification=], [=iteration/continue=].
-    1. [=set/Append=] |authenticator| to |selectedAuthenticators|.
 
-1. If |selectedAuthenticators| [=list/is empty=], return a {{DOMException}} whose name is
-    "{{ConstraintError}}", and terminate this algoritm.
-
-1. Let |issuedRequests| be a new [=ordered set=].
-
-1. [=set/For each=] |authenticator| in |currentlyAvailableAuthenticators|:
     1. Let |excludeCredentialDescriptorList| be a new [=list=].
 
     1. [=list/For each=] credential descriptor |C| in <code>|options|.{{MakePublicKeyCredentialOptions/excludeCredentials}}</code>:
@@ -725,13 +720,11 @@ When this method is invoked, the user agent MUST execute the following algorithm
 
     1. [=set/Append=] |authenticator| to |issuedRequests|.
 
-1. Start a timer for |adjustedTimeout| milliseconds.
-
-1. [=While=] |issuedRequests| [=list/is not empty=], perform the following actions depending upon the |adjustedTimeout| timer
-    and responses from the authenticators:
+1. [=While=] |issuedRequests| [=list/is not empty=], perform the following actions depending upon the
+    |lifetimeTimer| timer and responses from the authenticators:
     <dl class="switch">
 
-        :   If the |adjustedTimeout| timer expires,
+        :   If the |lifetimeTimer| timer expires,
         ::  [=set/For each=] |authenticator| in |issuedRequests| invoke the [=authenticatorCancel=] operation on |authenticator|
             and [=set/remove=] |authenticator| from |issuedRequests|.
 
@@ -908,12 +901,16 @@ method is invoked, the user agent MUST:
 
 1. Let |issuedRequests| be a new [=ordered set=].
 
-1. If there are no [=authenticators=] currently available on this platform, return a {{DOMException}} whose name is
-    "{{NotFoundError}}", and terminate this algorithm.
-
 1. Let |authenticator| be a platform-specific handle whose value identifies an [=authenticator=].
 
-1. For each |authenticator| currently available on this platform, perform the following steps:
+1. Let |lifetimeTimer| be a timer for |adjustedTimeout| milliseconds.
+
+1. [=set/For each=] |authenticator| that becomes available on this platform during the lifetime of
+    |lifetimeTimer|, perform the following steps:
+
+    Issue: The definitions of "lifetime of" and "becomes available" are intended to represent how
+    devices are hotplugged into browsers, and are under-specified. Resolving this with good definitions
+    or some other means will be addressed by resolving [Issue #613](https://github.com/w3c/webauthn/issues/613).
 
     1. Let |allowCredentialDescriptorList| be a new [=list=].
 
@@ -969,16 +966,14 @@ method is invoked, the user agent MUST:
 
     1. [=set/Append=] |authenticator| to |issuedRequests|.
 
+1. Execute the following steps [=in parallel=]. The [=task source=] for these [=tasks=] is the [=dom manipulation task source=].
 
-1. Start a timer for |adjustedTimeout| milliseconds. Then execute the following steps [=in parallel=]. The [=task source=] for
-    these [=tasks=] is the [=dom manipulation task source=].
-
-    1. While |issuedRequests| [=list/is not empty=], perform the following actions depending upon the |adjustedTimeout| timer
+    1. While |issuedRequests| [=list/is not empty=], perform the following actions depending upon the |lifetimeTimer| timer
         and responses from the authenticators:
 
         <dl class="switch">
 
-            :   If the |adjustedTimeout| timer expires,
+            :   If the |lifetimeTimer| timer expires,
             ::  [=set/For each=] |authenticator| in |issuedRequests| invoke the [=authenticatorCancel=] operation on
                 |authenticator| and [=set/remove=] |authenticator| from |issuedRequests|.
 
