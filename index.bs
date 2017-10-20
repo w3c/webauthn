@@ -52,11 +52,6 @@ Markup Shorthands: css off, markdown on
 </pre>
 
 <pre class="anchors">
-
-spec: DOM; urlPrefix: https://dom.spec.whatwg.org/
-    type: interface
-        text: AbortSignal; url: #abortsignal
-
 spec: ECMAScript; urlPrefix: https://tc39.github.io/ecma262/#
     type: method
         for: JSON; text: stringify; url: sec-json.stringify
@@ -97,14 +92,14 @@ spec: credential-management-1; urlPrefix: https://w3c.github.io/webappsec-creden
             text: create(); url: dom-credentialscontainer-create
 
 spec: mixed-content; urlPrefix: www.w3.org/TR/mixed-content/
-    type: dfn 
+    type: dfn
         text: a priori authenticated
 </pre> <!-- class=anchors -->
 
 <pre class="link-defaults">
+spec:credential-management; type:dfn; text:credentials
 spec:html; type:dfn; for:environment settings object; text:global object
 spec:infra; type:dfn; text:list
-spec:infra; type:dfn; for:struct; text:item
 spec:url; type:dfn; text:domain
 spec:url; type:dfn; for:url; text:host
 spec:url; type:dfn; text:valid domain;
@@ -140,7 +135,7 @@ is [=Registration=], where a [=public key credential=] is created on an [=authen
 with the present user's account (the account may already exist or may be created at this time). The second is
 [=Authentication=], where the [=[RP]=] is presented with an <em>[=Authentication Assertion=]</em> proving the presence
 and consent of the user who registered the [=public key credential=]. Functionally, the [=Web Authentication API=] comprises
-a {{PublicKeyCredential}} which extends the Credential Management API [[!CREDENTIAL-MANAGEMENT-1]], and infrastructure which
+a {{PublicKeyCredential}} which extends the Credential Management API [[CREDENTIAL-MANAGEMENT-1]], and infrastructure which
 allows those credentials to be used with {{CredentialsContainer/create()|navigator.credentials.create()}} and
 {{CredentialsContainer/get()|navigator.credentials.get()}}. The former is used during [=Registration=], and the
 latter during [=Authentication=].
@@ -202,19 +197,32 @@ A variety of additional use cases and configurations are also possible, includin
 
 # Conformance # {#conformance}
 
-This specification defines criteria for a [=Conforming User Agent=]: A User Agent MUST behave as described in this
-specification in order to be considered conformant. [=Conforming User Agents=] MAY implement algorithms given in this
-specification in any way desired, so long as the end result is indistinguishable from the result that would be obtained by the
-specification's algorithms. A conforming User Agent MUST also be a conforming implementation of the IDL fragments of this
-specification, as described in the “Web IDL” specification. [[!WebIDL-1]]
+This specification defines three conformance classes. Each of these classes is specified so that conforming members of the class
+are secure against non-conforming or hostile members of the other classes.
 
-This specification also defines a model of a conformant [=authenticator=] (see [[#authenticator-model]]). This is a set of
-functional and security requirements for an authenticator to be usable by a [=Conforming User Agent=]. As described in
-[[#use-cases]], an authenticator may be implemented in the operating system underlying the User Agent, or in external hardware,
-or a combination of both.
+## User Agents ## {#conforming-user-agents}
 
+A User Agent MUST behave as described by [[#api]] in order to be considered conformant. [=Conforming User Agents=] MAY implement
+algorithms given in this specification in any way desired, so long as the end result is indistinguishable from the result that
+would be obtained by the specification's algorithms.
 
-## Dependencies ## {#dependencies}
+A conforming User Agent MUST also be a conforming implementation of the IDL fragments of this specification, as described in the
+“Web IDL” specification. [[!WebIDL-1]]
+
+## Authenticators ## {#conforming-authenticators}
+
+An [=authenticator=] MUST provide the operations defined by [[#authenticator-model]], and those operations MUST behave as
+described there. This is a set of functional and security requirements for an authenticator to be usable by a [=Conforming User
+Agent=].
+
+As described in [[#use-cases]], an authenticator may be implemented in the operating system underlying the User Agent, or in
+external hardware, or a combination of both.
+
+## [RPS] ## {#conforming-relying-parties}
+
+A [=[RP]=] MUST behave as described in [[#rp-operations]] to get the security benefits offered by this specification.
+
+# Dependencies # {#dependencies}
 
 This specification relies on several other underlying specifications, listed
 below and in [[#index-defined-elsewhere]].
@@ -472,11 +480,11 @@ The {{PublicKeyCredential}} interface inherits from {{Credential}} [[!CREDENTIAL
 that are returned to the caller when a new credential is created, or a new assertion is requested.
 
 <xmp class="idl">
-    [SecureContext]
+    [SecureContext, Exposed=Window]
     interface PublicKeyCredential : Credential {
         [SameObject] readonly attribute ArrayBuffer              rawId;
         [SameObject] readonly attribute AuthenticatorResponse    response;
-        [SameObject] readonly attribute AuthenticationExtensions clientExtensionResults;
+        AuthenticationExtensions getClientExtensionResults();
     };
 </xmp>
 <dl dfn-type="attribute" dfn-for="PublicKeyCredential">
@@ -495,8 +503,8 @@ that are returned to the caller when a new credential is created, or a new asser
         the {{PublicKeyCredential}} was created in response to {{CredentialsContainer/get()}}, and this attribute's value
         will be an {{AuthenticatorAssertionResponse}}.
 
-    :   <dfn>clientExtensionResults</dfn>
-    ::  This attribute contains a [=map=] containing [=extension identifier=] → [=client extension output=] entries
+    :   {{PublicKeyCredential/getClientExtensionResults()}}
+    ::  This operation returns a [=map=] containing [=extension identifier=] → [=client extension output=] entries
         produced by the extension's [=client extension processing=].
 
     :   <dfn>\[[type]]</dfn>
@@ -575,11 +583,11 @@ When this method is invoked, the user agent MUST execute the following algorithm
 
 1. Let |options| be the value of <code>|options|.{{CredentialCreationOptions/publicKey}}</code>.
 
-1. If any of the {{PublicKeyCredentialEntity/name}} member of |options|.{{MakePublicKeyCredentialOptions/rp}}, the
-    {{PublicKeyCredentialEntity/name}} member of |options|.{{MakePublicKeyCredentialOptions/user}},
-    the {{PublicKeyCredentialUserEntity/displayName}} member of |options|.{{MakePublicKeyCredentialOptions/user}},
+1. If any of the {{PublicKeyCredentialEntity/name}} member of <code>|options|.{{MakePublicKeyCredentialOptions/rp}}</code>, the
+    {{PublicKeyCredentialEntity/name}} member of <code>|options|.{{MakePublicKeyCredentialOptions/user}}</code>,
+    the {{PublicKeyCredentialUserEntity/displayName}} member of <code>|options|.{{MakePublicKeyCredentialOptions/user}}</code>,
     or the {{PublicKeyCredentialUserEntity/id}}
-    member of |options|.{{MakePublicKeyCredentialOptions/user}} are [=present|not present=], return a {{TypeError}} [=simple exception=].
+    member of <code>|options|.{{MakePublicKeyCredentialOptions/user}}</code> are [=present|not present=], return a {{TypeError}} [=simple exception=].
 
 1. If the {{MakePublicKeyCredentialOptions/timeout}} member of |options| is [=present=], check if its value lies within a
     reasonable range as defined by the platform and if not, correct it to the closest value lying within that range. Set
@@ -604,17 +612,24 @@ When this method is invoked, the user agent MUST execute the following algorithm
 <!-- Note: this next step is actually a top-level step, but bikeshed wanted it indented this much in order to compile w/o errors
 -->
     <li id='CreateCred-DetermineRpId'>
-       If |options|.{{MakePublicKeyCredentialOptions/rp}}.{{PublicKeyCredentialRpEntity/id}} is [=present=]:
 
-        1. If |options|.{{MakePublicKeyCredentialOptions/rp}}.{{PublicKeyCredentialRpEntity/id}} [=is not a registrable domain suffix of
-            and is not equal to=] |effectiveDomain|, return a {{DOMException}} whose name is "{{SecurityError}}", and terminate
-            this algorithm.
+        If <code>|options|.{{MakePublicKeyCredentialOptions/rp}}.{{PublicKeyCredentialEntity/id}}</code>
+            <dl class="switch">
 
-        1. Set |rpId| to |options|.{{MakePublicKeyCredentialOptions/rp}}.{{PublicKeyCredentialRpEntity/id}}.
+                :   Is [=present=]
+                ::  If <code>|options|.{{MakePublicKeyCredentialOptions/rp}}.{{PublicKeyCredentialEntity/id}}</code> [=is not a
+                    registrable domain suffix of and is not equal to=] |effectiveDomain|, return a {{DOMException}} whose name
+                    is "{{SecurityError}}", and terminate this algorithm.
 
-            Note: |rpId| represents the caller's [=RP ID=]. The [=RP ID=] defaults to being the caller's [=environment settings
-            object/origin=]'s [=effective domain=] unless the caller has explicitly set
-            |options|.{{MakePublicKeyCredentialOptions/rp}}.{{PublicKeyCredentialRpEntity/id}} when calling
+                :   Is [=present|not present=]
+                ::  Set <code>|options|.{{MakePublicKeyCredentialOptions/rp}}.{{PublicKeyCredentialEntity/id}}</code> to
+                    |effectiveDomain|.
+            </dl>
+
+        Note: <code>|options|.{{MakePublicKeyCredentialOptions/rp}}.{{PublicKeyCredentialEntity/id}}</code> represents the
+            caller's [=RP ID=]. The [=RP ID=] defaults to being the caller's [=environment settings object/origin=]'s
+            [=effective domain=] unless the caller has explicitly set
+            <code>|options|.{{MakePublicKeyCredentialOptions/rp}}.{{PublicKeyCredentialEntity/id}}</code> when calling
             {{CredentialsContainer/create()}}.
     </li>
 
@@ -630,8 +645,7 @@ When this method is invoked, the user agent MUST execute the following algorithm
         |credTypesAndPubKeyAlgs|.
 
 1. If |credTypesAndPubKeyAlgs| [=list/is empty=] and <code>|options|.{{MakePublicKeyCredentialOptions/pubKeyCredParams}}</code>
-    [=list/is not empty=], return a {{DOMException}} whose name is "{{NotSupportedError}}",
-    and terminate this algorithm.
+    [=list/is not empty=], return a {{DOMException}} whose name is "{{NotSupportedError}}", and terminate this algorithm.
 
 1. Let |clientExtensions| be a new [=map=] and let |authenticatorExtensions| be a new [=map=].
 
@@ -692,77 +706,100 @@ When this method is invoked, the user agent MUST execute the following algorithm
 
 1. [=set/For each=] |authenticator| in |currentlyAvailableAuthenticators|:
     1. Let |excludeCredentialDescriptorList| be a new [=list=].
+
     1. [=list/For each=] credential descriptor |C| in <code>|options|.{{MakePublicKeyCredentialOptions/excludeCredentials}}</code>:
         1. If <code>|C|.{{transports}}</code> [=list/is not empty=], and |authenticator| is connected over a transport not
             mentioned in <code>|C|.{{transports}}</code>, the client MAY [=continue=].
         1. Otherwise, [=list/Append=] |C| to |excludeCredentialDescriptorList|.
-    1. [=In parallel=], invoke the [=authenticatorMakeCredential=] operation on |authenticator| with |rpId|,
-        |clientDataHash|, |options|.{{MakePublicKeyCredentialOptions/rp}}, |options|.{{MakePublicKeyCredentialOptions/user}},
+
+<!-- @@EDITOR-ANCHOR-01A: KEEP THIS LIST SYNC'D WITH THE LIST UP AT @@EDITOR-ANCHOR-01B -->
+    1. Invoke the [=authenticatorMakeCredential=] operation on |authenticator| with
+        |clientDataHash|,
+        <code>|options|.{{MakePublicKeyCredentialOptions/rp}}</code>, <code>|options|.{{MakePublicKeyCredentialOptions/user}}</code>,
         <code>|options|.{{MakePublicKeyCredentialOptions/authenticatorSelection}}.{{AuthenticatorSelectionCriteria/requireResidentKey}}</code>,
-        |credTypesAndPubKeyAlgs|, |excludeCredentialDescriptorList|, and |authenticatorExtensions| as parameters.
+        <code>|options|.{{MakePublicKeyCredentialOptions/authenticatorSelection}}.{{AuthenticatorSelectionCriteria/requireUserVerification}}</code>,
+        |credTypesAndPubKeyAlgs|,
+        |excludeCredentialDescriptorList|,
+        and |authenticatorExtensions| as parameters.
+
     1. [=set/Append=] |authenticator| to |issuedRequests|.
 
 1. Start a timer for |adjustedTimeout| milliseconds.
 
-1. [=While=] |issuedRequests| [=list/is not empty=], perform the following actions in parallel depending upon the |adjustedTimeout| 
-    timer and responses from the authenticators but abort if the operation is [=terminated=]:
+1. [=While=] |issuedRequests| [=list/is not empty=], perform the following actions depending upon the |adjustedTimeout| timer
+    and responses from the authenticators:
     <dl class="switch">
 
-    :   If the |adjustedTimeout| timer expires,
-    ::  [=set/For each=] |authenticator| in |issuedRequests| invoke the [=authenticatorCancel=] operation on |authenticator|
-        and [=set/remove=] |authenticator| from |issuedRequests|.</dd>
+        :   If the |adjustedTimeout| timer expires,
+        ::  [=set/For each=] |authenticator| in |issuedRequests| invoke the [=authenticatorCancel=] operation on |authenticator|
+            and [=set/remove=] |authenticator| from |issuedRequests|.
 
-    :   If the <code>|options|.{{MakePublicKeyCredentialOptions/signal}}</code> is [=present=] and and the 
-        [=AbortSignal/aborted flag=] is set to false,
-    ::  [=set/For each=] |authenticator| in |issuedRequests| invoke the [=authenticatorCancel=] operation on |authenticator|
-        and [=set/remove=] |authenticator| from |issuedRequests|.</dd> Set the [=AbortSignal/aborted flag=] be true. Then 
-        reject the promise with an {{AbortError}} {{DOMException}}. 
+        :   If the <code>|options|.{{MakePublicKeyCredentialOptions/signal}}</code> is [=present=] and and the 
+            [=AbortSignal/aborted flag=] is set to false,
+        ::  [=set/For each=] |authenticator| in |issuedRequests| invoke the [=authenticatorCancel=] operation on |authenticator|
+            and [=set/remove=] |authenticator| from |issuedRequests|.</dd> Set the [=AbortSignal/aborted flag=] be true. Then 
+            reject the promise with an {{AbortError}} {{DOMException}}. 
 
-    :   If any |authenticator| returns a status indicating that the user cancelled the operation,</dt>
-    ::  1. [=set/Remove=] |authenticator| from |issuedRequests|.
-        2. [=set/For each=] remaining |authenticator| in |issuedRequests| invoke the [=authenticatorCancel=] operation on
-            |authenticator| and [=set/remove=] it from |issuedRequests|.
+        :   If any |authenticator| returns a status indicating that the user cancelled the operation,
+        ::  1. [=set/Remove=] |authenticator| from |issuedRequests|.
+            2. [=set/For each=] remaining |authenticator| in |issuedRequests| invoke the [=authenticatorCancel=] operation on
+                |authenticator| and [=set/remove=] it from |issuedRequests|.
 
-    :   If any |authenticator| returns an error status,
-    ::  [=set/Remove=] |authenticator| from |issuedRequests|.</dd>
+        :   If any |authenticator| returns an error status,
+        ::  [=set/Remove=] |authenticator| from |issuedRequests|.
 
-    :   If any |authenticator| indicates success,
-    ::  1.  [=set/Remove=] |authenticator| from |issuedRequests|.
+        :   If any |authenticator| indicates success,
+        ::  1.  [=set/Remove=] |authenticator| from |issuedRequests|.
 
-        2.  Let |credentialCreationData| be a [=struct=] whose [=items=] are:
+            1.  Let |credentialCreationData| be a [=struct=] whose [=items=] are:
 
-            :   <code><dfn>attestationObjectResult</dfn></code>
-            ::  whose value is the bytes returned from the successful [=authenticatorMakeCredential=] operation.
+                :   <code><dfn>attestationObjectResult</dfn></code>
+                ::  whose value is the bytes returned from the successful [=authenticatorMakeCredential=] operation.
 
-                Note: this value is <code>attObj</code>, as defined in [[#generating-an-attestation-object]].
+                    Note: this value is <code>attObj</code>, as defined in [[#generating-an-attestation-object]].
 
-            :   <code><dfn>clientDataJSONResult</dfn></code>
-            ::  whose value is the bytes of |clientDataJSON|.
+                :   <code><dfn>clientDataJSONResult</dfn></code>
+                ::  whose value is the bytes of |clientDataJSON|.
 
-            :   <code><dfn>extensionOutputsMap</dfn></code>
-            ::  whose value is an [=ordered map=] with [=map/keys=] of type [=extension identifier=]
-                and [=map/values=] of type [=client extension output=].
-                <code>[=extensionOutputsMap=]</code>'s [=map/entries=] are
-                created by running each extension's [=client extension processing=] algorithm to create the [=client
-                extension outputs=], for each [=client extension=] in <code>{{AuthenticatorResponse/clientDataJSON}}.clientExtensions</code>.
+                :   <code><dfn>clientExtensionResults</dfn></code>
+                ::  whose value is an {{AuthenticationExtensions}} object containing [=extension identifier=] →
+                    [=client extension output=] entries. The entries are created by running each extension's
+                    [=client extension processing=] algorithm to create the [=client extension outputs=], for each
+                    [=client extension=] in <code>{{AuthenticatorResponse/clientDataJSON}}.clientExtensions</code>.
 
-        3.  Let |value| be a [=struct=] whose [=items=] are:
+            1.  Let |constructCredentialAlg| be an algorithm that takes a [=global object=]
+                |global|, and whose steps are:
 
-            :   <code><dfn>constructResultantCredentialCallback</dfn></code>
-            ::  whose value is a Web IDL {{Function}} [=callback function type=] value implementing the
-                steps defined in [[#constructResultantCredentialCallback]].
+                1.  Let |attestationObject| be a new {{ArrayBuffer}}, created using |global|'s [=%ArrayBuffer%=], containing the
+                    bytes of <code>|credentialCreationData|.[=attestationObjectResult=]</code>'s value.
 
-            :   <code><dfn>credentialCreationDataInstance</dfn></code>
-            ::  whose value is |credentialCreationData|.
+                1.  Let |id| be <code>|attestationObject|.authData.[=attestedCredentialData=].[=credentialId=]</code>.
 
-            ISSUE: <code>[=constructResultantCredentialCallback=]</code> and
-                <code>[=credentialCreationDataInstance=]</code> should actually not be defined here (?) and link back
-                to their definitions in [[!CREDENTIAL-MANAGEMENT-1]] (?).
+                1.  Let |pubKeyCred| be a new {{PublicKeyCredential}} object associated with |global| whose fields are:
 
-        5. [=set/For each=] remaining |authenticator| in |issuedRequests| invoke the [=authenticatorCancel=] operation on
-            |authenticator| and [=set/remove=] it from |issuedRequests|.
+                    :   {{PublicKeyCredential/[[identifier]]}}
+                    ::  |id|
 
-        6. Return |value| and terminate this algorithm.
+                    :   {{PublicKeyCredential/response}}
+                    ::  A new {{AuthenticatorAttestationResponse}} object associated with |global| whose fields are:
+
+                        :   {{AuthenticatorResponse/clientDataJSON}}
+                        ::  A new {{ArrayBuffer}}, created using |global|'s [=%ArrayBuffer%=], containing the bytes of
+                            <code>|credentialCreationData|.[=clientDataJSONResult=]</code>.
+
+                        :   {{AuthenticatorAttestationResponse/attestationObject}}
+                        ::  |attestationObject|
+
+                Issue: need to place [=clientExtensionResults=] data somewhere such that the data is subsequently available
+                    to RP script when the latter invokes `PublicKeyCredential.getClientExtensionResults()`.
+                    See [issue #657](https://github.com/w3c/webauthn/issues/657).
+
+                1.  Return |pubKeyCred|.
+
+            1. [=set/For each=] remaining |authenticator| in |issuedRequests| invoke the [=authenticatorCancel=] operation on
+                |authenticator| and [=set/remove=] it from |issuedRequests|.
+
+            1. Return |constructCredentialAlg| and terminate this algorithm.
 
     </dl>
 
@@ -773,77 +810,32 @@ authorizing an authenticator.
 </div>
 
 
-#### Construct the resultant credential - `constructResultantCredentialCallback` method #### {#constructResultantCredentialCallback}
+### Use an existing credential to make an assertion ### {#getAssertion}
 
-This method's purpose is to map |credentialCreationData|'s [=items=] into a new {{PublicKeyCredential}} object associated
-with the caller's [=environment settings object/global object=], while running on the main [=event loop=]. See also
-[[!CREDENTIAL-MANAGEMENT-1]].
+[=[RPS]=] call <code><a idl for="CredentialsContainer" lt="get()">navigator.credentials.get({publicKey:..., ...})</a></code> to
+discover and use an existing [=public key credential=], with the user's consent. The script optionally specifies some criteria
+to indicate what [=credential sources=] are acceptable to it. The user agent and/or platform locates [=credential sources=]
+matching the specified criteria, and guides the user to pick one that the script will be allowed to use. The user may choose to
+decline the entire interaction even if a [=credential source=] is present, for example to maintain privacy. If the user picks a
+[=credential source=], the user agent then uses
+[[#op-get-assertion]] to sign a [RP]-provided challenge and other collected data into an assertion, which is used as a
+[=credential=].
 
-This algorithm accepts two arguments:
+The {{CredentialsContainer/get()}} implementation [[CREDENTIAL-MANAGEMENT-1]] calls
+<code>PublicKeyCredential.{{PublicKeyCredential/[[CollectFromCredentialStore]]()}}</code> to collect any [=credentials=] that
+should be available without [=user mediation=] (roughly, this specification's [=authorization gesture=]), and if it doesn't find
+exactly one of those, it calls <code>PublicKeyCredential.{{PublicKeyCredential/[[DiscoverFromExternalSource]]()}}</code> to have
+the user select a [=credential source=].
 
-    :   <code>[=credentialCreationDataInstance=]</code>
-    ::  whose value is the [=struct=] |credentialCreationData| as defined in [[#createCredential]], above.
+Since this specification requires an [=authorization gesture=] to create any [=credentials=], <code>PublicKeyCredential.<dfn
+for="PublicKeyCredential" method>\[[CollectFromCredentialStore]](options)</dfn></code> inherits the default behavior of
+{{Credential/[[CollectFromCredentialStore]]()|Credential.[[CollectFromCredentialStore]]()}}, of returning an empty set.
 
-    :   |global|
-    ::  Which must be its caller's [=current settings object=]'s [=environment settings object/global object=].
-
-When this method is invoked, the user agent MUST execute the following algorithm:
-
-1.  Let |attestationObject| be a new {{ArrayBuffer}}, created using |global|'s [=%ArrayBuffer%=], containing the
-    bytes of |credentialCreationData|.<code>[=attestationObjectResult=]</code>'s value.
-
-3.  Let |id| be |attestationObject|<code>.authData.attestation data.credential ID</code> (see [[#sec-attestation-data]]
-    and [[#sec-authenticator-data]]).
-
-4.  Let |pubKeyCred| be a new {{PublicKeyCredential}} object associated with |global| whose fields are:
-
-    :   {{PublicKeyCredential/[[identifier]]}}
-    ::  |id|
-
-    :   {{PublicKeyCredential/response}}
-    ::  A new {{AuthenticatorAttestationResponse}} object associated with |global| whose fields are:
-
-        :   {{AuthenticatorResponse/clientDataJSON}}
-        ::  A new {{ArrayBuffer}}, created using |global|'s [=%ArrayBuffer%=], containing the bytes of
-            |credentialCreationData|.<code>[=clientDataJSONResult=]</code>.
-
-        :   {{AuthenticatorAttestationResponse/attestationObject}}
-        ::  |attestationObject|
-
-    :   {{PublicKeyCredential/clientExtensionResults}}
-    ::  A new {{AuthenticationExtensions}} object associated with |global| containing the bytes
-        of |credentialCreationData|.<code>[=extensionOutputsMap=]</code>'s value.
-
-        Note: |credentialCreationData|.<code>[=extensionOutputsMap=]</code> is an [=ordered map=] whose [=map/keys=] are all
-        of type [=extension identifiers=] and [=map/values=] are all of type [=client extension output=]. Thus the
-        latter is implicitly a [=record type=], which is the {{AuthenticationExtensions}}'s type.
-
-5.  Return |pubKeyCred|.
-
-
-### Use an existing credential to make an assertion - PublicKeyCredential's `[[DiscoverFromExternalSource]](options)` method ### {#getAssertion}
+<h5 id="discover-from-external-source" algorithm>PublicKeyCredential's `[[DiscoverFromExternalSource]](options)` method</h5>
 
 <div link-for-hint="PublicKeyCredential/[[DiscoverFromExternalSource]](options)">
-The <dfn for="PublicKeyCredential" method>\[[DiscoverFromExternalSource]](options)</dfn> method is used to discover and use an
-existing [=public key credential=], with the user's consent. The script optionally specifies some criteria to indicate what
-credentials are acceptable to it. The user agent and/or platform locates credentials matching the specified criteria, and guides
-the user to pick one that the script will be allowed to use. The user may choose not to provide a credential even if one is
-present, for example to maintain privacy.
-
-Note: This algorithm is synchronous; the {{Promise}} resolution/rejection is handled by
-{{CredentialsContainer/get()|navigator.credentials.get()}}.
-
-This method accepts a single argument:
-
-<dl dfn-type="argument" dfn-for="PublicKeyCredential/[[DiscoverFromExternalSource]](options)">
-    :   <dfn>options</dfn>
-    ::  This argument is a {{CredentialRequestOptions}} object whose
-        <code>|options|.{{CredentialRequestOptions/publicKey}}</code> member contains a challenge and additional options as
-        described in [[#assertion-options]]. The selected authenticator signs the challenge along with other collected data in
-        order to produce an assertion. See [[#op-get-assertion]].
-</dl>
-
-When this method is invoked, the user agent MUST execute the following algorithm:
+When the <code>PublicKeyCredential.<dfn for="PublicKeyCredential" method>\[[DiscoverFromExternalSource]](options)</dfn></code>
+method is invoked, the user agent MUST:
 
 1. Assert: <code>|options|.{{CredentialRequestOptions/publicKey}}</code> is [=present=].
 
@@ -991,96 +983,55 @@ When this method is invoked, the user agent MUST execute the following algorithm
 
         <dl class="switch">
 
-        :   If the |adjustedTimeout| timer expires,
-        ::  [=set/For each=] |authenticator| in |issuedRequests| invoke the [=authenticatorCancel=] operation on |authenticator|
-            and [=set/remove=] |authenticator| from |issuedRequests|.
+            :   If the |adjustedTimeout| timer expires,
+            ::  [=set/For each=] |authenticator| in |issuedRequests| invoke the [=authenticatorCancel=] operation on
+                |authenticator| and [=set/remove=] |authenticator| from |issuedRequests|.
 
-        :   If the {{PublicKeyCredentialRequestOptions/signal}} member is [=present=] and the [=AbortSignal/aborted flag=] is set to 
-            false,
-        ::  [=set/For each=] |authenticator| in |issuedRequests| invoke the [=authenticatorCancel=] operation on |authenticator|
-            and [=set/remove=] |authenticator| from |issuedRequests|.</dd> Set the [=AbortSignal/aborted flag=] be true. Then 
-            reject the promise with an {{AbortError}} {{DOMException}}. 
+            :   If the {{PublicKeyCredentialRequestOptions/signal}} member is [=present=] and the [=AbortSignal/aborted flag=] is set to 
+                false,
+            ::  [=set/For each=] |authenticator| in |issuedRequests| invoke the [=authenticatorCancel=] operation on |authenticator|
+                and [=set/remove=] |authenticator| from |issuedRequests|.</dd> Set the [=AbortSignal/aborted flag=] be true. Then 
+                reject the promise with an {{AbortError}} {{DOMException}}. 
 
-        :   If any |authenticator| returns a status indicating that the user cancelled the operation,
-        ::  1. [=set/Remove=] |authenticator| from |issuedRequests|.
-            2. [=set/For each=] remaining |authenticator| in |issuedRequests| invoke the [=authenticatorCancel=] operation on
-                |authenticator| and [=set/remove=] it from |issuedRequests|.
+            :   If any |authenticator| returns a status indicating that the user cancelled the operation,
+            ::  1. [=set/Remove=] |authenticator| from |issuedRequests|.
+                2. [=set/For each=] remaining |authenticator| in |issuedRequests| invoke the [=authenticatorCancel=] operation
+                    on |authenticator| and [=set/remove=] it from |issuedRequests|.
 
-        :   If any |authenticator| returns an error status,
-        ::  [=set/Remove=] |authenticator| from |issuedRequests|.
+            :   If any |authenticator| returns an error status,
+            ::  [=set/Remove=] |authenticator| from |issuedRequests|.
 
-        :   If any |authenticator| indicates success,
-        ::  1.  [=set/Remove=] |authenticator| from |issuedRequests|.
-            2.  Let |value| be a new {{PublicKeyCredential}} associated with |global| whose fields are:
+            :   If any |authenticator| indicates success,
+            ::  1.  [=set/Remove=] |authenticator| from |issuedRequests|.
+                2.  Let |value| be a new {{PublicKeyCredential}} associated with |global| whose fields are:
 
-                :   {{PublicKeyCredential/[[identifier]]}}
-                ::  Create a new {{ArrayBuffer}}, using |global|'s [=%ArrayBuffer%=].
-                        If |savedCredentialId| exists, set the value of the new {{ArrayBuffer}} to be the bytes of
-                        |savedCredentialId|. Otherwise, set the value of the new {{ArrayBuffer}} to be the bytes of the
-                        credential ID returned from the successful [=authenticatorGetAssertion=] operation, as defined in
-                        [[#op-get-assertion]].
-                :   {{PublicKeyCredential/response}}
-                ::  A new {{AuthenticatorAssertionResponse}} object associated with |global| whose fields are:
-                    : {{AuthenticatorResponse/clientDataJSON}}
-                    :: A new {{ArrayBuffer}}, created using |global|'s [=%ArrayBuffer%=], containing the bytes of
-                        |clientDataJSON|
-                    : {{AuthenticatorAssertionResponse/authenticatorData}}
-                    :: A new {{ArrayBuffer}}, created using |global|'s [=%ArrayBuffer%=], containing the bytes of the returned
-                        {{authenticatorData}}
-                    : {{AuthenticatorAssertionResponse/signature}}
-                    :: A new {{ArrayBuffer}}, created using |global|'s [=%ArrayBuffer%=], containing the bytes of the returned
-                        {{signature}}
-                :   {{PublicKeyCredential/clientExtensionResults}}
-                ::  A new {{AuthenticationExtensions}} object containing the [=extension identifier=] → [=client extension
-                    output=] entries created by running each extension's [=client extension processing=] algorithm to create the
-                    [=client extension outputs=], for each [=client extension=] in
-                    {{AuthenticatorResponse/clientDataJSON}}.clientExtensions.
+                    :   {{PublicKeyCredential/[[identifier]]}}
+                    ::  Create a new {{ArrayBuffer}}, using |global|'s [=%ArrayBuffer%=].
+                            If |savedCredentialId| exists, set the value of the new {{ArrayBuffer}} to be the bytes of
+                            |savedCredentialId|. Otherwise, set the value of the new {{ArrayBuffer}} to be the bytes of the
+                            credential ID returned from the successful [=authenticatorGetAssertion=] operation, as defined in
+                            [[#op-get-assertion]].
 
-            3. [=set/For each=] remaining |authenticator| in |issuedRequests| invoke the [=authenticatorCancel=] operation on
-                |authenticator| and [=set/remove=] it from |issuedRequests|.
-            4. Return |value| and terminate this algorithm.
+                    :   {{PublicKeyCredential/response}}
+                    ::  A new {{AuthenticatorAssertionResponse}} object associated with |global| whose fields are:
+                        : {{AuthenticatorResponse/clientDataJSON}}
+                        :: A new {{ArrayBuffer}}, created using |global|'s [=%ArrayBuffer%=], containing the bytes of
+                            |clientDataJSON|.
+                        : {{AuthenticatorAssertionResponse/authenticatorData}}
+                        :: A new {{ArrayBuffer}}, created using |global|'s [=%ArrayBuffer%=], containing the bytes of the
+                            returned {{authenticatorData}}.
+                        : {{AuthenticatorAssertionResponse/signature}}
+                        :: A new {{ArrayBuffer}}, created using |global|'s [=%ArrayBuffer%=], containing the bytes of the
+                            returned {{signature}}.
+                        : {{AuthenticatorAssertionResponse/userHandle}}
+                        :: A new {{ArrayBuffer}}, created using |global|'s [=%ArrayBuffer%=], containing the [=user handle=]
+                            returned from the successful [=authenticatorGetAssertion=] operation, as defined in
+                            [[#op-get-assertion]].
 
-    <dt>If any |authenticator| returns a status indicating that the user cancelled the operation,</dt>
-    <dd>
-        1. [=set/Remove=] |authenticator| from |issuedRequests|.
-        2. [=set/For each=] remaining |authenticator| in |issuedRequests| invoke the [=authenticatorCancel=] operation on
-            |authenticator| and [=set/remove=] it from |issuedRequests|.
-    </dd>
-
-    <dt>If any |authenticator| returns an error status,</dt>
-    <dd>[=set/Remove=] |authenticator| from |issuedRequests|.</dd>
-
-    <dt>If any |authenticator| indicates success,</dt>
-    <dd>
-        1.  [=set/Remove=] |authenticator| from |issuedRequests|.
-        2.  Let |value| be a new {{PublicKeyCredential}} associated with |global| whose fields are:
-
-            :   {{PublicKeyCredential/[[identifier]]}}
-            ::  A new {{ArrayBuffer}}, created using |global|'s [=%ArrayBuffer%=], containing the bytes of the credential ID
-                returned from the successful [=authenticatorGetAssertion=] operation, as defined in [[#op-get-assertion]].
-            :   {{PublicKeyCredential/response}}
-            ::  A new {{AuthenticatorAssertionResponse}} object associated with |global| whose fields are:
-                : {{AuthenticatorResponse/clientDataJSON}}
-                :: A new {{ArrayBuffer}}, created using |global|'s [=%ArrayBuffer%=], containing the bytes of |clientDataJSON|
-                : {{AuthenticatorAssertionResponse/authenticatorData}}
-                :: A new {{ArrayBuffer}}, created using |global|'s [=%ArrayBuffer%=], containing the bytes of the returned
-                    {{authenticatorData}}
-                : {{AuthenticatorAssertionResponse/signature}}
-                :: A new {{ArrayBuffer}}, created using |global|'s [=%ArrayBuffer%=], containing the bytes of the returned
-                    {{signature}}
-                : {{AuthenticatorAssertionResponse/userHandle}}
-                :: A new {{ArrayBuffer}}, created using |global|'s [=%ArrayBuffer%=], containing the [=user handle=] returned from the successful [=authenticatorGetAssertion=]
-                    operation, as defined in [[#op-get-assertion]].
-            :   {{PublicKeyCredential/clientExtensionResults}}
-            ::  A new {{AuthenticationExtensions}} object containing the [=extension identifier=] → [=client extension output=]
-                entries created by running each extension's [=client extension processing=] algorithm to create the [=client
-                extension outputs=], for each [=client extension=] in {{AuthenticatorResponse/clientDataJSON}}.clientExtensions.
-
-        3.  [=set/For each=] remaining |authenticator| in |issuedRequests| invoke the [=authenticatorCancel=] operation on
-            |authenticator| and [=set/remove=] it from |issuedRequests|.
-        4.  Return |value| and terminate this algorithm.
-    </dd>
-    </dl>
+                3. [=set/For each=] remaining |authenticator| in |issuedRequests| invoke the [=authenticatorCancel=] operation
+                    on |authenticator| and [=set/remove=] it from |issuedRequests|.
+                4. Return |value| and terminate this algorithm.
+        </dl>
 
 1. Return a {{DOMException}} whose name is "{{NotAllowedError}}".
 
@@ -1088,6 +1039,26 @@ During the above process, the user agent SHOULD show some UI to the user to guid
 authorizing an authenticator with which to complete the operation.
 </div>
 
+### Store an existing credential - PublicKeyCredential's `[[Store]](credential)` method ### {#storeCredential}
+
+<div link-for-hint="PublicKeyCredential/[[Store]](credential)">
+
+The <dfn for="PublicKeyCredential" method>\[[Store]](credential)</dfn> method is not supported
+for Web Authentication's {{PublicKeyCredential}} type, so it always returns an error.
+
+Note: This algorithm is synchronous; the {{Promise}} resolution/rejection is handled by
+{{CredentialsContainer/store()|navigator.credentials.store()}}.
+
+This method accepts a single argument:
+
+<dl dfn-type="argument" dfn-for="PublicKeyCredential/[[Store]](credential)">
+    :   <dfn>credential</dfn>
+    ::  This argument is a {{PublicKeyCredential}} object.
+</dl>
+
+When this method is invoked, the user agent MUST execute the following algorithm:
+
+1. Return a {{DOMException}} whose name is "{{NotSupportedError}}", and terminate this algorithm
 
 ### Platform Authenticator Availability - PublicKeyCredential's `isPlatformAuthenticatorAvailable()` method ### {#isPlatformAuthenticatorAvailable}
 
@@ -1119,7 +1090,6 @@ this is enough time for successful user interactions to be performed
 but short enough that the dangling promise will still be resolved in a reasonably timely fashion.
 
 <pre class="idl">
-    [SecureContext]
     partial interface PublicKeyCredential {
         static Promise < boolean > isPlatformAuthenticatorAvailable();
     };
@@ -1134,7 +1104,7 @@ but short enough that the dangling promise will still be resolved in a reasonabl
 {{AuthenticatorResponse}} interface:
 
 <pre class="idl">
-    [SecureContext]
+    [SecureContext, Exposed=Window]
     interface AuthenticatorResponse {
         [SameObject] readonly attribute ArrayBuffer      clientDataJSON;
     };
@@ -1153,7 +1123,7 @@ identify it for later use, and metadata that can be used by the [=[RP]=] to asse
 during registration.
 
 <pre class="idl">
-    [SecureContext]
+    [SecureContext, Exposed=Window]
     interface AuthenticatorAttestationResponse : AuthenticatorResponse {
         [SameObject] readonly attribute ArrayBuffer      attestationObject;
     };
@@ -1184,7 +1154,7 @@ aware of. This response contains a cryptographic signature proving possession of
 optionally evidence of [=user consent=] to a specific transaction.
 
 <pre class="idl">
-    [SecureContext]
+    [SecureContext, Exposed=Window]
     interface AuthenticatorAssertionResponse : AuthenticatorResponse {
         [SameObject] readonly attribute ArrayBuffer      authenticatorData;
         [SameObject] readonly attribute ArrayBuffer      signature;
@@ -1616,8 +1586,6 @@ the {{CredentialsContainer/create()}} or {{CredentialsContainer/get()}} methods.
 
 # WebAuthn Authenticator model # {#authenticator-model}
 
-[INFORMATIVE]
-
 The API defined in this specification implies a specific abstract functional model for an [=authenticator=]. This section
 describes the authenticator model.
 
@@ -1705,16 +1673,19 @@ The [=authenticator data=] structure is a byte array of 37 bytes or more, as fol
 
 <table class="complex data longlastcol">
     <tr>
+        <th>Name</th>
         <th>Length (in bytes)</th>
         <th>Description</th>
     </tr>
     <tr>
+        <td><dfn>rpIdHash</dfn></td>
         <td>32</td>
         <td>
             SHA-256 hash of the [=RP ID=] associated with the credential.
         </td>
     </tr>
     <tr>
+        <td><dfn>flags</dfn></td>
         <td>1</td>
         <td>
             Flags (bit 0 is the least significant bit):
@@ -1726,24 +1697,28 @@ The [=authenticator data=] structure is a byte array of 37 bytes or more, as fol
                 - `1` means the user is [=user verified|verified=].
                 - `0` means the user is not [=user verified|verified=].
             - Bits 3-5: Reserved for future use (`RFU2`).
-            - Bit 6: [=Attestation data=] included (`AT`).
-                - Indicates whether the authenticator added [=attestation data=].
+            - Bit 6: [=Attested credential data=] included (`AT`).
+                - Indicates whether the authenticator added [=attested credential data=].
             - Bit 7: Extension data included (`ED`).
-                - Indicates if the [=authenticator data=] has extensions.
+                - Indicates if the [=authenticator data=] has [=authDataExtensions|extensions=].
         </td>
     </tr>
     <tr>
+        <td><dfn>signCount</dfn></td>
         <td>4</td>
-        <td>Signature counter (`signCount`), 32-bit unsigned big-endian integer.</td>
+        <td>[=Signature counter=], 32-bit unsigned big-endian integer.</td>
     </tr>
     <tr>
+        <td><dfn>attestedCredentialData</dfn></td>
         <td>variable (if present)</td>
         <td>
-            [=attestation data=] (if present). See [[#sec-attestation-data]] for details. Its length depends on the length of
-            the [=credential public key=] and credential ID being attested.
+            [=attested credential data=] (if present). See [[#sec-attested-credential-data]] for details. Its length depends on
+            the [=credentialIdLength|length=] of the [=credentialId|credential ID=] and [=credentialPublicKey|credential public
+            key=] being attested.
         </td>
     </tr>
     <tr>
+        <td><dfn lt="authDataExtensions">extensions</dfn></td>
         <td>variable (if present)</td>
         <td>
             Extension-defined [=authenticator data=]. This is a [=CBOR=] [[RFC7049]] map with [=extension identifiers=] as keys,
@@ -1751,6 +1726,10 @@ The [=authenticator data=] structure is a byte array of 37 bytes or more, as fol
         </td>
     </tr>
 </table>
+
+  NOTE: The names in the Name column in the above table are only for reference within this document, and are not present in the
+  actual representation of the [=authenticator data=].
+
 
 The [=RP ID=] is originally received from the client when the credential is created, and again when an assertion is generated.
 However, it differs from other [=client data=] in some important ways. First, unlike the client data, the [=RP ID=] of a
@@ -1762,8 +1741,8 @@ domain suffix of or is equal to=] the [=effective domain=] of the RP's [=origin=
 The `UP` flag SHALL be set if and only if the authenticator detected a user through an authenticator specific gesture. The
 `RFU` bits SHALL be set to zero.
 
-For attestation signatures, the authenticator MUST set the AT flag and include the [=attestation data=]. For authentication
-signatures, the AT flag MUST NOT be set and the [=attestation data=] MUST NOT be included.
+For attestation signatures, the authenticator MUST set the AT flag and include the <code>[=attestedCredentialData=]</code>. For
+authentication signatures, the AT flag MUST NOT be set and the <code>[=attestedCredentialData=]</code> MUST NOT be included.
 
 If the authenticator does not include any extension data, it MUST set the `ED` flag to zero, and to one if
 extension data is included.
@@ -1775,9 +1754,10 @@ The [figure below](#fig-authData) shows a visual representation of the [=authent
     <figcaption>[=Authenticator data=] layout.</figcaption>
 </figure>
 
-Note that the [=authenticator data=] describes its own length: If the AT and ED flags are not set, it is always 37 bytes long.
-The [=attestation data=] (which is only present if the AT flag is set) describes its own length. If the ED flag is set, then the
-total length is 37 bytes plus the length of the [=attestation data=], plus the length of the [=CBOR=] map that follows.
+Note that the [=authenticator data=] describes its own length: If the AT and ED [=flags=] are not set, it is always 37 bytes long.
+The [=attested credential data=] (which is only present if the AT flag is set) describes its own length. If the ED flag is set,
+then the total length is 37 bytes plus the length of the [=attested credential data=], plus the length of the [=CBOR=] map that
+follows.
 
 ### <dfn>Signature Counter</dfn> Considerations ### {#sign-counter}
 
@@ -1786,7 +1766,9 @@ Authenticators MUST implement a [=signature counter=] feature. The [=signature c
 [=authenticator data=]. The [=signature counter=]'s purpose is to aid [=[RPS]=] in detecting cloned authenticators. Clone
 detection is more important for authenticators with limited protection measures.
 
-An [=[RP]=] stores the [=signature counter=] of the most recent [=authenticatorGetAssertion=] operation. Upon a new [=authenticatorGetAssertion=] operation, the [=[RP]=] compares the stored [=signature counter=] value with the new [=signature counter=] value returned in the assertion's [=authenticator data=].  If this new [=signature counter=] value is less than or equal to the stored value, a cloned authenticator may exist, or the authenticator may be malfunctioning.
+An [=[RP]=] stores the [=signature counter=] of the most recent [=authenticatorGetAssertion=] operation. Upon a new
+[=authenticatorGetAssertion=] operation, the [=[RP]=] compares the stored [=signature counter=] value with the new
+<code>[=signCount=]</code> value returned in the assertion's [=authenticator data=].  If this new <code>[=signCount=]</code> value is less than or equal to the stored value, a cloned authenticator may exist, or the authenticator may be malfunctioning.
 
 Detecting a [=signature counter=]  mismatch does not indicate whether the current operation was performed by a cloned authenticator or the original authenticator.  [=[RPS]=] should address this situation appropriately relative to their individual situations, i.e., their risk tolerance. 
 
@@ -1808,31 +1790,41 @@ session to exist at any particular time, or by providing more complicated sessio
 The following operations can be invoked by the client in an authenticator session.
 
 
-### The <dfn>authenticatorMakeCredential</dfn> operation ### {#op-make-cred}
+<h4 id="op-make-cred" algorithm>The <dfn>authenticatorMakeCredential</dfn> operation</h4>
 
 This operation must be invoked in an authenticator session which has no other operations in progress. It takes the following
 input parameters:
 
 <!-- @@EDITOR-ANCHOR-01B: KEEP THIS LIST SYNC'D WITH THE LIST UP AT @@EDITOR-ANCHOR-01A -->
-- The [=hash of the serialized client data=], provided by the client.
-- The [=[RP]=]'s {{PublicKeyCredentialRpEntity}}.
-- The user account's {{PublicKeyCredentialUserEntity}}, containing the [=user handle=] given by the [=[RP]=].
-- A sequence of pairs of {{PublicKeyCredentialType}} and {{COSEAlgorithmIdentifier}} requested by the [=[RP]=].
-    This sequence is ordered from most preferred to least
-    preferred. The platform makes a best-effort to create the most preferred credential that it can.
-- An optional list of {{PublicKeyCredentialDescriptor}} objects provided by the [=[RP]=] with the intention that, if any of
+: |hash|
+:: The [=hash of the serialized client data=], provided by the client.
+: |rpEntity|
+:: The [=[RP]=]'s {{PublicKeyCredentialRpEntity}}.
+: |userEntity|
+:: The user account's {{PublicKeyCredentialUserEntity}}, containing the [=user handle=] given by the [=[RP]=].
+: |requireResidentKey|
+:: |options|.{{MakePublicKeyCredentialOptions/authenticatorSelection}}.{{requireResidentKey}}.
+: |requireUserVerification|
+:: |options|.{{MakePublicKeyCredentialOptions/authenticatorSelection}}.{{requireUserVerification}}.
+: |credTypesAndPubKeyAlgs|
+:: A sequence of pairs of {{PublicKeyCredentialType}} and public key algorithms ({{COSEAlgorithmIdentifier}}) requested by the
+    [=[RP]=]. This sequence is ordered from most preferred to least preferred. The platform makes a best-effort to create the most
+    preferred credential that it can.
+: |excludeCredentialDescriptorList|
+:: An optional list of {{PublicKeyCredentialDescriptor}} objects provided by the [=[RP]=] with the intention that, if any of
     these are known to the authenticator, it should not create a new credential. |excludeCredentialDescriptorList| contains a 
     list of known credentials.
-- The |requireResidentKey| member of the |options|.{{MakePublicKeyCredentialOptions/authenticatorSelection}} dictionary.
-- The |requireUserVerification| member of the |options|.{{MakePublicKeyCredentialOptions/authenticatorSelection}} dictionary.
-- Extension data created by the client based on the extensions requested by the [=[RP]=], if any.
+: |extensions|
+:: A [=map=] from [=extension identifiers=] to their [=authenticator extension inputs=], created by the client based on the
+    extensions requested by the [=[RP]=], if any.
 
 When this operation is invoked, the authenticator must perform the following procedure:
 1. Check if all the supplied parameters are syntactically well-formed and of the correct length. If not, return an error code
     equivalent to "{{UnknownError}}" and terminate the operation.
-1. Check if at least one of the specified combinations of {{PublicKeyCredentialType}} and cryptographic parameters is supported.
+1. Check if at least one of the specified combinations of {{PublicKeyCredentialType}} and cryptographic parameters in
+    |credTypesAndPubKeyAlgs| is supported.
     If not, return an error code equivalent to "{{NotSupportedError}}" and terminate the operation.
-1. Check if a credential matching any of the supplied {{PublicKeyCredential}} identifiers is present on this authenticator. If
+1. Check if a credential matching an [=list/item=] of |excludeCredentialDescriptorList| is present on this authenticator. If
     so, return an error code equivalent to "{{NotAllowedError}}" and terminate the operation.
 1. If |requireResidentKey| is |true| and the authenticator cannot store a [=Client-side-resident Credential
     Private Key=], return an error code equivalent to "{{ConstraintError}}" and terminate the operation.
@@ -1843,16 +1835,19 @@ When this operation is invoked, the authenticator must perform the following pro
     equivalent to "{{NotAllowedError}}" and terminate the operation. The Authenticator and user agent MAY skip this prompt
     if the Authenticator is a [=platform authenticator=] and |excludeCredentialDescriptorList| is empty.
 1. Once user consent has been obtained, generate a new credential object:
-    1. Generate a set of cryptographic keys using the most preferred combination of {{PublicKeyCredentialType}} and cryptographic
-        parameters supported by this authenticator.
-    1. Generate an identifier for this credential, such that this identifier is globally unique with high probability across all
+    1. Let (|publicKey|,|privateKey|) be a new set of cryptographic keys using the combination of {{PublicKeyCredentialType}}
+        and cryptographic parameters represented by the first [=list/item=] in |credTypesAndPubKeyAlgs| that is supported by
+        this authenticator.
+    1. Let |credentialId| be a new identifier for this credential that is globally unique with high probability across all
         credentials with the same type across all authenticators.
-    1. Associate the credential with the specified [=RP ID=] and [=user handle=].
-    1. Delete any older credentials with the same [=RP ID=] and [=user handle=] that are stored locally by the [=authenticator=].
+    1. Let |userHandle| be <code>|userEntity|.{{PublicKeyCredentialUserEntity/id}}</code>.
+    1. Associate the |credentialId| and |privateKey| with <code>|rpEntity|.{{PublicKeyCredentialRpEntity/id}}</code> and |userHandle|.
+    1. Delete any older credentials with the same <code>|rpEntity|.{{PublicKeyCredentialRpEntity/id}}</code> and |userHandle| that are stored locally by the [=authenticator=].
 1. If any error occurred while creating the new credential object, return an error code equivalent to "{{UnknownError}}" and
     terminate the operation.
-1. Process all the supported extensions requested by the client.
-1. If the [=authenticator=] implements:
+1. Let |processedExtensions| be the result of [=authenticator extension processing=] for each supported [=extension identifier=]/input
+    pair in |extensions|.
+1. If the [=authenticator=] supports:
     <dl class="switch">
         :   a per-[=RP ID=] [=signature counter=]
         ::  allocate the counter, associate it with the 
@@ -1860,68 +1855,80 @@ When this operation is invoked, the authenticator must perform the following pro
         :  a global [=signature counter=]
         ::  Use the global [=signature counter=]'s actual value when generating 
               [=authenticator data=].
+        : a per credential [=signature counter=]
+        :: allocate the counter, associate it with the new credential, and initialize the counter value as zero.
     </dl>
 
-- If the authenticator implements a <i>per credential</i> signature counter, then initialize this counter with 0.
-    (Otherwise, the authenticator implements a global signature counter.)
-- Generate the [=authenticator data=] with
-    [=attestation data=] as specified in [[#sec-authenticator-data]]. Use this [=authenticator data=] and the
-    [=hash of the serialized client data=] to create an [=attestation object=] for the new credential using the procedure
-    specified in [[#generating-an-attestation-object]]. For more details on attestation, see [[#sctn-attestation]].
+1. Let |attestedCredentialData| be the [=attested credential data=] byte array including the |credentialId| and |publicKey|.
+1. Let |authenticatorData| be the byte array specified in [[#sec-authenticator-data]], including |attestedCredentialData| as the
+    <code>[=attestedCredentialData=]</code> and |processedExtensions|, if any, as the
+    <code>[=authDataExtensions|extensions=]</code>.
+1. Return the [=attestation object=] for the new credential created by the procedure specified in
+    [[#generating-an-attestation-object]] using an authenticator-chosen [=attestation statement format=], |authenticatorData|,
+    and |hash|. For more details on attestation, see [[#sctn-attestation]].
 
 On successful completion of this operation, the authenticator returns the [=attestation object=] to the client.
 
 
-### The <dfn>authenticatorGetAssertion</dfn> operation ### {#op-get-assertion}
+<h4 id="op-get-assertion" algorithm> The <dfn>authenticatorGetAssertion</dfn> operation</h4>
 
 This operation must be invoked in an authenticator session which has no other operations in progress. It takes the following
 input parameters:
 
-- The caller's [=RP ID=], as <a href='#GetAssn-DetermineRpId'>determined</a> by the user agent and the client.
-- The [=hash of the serialized client data=], provided by the client.
-- A list of credentials acceptable to the [=[RP]=] (possibly filtered by the client), if any.
-- Extension data created by the client based on the extensions requested by the [=[RP]=], if any.
+: |rpId|
+:: The caller's [=RP ID=], as <a href='#GetAssn-DetermineRpId'>determined</a> by the user agent and the client.
+: |hash|
+:: The [=hash of the serialized client data=], provided by the client.
+: |allowCredentialDescriptorList|
+:: An optional list of {{PublicKeyCredentialDescriptor}}s describing credentials acceptable to the [=[RP]=] (possibly filtered
+    by the client), if any.
+: |extensions|
+:: A [=map=] from [=extension identifiers=] to their [=authenticator extension inputs=], created by the client based on the
+    extensions requested by the [=[RP]=], if any.
 
 When this method is invoked, the [=authenticator=] must perform the following procedure:
 1. Check if all the supplied parameters are syntactically well-formed and of the correct length. If not, return an error code
     equivalent to "{{UnknownError}}" and terminate the operation.
-1. If a list of credentials was supplied by the client, filter it by removing those credentials that are not present on this
-    [=authenticator=]. If no list was supplied, create a list with all credentials stored for the caller's [=RP ID=] (as
-    determined by an exact match of the [=RP ID=]).
-1. If the previous step resulted in an empty list, return an error code equivalent to "{{NotAllowedError}}" and terminate the
+1. If |allowCredentialDescriptorList| was not supplied, set it to a list of all credentials stored for |rpId| (as determined by
+    an exact match of |rpId|).
+1. Remove any items from |allowCredentialDescriptorList| that are not present on this [=authenticator=].
+1. If |allowCredentialDescriptorList| is now empty, return an error code equivalent to "{{NotAllowedError}}" and terminate the
     operation.
-1. Prompt the user to select a [=public key credential|credential=] from among the above list. Obtain [=user consent=] for using
-    this [=public key credential|credential=]. The prompt for obtaining this [=user consent|consent=] may be shown by the
+1. Prompt the user to select a [=public key credential|credential=] |selectedCredential| from |allowCredentialDescriptorList|.
+    Obtain [=user consent=] for using |selectedCredential|. The prompt for obtaining this [=user consent|consent=] may be shown
+    by the
     [=authenticator=] if it has its own output capability, or by the user agent otherwise.
-1. Process all the supported extensions requested by the client.
+1. Let |processedExtensions| be the result of [=authenticator extension processing=] for each supported [=extension
+    identifier=]/input pair in |extensions|.
 1. Increment the [=RP ID=]-associated
     [=signature counter=] or the global [=signature counter=] value, depending on 
-    which approach is implemented by the [=authenticator=] by some positive value.
-1. Generate the [=authenticator data=] as specified in
-    [[#sec-authenticator-data]], though without [=attestation data=]. 
-1. Concatenate this [=authenticator data=] with the [=hash of
-    the serialized client data=] to generate an [=assertion signature=] using the [=credential private key|private key=] of the
-    selected [=public key credential|credential=] as shown in [Figure 2](#fig-signature), below. A simple, undelimited
+    which approach is implemented by the [=authenticator=], by some positive value.
+1. Let |authenticatorData| be the byte array specified in [[#sec-authenticator-data]] including |processedExtensions|, if any, as
+    the <code>[=authDataExtensions|extensions=]</code> and excluding <code>[=attestedCredentialData=]</code>.
+1. Let |signature| be the [=assertion signature=] of the concatenation <code>|authenticatorData| || |hash|</code> using the
+    [=credential private key|private key=] of |selectedCredential| as shown in [Figure 2](#fig-signature), below. A simple,
+    undelimited
     concatenation is safe to use here because the [=authenticator data=] describes its own length. The [=hash of the serialized
     client data=] (which potentially has a variable length) is always the last element.
+
+    <figure id="fig-signature">
+        <img src="images/fido-signature-formats-figure2.svg"/>
+        <figcaption>Generating an [=assertion signature=].</figcaption>
+    </figure>
+
 1. If any error occurred while generating the [=assertion signature=], return an error code equivalent to "{{UnknownError}}" and
     terminate the operation.
 
-<figure id="fig-signature">
-    <img src="images/fido-signature-formats-figure2.svg"/>
-    <figcaption>Generating an [=assertion signature=].</figcaption>
-</figure>
+1. Return to the user agent:
+    - |selectedCredential|'s credential ID, if either a list of credentials of length 2 or greater was supplied by the client,
+        or no such list was supplied.
 
-On successful completion, the authenticator returns to the user agent:
-- The identifier of the credential (credential ID) used to generate the [=assertion signature=], if either a list of
-    credentials of length 2 or greater was supplied by the client, or no such list was supplied.
+        Note: If the client supplies a list of exactly one credential and it was successfully employed, then its credential ID
+            is not returned since the client already knows it.
 
-    Note: If the client supplies a list of exactly one credential and it was successfully employed, then its credential ID
-        is not returned since the client already knows it.
-
-- The [=authenticator data=] used to generate the [=assertion signature=].
-- The [=assertion signature=].
-- The [=user handle=] associated with the credential used to generate the [=assertion signature=].
+    - |authenticatorData|
+    - |signature|
+    - The [=user handle=] associated with |selectedCredential|.
 
 If the authenticator cannot find any credential corresponding to the specified [=[RP]=] that matches the specified criteria, it
 terminates the operation and returns an error.
@@ -1952,12 +1959,12 @@ enabling the [=[RP]=] to make a trust decision. However, if an [=attestation key
 MUST perform [=self attestation=] of the [=credential public key=] with the corresponding [=credential private key=]. All this
 information is returned by [=authenticators=] any time a new [=public key credential=] is generated, in the overall form of an
 <dfn>attestation object</dfn>. The relationship of the [=attestation object=] with [=authenticator data=] (containing
-[=attestation data=]) and the [=attestation statement=] is illustrated in [figure 3](#fig-attStructs), below.
+[=attested credential data=]) and the [=attestation statement=] is illustrated in [figure 3](#fig-attStructs), below.
 
 <figure id="fig-attStructs">
     <img src="images/fido-attestation-structures.svg"/>
-    <figcaption>[=Attestation object=] layout illustrating the included [=authenticator data=] (containing [=attestation data=])
-    and the [=attestation statement=].</figcaption>
+    <figcaption>[=Attestation object=] layout illustrating the included [=authenticator data=] (containing [=attested credential
+    data=]) and the [=attestation statement=].</figcaption>
     <div class="note">
         This figure illustrates only the `packed` [=attestation statement format=]. Several additional [=attestation statement
         formats=] are defined in [[#defined-attestation-formats]].
@@ -1998,29 +2005,34 @@ understand the characteristics of the [=authenticators=] that they trust, based 
 [=authenticators=]. For example, the FIDO Metadata Service [[FIDOMetadataService]] provides one way to access such information.
 
 
-### Attestation data ### {#sec-attestation-data}
+### Attested credential data ### {#sec-attested-credential-data}
 
-<dfn>Attestation data</dfn> is added to the [=authenticator data=] when generating an [=attestation object=] for a given
-credential. It has the following format:
+<dfn>Attested credential data</dfn> is a variable-length byte array added to the [=authenticator data=] when generating an [=attestation
+object=] for a given credential. It has the following format:
 
 <table class="complex data longlastcol">
     <tr>
+        <th>Name</th>
         <th>Length (in bytes)</th>
         <th>Description</th>
     </tr>
     <tr>
+        <td><dfn>aaguid</dfn></td>
         <td>16</td>
         <td>The AAGUID of the authenticator.</td>
     </tr>
     <tr>
+        <td><dfn>credentialIdLength</dfn></td>
         <td>2</td>
         <td>Byte length L of Credential ID</td>
     </tr>
     <tr>
+        <td><dfn>credentialId</dfn></td>
         <td>L</td>
         <td>Credential ID</td>
     </tr>
     <tr>
+        <td><dfn>credentialPublicKey</dfn></td>
         <td>variable</td>
         <td>
             The [=credential public key=] encoded in COSE_Key format, as defined in Section 7 of [[!RFC8152]].
@@ -2029,6 +2041,9 @@ credential. It has the following format:
         </td>
     </tr>
 </table>
+
+  NOTE: The names in the Name column in the above table are only for reference within this document, and are not present in the
+  actual representation of the [=attested credential data=].
 
 
 ### Attestation Statement Formats ### {#attestation-formats}
@@ -2090,10 +2105,10 @@ WebAuthn supports multiple attestation types:
 
 : <dfn>Elliptic Curve based Direct Anonymous Attestation</dfn> (<dfn>ECDAA</dfn>)
 :: In this case, the Authenticator receives direct anonymous attestation (<dfn>DAA</dfn>) credentials from a single DAA-Issuer.
-    These DAA credentials are used along with blinding to sign the [=attestation data=]. The concept of blinding avoids the DAA
-    credentials being misused as global correlation handle. WebAuthn supports DAA using elliptic curve cryptography and bilinear
-    pairings, called [=ECDAA=] (see [[FIDOEcdaaAlgorithm]]) in this specification. Consequently we denote the DAA-Issuer as
-    ECDAA-Issuer (see [[FIDOEcdaaAlgorithm]]).
+    These DAA credentials are used along with blinding to sign the [=attested credential data=]. The concept of blinding avoids
+    the DAA credentials being misused as global correlation handle. WebAuthn supports DAA using elliptic curve cryptography and
+    bilinear pairings, called [=ECDAA=] (see [[FIDOEcdaaAlgorithm]]) in this specification. Consequently we denote the DAA-Issuer
+    as ECDAA-Issuer (see [[FIDOEcdaaAlgorithm]]).
 
 
 <h4 id="generating-an-attestation-object" algorithm>Generating an Attestation Object</h4>
@@ -2235,14 +2250,17 @@ When registering a new credential, represented by a {{AuthenticatorAttestationRe
     The up-to-date list of registered WebAuthn Attestation Statement Format Identifier values
     is maintained in the in the IANA registry of the same name [[!WebAuthn-Registries]].
 
-10. Verify that |attStmt| is a correct, validly-signed attestation statement, using the attestation statement format |fmt|'s
-    verification procedure given [=authenticator data=] |authData| and the [=hash of the serialized client data=] computed in
-    step 6.
+10. Verify that |attStmt| is a correct [=attestation statement=], conveying a valid [=attestation signature=], by using the
+    [=attestation statement format=] |fmt|'s verification procedure given |attStmt|, |authData| and the [=hash of the serialized
+    client data=] computed in step 6.
+
+    Note: Each [=attestation statement format=] specifies its own verification procedure. See [[#defined-attestation-formats]] for
+    the initially-defined formats, and [[!WebAuthn-Registries]] for the up-to-date list.
 
 11. If validation is successful, obtain a list of acceptable trust anchors (attestation root certificates or [=ECDAA-Issuer
     public key=]s) for that attestation type and attestation statement format |fmt|, from a trusted source or from policy. For
-    example, the FIDO Metadata Service [[FIDOMetadataService]] provides one way to obtain such information, using the AAGUID in
-    the [=attestation data=] contained in |authData|.
+    example, the FIDO Metadata Service [[FIDOMetadataService]] provides one way to obtain such information, using the
+    <code>[=aaguid=]</code> in the <code>[=attestedCredentialData=]</code> in |authData|.
 
 12. Assess the attestation trustworthiness using the outputs of the verification procedure in step 10, as follows:
         - If [=self attestation=] was used, check if [=self attestation=] is acceptable under [=[RP]=] policy.
@@ -2254,8 +2272,9 @@ When registering a new credential, represented by a {{AuthenticatorAttestationRe
 13. If the attestation statement |attStmt| verified successfully and is found to be trustworthy, then register the new
     credential with the account that was denoted in the
     {{PublicKeyCredential/[[Create]](options)/options}}.{{MakePublicKeyCredentialOptions/user}} passed to
-    {{CredentialsContainer/create()}}, by associating it with the credential ID and credential public key, 
-    and the [=signature counter=] contained in |authData|, as appropriate for the [=[RP]=]'s systems.
+    {{CredentialsContainer/create()}}, by associating it with the <code>[=credentialId=]</code> and
+    <code>[=credentialPublicKey=]</code> in the <code>[=attestedCredentialData=]</code> in |authData|, as appropriate for the
+    [=[RP]=]'s system.
 
 14. If the attestation statement |attStmt| successfully verified but is not trustworthy per step 12 above, the [=[RP]=] SHOULD fail
     the registration ceremony.
@@ -2301,7 +2320,7 @@ When verifying a given {{PublicKeyCredential}} structure (|credential|) as part 
     [=[RP]=] and that the {{CollectedClientData/authenticatorExtensions}} in |C| is also a subset of the extensions
     requested by the [=[RP]=].
 
-8. Verify that the [=RP ID=] hash in |aData| is the SHA-256 hash of the [=RP ID=] expected by the [=[RP]=].
+8. Verify that the <code>[=rpIdHash=]</code> in |aData| is the SHA-256 hash of the [=RP ID=] expected by the [=[RP]=].
 
 9. Let |hash| be the result of computing a hash over the |cData| using the algorithm represented by the
     {{CollectedClientData/hashAlgorithm}} member of |C|.
@@ -2309,16 +2328,16 @@ When verifying a given {{PublicKeyCredential}} structure (|credential|) as part 
 10. Using the credential public key looked up in step 1, verify that |sig| is a valid signature over the binary concatenation of
     |aData| and |hash|.
 
-11. If the [=signature counter=] value |adata|.|signCount| is nonzero or the value stored 
+11. If the [=signature counter=] value |adata|.<code>[=signCount=]</code> is nonzero or the value stored
     in conjunction with |credential|'s {{Credential/id}} attribute
     is nonzero, then run the following substep: 
-      - If the [=signature counter=] value |adata|.|signCount| is
+      - If the [=signature counter=] value |adata|.<code>[=signCount=]</code> is
            <dl class="switch">
               <dt>greater than the [=signature counter=] value stored in conjunction 
                   with |credential|'s {{Credential/id}} attribute.</dt>
               <dd>Update the stored [=signature counter=] value, associated with 
                   |credential|'s {{Credential/id}} attribute, to be the value of 
-                  |adata|.|signCount|.</dd>
+                  |adata|.<code>[=signCount=]</code>.</dd>
 	      <dt>less than or equal to the [=signature counter=] value stored in conjunction 
                   with |credential|'s {{Credential/id}} attribute.</dt>
               <dd>This is an signal that 
@@ -2425,8 +2444,9 @@ implementable by [=authenticators=] with limited resources (e.g., secure element
             attestation private key.
 
         3. If [=ECDAA=] is in use, the authenticator produces |sig| by concatenating |authenticatorData| and |clientDataHash|, and
-            signing the result using ECDAA-Sign (see section 3.5 of [[!FIDOEcdaaAlgorithm]]) with a [=ECDAA-Issuer public key=] selected
-            through an authenticator-specific mechanism (see [[!FIDOEcdaaAlgorithm]]). It sets |alg| to the algorithm of the
+            signing the result using ECDAA-Sign (see section 3.5 of [[!FIDOEcdaaAlgorithm]]) after selecting an
+            [=ECDAA-Issuer public key=] related to the ECDAA signature private key through an 
+	        authenticator-specific mechanism (see [[!FIDOEcdaaAlgorithm]]). It sets |alg| to the algorithm of the selected
             [=ECDAA-Issuer public key=] and |ecdaaKeyId| to the [=identifier of the ECDAA-Issuer public key=] (see above).
 
         4. If [=self attestation=] is in use, the authenticator produces |sig| by concatenating |authenticatorData| and |clientDataHash|,
@@ -2448,7 +2468,7 @@ implementable by [=authenticators=] with limited resources (e.g., secure element
                 attestation public key in |x5c| with the algorithm specified in |alg|.
             - Verify that |x5c| meets the requirements in [[#packed-attestation-cert-requirements]].
             - If |x5c| contains an extension with OID `1 3 6 1 4 1 45724 1 1 4` (id-fido-gen-ce-aaguid) verify that the value of this
-                extension matches the AAGUID in |authenticatorData|.
+                extension matches the <code>[=aaguid=]</code> in |authenticatorData|.
             - If successful, return attestation type Basic and trust path |x5c|.
 
         4. If |ecdaaKeyId| is present, then the attestation type is ECDAA. In this case:
@@ -2457,7 +2477,7 @@ implementable by [=authenticators=] with limited resources (e.g., secure element
             - If successful, return attestation type ECDAA and trust path |ecdaaKeyId|.
 
         5. If neither |x5c| nor |ecdaaKeyId| is present, [=self attestation=] is in use.
-            - Validate that |alg| matches the algorithm of the credential private key in |authenticatorData|.
+            - Validate that |alg| matches the algorithm of the <code>[=credentialPublicKey=]</code> in |authenticatorData|.
             - Verify that |sig| is a valid signature over the concatenation of |authenticatorData| and |clientDataHash| using the
                 credential public key with |alg|.
             - If successful, return attestation type Self and empty trust path.
@@ -2567,8 +2587,8 @@ engine.
     Let |authenticatorData| denote the [=authenticator data claimed to have been used for the attestation=], and let
     |clientDataHash| denote the [=hash of the serialized client data=].
 
-    Verify that the public key specified by the `parameters` and `unique` fields of |pubArea| is identical to the public key
-    contained in the [=attestation data=] inside |authenticatorData|.
+    Verify that the public key specified by the `parameters` and `unique` fields of |pubArea| is identical to the
+    <code>[=credentialPublicKey=]</code> in the <code>[=attestedCredentialData=]</code> in |authenticatorData|.
 
     Concatenate |authenticatorData| and |clientDataHash| to form |attToBeSigned|.
 
@@ -2585,7 +2605,7 @@ engine.
         algorithm specified in |alg|.
     - Verify that |x5c| meets the requirements in [[#tpm-cert-requirements]].
     - If |x5c| contains an extension with OID `1 3 6 1 4 1 45724 1 1 4` (id-fido-gen-ce-aaguid) verify that the value of this
-        extension matches the AAGUID in |authenticatorData|.
+        extension matches the <code>[=aaguid=]</code> in |authenticatorData|.
     - If successful, return attestation type Privacy CA and trust path |x5c|.
 
     If |ecdaaKeyId| is present, then the attestation type is [=ECDAA=].
@@ -2660,14 +2680,14 @@ the attestation=] is consistent with the fields of the attestation certificate's
 
     The authenticator produces |sig| by concatenating |authenticatorData| and |clientDataHash|,
     and signing the result using the credential private key. It sets |alg| to the algorithm of the signature format.
-    
+
 
 : Verification procedure
 :: Verification is performed as follows:
     - Let |authenticatorData| denote the [=authenticator data claimed to have been used for the attestation=], and let
         |clientDataHash| denote the [=hash of the serialized client data=].
     - Verify that the public key in the first certificate in the series of certificates represented by the signature matches the
-        [=credential public key=] in the [=attestation data=] field of |authenticatorData|.
+        <code>[=credentialPublicKey=]</code> in the <code>[=attestedCredentialData=]</code> in |authenticatorData|.
     - Verify that in the attestation certificate extension data:
         - The value of the `attestationChallenge` field is identical to the concatenation of |authenticatorData| and
             |clientDataHash|.
@@ -2799,25 +2819,25 @@ This attestation statement format is used with FIDO U2F authenticators using the
         key over the P-256 curve, terminate this algorithm and return an appropriate error. 
     4. Let |authenticatorData| denote the given [=authenticator data claimed to have been used for the attestation=], 
         and let |clientDataHash| denote the given [=hash of the serialized client data=].
-    5. Extract the claimed [=RP ID=] hash from |authenticatorData|. Extract the claimed |CredentialID| and the 
-        claimed |credential public key| from |authenticatorData|.<code>[=attestation data=]</code>.
+    5. Extract the claimed |rpIdHash| from |authenticatorData|, and the claimed |credentialId| and |credentialPublicKey| from
+        |authenticatorData|.<code>[=attestedCredentialData=]</code>.
     6. If |clientDataHash| is 256 bits long, set |tbsHash| to this value. Otherwise set |tbsHash| to the SHA-256
         hash of |clientDataHash|.
-    7. Convert the COSE_KEY formatted |credential public key| (see Section 7 of [[!RFC8152]]) to CTAP1/U2F public Key 
+    7. Convert the COSE_KEY formatted |credentialPublicKey| (see Section 7 of [[!RFC8152]]) to CTAP1/U2F public Key 
         format [[!FIDO-CTAP]]. 
         - Let |publicKeyU2F| represent the result of the 
             conversion operation and set its first byte to 0x04.
             Note: This signifies uncompressed ECC key format.
         - Extract the value corresponding to the "-2" key 
-            (representing x coordinate) from the |credential public key|, 
+            (representing x coordinate) from |credentialPublicKey|, 
             confirm its size to be of 32 bytes and concatenate it with |publicKeyU2F|.
             If size differs or "-2" key is not found, terminate this algorithm and return an appropriate error.
         - Extract the value corresponding to the "-3" key 
-            (representing y coordinate) from the |credential public key|, 
+            (representing y coordinate) from |credentialPublicKey|, 
             confirm its size to be of 32 bytes and concatenate it with |publicKeyU2F|.
             If size differs or "-3" key is not found, terminate this algorithm and return an appropriate error. 
-    8. Let |verificationData| be the concatenation of (0x00 || SHA-256([=RP ID=]) || 
-        |tbsHash| || |CredentialID| || |publicKeyU2F|) (see Section 4.3 of [[!FIDO-U2F-Message-Formats]]).
+    8. Let |verificationData| be the concatenation of (0x00 || |rpIdHash| || 
+        |tbsHash| || |credentialId| || |publicKeyU2F|) (see Section 4.3 of [[!FIDO-U2F-Message-Formats]]).
     9. Verify the |sig| using |verificationData| and |certificate public key| per [[!SEC1]].
     10. If successful, return attestation type Basic with the trust path set to |x5c|.
 
@@ -2969,7 +2989,7 @@ Supported [=client extensions=] are recorded as a dictionary in the [=client dat
 {{CollectedClientData/clientExtensions}}. For each such extension, the client adds an entry to this dictionary with the
 [=extension identifier=] as the key, and the extension's [=client extension input=] as the value.
 
-Likewise, the [=client extension outputs=] are represented as a dictionary in the {{PublicKeyCredential/clientExtensionResults}}
+Likewise, the [=client extension outputs=] are represented as a dictionary in the result of {{PublicKeyCredential/getClientExtensionResults()}}
 with [=extension identifiers=] as keys, and the <dfn>client extension output</dfn> value of each extension as the value.
 Like the [=client extension input=], the [=client extension output=] is a value that can be encoded in JSON.
 
@@ -3416,7 +3436,7 @@ This section registers the attestation statement formats defined in Section [[#d
 IANA "WebAuthn Attestation Statement Format Identifier" registry established by [[!WebAuthn-Registries]].
 
 - WebAuthn Attestation Statement Format Identifier: packed
-- Description: The "packed" attestation statement format is a WebAuthn-optimized format for attestation data. It uses a very
+- Description: The "packed" attestation statement format is a WebAuthn-optimized format for [=attestation=]. It uses a very
     compact but still extensible encoding method. This format is implementable by authenticators with limited resources (e.g.,
     secure elements).
 - Specification Document: Section [[#packed-attestation]] of this specification
@@ -3587,7 +3607,7 @@ The sample code for generating and registering a new key follows:
 
       // User:
       user: {
-        id: "1098237235409872",
+        id: Uint8Array.from(window.atob("MIIBkzCCATigAwIBAjCCAZMwggE4oAMCAQIwggGTMII="), c=>c.charCodeAt(0)),
         name: "john.p.smith@example.com",
         displayName: "John P. Smith",
         icon: "https://pics.acme.com/00/p/aBjjjpqPb.png"
@@ -3906,10 +3926,11 @@ Axel Nennker, Kimberly Paulhamus, Adam Powers, Yaron Sheffer, Mike West, Jeffrey
   },
 
   "FIDO-CTAP": {
-    "authors": ["R. Lindemann", "V. Bharadwaj", "A. Czeskis", "M. B. Jones"],
+    "authors": ["R. Lindemann", "V. Bharadwaj", "A. Czeskis", "M. B. Jones", "J. Hodges", "A. Kumar", "C. Brand", "J. Verrept",
+        "J. Ehrensvard"],
     "title": "FIDO 2.0: Client to Authenticator Protocol",
-    "href": "",
-    "status": "FIDO Alliance Working Draft"
+    "href": "https://fidoalliance.org/specs/fido-v2.0-rd-20170927/fido-client-to-authenticator-protocol-v2.0-rd-20170927.html",
+    "status": "FIDO Alliance Review Draft"
   },
 
   "CDDL": {
