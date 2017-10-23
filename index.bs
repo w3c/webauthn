@@ -2039,14 +2039,17 @@ template:
     the [=public key credential=] to be attested, the [=authenticator data=] structure containing the <dfn>authenticator data
     for the attestation</dfn>, and the [=hash of the serialized client data=].
 
-- <dfn>Verification procedures</dfn>:
-    The procedure for verifying an [=attestation statement=], which takes as inputs the [=authenticator data=] structure
-    containing the <dfn>authenticator data claimed to have been used for the attestation</dfn> and the [=hash of the serialized
-    client data=], and returns either:
+- <dfn>Verification procedure</dfn>:
+    The procedure for verifying an [=attestation statement=], which takes the following <dfn>verification procedure inputs</dfn>:
+    - |attStmt|: The [=attestation statement=] structure
+    - |authenticatorData|: The  <dfn>[=authenticator data=] claimed to have been used for the attestation</dfn>
+    - |clientDataHash|: The [=hash of the serialized client data=]
+
+    The procedure returns either:
     - An error indicating that the attestation is invalid, or
-    - The attestation type, and the trust path of the attestation. This trust path is either empty (in case of
-        [=self attestation=]), an identifier of a [=ECDAA-Issuer public key=] (in the case of [=ECDAA=]), or a set of X.509
-        certificates.
+    - The [=attestation type=], and the [=attestation trust path|trust path=]. This <dfn>attestation trust path</dfn> is either
+        empty (in case of [=self attestation=]), an identifier of a [=ECDAA-Issuer public key=] (in the case of [=ECDAA=]), or a
+        set of X.509 certificates.
 
 The initial list of specified [=attestation statement formats=] is in [[#defined-attestation-formats]].
 
@@ -2355,6 +2358,7 @@ The following sections present a set of currently-defined and registered attesta
 The up-to-date list of registered WebAuthn Extensions is maintained in the IANA "WebAuthn Attestation Statement Format
 Identifier" registry established by [[!WebAuthn-Registries]].
 
+
 ## Packed Attestation Statement Format ## {#packed-attestation}
 
 This is a WebAuthn optimized attestation statement format. It uses a very compact but still extensible encoding method. It is
@@ -2426,33 +2430,30 @@ implementable by [=authenticators=] with limited resources (e.g., secure element
             omits the other fields.
 
 : Verification procedure
-:: The verification procedure is as follows:
+:: Given the [=verification procedure inputs=] |attStmt|, |authenticatorData| and |clientDataHash|, the verification procedure is
+    as follows:
 
-        1. Perform CBOR decoding on the given attestation statement|attStmt| structure 
-            to obtain the attestation certificate array |x5c|, 
-            and the signature value |sig|. If a decoding error occurs, 
-            terminate this algorithm and return an appropriate error.
-        2. Let |authenticatorData| denote the [=authenticator data claimed to have been used for the attestation=], and let
-            |clientDataHash| denote the [=hash of the serialized client data=].
+        1. Verify that |attStmt| is valid CBOR conforming to the syntax defined above, and perform CBOR decoding on it to extract
+            the contained fields.
 
-        3. If |x5c| is present, this indicates that the attestation type is not [=ECDAA=]. In this case:
+        2. If |x5c| is present, this indicates that the attestation type is not [=ECDAA=]. In this case:
             - Verify that |sig| is a valid signature over the concatenation of |authenticatorData| and |clientDataHash| using the
                 attestation public key in |x5c| with the algorithm specified in |alg|.
             - Verify that |x5c| meets the requirements in [[#packed-attestation-cert-requirements]].
             - If |x5c| contains an extension with OID `1 3 6 1 4 1 45724 1 1 4` (id-fido-gen-ce-aaguid) verify that the value of this
                 extension matches the <code>[=aaguid=]</code> in |authenticatorData|.
-            - If successful, return attestation type Basic and trust path |x5c|.
+            - If successful, return attestation type Basic and [=attestation trust path=] |x5c|.
 
-        4. If |ecdaaKeyId| is present, then the attestation type is ECDAA. In this case:
+        3. If |ecdaaKeyId| is present, then the attestation type is ECDAA. In this case:
             - Verify that |sig| is a valid signature over the concatenation of |authenticatorData| and |clientDataHash| using
                 ECDAA-Verify with [=ECDAA-Issuer public key=] identified by |ecdaaKeyId| (see [[!FIDOEcdaaAlgorithm]]).
-            - If successful, return attestation type ECDAA and trust path |ecdaaKeyId|.
+            - If successful, return attestation type ECDAA and [=attestation trust path=] |ecdaaKeyId|.
 
-        5. If neither |x5c| nor |ecdaaKeyId| is present, [=self attestation=] is in use.
+        4. If neither |x5c| nor |ecdaaKeyId| is present, [=self attestation=] is in use.
             - Validate that |alg| matches the algorithm of the <code>[=credentialPublicKey=]</code> in |authenticatorData|.
             - Verify that |sig| is a valid signature over the concatenation of |authenticatorData| and |clientDataHash| using the
                 credential public key with |alg|.
-            - If successful, return attestation type Self and empty trust path.
+            - If successful, return attestation type Self and empty [=attestation trust path=].
 
 
 ### Packed attestation statement certificate requirements ### {#packed-attestation-cert-requirements}
@@ -2554,10 +2555,11 @@ engine.
     same name, and the |sig| field to the signature obtained from the above procedure.
 
 : Verification procedure
-:: Verify that the given attestation statement is valid CBOR conforming to the syntax defined above.
+:: Given the [=verification procedure inputs=] |attStmt|, |authenticatorData| and |clientDataHash|, the verification procedure is
+    as follows:
 
-    Let |authenticatorData| denote the [=authenticator data claimed to have been used for the attestation=], and let
-    |clientDataHash| denote the [=hash of the serialized client data=].
+    Verify that |attStmt| is valid CBOR conforming to the syntax defined above, and perform CBOR decoding on it to extract the
+    contained fields.
 
     Verify that the public key specified by the `parameters` and `unique` fields of |pubArea| is identical to the
     <code>[=credentialPublicKey=]</code> in the <code>[=attestedCredentialData=]</code> in |authenticatorData|.
@@ -2578,7 +2580,7 @@ engine.
     - Verify that |x5c| meets the requirements in [[#tpm-cert-requirements]].
     - If |x5c| contains an extension with OID `1 3 6 1 4 1 45724 1 1 4` (id-fido-gen-ce-aaguid) verify that the value of this
         extension matches the <code>[=aaguid=]</code> in |authenticatorData|.
-    - If successful, return attestation type Privacy CA and trust path |x5c|.
+    - If successful, return attestation type Privacy CA and [=attestation trust path=] |x5c|.
 
     If |ecdaaKeyId| is present, then the attestation type is [=ECDAA=].
     - Perform ECDAA-Verify on |sig| to verify that it is a valid signature over |certInfo| (see [[!FIDOEcdaaAlgorithm]]).
@@ -2655,9 +2657,10 @@ the attestation=] is consistent with the fields of the attestation certificate's
 
 
 : Verification procedure
-:: Verification is performed as follows:
-    - Let |authenticatorData| denote the [=authenticator data claimed to have been used for the attestation=], and let
-        |clientDataHash| denote the [=hash of the serialized client data=].
+:: Given the [=verification procedure inputs=] |attStmt|, |authenticatorData| and |clientDataHash|, the verification procedure is
+    as follows:
+    - Verify that |attStmt| is valid CBOR conforming to the syntax defined above, and perform CBOR decoding on it to extract the
+        contained fields.
     - Verify that the public key in the first certificate in the series of certificates represented by the signature matches the
         <code>[=credentialPublicKey=]</code> in the <code>[=attestedCredentialData=]</code> in |authenticatorData|.
     - Verify that in the attestation certificate extension data:
@@ -2667,7 +2670,7 @@ the attestation=] is consistent with the fields of the attestation certificate's
             [=RP ID=].
         - The value in the `AuthorizationList.origin` field is equal to `KM_TAG_GENERATED`.
         - The value in the `AuthorizationList.purpose` field is equal to `KM_PURPOSE_SIGN`.
-    - If successful, return attestation type Basic with the trust path set to the entire attestation statement.
+    - If successful, return attestation type Basic with the [=attestation trust path=] set to the entire attestation statement.
 
 
 ## Android SafetyNet Attestation Statement Format ## {#android-safetynet-attestation}
@@ -2719,14 +2722,16 @@ and the identity of the calling application.
     the version of Google Play Services running in the authenticator.
 
 : Verification procedure
-:: Verification is performed as follows:
-    - Verify that the given attestation statement is valid CBOR conforming to the syntax defined above.
+:: Given the [=verification procedure inputs=] |attStmt|, |authenticatorData| and |clientDataHash|, the verification procedure is
+    as follows:
+    - Verify that |attStmt| is valid CBOR conforming to the syntax defined above, and perform CBOR decoding on it to extract the
+        contained fields.
     - Verify that |response| is a valid SafetyNet response of version |ver|.
-    - Verify that the nonce in the |response| is identical to the concatenation of the |authenticatorData| and |clientDataHash|.
+    - Verify that the nonce in the |response| is identical to the concatenation of |authenticatorData| and |clientDataHash|.
     - Verify that the attestation certificate is issued to the hostname "attest.android.com" (see
         [SafetyNet online documentation](https://developer.android.com/training/safetynet/index.html#compat-check-response)).
     - Verify that the `ctsProfileMatch` attribute in the payload of |response| is true.
-    - If successful, return attestation type Basic with the trust path set to the above attestation certificate.
+    - If successful, return attestation type Basic with the [=attestation trust path=] set to the above attestation certificate.
 
 
 ## FIDO U2F Attestation Statement Format ## {#fido-u2f-attestation}
@@ -2781,21 +2786,18 @@ This attestation statement format is used with FIDO U2F authenticators using the
     the attestation public key as |x5c|.
 
 : Verification procedure
-:: Verification is performed as follows:
-    1. Verify that the given attestation statement is valid CBOR conforming to the syntax defined above.
-    2. Perform CBOR decoding on the given attestation statement|attStmt| structure to obtain 
-        the attestation certificate array |x5c|, and the signature value |sig|. If a decoding error occurs, 
-        terminate this algorithm and return an appropriate error.
-    3. Let |attCert| be value of the first element of |x5c|. Let |certificate public key| be the public key 
+:: Given the [=verification procedure inputs=] |attStmt|, |authenticatorData| and |clientDataHash|, the verification procedure is
+    as follows:
+    1. Verify that |attStmt| is valid CBOR conforming to the syntax defined above, and perform CBOR decoding on it to extract the
+        contained fields.
+    2. Let |attCert| be value of the first element of |x5c|. Let |certificate public key| be the public key
         conveyed by |attCert|. If |certificate public key| is not an Elliptic Curve (EC) public 
         key over the P-256 curve, terminate this algorithm and return an appropriate error. 
-    4. Let |authenticatorData| denote the given [=authenticator data claimed to have been used for the attestation=], 
-        and let |clientDataHash| denote the given [=hash of the serialized client data=].
-    5. Extract the claimed |rpIdHash| from |authenticatorData|, and the claimed |credentialId| and |credentialPublicKey| from
+    3. Extract the claimed |rpIdHash| from |authenticatorData|, and the claimed |credentialId| and |credentialPublicKey| from
         |authenticatorData|.<code>[=attestedCredentialData=]</code>.
-    6. If |clientDataHash| is 256 bits long, set |tbsHash| to this value. Otherwise set |tbsHash| to the SHA-256
+    4. If |clientDataHash| is 256 bits long, set |tbsHash| to this value. Otherwise set |tbsHash| to the SHA-256
         hash of |clientDataHash|.
-    7. Convert the COSE_KEY formatted |credentialPublicKey| (see Section 7 of [[!RFC8152]]) to CTAP1/U2F public Key 
+    5. Convert the COSE_KEY formatted |credentialPublicKey| (see Section 7 of [[!RFC8152]]) to CTAP1/U2F public Key 
         format [[!FIDO-CTAP]]. 
         - Let |publicKeyU2F| represent the result of the 
             conversion operation and set its first byte to 0x04.
@@ -2808,10 +2810,10 @@ This attestation statement format is used with FIDO U2F authenticators using the
             (representing y coordinate) from |credentialPublicKey|, 
             confirm its size to be of 32 bytes and concatenate it with |publicKeyU2F|.
             If size differs or "-3" key is not found, terminate this algorithm and return an appropriate error. 
-    8. Let |verificationData| be the concatenation of (0x00 || |rpIdHash| || 
+    6. Let |verificationData| be the concatenation of (0x00 || |rpIdHash| || 
         |tbsHash| || |credentialId| || |publicKeyU2F|) (see Section 4.3 of [[!FIDO-U2F-Message-Formats]]).
-    9. Verify the |sig| using |verificationData| and |certificate public key| per [[!SEC1]].
-    10. If successful, return attestation type Basic with the trust path set to |x5c|.
+    7. Verify the |sig| using |verificationData| and |certificate public key| per [[!SEC1]].
+    8. If successful, return attestation type Basic with the [=attestation trust path=] set to |x5c|.
 
 
 # WebAuthn Extensions # {#extensions}
