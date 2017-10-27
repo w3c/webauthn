@@ -90,6 +90,7 @@ spec: credential-management-1; urlPrefix: https://w3c.github.io/webappsec-creden
     for: Credential
         type: method
             text: [[Create]](origin, options)
+            text: [[DiscoverFromExternalSource]](origin, options)
     for: CredentialsContainer
         type: method
             text: create(); url: dom-credentialscontainer-create
@@ -574,10 +575,7 @@ and {{PublicKeyCredential}}, bound to an [=authenticator=].
 On success, the returned {{promise}} will be resolved with a {{PublicKeyCredential}} containing an
 {{AuthenticatorAttestationResponse}} object.
 
-Note: <strong>This algorithm is synchronous:</strong> the {{Promise}} resolution/rejection is handled by
-{{CredentialsContainer/create()|navigator.credentials.create()}}.
-
-This method accepts a two arguments:
+This method accepts two arguments:
 
 <dl dfn-type="argument" dfn-for="PublicKeyCredential/[[Create]](origin, options)">
 
@@ -590,6 +588,9 @@ This method accepts a two arguments:
         <code>|options|.{{CredentialCreationOptions/publicKey}}</code> member contains a {{MakePublicKeyCredentialOptions}}
         object specifying the desired attributes of the to-be-created [=public key credential=].
 </dl>
+
+Note: <strong>This algorithm is synchronous:</strong> the {{Promise}} resolution/rejection is handled by
+{{CredentialsContainer/create()|navigator.credentials.create()}}.
 
 When this method is invoked, the user agent MUST execute the following algorithm:
 
@@ -814,7 +815,7 @@ authorizing an authenticator.
 ### Use an existing credential to make an assertion ### {#getAssertion}
 
 [=[RPS]=] call <code><a idl for="CredentialsContainer" lt="get()">navigator.credentials.get({publicKey:..., ...})</a></code> to
-discover and use an existing [=public key credential=], with the [=user consent|user's consent=]. The script optionally specifies some criteria
+discover and use an existing [=public key credential=], with the [=user consent|user's consent=]. [=[RP]=] script optionally specifies some criteria
 to indicate what [=credential sources=] are acceptable to it. The user agent and/or platform locates [=credential sources=]
 matching the specified criteria, and guides the user to pick one that the script will be allowed to use. The user may choose to
 decline the entire interaction even if a [=credential source=] is present, for example to maintain privacy. If the user picks a
@@ -824,19 +825,37 @@ decline the entire interaction even if a [=credential source=] is present, for e
 
 The {{CredentialsContainer/get()}} implementation [[CREDENTIAL-MANAGEMENT-1]] calls
 <code>PublicKeyCredential.{{PublicKeyCredential/[[CollectFromCredentialStore]]()}}</code> to collect any [=credentials=] that
-should be available without [=user mediation=] (roughly, this specification's [=authorization gesture=]), and if it doesn't find
-exactly one of those, it calls <code>PublicKeyCredential.{{PublicKeyCredential/[[DiscoverFromExternalSource]]()}}</code> to have
+should be available without [=user mediation=] (roughly, this specification's [=authorization gesture=]), and if it does not find
+exactly one of those, it then calls <code>PublicKeyCredential.{{PublicKeyCredential/[[DiscoverFromExternalSource]]()}}</code> to have
 the user select a [=credential source=].
 
-Since this specification requires an [=authorization gesture=] to create any [=credentials=], <code>PublicKeyCredential.<dfn
-for="PublicKeyCredential" method>\[[CollectFromCredentialStore]](options)</dfn></code> inherits the default behavior of
+Since this specification requires an [=authorization gesture=] to create any [=credentials=], the <code>PublicKeyCredential.<dfn
+for="PublicKeyCredential" method>\[[CollectFromCredentialStore]](options)</dfn></code> [=internal method=] inherits the default behavior of
 {{Credential/[[CollectFromCredentialStore]]()|Credential.[[CollectFromCredentialStore]]()}}, of returning an empty set.
+
 
 <h5 id="discover-from-external-source" algorithm>PublicKeyCredential's `[[DiscoverFromExternalSource]](origin, options)` method</h5>
 
 <div link-for-hint="PublicKeyCredential/[[DiscoverFromExternalSource]](origin, options)">
-When the <code>PublicKeyCredential.<dfn for="PublicKeyCredential" method>\[[DiscoverFromExternalSource]](origin, options)</dfn></code>
-method is invoked, the user agent MUST:
+
+The <code>{{PublicKeyCredential}}.<dfn for="PublicKeyCredential" method>\[[DiscoverFromExternalSource]](origin, options)</dfn></code> [=internal method=] accepts two arguments:
+
+<dl dfn-type="argument" dfn-for="PublicKeyCredential/[[DiscoverFromExternalSource]](origin, options)">
+
+    :   <dfn>origin</dfn>
+    ::  This argument is the [=relevant settings object=]'s [=environment settings object/origin=], as determined by the
+        calling {{CredentialsContainer/get()}} implementation, i.e., {{CredentialsContainer}}'s <a abstract-op>Request a `Credential`</a> abstract operation.
+
+    :   <dfn>options</dfn>
+    ::  This argument is a {{CredentialRequestOptions}} object whose
+        <code>|options|.{{CredentialRequestOptions/publicKey}}</code> member contains a {{PublicKeyCredentialRequestOptions}}
+        object specifying the desired attributes of the [=public key credential=] to discover.
+</dl>
+
+Note: <strong>This algorithm is synchronous:</strong> the {{Promise}} resolution/rejection is handled by
+{{CredentialsContainer/get()|navigator.credentials.get()}}.
+
+When this method is invoked, the user agent MUST execute the following algorithm:
 
 1. Assert: <code>|options|.{{CredentialRequestOptions/publicKey}}</code> is [=present=].
 
@@ -849,9 +868,8 @@ method is invoked, the user agent MUST:
 
 1. Let |global| be the {{PublicKeyCredential}}'s [=interface object=]'s [=relevant global object=].
 
-1. Let |callerOrigin| be the [=environment settings object/origin=] specified by this {{PublicKeyCredential}} [=interface
-    object=]'s [=relevant settings object=]. If |callerOrigin| is an [=opaque origin=], return a {{DOMException}} whose name is
-    "{{NotAllowedError}}", and terminate this algorithm.
+1. Let |callerOrigin| be be {{PublicKeyCredential/[[DiscoverFromExternalSource]](origin, options)/origin}}. If |callerOrigin| is 
+    an [=opaque origin=], return a {{DOMException}} whose name is "{{NotAllowedError}}", and terminate this algorithm.
 
 1. Let |effectiveDomain| be the |callerOrigin|'s [=effective domain=].
     If [=effective domain=] is not a [=valid domain=], then return a
