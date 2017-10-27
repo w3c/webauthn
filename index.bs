@@ -752,15 +752,15 @@ When this method is invoked, the user agent MUST execute the following algorithm
 
             1.  Let |credentialCreationData| be a [=struct=] whose [=items=] are:
 
-                :   <code><dfn>attestationObjectResult</dfn></code>
+                :   <code><dfn for="credentialCreationData">attestationObjectResult</dfn></code>
                 ::  whose value is the bytes returned from the successful [=authenticatorMakeCredential=] operation.
 
                     Note: this value is <code>attObj</code>, as defined in [[#generating-an-attestation-object]].
 
-                :   <code><dfn>clientDataJSONResult</dfn></code>
+                :   <code><dfn for="credentialCreationData">clientDataJSONResult</dfn></code>
                 ::  whose value is the bytes of |clientDataJSON|.
 
-                :   <code><dfn>clientExtensionResults</dfn></code>
+                :   <code><dfn for="credentialCreationData">clientExtensionResults</dfn></code>
                 ::  whose value is an {{AuthenticationExtensions}} object containing [=extension identifier=] →
                     [=client extension output=] entries. The entries are created by running each extension's
                     [=client extension processing=] algorithm to create the [=client extension outputs=], for each
@@ -955,8 +955,13 @@ When this method is invoked, the user agent MUST execute the following algorithm
             ::  1. Let |distinctTransports| be a new [=ordered set=].
 
                 1. If |allowCredentialDescriptorList| has exactly one value, let |savedCredentialId| be a new 
-                    {{PublicKeyCredentialDescriptor}} and set its value to <code>|allowCredentialDescriptorList|[0].id</code>'s
+                    {{PublicKeyCredentialDescriptor}}.{{PublicKeyCredentialDescriptor/id}} and set its value to <code>|allowCredentialDescriptorList|[0].id</code>'s
                     value.
+
+                Issue: I suspect the foregoing step is incorrect. Before this, it (also incorrectly) called for creating an
+                    {{ArrayBuffer}} using PublicKeyCredential's interface object's relevant global object, but we do not have
+                    access to said global object because this entire alg is running in parallel. How do we now create, save, 
+                    and subsequently access (see below) |savedCredentialId|?
 
                 1. [=list/For each=] credential descriptor |C| in |allowCredentialDescriptorList|,
                     [=set/append=] each value, if any, of <code>|C|.{{transports}}</code> to |distinctTransports|.
@@ -1004,7 +1009,7 @@ When this method is invoked, the user agent MUST execute the following algorithm
 
         :   If any |authenticator| returns a status indicating that the user cancelled the operation,
         ::  1. [=set/Remove=] |authenticator| from |issuedRequests|.
-            2. [=set/For each=] remaining |authenticator| in |issuedRequests| invoke the [=authenticatorCancel=] operation
+            1. [=set/For each=] remaining |authenticator| in |issuedRequests| invoke the [=authenticatorCancel=] operation
                 on |authenticator| and [=set/remove=] it from |issuedRequests|.
 
         :   If any |authenticator| returns an error status,
@@ -1012,14 +1017,36 @@ When this method is invoked, the user agent MUST execute the following algorithm
 
         :   If any |authenticator| indicates success,
         ::  1.  [=set/Remove=] |authenticator| from |issuedRequests|.
+
+            1.  Let |assertionCreationData| be a [=struct=] whose [=items=] are:
+
+                :   <code><dfn for="assertionCreationData">credentialId</dfn></code>
+                ::  If |savedCredentialId| exists, set the value of [=credentialId=] to be the bytes of
+                    |savedCredentialId|. Otherwise, set the value of [=credentialId=] to be the bytes of the
+                    credential ID returned from the successful [=authenticatorGetAssertion=] operation, as defined in
+                    [[#op-get-assertion]].
+
+                :   <code><dfn for="assertionCreationData">clientDataJSONResult</dfn></code>
+                ::  whose value is the bytes of |clientDataJSON|.
+
+                :   <code><dfn for="assertionCreationData">authenticatorDataResult</dfn></code>
+                ::  whose value is the bytes of the [=authenticator data=] returned by the [=authenticator=].
+
+                :   <code><dfn for="assertionCreationData">signatureResult</dfn></code>
+                ::  whose value is the bytes of the signature value returned by the [=authenticator=].
+
+                :   <code><dfn for="assertionCreationData">userHandleResult</dfn></code>
+                ::  whose value is the bytes of the [=user handle=] returned by the [=authenticator=].
+
+                :   <code><dfn for="assertionCreationData">clientExtensionResults</dfn></code>
+                ::  whose value is the bytes of ...
+
+
             2.  Let |value| be a new {{PublicKeyCredential}} associated with |global| whose fields are:
 
                 :   {{PublicKeyCredential/[[identifier]]}}
                 ::  Create a new {{ArrayBuffer}}, using |global|'s [=%ArrayBuffer%=].
-                        If |savedCredentialId| exists, set the value of the new {{ArrayBuffer}} to be the bytes of
-                        |savedCredentialId|. Otherwise, set the value of the new {{ArrayBuffer}} to be the bytes of the
-                        credential ID returned from the successful [=authenticatorGetAssertion=] operation, as defined in
-                        [[#op-get-assertion]].
+                        
 
                 :   {{PublicKeyCredential/response}}
                 ::  A new {{AuthenticatorAssertionResponse}} object associated with |global| whose fields are:
@@ -1916,7 +1943,8 @@ When this method is invoked, the [=authenticator=] must perform the following pr
 1. If any error occurred while generating the [=assertion signature=], return an error code equivalent to "{{UnknownError}}" and
     terminate the operation.
 
-1. Return to the user agent:
+    <li id='authenticatorGetAssertion-return-values'>
+    Return to the user agent:
     - |selectedCredential|'s credential ID, if either a list of credentials of length 2 or greater was supplied by the client,
         or no such list was supplied.
 
@@ -1926,6 +1954,7 @@ When this method is invoked, the [=authenticator=] must perform the following pr
     - |authenticatorData|
     - |signature|
     - The [=user handle=] associated with |selectedCredential|.
+    </li>
 
 If the authenticator cannot find any credential corresponding to the specified [=[RP]=] that matches the specified criteria, it
 terminates the operation and returns an error.
