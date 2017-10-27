@@ -954,9 +954,9 @@ When this method is invoked, the user agent MUST execute the following algorithm
             :   [=list/is not empty=]
             ::  1. Let |distinctTransports| be a new [=ordered set=].
 
-                1. If |allowCredentialDescriptorList| has exactly one value, let |savedCredentialId| be a new {{ArrayBuffer}},
-                       created using |global|'s [=%ArrayBuffer%=], and containing the bytes of
-                       <code>|allowCredentialDescriptorList|[0].id</code>.
+                1. If |allowCredentialDescriptorList| has exactly one value, let |savedCredentialId| be a new 
+                    {{PublicKeyCredentialDescriptor}} and set its value to <code>|allowCredentialDescriptorList|[0].id</code>'s
+                    value.
 
                 1. [=list/For each=] credential descriptor |C| in |allowCredentialDescriptorList|,
                     [=set/append=] each value, if any, of <code>|C|.{{transports}}</code> to |distinctTransports|.
@@ -971,19 +971,19 @@ When this method is invoked, the user agent MUST execute the following algorithm
                             configuration knowledge of the appropriate transport to use with |authenticator| in making its
                             selection.
 
-                            Then, using |transport|, invoke [=in parallel=] the [=authenticatorGetAssertion=] operation on
+                            Then, using |transport|, invoke the [=authenticatorGetAssertion=] operation on
                             |authenticator|, with |rpId|, |clientDataHash|, |allowCredentialDescriptorList|, and
                             |authenticatorExtensions| as parameters.
 
                         :   [=list/is empty=]
                         ::  Using local configuration knowledge of the appropriate transport to use with |authenticator|,
-                            invoke [=in parallel=] the [=authenticatorGetAssertion=] operation on |authenticator| with |rpId|,
+                            invoke the [=authenticatorGetAssertion=] operation on |authenticator| with |rpId|,
                             |clientDataHash|, |allowCredentialDescriptorList|, and |clientExtensions| as parameters.
                     </dl>
 
             :   [=list/is empty=]
             ::  Using local configuration knowledge of the appropriate transport to use with |authenticator|, invoke
-                [=in parallel=] the [=authenticatorGetAssertion=] operation on |authenticator| with |rpId|, |clientDataHash|,
+                the [=authenticatorGetAssertion=] operation on |authenticator| with |rpId|, |clientDataHash|,
                 and |clientExtensions| as parameters.
 
                 Note: In this case, the [=[RP]=] did not supply a list of acceptable credential descriptors. Thus the
@@ -993,56 +993,54 @@ When this method is invoked, the user agent MUST execute the following algorithm
 
     1. [=set/Append=] |authenticator| to |issuedRequests|.
 
-1. Execute the following steps [=in parallel=]. The [=task source=] for these [=tasks=] is the [=dom manipulation task source=].
+1. While |issuedRequests| [=list/is not empty=], perform the following actions depending upon |lifetimeTimer|
+    and responses from the authenticators:
 
-    1. While |issuedRequests| [=list/is not empty=], perform the following actions depending upon |lifetimeTimer|
-        and responses from the authenticators:
+    <dl class="switch">
 
-        <dl class="switch">
+        :   If |lifetimeTimer| expires,
+        ::  [=set/For each=] |authenticator| in |issuedRequests| invoke the [=authenticatorCancel=] operation on
+            |authenticator| and [=set/remove=] |authenticator| from |issuedRequests|.
 
-            :   If |lifetimeTimer| expires,
-            ::  [=set/For each=] |authenticator| in |issuedRequests| invoke the [=authenticatorCancel=] operation on
-                |authenticator| and [=set/remove=] |authenticator| from |issuedRequests|.
+        :   If any |authenticator| returns a status indicating that the user cancelled the operation,
+        ::  1. [=set/Remove=] |authenticator| from |issuedRequests|.
+            2. [=set/For each=] remaining |authenticator| in |issuedRequests| invoke the [=authenticatorCancel=] operation
+                on |authenticator| and [=set/remove=] it from |issuedRequests|.
 
-            :   If any |authenticator| returns a status indicating that the user cancelled the operation,
-            ::  1. [=set/Remove=] |authenticator| from |issuedRequests|.
-                2. [=set/For each=] remaining |authenticator| in |issuedRequests| invoke the [=authenticatorCancel=] operation
-                    on |authenticator| and [=set/remove=] it from |issuedRequests|.
+        :   If any |authenticator| returns an error status,
+        ::  [=set/Remove=] |authenticator| from |issuedRequests|.
 
-            :   If any |authenticator| returns an error status,
-            ::  [=set/Remove=] |authenticator| from |issuedRequests|.
+        :   If any |authenticator| indicates success,
+        ::  1.  [=set/Remove=] |authenticator| from |issuedRequests|.
+            2.  Let |value| be a new {{PublicKeyCredential}} associated with |global| whose fields are:
 
-            :   If any |authenticator| indicates success,
-            ::  1.  [=set/Remove=] |authenticator| from |issuedRequests|.
-                2.  Let |value| be a new {{PublicKeyCredential}} associated with |global| whose fields are:
+                :   {{PublicKeyCredential/[[identifier]]}}
+                ::  Create a new {{ArrayBuffer}}, using |global|'s [=%ArrayBuffer%=].
+                        If |savedCredentialId| exists, set the value of the new {{ArrayBuffer}} to be the bytes of
+                        |savedCredentialId|. Otherwise, set the value of the new {{ArrayBuffer}} to be the bytes of the
+                        credential ID returned from the successful [=authenticatorGetAssertion=] operation, as defined in
+                        [[#op-get-assertion]].
 
-                    :   {{PublicKeyCredential/[[identifier]]}}
-                    ::  Create a new {{ArrayBuffer}}, using |global|'s [=%ArrayBuffer%=].
-                            If |savedCredentialId| exists, set the value of the new {{ArrayBuffer}} to be the bytes of
-                            |savedCredentialId|. Otherwise, set the value of the new {{ArrayBuffer}} to be the bytes of the
-                            credential ID returned from the successful [=authenticatorGetAssertion=] operation, as defined in
-                            [[#op-get-assertion]].
+                :   {{PublicKeyCredential/response}}
+                ::  A new {{AuthenticatorAssertionResponse}} object associated with |global| whose fields are:
+                    : {{AuthenticatorResponse/clientDataJSON}}
+                    :: A new {{ArrayBuffer}}, created using |global|'s [=%ArrayBuffer%=], containing the bytes of
+                        |clientDataJSON|.
+                    : {{AuthenticatorAssertionResponse/authenticatorData}}
+                    :: A new {{ArrayBuffer}}, created using |global|'s [=%ArrayBuffer%=], containing the bytes of the
+                        returned {{authenticatorData}}.
+                    : {{AuthenticatorAssertionResponse/signature}}
+                    :: A new {{ArrayBuffer}}, created using |global|'s [=%ArrayBuffer%=], containing the bytes of the
+                        returned {{signature}}.
+                    : {{AuthenticatorAssertionResponse/userHandle}}
+                    :: A new {{ArrayBuffer}}, created using |global|'s [=%ArrayBuffer%=], containing the [=user handle=]
+                        returned from the successful [=authenticatorGetAssertion=] operation, as defined in
+                        [[#op-get-assertion]].
 
-                    :   {{PublicKeyCredential/response}}
-                    ::  A new {{AuthenticatorAssertionResponse}} object associated with |global| whose fields are:
-                        : {{AuthenticatorResponse/clientDataJSON}}
-                        :: A new {{ArrayBuffer}}, created using |global|'s [=%ArrayBuffer%=], containing the bytes of
-                            |clientDataJSON|.
-                        : {{AuthenticatorAssertionResponse/authenticatorData}}
-                        :: A new {{ArrayBuffer}}, created using |global|'s [=%ArrayBuffer%=], containing the bytes of the
-                            returned {{authenticatorData}}.
-                        : {{AuthenticatorAssertionResponse/signature}}
-                        :: A new {{ArrayBuffer}}, created using |global|'s [=%ArrayBuffer%=], containing the bytes of the
-                            returned {{signature}}.
-                        : {{AuthenticatorAssertionResponse/userHandle}}
-                        :: A new {{ArrayBuffer}}, created using |global|'s [=%ArrayBuffer%=], containing the [=user handle=]
-                            returned from the successful [=authenticatorGetAssertion=] operation, as defined in
-                            [[#op-get-assertion]].
-
-                3. [=set/For each=] remaining |authenticator| in |issuedRequests| invoke the [=authenticatorCancel=] operation
-                    on |authenticator| and [=set/remove=] it from |issuedRequests|.
-                4. Return |value| and terminate this algorithm.
-        </dl>
+            3. [=set/For each=] remaining |authenticator| in |issuedRequests| invoke the [=authenticatorCancel=] operation
+                on |authenticator| and [=set/remove=] it from |issuedRequests|.
+            4. Return |value| and terminate this algorithm.
+    </dl>
 
 1. Return a {{DOMException}} whose name is "{{NotAllowedError}}".
 
