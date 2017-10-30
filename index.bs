@@ -784,14 +784,14 @@ When this method is invoked, the user agent MUST execute the following algorithm
 
                         :   {{AuthenticatorResponse/clientDataJSON}}
                         ::  A new {{ArrayBuffer}}, created using |global|'s [=%ArrayBuffer%=], containing the bytes of
-                            <code>|credentialCreationData|.[=clientDataJSONResult=]</code>.
+                            <code>|credentialCreationData|.[=credentialCreationData/clientDataJSONResult=]</code>.
 
                         :   {{AuthenticatorAttestationResponse/attestationObject}}
                         ::  |attestationObject|
 
                     :   {{PublicKeyCredential/[[clientExtensionsResults]]}}
                     ::  A new {{ArrayBuffer}}, created using |global|'s [=%ArrayBuffer%=], containing the bytes of
-                        <code>|credentialCreationData|.[=clientExtensionResults=]</code>.
+                        <code>|credentialCreationData|.[=credentialCreationData/clientExtensionResults=]</code>.
 
                 1.  Return |pubKeyCred|.
 
@@ -956,12 +956,10 @@ When this method is invoked, the user agent MUST execute the following algorithm
 
                 1. If |allowCredentialDescriptorList| has exactly one value, let |savedCredentialId| be a new 
                     {{PublicKeyCredentialDescriptor}}.{{PublicKeyCredentialDescriptor/id}} and set its value to <code>|allowCredentialDescriptorList|[0].id</code>'s
-                    value.
+                    value (see [here](#authenticatorGetAssertion-return-values) in [[#op-get-assertion]] for more information).
 
-                Issue: I suspect the foregoing step is incorrect. Before this, it (also incorrectly) called for creating an
-                    {{ArrayBuffer}} using PublicKeyCredential's interface object's relevant global object, but we do not have
-                    access to said global object because this entire alg is running in parallel. How do we now create, save, 
-                    and subsequently access (see below) |savedCredentialId|?
+                Issue: The foregoing step _may_ be incorrect, in that we are attempting to create |savedCredentialId|
+                    here and use it later below.
 
                 1. [=list/For each=] credential descriptor |C| in |allowCredentialDescriptorList|,
                     [=set/append=] each value, if any, of <code>|C|.{{transports}}</code> to |distinctTransports|.
@@ -1018,11 +1016,11 @@ When this method is invoked, the user agent MUST execute the following algorithm
         :   If any |authenticator| indicates success,
         ::  1.  [=set/Remove=] |authenticator| from |issuedRequests|.
 
-            1.  Let |assertionCreationData| be a [=struct=] whose [=items=] are:
+            1.  Let <var ignore>assertionCreationData</var> be a [=struct=] whose [=items=] are:
 
-                :   <code><dfn for="assertionCreationData">credentialId</dfn></code>
-                ::  If |savedCredentialId| exists, set the value of [=credentialId=] to be the bytes of
-                    |savedCredentialId|. Otherwise, set the value of [=credentialId=] to be the bytes of the
+                :   <code><dfn for="assertionCreationData">credentialIdResult</code>
+                ::  If |savedCredentialId| exists, set the value of [=credentialIdResult=] to be the bytes of
+                    |savedCredentialId|. Otherwise, set the value of [=credentialIdResult=] to be the bytes of the
                     credential ID returned from the successful [=authenticatorGetAssertion=] operation, as defined in
                     [[#op-get-assertion]].
 
@@ -1039,34 +1037,49 @@ When this method is invoked, the user agent MUST execute the following algorithm
                 ::  whose value is the bytes of the [=user handle=] returned by the [=authenticator=].
 
                 :   <code><dfn for="assertionCreationData">clientExtensionResults</dfn></code>
-                ::  whose value is the bytes of ...
+                ::  whose value is an {{AuthenticationExtensions}} object containing [=extension identifier=] →
+                    [=client extension output=] entries. The entries are created by running each extension's
+                    [=client extension processing=] algorithm to create the [=client extension outputs=], for each
+                    [=client extension=] in <code>{{AuthenticatorResponse/clientDataJSON}}.clientExtensions</code>.
 
+            1.  Let |constructAssertionAlg| be an algorithm that takes a [=global object=]
+                |global|, and whose steps are:
 
-            2.  Let |value| be a new {{PublicKeyCredential}} associated with |global| whose fields are:
+                1.  Let |pubKeyCred| be a new {{PublicKeyCredential}} object associated with |global| whose fields are:
 
-                :   {{PublicKeyCredential/[[identifier]]}}
-                ::  Create a new {{ArrayBuffer}}, using |global|'s [=%ArrayBuffer%=].
-                        
+                    :   {{PublicKeyCredential/[[identifier]]}}
+                    ::  A new {{ArrayBuffer}}, created using |global|'s [=%ArrayBuffer%=], containing the bytes of
+                        <code>|assertionCreationData|.[=credentialIdResult=]</code>.
 
-                :   {{PublicKeyCredential/response}}
-                ::  A new {{AuthenticatorAssertionResponse}} object associated with |global| whose fields are:
-                    : {{AuthenticatorResponse/clientDataJSON}}
-                    :: A new {{ArrayBuffer}}, created using |global|'s [=%ArrayBuffer%=], containing the bytes of
-                        |clientDataJSON|.
-                    : {{AuthenticatorAssertionResponse/authenticatorData}}
-                    :: A new {{ArrayBuffer}}, created using |global|'s [=%ArrayBuffer%=], containing the bytes of the
-                        returned {{authenticatorData}}.
-                    : {{AuthenticatorAssertionResponse/signature}}
-                    :: A new {{ArrayBuffer}}, created using |global|'s [=%ArrayBuffer%=], containing the bytes of the
-                        returned {{signature}}.
-                    : {{AuthenticatorAssertionResponse/userHandle}}
-                    :: A new {{ArrayBuffer}}, created using |global|'s [=%ArrayBuffer%=], containing the [=user handle=]
-                        returned from the successful [=authenticatorGetAssertion=] operation, as defined in
-                        [[#op-get-assertion]].
+                    :   {{PublicKeyCredential/response}}
+                    ::  A new {{AuthenticatorAssertionResponse}} object associated with |global| whose fields are:
 
-            3. [=set/For each=] remaining |authenticator| in |issuedRequests| invoke the [=authenticatorCancel=] operation
+                        :   {{AuthenticatorResponse/clientDataJSON}}
+                        ::  A new {{ArrayBuffer}}, created using |global|'s [=%ArrayBuffer%=], containing the bytes of
+                            <code>|assertionCreationData|.[=assertionCreationData/clientDataJSONResult=]</code>.
+
+                        :   {{AuthenticatorAssertionResponse/authenticatorData}}
+                        ::  A new {{ArrayBuffer}}, created using |global|'s [=%ArrayBuffer%=], containing the bytes of
+                            <code>|assertionCreationData|.[=assertionCreationData/authenticatorDataResult=]</code>.
+
+                        :   {{AuthenticatorAssertionResponse/signature}}
+                        ::  A new {{ArrayBuffer}}, created using |global|'s [=%ArrayBuffer%=], containing the bytes of
+                            <code>|assertionCreationData|.[=assertionCreationData/signatureResult=]</code>.
+
+                        :   {{AuthenticatorAssertionResponse/userHandle}}
+                        ::  A new {{ArrayBuffer}}, created using |global|'s [=%ArrayBuffer%=], containing the bytes of
+                            <code>|assertionCreationData|.[=assertionCreationData/userHandleResult=]</code>.
+
+                    :   {{PublicKeyCredential/[[clientExtensionsResults]]}}
+                    ::  A new {{ArrayBuffer}}, created using |global|'s [=%ArrayBuffer%=], containing the bytes of
+                        <code>|assertionCreationData|.[=assertionCreationData/clientExtensionResults=]</code>.
+
+                1.  Return |pubKeyCred|.
+
+            1.  [=set/For each=] remaining |authenticator| in |issuedRequests| invoke the [=authenticatorCancel=] operation
                 on |authenticator| and [=set/remove=] it from |issuedRequests|.
-            4. Return |value| and terminate this algorithm.
+
+            1.  Return |constructAssertionAlg| and terminate this algorithm.
     </dl>
 
 1. Return a {{DOMException}} whose name is "{{NotAllowedError}}".
@@ -1945,15 +1958,16 @@ When this method is invoked, the [=authenticator=] must perform the following pr
 
     <li id='authenticatorGetAssertion-return-values'>
     Return to the user agent:
-    - |selectedCredential|'s credential ID, if either a list of credentials of length 2 or greater was supplied by the client,
-        or no such list was supplied.
+        - |selectedCredential|'s credential ID, if either a list of credentials of length 2 or greater was supplied by the
+            client, or no such list was supplied. Otherwise, return only the below values.
 
-        Note: If the client supplies a list of exactly one credential and it was successfully employed, then its credential ID
-            is not returned since the client already knows it.
+            Note: If the client supplies a list of exactly one credential and it was successfully employed, then its credential
+                ID is not returned since the client already knows it. This saves transmitting these bytes over what may be
+                a constrained connection in what is likely a common case.
 
-    - |authenticatorData|
-    - |signature|
-    - The [=user handle=] associated with |selectedCredential|.
+        - |authenticatorData|
+        - |signature|
+        - The [=user handle=] associated with |selectedCredential|.
     </li>
 
 If the authenticator cannot find any credential corresponding to the specified [=[RP]=] that matches the specified criteria, it
