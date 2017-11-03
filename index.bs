@@ -570,9 +570,9 @@ To support obtaining assertions via {{CredentialsContainer/get()|navigator.crede
 {{CredentialsContainer/create()|navigator.credentials.create()}} to request the creation of a new [=credential key pair=]
 and {{PublicKeyCredential}}, managed by an [=authenticator=].
 On success, the returned {{promise}} will be resolved with a {{PublicKeyCredential}} containing an
-{{AuthenticatorAttestationResponse}} object. If an {{AbortSignal}} object is passed in,
-the developer can abort on going {{CredentialsContainer/create()|navigator.credentials.create()}} operation with 
-the {{AbortController/abort()}} method. 
+{{AuthenticatorAttestationResponse}} object. This {{CredentialsContainer/create()|navigator.credentials.create()}}
+operation can be aborted by leveraging the {{AbortController}}; see 
+[[dom#abortcontroller-api-integration]] for detailed instructions.
 
 Note: This algorithm is synchronous; the {{Promise}} resolution/rejection is handled by
 {{CredentialsContainer/create()|navigator.credentials.create()}}.
@@ -690,6 +690,10 @@ When this method is invoked, the user agent MUST execute the following algorithm
 
 1. Let |clientDataHash| be the [=hash of the serialized client data=] represented by |clientDataJSON|.
 
+1. If the <code>|options|.{{CredentialCreationOptions/signal}}</code> is [=present=] and its 
+    [=AbortSignal/aborted flag=] is set to true, return [=a promise rejected with=] an "{{AbortError}}" 
+    {{DOMException}}.
+
 1. Start |lifetimeTimer|.
 
 1. Let |issuedRequests| be a new [=ordered set=].
@@ -737,11 +741,11 @@ When this method is invoked, the user agent MUST execute the following algorithm
         ::  [=set/For each=] |authenticator| in |issuedRequests| invoke the [=authenticatorCancel=] operation on |authenticator|
             and [=set/remove=] |authenticator| from |issuedRequests|.
 
-        :   If the <code>|options|.{{MakePublicKeyCredentialOptions/signal}}</code> is [=present=] and and the 
-            [=AbortSignal/aborted flag=] is set to false,
-        ::  [=set/For each=] |authenticator| in |issuedRequests| invoke the [=authenticatorCancel=] operation on |authenticator|
-            and [=set/remove=] |authenticator| from |issuedRequests|.</dd> Set the [=AbortSignal/aborted flag=] be true. Then 
-            reject the promise with an {{AbortError}} {{DOMException}}. 
+        :   If the <code>|options|.{{CredentialCreationOptions/signal}}</code> is [=present=] and its 
+            [=AbortSignal/aborted flag=] is set to true, 
+        ::  [=set/For each=] |authenticator| in |issuedRequests| invoke the [=authenticatorCancel=]
+            operation on |authenticator| and [=set/remove=] |authenticator| from |issuedRequests|.</dd> Then return [=a promise rejected with=] 
+            an "{{AbortError}}" {{DOMException}}.
 
         :   If any |authenticator| returns a status indicating that the user cancelled the operation,
         ::  1. [=set/Remove=] |authenticator| from |issuedRequests|.
@@ -914,6 +918,10 @@ method is invoked, the user agent MUST:
 
 1. Let |clientDataHash| be the [=hash of the serialized client data=] represented by |clientDataJSON|.
 
+1. If the <code>|options|.{{CredentialRequestOptions/signal}}</code> is [=present=] and its 
+    [=AbortSignal/aborted flag=] is set to true, return [=a promise rejected with=] an "{{AbortError}}" 
+    {{DOMException}}.
+
 1. Let |issuedRequests| be a new [=ordered set=].
 
 1. Let |authenticator| be a platform-specific handle whose value identifies an [=authenticator=].
@@ -982,7 +990,7 @@ method is invoked, the user agent MUST:
 
     1. [=set/Append=] |authenticator| to |issuedRequests|.
 
-1. Execute the following steps [=in parallel=] but abort if the steps are [=terminated=]. The [=task source=] for these [=tasks=]
+1. Execute the following steps [=in parallel=]. The [=task source=] for these [=tasks=]
     is the [=dom manipulation task source=].
 
     1. While |issuedRequests| [=list/is not empty=], perform the following actions depending upon |lifetimeTimer|
@@ -995,10 +1003,10 @@ method is invoked, the user agent MUST:
                 |authenticator| and [=set/remove=] |authenticator| from |issuedRequests|.
 
             :   If the {{PublicKeyCredentialRequestOptions/signal}} member is [=present=] and the [=AbortSignal/aborted flag=] is set to 
-                false,
+                true,
             ::  [=set/For each=] |authenticator| in |issuedRequests| invoke the [=authenticatorCancel=] operation on |authenticator|
-                and [=set/remove=] |authenticator| from |issuedRequests|.</dd> Set the [=AbortSignal/aborted flag=] be true. Then 
-                reject the promise with an {{AbortError}} {{DOMException}}. 
+                and [=set/remove=] |authenticator| from |issuedRequests|.</dd> Then 
+                return [=a promise rejected with=] an "{{AbortError}}" {{DOMException}}.
 
             :   If any |authenticator| returns a status indicating that the user cancelled the operation,
             ::  1. [=set/Remove=] |authenticator| from |issuedRequests|.
@@ -1103,6 +1111,32 @@ but short enough that the dangling promise will still be resolved in a reasonabl
 </pre>
 
 </div>
+
+### Abort operations ### {#abortoperation}
+
+Developers are encouraged to leverage the {{AbortController}} to manage the 
+{{PublicKeyCredential/[[Create]](options)}} and {{PublicKeyCredential/[[DiscoverFromExternalSource]](options)}} operations. 
+See [[dom#abortcontroller-api-integration]] section for detailed instructions. 
+
+    Note: [[dom#abortcontroller-api-integration]] section specifies that web platform APIs integrating with the  
+    {{AbortController}} must reject the promise immediately once the [=AbortSignal/aborted flag=] is set. 
+    Given the complicated inheritance and parallelization structure of the {{PublicKeyCredential/[[Create]](options)}}
+    and {{PublicKeyCredential/[[DiscoverFromExternalSource]](options)}} methods, the algorithm for the two APIs fulfills this 
+    requirement by checking the [=AbortSignal/aborted flag=] in three places. In the case of 
+    {{PublicKeyCredential/[[Create]](options)}}, the aborted flag is checked first in 
+    [[credential-management-1#algorithm-create]] right before calling {{Credential/[[Create]](options)}}, 
+    then in [[createCredential]] right before communication with [=authenticators=] start, and finally 
+    in parallelized communication with [=authenticators=] to generate credentials. 
+
+The [[=visibility=]] and [[=focus=]] state of the [[=Window=]] object determines whether the 
+{{PublicKeyCredential/[[Create]](options)}} and {{PublicKeyCredential/[[DiscoverFromExternalSource]](options)}} operations
+should continue. When the [[=Window=]] object associated with the [[=Document=]] loses focus, 
+{{PublicKeyCredential/[[Create]](options)}} and {{PublicKeyCredential/[[DiscoverFromExternalSource]](options)}} operations
+should be aborted. 
+
+    Issue: The WHATWG HTML WG is discussing whether to provide a hook when a browsing context gains or
+    loses focuses. If a hook is provided, the above paragraph will be updated to include the hook.
+    [WHATWG HTML WG Issue #2711](https://github.com/whatwg/html/issues/2711)
 
 
 ## Authenticator Responses (interface <dfn interface>AuthenticatorResponse</dfn>) ## {#iface-authenticatorresponse}
