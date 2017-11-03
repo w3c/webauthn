@@ -91,10 +91,20 @@ spec: credential-management-1; urlPrefix: https://w3c.github.io/webappsec-creden
     for: CredentialsContainer
         type: method
             text: create(); url: dom-credentialscontainer-create
+    type: dfn
+        text: signal
 
 spec: mixed-content; urlPrefix: www.w3.org/TR/mixed-content/
     type: dfn
         text: a priori authenticated
+
+spec: page-visibility; urlPrefix: https://www.w3.org/TR/page-visibility/
+    type: dfn
+        text: visibility states
+
+spec: WHATWG HTML; urlPrefix: https://html.spec.whatwg.org/
+    type: dfn 
+        text: focus
 </pre> <!-- class=anchors -->
 
 <pre class="link-defaults">
@@ -1112,33 +1122,6 @@ but short enough that the dangling promise will still be resolved in a reasonabl
 
 </div>
 
-### Abort operations ### {#abortoperation}
-
-Developers are encouraged to leverage the {{AbortController}} to manage the 
-{{PublicKeyCredential/[[Create]](options)}} and {{PublicKeyCredential/[[DiscoverFromExternalSource]](options)}} operations. 
-See [[dom#abortcontroller-api-integration]] section for detailed instructions. 
-
-    Note: [[dom#abortcontroller-api-integration]] section specifies that web platform APIs integrating with the  
-    {{AbortController}} must reject the promise immediately once the [=AbortSignal/aborted flag=] is set. 
-    Given the complicated inheritance and parallelization structure of the {{PublicKeyCredential/[[Create]](options)}}
-    and {{PublicKeyCredential/[[DiscoverFromExternalSource]](options)}} methods, the algorithm for the two APIs fulfills this 
-    requirement by checking the [=AbortSignal/aborted flag=] in three places. In the case of 
-    {{PublicKeyCredential/[[Create]](options)}}, the aborted flag is checked first in 
-    [[credential-management-1#algorithm-create]] right before calling {{Credential/[[Create]](options)}}, 
-    then in [[createCredential]] right before communication with [=authenticators=] start, and finally 
-    in parallelized communication with [=authenticators=] to generate credentials. 
-
-The [[=visibility=]] and [[=focus=]] state of the [[=Window=]] object determines whether the 
-{{PublicKeyCredential/[[Create]](options)}} and {{PublicKeyCredential/[[DiscoverFromExternalSource]](options)}} operations
-should continue. When the [[=Window=]] object associated with the [[=Document=]] loses focus, 
-{{PublicKeyCredential/[[Create]](options)}} and {{PublicKeyCredential/[[DiscoverFromExternalSource]](options)}} operations
-should be aborted. 
-
-    Issue: The WHATWG HTML WG is discussing whether to provide a hook when a browsing context gains or
-    loses focuses. If a hook is provided, the above paragraph will be updated to include the hook.
-    [WHATWG HTML WG Issue #2711](https://github.com/whatwg/html/issues/2711)
-
-
 ## Authenticator Responses (interface <dfn interface>AuthenticatorResponse</dfn>) ## {#iface-authenticatorresponse}
 
 [=Authenticators=] respond to [=[RP]=] requests by returning an object derived from the
@@ -1303,9 +1286,7 @@ optionally evidence of [=user consent=] to a specific transaction.
         the {{CredentialsContainer/create()}} or {{CredentialsContainer/get()}} operation.
 
     :   <dfn>signal</dfn>
-    ::  This member is intended to be used by developers to [=terminated|terminate=] an 
-        ongoing {{PublicKeyCredential/[[Create]](options)/options}} operation. The object is initially a new AbortSignal
-        object.
+    ::  This member is intended for use by [=[RPS]=] to abort {{PublicKeyCredential/[[Create]](options)/options}} operations. 
 
     :   <dfn>extensions</dfn>
     ::  This member contains additional parameters requesting additional processing by the client and authenticator. For
@@ -1476,9 +1457,8 @@ an assertion. Its {{PublicKeyCredentialRequestOptions/challenge}} member must be
         preferred credential, and so on down the list).
 
     :   <dfn>signal</dfn>
-    ::  This member is intended to be used by developers to [=terminated|terminate=] an ongoing 
-        {{PublicKeyCredential/[[DiscoverFromExternalSource]](options)/options}} operation. The object is initially a new 
-        AbortSignal object. 
+    ::  This member is intended for use by [=[RPS]=] to abort a 
+        {{PublicKeyCredential/[[DiscoverFromExternalSource]](options)/options}} operation.
     
     :   <dfn>extensions</dfn>
     ::  This optional member contains additional parameters requesting additional processing by the client and authenticator.
@@ -1486,6 +1466,33 @@ an assertion. Its {{PublicKeyCredentialRequestOptions/challenge}} member must be
         extension.
 </dl>
 
+
+## Abort operations with `AbortSignal` ## {#abortoperation}
+
+Developers are encouraged to leverage the {{AbortController}} to manage the 
+{{PublicKeyCredential/[[Create]](options)}} and {{PublicKeyCredential/[[DiscoverFromExternalSource]](options)}} operations. 
+See [[dom#abortcontroller-api-integration]] section for detailed instructions. 
+
+    Note: [[dom#abortcontroller-api-integration]] section specifies that web platform APIs integrating with the  
+    {{AbortController}} must reject the promise immediately once the [=AbortSignal/aborted flag=] is set. 
+    Given the complex inheritance and parallelization structure of the {{PublicKeyCredential/[[Create]](options)}}
+    and {{PublicKeyCredential/[[DiscoverFromExternalSource]](options)}} methods, the algorithms for the two APIs fulfills this 
+    requirement by checking the [=AbortSignal/aborted flag=] in three places. In the case of 
+    {{PublicKeyCredential/[[Create]](options)}}, the aborted flag is checked first in 
+    [[credential-management-1#algorithm-create]] right before calling {{Credential/[[Create]](options)}}, 
+    then in [[#createCredential]] right before authenticator sessions start, and finally 
+    during authenticator sessions. The same goes for 
+    {{PublicKeyCredential/[[DiscoverFromExternalSource]](options)}}.
+
+The [=visibility states|visibility=] and [=focus=] state of the [=Window=] object determines whether the 
+{{PublicKeyCredential/[[Create]](options)}} and {{PublicKeyCredential/[[DiscoverFromExternalSource]](options)}} operations
+should continue. When the [=Window=] object associated with the [[=Document=] loses focus, 
+{{PublicKeyCredential/[[Create]](options)}} and {{PublicKeyCredential/[[DiscoverFromExternalSource]](options)}} operations
+should be aborted. 
+
+    Issue: The WHATWG HTML WG is discussing whether to provide a hook when a browsing context gains or
+    loses focuses. If a hook is provided, the above paragraph will be updated to include the hook.
+    See [WHATWG HTML WG Issue #2711](https://github.com/whatwg/html/issues/2711) for more details. 
 
 ## Authentication Extensions (typedef <dfn>AuthenticationExtensions</dfn>) ## {#iface-authentication-extensions}
 
@@ -3817,9 +3824,8 @@ extension for transaction authorization.
 
 ## Aborting Authentication Operations ## {#sample-aborting}
 
-The below example shows how a developer may use the AbortSignal parameter to abort an
-ongoing credential registration operation. A similiar procedure applies to an ongoing
-authentication operation. 
+The below example shows how a developer may use the AbortSignal parameter to abort a
+credential registration operation. A similiar procedure applies to an authentication operation. 
 
 <pre class="example" highlight="js">
     const authAbortController = new AbortController(); 
