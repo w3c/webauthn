@@ -754,8 +754,18 @@ When this method is invoked, the user agent MUST execute the following algorithm
         to |authenticator|'s attachment modality, [=iteration/continue=].
     1. If {{AuthenticatorSelectionCriteria/requireResidentKey}} is set to true and the |authenticator|
         is not capable of storing a [=Client-Side-Resident Credential Private Key=], [=iteration/continue=].
-    1. If {{AuthenticatorSelectionCriteria/requireUserVerification}} is set to true and the
+    1. If {{AuthenticatorSelectionCriteria/requireUserVerification}} is set to {{UserVerificationRequirement/required}} and the
         |authenticator| is not capable of performing [=user verification=], [=iteration/continue=].
+
+    1. Let |userVerification| be the <dfn>effective user verification requirement for credential creation</dfn>, a Boolean value,
+        as follows:
+        - If {{AuthenticatorSelectionCriteria/requireUserVerification}} is set to {{UserVerificationRequirement/required}}, let
+            |userVerification| be true.
+        - If {{AuthenticatorSelectionCriteria/requireUserVerification}} is set to {{UserVerificationRequirement/wanted}}, let
+            |userVerification| be true if the |authenticator| is capable of [=user verification=] and false if the |authenticator|
+            is not capable of [=user verification=].
+        - If {{AuthenticatorSelectionCriteria/requireUserVerification}} is set to {{UserVerificationRequirement/not-wanted}}, let
+            |userVerification| be false.
 
     1. Let |excludeCredentialDescriptorList| be a new [=list=].
 
@@ -769,7 +779,7 @@ When this method is invoked, the user agent MUST execute the following algorithm
         |clientDataHash|,
         <code>|options|.{{MakePublicKeyCredentialOptions/rp}}</code>, <code>|options|.{{MakePublicKeyCredentialOptions/user}}</code>,
         <code>|options|.{{MakePublicKeyCredentialOptions/authenticatorSelection}}.{{AuthenticatorSelectionCriteria/requireResidentKey}}</code>,
-        <code>|options|.{{MakePublicKeyCredentialOptions/authenticatorSelection}}.{{AuthenticatorSelectionCriteria/requireUserVerification}}</code>,
+        |userVerification|,
         |credTypesAndPubKeyAlgs|,
         |excludeCredentialDescriptorList|,
         and |authenticatorExtensions| as parameters.
@@ -971,7 +981,21 @@ method is invoked, the user agent MUST:
 
     1. If |options|.{{PublicKeyCredentialRequestOptions/authenticatorSelection}} is [=present=], and
         |options|.{{PublicKeyCredentialRequestOptions/authenticatorSelection}}.{{AuthenticatorSelectionCriteria/requireUserVerification}}
-        is set to true, and the |authenticator| is not capable of performing [=user verification=], [=iteration/continue=].
+        is set to {{UserVerificationRequirement/required}}, and the |authenticator| is not capable of performing [=user
+        verification=], [=iteration/continue=].
+
+    1. Let |userVerification| be the <dfn>effective user verification requirement for assertion</dfn>, a Boolean value, as
+        follows:
+        - If
+            |options|.{{PublicKeyCredentialRequestOptions/authenticatorSelection}}.{{AuthenticatorSelectionCriteria/requireUserVerification}}
+            is set to {{UserVerificationRequirement/required}}, let |userVerification| be true.
+        - If
+            |options|.{{PublicKeyCredentialRequestOptions/authenticatorSelection}}.{{AuthenticatorSelectionCriteria/requireUserVerification}}
+            is set to {{UserVerificationRequirement/wanted}}, let |userVerification| be true if the |authenticator| is capable
+            of [=user verification=] and false if the |authenticator| is not capable of [=user verification=].
+        - If
+            |options|.{{PublicKeyCredentialRequestOptions/authenticatorSelection}}.{{AuthenticatorSelectionCriteria/requireUserVerification}}
+            is set to {{UserVerificationRequirement/not-wanted}}, let |userVerification| be false.
 
     1. Let |allowCredentialDescriptorList| be a new [=list=].
 
@@ -1006,23 +1030,20 @@ method is invoked, the user agent MUST:
                             selection.
 
                             Then, using |transport|, invoke [=in parallel=] the [=authenticatorGetAssertion=] operation on
-                            |authenticator|, with |rpId|, |clientDataHash|, |allowCredentialDescriptorList|,
-                            |options|.{{PublicKeyCredentialRequestOptions/authenticatorSelection}}.{{requireUserVerification}},
+                            |authenticator|, with |rpId|, |clientDataHash|, |allowCredentialDescriptorList|, |userVerification|,
                             and |authenticatorExtensions| as parameters.
 
                         :   [=list/is empty=]
                         ::  Using local configuration knowledge of the appropriate transport to use with |authenticator|,
                             invoke [=in parallel=] the [=authenticatorGetAssertion=] operation on |authenticator| with |rpId|,
-                            |clientDataHash|, |allowCredentialDescriptorList|,
-                            |options|.{{PublicKeyCredentialRequestOptions/authenticatorSelection}}.{{requireUserVerification}},
-                            and |clientExtensions| as parameters.
+                            |clientDataHash|, |allowCredentialDescriptorList|, |userVerification|, and |clientExtensions| as
+                            parameters.
                     </dl>
 
             :   [=list/is empty=]
             ::  Using local configuration knowledge of the appropriate transport to use with |authenticator|, invoke
                 [=in parallel=] the [=authenticatorGetAssertion=] operation on |authenticator| with |rpId|, |clientDataHash|,
-                |options|.{{PublicKeyCredentialRequestOptions/authenticatorSelection}}.{{requireUserVerification}}, and
-                |clientExtensions| as parameters.
+                |userVerification|, and |clientExtensions| as parameters.
 
                 Note: In this case, the [=[RP]=] did not supply a list of acceptable credential descriptors. Thus the
                     authenticator is being asked to exercise any credential it may possess that is bound to
@@ -1391,7 +1412,7 @@ attributes.
     dictionary AuthenticatorSelectionCriteria {
         AuthenticatorAttachment      authenticatorAttachment;
         boolean                      requireResidentKey = false;
-        boolean                      requireUserVerification = false;
+        UserVerificationRequirement  requireUserVerification = "not-wanted";
     };
 </xmp>
 
@@ -1406,9 +1427,8 @@ attributes.
         [=Client-side-resident Credential Private Key=] when creating a [=public key credential=].
 
     :   <dfn>requireUserVerification</dfn>
-    ::  This member describes the [=[RPS]=]' requirements regarding the authenticator being capable of performing user
-        verification. If the parameter is set to true, the authenticator MUST perform [=user verification=] when performing the
-        {{CredentialsContainer/create()}} or {{CredentialsContainer/get()}} operation.
+    ::  This member describes the [=[RP]=]'s requirements regarding [=user verification=] for this operation. If this member is
+        [=present=], eligible authenticators are filtered to satisfy this requirement as well as possible.
 </div>
 
 
@@ -1445,6 +1465,30 @@ credential on a [=platform authenticator=] may be used by [=[RPS]=] to quickly a
 a minimum of friction, e.g., the user will not have to dig around in their pocket for their key fob or phone. As a concrete
 example of the latter, when the user is accessing the [=[RP]=] from a given client for the first time, they may be required to
 use a [=roaming authenticator=] which was originally registered with the [=[RP]=] using a different client.
+
+
+### User Verification Requirement enumeration (enum <dfn enum>UserVerificationRequirement</dfn>) ### {#userVerificationRequirement}
+
+<pre class="idl">
+    enum UserVerificationRequirement {
+        "required",
+        "wanted",
+        "not-wanted"
+    };
+</pre>
+
+A [=[RP]=] may require [=user verified|user verification=] for some of its operations but not for others, and may use this type to
+express this level of requirement.
+
+The value {{UserVerificationRequirement/required}} indicates that the [=[RP]=] requires [=user verification=] for this operation
+and will fail the operation if the response does not have the [=UV=] [=flag=] set.
+
+The value {{UserVerificationRequirement/wanted}} indicates that the [=[RP]=] would like [=user verification=] for this operation
+is possible, but will not fail the operation if the response does not have the [=UV=] [=flag=] set.
+
+The value {{UserVerificationRequirement/not-wanted}} indicates that the [=[RP]=] does not require [=user verification=], and does
+not want the [=client=] or [=authenticator=] to ask for it, but will not fail the operation if the response has the [=UV=]
+[=flag=] set.
 
 
 ## Options for Assertion Generation (dictionary <dfn dictionary>PublicKeyCredentialRequestOptions</dfn>) ## {#assertion-options}
@@ -1855,7 +1899,7 @@ input parameters:
 : |requireResidentKey|
 :: |options|.{{MakePublicKeyCredentialOptions/authenticatorSelection}}.{{requireResidentKey}}.
 : |requireUserVerification|
-:: |options|.{{MakePublicKeyCredentialOptions/authenticatorSelection}}.{{requireUserVerification}}.
+:: The [=effective user verification requirement for credential creation=], a Boolean value provided by the client.
 : |credTypesAndPubKeyAlgs|
 :: A sequence of pairs of {{PublicKeyCredentialType}} and public key algorithms ({{COSEAlgorithmIdentifier}}) requested by the
     [=[RP]=]. This sequence is ordered from most preferred to least preferred. The platform makes a best-effort to create the most
@@ -1942,7 +1986,7 @@ input parameters:
 :: An optional list of {{PublicKeyCredentialDescriptor}}s describing credentials acceptable to the [=[RP]=] (possibly filtered
     by the client), if any.
 : |requireUserVerification|
-:: |options|.{{PublicKeyCredentialRequestOptions/authenticatorSelection}}.{{requireUserVerification}}.
+:: The [=effective user verification requirement for assertion=], a Boolean value provided by the client.
 : |extensions|
 :: A [=map=] from [=extension identifiers=] to their [=authenticator extension inputs=], created by the client based on the
     extensions requested by the [=[RP]=], if any.
