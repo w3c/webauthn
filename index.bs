@@ -752,7 +752,7 @@ When this method is invoked, the user agent MUST execute the following algorithm
 
     1. If {{AuthenticatorSelectionCriteria/authenticatorAttachment}} is [=present|present=] and its value is not equal
         to |authenticator|'s attachment modality, [=iteration/continue=].
-    1. If {{AuthenticatorSelectionCriteria/requireResidentKey}} is set to |true| and the |authenticator|
+    1. If {{AuthenticatorSelectionCriteria/requireResidentKey}} is set to true and the |authenticator|
         is not capable of storing a [=Client-Side-Resident Credential Private Key=], [=iteration/continue=].
     1. If {{AuthenticatorSelectionCriteria/requireUserVerification}} is set to |true| and the
         |authenticator| is not capable of performing [=user verification=], [=iteration/continue=].
@@ -969,6 +969,10 @@ method is invoked, the user agent MUST:
     Resolving this with good definitions or some other means will be addressed by resolving
     [Issue #613](https://github.com/w3c/webauthn/issues/613).
 
+    1. If |options|.{{PublicKeyCredentialRequestOptions/authenticatorSelection}} is [=present=], and
+        |options|.{{PublicKeyCredentialRequestOptions/authenticatorSelection}}.{{AuthenticatorSelectionCriteria/requireUserVerification}}
+        is set to true, and the |authenticator| is not capable of performing [=user verification=], [=iteration/continue=].
+
     1. Let |allowCredentialDescriptorList| be a new [=list=].
 
     1. If <code>|options|.{{PublicKeyCredentialRequestOptions/allowCredentials}}</code> [=list/is not empty=], execute a
@@ -1002,19 +1006,23 @@ method is invoked, the user agent MUST:
                             selection.
 
                             Then, using |transport|, invoke [=in parallel=] the [=authenticatorGetAssertion=] operation on
-                            |authenticator|, with |rpId|, |clientDataHash|, |allowCredentialDescriptorList|, and
-                            |authenticatorExtensions| as parameters.
+                            |authenticator|, with |rpId|, |clientDataHash|, |allowCredentialDescriptorList|,
+                            |options|.{{PublicKeyCredentialRequestOptions/authenticatorSelection}}.{{requireUserVerification}},
+                            and |authenticatorExtensions| as parameters.
 
                         :   [=list/is empty=]
                         ::  Using local configuration knowledge of the appropriate transport to use with |authenticator|,
                             invoke [=in parallel=] the [=authenticatorGetAssertion=] operation on |authenticator| with |rpId|,
-                            |clientDataHash|, |allowCredentialDescriptorList|, and |clientExtensions| as parameters.
+                            |clientDataHash|, |allowCredentialDescriptorList|,
+                            |options|.{{PublicKeyCredentialRequestOptions/authenticatorSelection}}.{{requireUserVerification}},
+                            and |clientExtensions| as parameters.
                     </dl>
 
             :   [=list/is empty=]
             ::  Using local configuration knowledge of the appropriate transport to use with |authenticator|, invoke
                 [=in parallel=] the [=authenticatorGetAssertion=] operation on |authenticator| with |rpId|, |clientDataHash|,
-                and |clientExtensions| as parameters.
+                |options|.{{PublicKeyCredentialRequestOptions/authenticatorSelection}}.{{requireUserVerification}}, and
+                |clientExtensions| as parameters.
 
                 Note: In this case, the [=[RP]=] did not supply a list of acceptable credential descriptors. Thus the
                     authenticator is being asked to exercise any credential it may possess that is bound to
@@ -1299,7 +1307,7 @@ optionally evidence of [=user consent=] to a specific transaction.
 
     :   <dfn>authenticatorSelection</dfn>
     ::  This member is intended for use by [=[RPS]=] that wish to select the appropriate authenticators to participate in
-        the {{CredentialsContainer/create()}} or {{CredentialsContainer/get()}} operation.
+        the {{CredentialsContainer/create()}} operation.
 
     :   <dfn>extensions</dfn>
     ::  This member contains additional parameters requesting additional processing by the client and authenticator. For
@@ -1398,10 +1406,9 @@ attributes.
         [=Client-side-resident Credential Private Key=] when creating a [=public key credential=].
 
     :   <dfn>requireUserVerification</dfn>
-    ::  This member describes the [=[RPS]=]' requirements regarding the authenticator being capable of performing user verification.
-        If the parameter is set to true, the authenticator MUST perform user verification when performing
-        the {{CredentialsContainer/create()}} operation and future [[#getAssertion]] operations when it is
-        requested to verify the credential.
+    ::  This member describes the [=[RPS]=]' requirements regarding the authenticator being capable of performing user
+        verification. If the parameter is set to true, the authenticator MUST perform [=user verification=] when performing the
+        {{CredentialsContainer/create()}} or {{CredentialsContainer/get()}} operation.
 </div>
 
 
@@ -1451,6 +1458,7 @@ an assertion. Its {{PublicKeyCredentialRequestOptions/challenge}} member must be
         unsigned long                        timeout;
         USVString                            rpId;
         sequence<PublicKeyCredentialDescriptor> allowCredentials = [];
+        AuthenticatorSelectionCriteria       authenticatorSelection;
         AuthenticationExtensions             extensions;
     };
 </xmp>
@@ -1473,6 +1481,13 @@ an assertion. Its {{PublicKeyCredentialRequestOptions/challenge}} member must be
     ::  This optional member contains a list of {{PublicKeyCredentialDescriptor}} object representing [=public key credentials=]
         acceptable to the caller, in decending order of the caller's preference (the first item in the list is the most
         preferred credential, and so on down the list).
+
+    :   <dfn>authenticatorSelection</dfn>
+    ::  This member is intended for use by [=[RPS]=] that wish to select the appropriate authenticators to participate in
+        the {{CredentialsContainer/get()}} operation.
+
+        Note: Only the {{AuthenticatorSelectionCriteria/requireUserVerification}} member of this member currently has any effect
+        when used in {{PublicKeyCredentialRequestOptions}}; any other members are ignored.
 
     :   <dfn>extensions</dfn>
     ::  This optional member contains additional parameters requesting additional processing by the client and authenticator.
@@ -1866,9 +1881,9 @@ When this operation is invoked, the authenticator must perform the following pro
     If so, return an error code equivalent to "{{NotAllowedError}}" and terminate the operation.
 1. If |requireResidentKey| is |true| and the authenticator cannot store a [=Client-side-resident Credential
     Private Key=], return an error code equivalent to "{{ConstraintError}}" and terminate the operation.
-1. If |requireUserVerification| is |true| and the authenticator cannot perform user verification,
-    return an error code equivalent to "{{ConstraintError}}" and terminate the operation.
-1. Prompt the user for consent to create a new credential. The prompt for obtaining this consent is shown by the authenticator
+1. If |requireUserVerification| is true and the authenticator cannot perform [=user verification=], return an error code
+    equivalent to "{{ConstraintError}}" and terminate the operation.
+  1. Prompt the user for consent to create a new credential. The prompt for obtaining this consent is shown by the authenticator
     if it has its own output capability, or by the user agent otherwise. If the user denies consent, return an error code
     equivalent to "{{NotAllowedError}}" and terminate the operation. The Authenticator and user agent MAY skip this prompt
     if the Authenticator is a [=platform authenticator=] and |excludeCredentialDescriptorList| is empty.
@@ -1920,6 +1935,8 @@ input parameters:
 : |allowCredentialDescriptorList|
 :: An optional list of {{PublicKeyCredentialDescriptor}}s describing credentials acceptable to the [=[RP]=] (possibly filtered
     by the client), if any.
+: |requireUserVerification|
+:: |options|.{{PublicKeyCredentialRequestOptions/authenticatorSelection}}.{{requireUserVerification}}.
 : |extensions|
 :: A [=map=] from [=extension identifiers=] to their [=authenticator extension inputs=], created by the client based on the
     extensions requested by the [=[RP]=], if any.
@@ -1934,6 +1951,8 @@ When this method is invoked, the [=authenticator=] must perform the following pr
     {{PublicKeyCredentialDescriptor/id}}</code> and <code>|allowCredentialDescriptorList|{{PublicKeyCredentialDescriptor/type}}</code>. 
 1. If |allowCredentialDescriptorList| is now empty, return an error code equivalent to "{{NotAllowedError}}" and terminate the
     operation.
+1. If |requireUserVerification| is true and the authenticator cannot perform [=user verification=], return an error code
+    equivalent to "{{ConstraintError}}" and terminate the operation.
 1. Prompt the user to select a [=public key credential|credential=] |selectedCredential| from |allowCredentialDescriptorList|.
     Obtain [=user consent=] for using |selectedCredential|. The prompt for obtaining this [=user consent|consent=] may be shown
     by the
