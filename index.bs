@@ -94,10 +94,20 @@ spec: credential-management-1; urlPrefix: https://w3c.github.io/webappsec-creden
     for: CredentialsContainer
         type: method
             text: create(); url: dom-credentialscontainer-create
+    type: dfn
+        text: signal
 
 spec: mixed-content; urlPrefix: www.w3.org/TR/mixed-content/
     type: dfn
         text: a priori authenticated
+
+spec: page-visibility; urlPrefix: https://www.w3.org/TR/page-visibility/
+    type: dfn
+        text: visibility states
+
+spec: WHATWG HTML; urlPrefix: https://html.spec.whatwg.org/
+    type: dfn 
+        text: focus
 </pre> <!-- class=anchors -->
 
 <pre class="link-defaults">
@@ -618,9 +628,13 @@ To support obtaining assertions via {{CredentialsContainer/get()|navigator.crede
 
 <div link-for-hint="PublicKeyCredential/[[Create]](origin, options)">
 {{PublicKeyCredential}}'s [=interface object=]'s implementation of the
-<dfn for="PublicKeyCredential" method>\[[Create]](origin, options)</dfn> [=internal method=] [[CREDENTIAL-MANAGEMENT-1]] allows [=[RP]=] scripts to call
-{{CredentialsContainer/create()|navigator.credentials.create()}} to request the creation of a new
-[=public key credential source=], bound to an [=authenticator=].
+
+<dfn for="PublicKeyCredential" method>\[[Create]](origin, options)</dfn> [=internal method=] [[CREDENTIAL-MANAGEMENT-1]] allows
+[=[RP]=] scripts to call {{CredentialsContainer/create()|navigator.credentials.create()}} to request the creation of a new
+[=public key credential source=], bound to an [=authenticator=]. This
+{{CredentialsContainer/create()|navigator.credentials.create()}} operation can be aborted by leveraging the {{AbortController}};
+see [[dom#abortcontroller-api-integration]] for detailed instructions.
+
 
 This method accepts two arguments:
 
@@ -644,12 +658,6 @@ When this method is invoked, the user agent MUST execute the following algorithm
 1. Assert: <code>|options|.{{CredentialCreationOptions/publicKey}}</code> is [=present=].
 
 1. Let |options| be the value of <code>|options|.{{CredentialCreationOptions/publicKey}}</code>.
-
-1. If any of the {{PublicKeyCredentialEntity/name}} member of <code>|options|.{{MakePublicKeyCredentialOptions/rp}}</code>, the
-    {{PublicKeyCredentialEntity/name}} member of <code>|options|.{{MakePublicKeyCredentialOptions/user}}</code>,
-    the {{PublicKeyCredentialUserEntity/displayName}} member of <code>|options|.{{MakePublicKeyCredentialOptions/user}}</code>,
-    or the {{PublicKeyCredentialUserEntity/id}}
-    member of <code>|options|.{{MakePublicKeyCredentialOptions/user}}</code> are [=present|not present=], return a {{TypeError}} [=simple exception=].
 
 1. If the {{MakePublicKeyCredentialOptions/timeout}} member of |options| is [=present=], check if its value lies within a
     reasonable range as defined by the platform and if not, correct it to the closest value lying within that range. Set a timer
@@ -739,6 +747,10 @@ When this method is invoked, the user agent MUST execute the following algorithm
 
 1. Let |clientDataHash| be the [=hash of the serialized client data=] represented by |clientDataJSON|.
 
+1. If the <code>|options|.{{CredentialCreationOptions/signal}}</code> is [=present=] and its 
+    [=AbortSignal/aborted flag=] is set to true, return a {{DOMException}} whose name is "{{AbortError}}" 
+    and terminate this algorithm.
+
 1. Start |lifetimeTimer|.
 
 1. Let |issuedRequests| be a new [=ordered set=].
@@ -785,6 +797,12 @@ When this method is invoked, the user agent MUST execute the following algorithm
         :   If |lifetimeTimer| expires,
         ::  [=set/For each=] |authenticator| in |issuedRequests| invoke the [=authenticatorCancel=] operation on |authenticator|
             and [=set/remove=] |authenticator| from |issuedRequests|.
+
+        :   If the <code>|options|.{{CredentialCreationOptions/signal}}</code> is [=present=] and its 
+            [=AbortSignal/aborted flag=] is set to true, 
+        ::  [=set/For each=] |authenticator| in |issuedRequests| invoke the [=authenticatorCancel=]
+            operation on |authenticator| and [=set/remove=] |authenticator| from |issuedRequests|. Then return a {{DOMException}} 
+            whose name is "{{AbortError}}" and terminate this algorithm.
 
         :   If any |authenticator| returns a status indicating that the user cancelled the operation,
         ::  1. [=set/Remove=] |authenticator| from |issuedRequests|.
@@ -972,6 +990,10 @@ When this method is invoked, the user agent MUST execute the following algorithm
 
 1. Let |clientDataHash| be the [=hash of the serialized client data=] represented by |clientDataJSON|.
 
+1. If the <code>|options|.{{CredentialRequestOptions/signal}}</code> is [=present=] and its 
+    [=AbortSignal/aborted flag=] is set to true, return a {{DOMException}} whose name is "{{AbortError}}" 
+    and terminate this algorithm.
+
 1. Let |issuedRequests| be a new [=ordered set=].
 
 1. Let |authenticator| be a platform-specific handle whose value identifies an [=authenticator=].
@@ -1052,6 +1074,12 @@ When this method is invoked, the user agent MUST execute the following algorithm
         :   If |lifetimeTimer| expires,
         ::  [=set/For each=] |authenticator| in |issuedRequests| invoke the [=authenticatorCancel=] operation on
             |authenticator| and [=set/remove=] |authenticator| from |issuedRequests|.
+
+        :   If the {{CredentialRequestOptions/signal}} member is [=present=] and the [=AbortSignal/aborted flag=] is set to 
+            true,
+        ::  [=set/For each=] |authenticator| in |issuedRequests| invoke the [=authenticatorCancel=] operation on |authenticator|
+            and [=set/remove=] |authenticator| from |issuedRequests|. Then 
+            return a {{DOMException}} whose name is "{{AbortError}}" and terminate this algorithm.
 
         :   If any |authenticator| returns a status indicating that the user cancelled the operation,
         ::  1. [=set/Remove=] |authenticator| from |issuedRequests|.
@@ -1194,7 +1222,6 @@ but short enough that the dangling promise will still be resolved in a reasonabl
 
 </div>
 
-
 ## Authenticator Responses (interface <dfn interface>AuthenticatorResponse</dfn>) ## {#iface-authenticatorresponse}
 
 [=Authenticators=] respond to [=[RP]=] requests by returning an object derived from the
@@ -1316,8 +1343,8 @@ optionally evidence of [=user consent=] to a specific transaction.
     :   <dfn>rp</dfn>
     ::  This member contains data about the [=[RP]=] responsible for the request.
 
-        Its value's {{PublicKeyCredentialEntity/name}} member is required, and contains the friendly name of the [=[RP]=]
-        (e.g. "Acme Corporation", "Widgets, Inc.", or "Awesome Site".
+        Its value's {{PublicKeyCredentialEntity/name}} member contains the friendly name of the [=[RP]=] (e.g. "Acme Corporation",
+        "Widgets, Inc.", or "Awesome Site".
 
         Its value's {{PublicKeyCredentialRpEntity/id}} member specifies the [=relying party identifier=] with which the credential
         should be associated. If omitted, its value will be the {{CredentialsContainer}} object's [=relevant
@@ -1326,14 +1353,14 @@ optionally evidence of [=user consent=] to a specific transaction.
     :   <dfn>user</dfn>
     ::  This member contains data about the user account for which the [=[RP]=] is requesting attestation.
 
-        Its value's {{PublicKeyCredentialEntity/name}} member is required, and contains a name for the user account
-        (e.g., "john.p.smith@example.com" or "+14255551234").
+        Its value's {{PublicKeyCredentialEntity/name}} member contains a name for the user account (e.g.,
+        "john.p.smith@example.com" or "+14255551234").
 
-        Its value's {{PublicKeyCredentialUserEntity/displayName}} member is required, and contains a friendly name for the user
-        account (e.g., "John P. Smith").
+        Its value's {{PublicKeyCredentialUserEntity/displayName}} member contains a friendly name for the user account (e.g.,
+        "John P. Smith").
 
-        Its value's {{PublicKeyCredentialUserEntity/id}} member is required and contains the [=user handle=] for the account,
-        specified by the [=[RP]=].
+        Its value's {{PublicKeyCredentialUserEntity/id}} member contains the [=user handle=] for the account, specified by the
+        [=[RP]=].
 
     :   <dfn>challenge</dfn>
     ::  This member contains a challenge intended to be used for generating the newly created credential's [=attestation
@@ -1372,8 +1399,8 @@ associated.
 
 <xmp class="idl">
     dictionary PublicKeyCredentialEntity {
-        DOMString      name;
-        USVString      icon;
+        required DOMString    name;
+        USVString             icon;
     };
 </xmp>
 <div dfn-type="dict-member" dfn-for="PublicKeyCredentialEntity">
@@ -1414,8 +1441,8 @@ credential.
 
 <pre class="idl">
     dictionary PublicKeyCredentialUserEntity : PublicKeyCredentialEntity {
-        BufferSource   id;
-        DOMString      displayName;
+        required BufferSource   id;
+        required DOMString      displayName;
     };
 </pre>
 
@@ -1529,13 +1556,40 @@ an assertion. Its {{PublicKeyCredentialRequestOptions/challenge}} member must be
     ::  This optional member contains a list of {{PublicKeyCredentialDescriptor}} object representing [=public key credentials=]
         acceptable to the caller, in decending order of the caller's preference (the first item in the list is the most
         preferred credential, and so on down the list).
-
+    
     :   <dfn>extensions</dfn>
     ::  This optional member contains additional parameters requesting additional processing by the client and authenticator.
         For example, if transaction confirmation is sought from the user, then the prompt string might be included as an
         extension.
 </dl>
 
+
+## Abort operations with `AbortSignal` ## {#abortoperation}
+
+Developers are encouraged to leverage the {{AbortController}} to manage the 
+{{PublicKeyCredential/[[Create]](options)}} and {{PublicKeyCredential/[[DiscoverFromExternalSource]](options)}} operations. 
+See [[dom#abortcontroller-api-integration]] section for detailed instructions. 
+
+    Note: [[dom#abortcontroller-api-integration]] section specifies that web platform APIs integrating with the  
+    {{AbortController}} must reject the promise immediately once the [=AbortSignal/aborted flag=] is set. 
+    Given the complex inheritance and parallelization structure of the {{PublicKeyCredential/[[Create]](options)}}
+    and {{PublicKeyCredential/[[DiscoverFromExternalSource]](options)}} methods, the algorithms for the two APIs fulfills this 
+    requirement by checking the [=AbortSignal/aborted flag=] in three places. In the case of 
+    {{PublicKeyCredential/[[Create]](options)}}, the aborted flag is checked first in 
+    [[credential-management-1#algorithm-create]] right before calling {{Credential/[[Create]](options)}}, 
+    then in [[#createCredential]] right before authenticator sessions start, and finally 
+    during authenticator sessions. The same goes for 
+    {{PublicKeyCredential/[[DiscoverFromExternalSource]](options)}}.
+
+The [=visibility states|visibility=] and [=focus=] state of the [=Window=] object determines whether the 
+{{PublicKeyCredential/[[Create]](options)}} and {{PublicKeyCredential/[[DiscoverFromExternalSource]](options)}} operations
+should continue. When the [=Window=] object associated with the [[=Document=] loses focus, 
+{{PublicKeyCredential/[[Create]](options)}} and {{PublicKeyCredential/[[DiscoverFromExternalSource]](options)}} operations
+SHOULD be aborted. 
+
+    Issue: The WHATWG HTML WG is discussing whether to provide a hook when a browsing context gains or
+    loses focuses. If a hook is provided, the above paragraph will be updated to include the hook.
+    See [WHATWG HTML WG Issue #2711](https://github.com/whatwg/html/issues/2711) for more details. 
 
 ## Authentication Extensions (typedef <dfn>AuthenticationExtensions</dfn>) ## {#iface-authentication-extensions}
 
@@ -3872,6 +3926,42 @@ extension for transaction authorization.
     }).catch(function (err) {
         // No acceptable credential or user refused consent. Handle appropriately.
     });
+</pre>
+
+## Aborting Authentication Operations ## {#sample-aborting}
+
+The below example shows how a developer may use the AbortSignal parameter to abort a
+credential registration operation. A similiar procedure applies to an authentication operation. 
+
+<pre class="example" highlight="js">
+    const authAbortController = new AbortController(); 
+    const authAbortSignal = authAbortController.signal;
+
+    authAbortSignal.onabort = function () {
+        // Once the page knows the abort started, inform user it is attempting to abort.  
+    }
+
+    var options = {
+        // A list of options. 
+    }
+
+    navigator.credentials.create({
+        publicKey: options, 
+        signal: authAbortSignal})
+        .then(function (attestation) {
+            // Register the user. 
+        }).catch(function (error) {
+            if (error == "AbortError") {
+                // Inform user the credential hasn't been created. 
+                // Let the server know a key hasn't been created. 
+            }
+        });
+
+    // Assume widget shows up whenever auth occurs. 
+    if (widget == "disappear") {
+        authAbortSignal.abort(); 
+
+    }
 </pre>
 
 
