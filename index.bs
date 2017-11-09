@@ -2041,6 +2041,9 @@ input parameters:
 When this method is invoked, the [=authenticator=] must perform the following procedure:
 1. Check if all the supplied parameters are syntactically well-formed and of the correct length. If not, return an error code
     equivalent to "{{UnknownError}}" and terminate the operation.
+1. Let |isFirstFactorOperation| be a Boolean value, set to `true` if and only if |allowCredentialDescriptorList| was not supplied.
+1. If at least one of |requireUserVerification| and |isFirstFactorOperation| is `true` and the authenticator cannot perform [=user
+    verification=], return an error code equivalent to "{{ConstraintError}}" and terminate the operation.
 1. If |allowCredentialDescriptorList| was not supplied, set it to a list of all credentials stored for |rpId| (as determined by
     an exact match of |rpId|).
 1. Remove any items from |allowCredentialDescriptorList| that do not match a credential bound to this authenticator. A match
@@ -2048,10 +2051,12 @@ When this method is invoked, the [=authenticator=] must perform the following pr
     {{PublicKeyCredentialDescriptor/id}} and {{PublicKeyCredentialDescriptor/type}} members.
 1. If |allowCredentialDescriptorList| is now empty, return an error code equivalent to "{{NotAllowedError}}" and terminate the
     operation.
-1. If |requireUserVerification| is `true` and the authenticator cannot perform [=user verification=], return an error code
-    equivalent to "{{ConstraintError}}" and terminate the operation.
-1. If |requireUserVerification| is `true`, perform [=user verification=]. If [=user verification=] fails, return an error code
+
+1. If |isFirstFactorOperation| is `true`, perform [=user verification=]. If [=user verification=] fails, return an error code
     equivalent to "{{NotAllowedError}}" and terminate the operation.
+
+    Remove any items from |allowCredentialDescriptorList| that match a credential that was created by a [=user verified|verified
+    user=] other than the current [=user verified|verified user=].
 
 1. Prompt the user to select a [=public key credential|credential=] |selectedCredential| from |allowCredentialDescriptorList|.
 
@@ -2059,8 +2064,20 @@ When this method is invoked, the [=authenticator=] must perform the following pr
     the [=authenticator=] if it has its own output capability, or by the user agent otherwise. The prompt SHOULD display the
     |rpId| and any additional data associated with |selectedCredential|, if possible.
 
-    If the user denies [=user consent|consent=], return an error code equivalent to "{{NotAllowedError}}" and terminate the
-    operation.
+    The method of obtaining [=user consent=] MUST ensure that the user is [=user verified|verified=] or [=user present|present=]
+    as follows. If the user is not already [=user verified|verified=],
+
+    <dl class="switch">
+        :   if |requireUserVerification| is `true`
+        ::  [=User verification=] MUST be performed.
+
+        :   if |requireUserVerification| is `false`
+        ::  [=User verification=] SHOULD NOT be performed. If [=user verification=] is not performed, a [=test of user presence=]
+            MUST be performed.
+    </dl>
+
+    If the user denies [=user consent|consent=] or if [=user verification=] fails, return an error code equivalent to
+    "{{NotAllowedError}}" and terminate the operation.
 
 1. Let |processedExtensions| be the result of [=authenticator extension processing=] for each supported [=extension
     identifier=]/input pair in |extensions|.
