@@ -729,6 +729,8 @@ When this method is invoked, the user agent MUST execute the following algorithm
     1. [=map/Set=] |authenticatorExtensions|[|extensionId|] to the [=base64url encoding=] of |authenticatorExtensionInput|.
 
 1. Let |collectedClientData| be a new {{CollectedClientData}} instance whose fields are:
+    : {{CollectedClientData/type}}
+    :: The string "webauthn.create".
     : {{CollectedClientData/challenge}}
     :: The [=base64url encoding=] of |options|.{{MakePublicKeyCredentialOptions/challenge}}.
     : {{CollectedClientData/origin}}
@@ -971,6 +973,8 @@ When this method is invoked, the user agent MUST execute the following algorithm
     1. [=map/Set=] |authenticatorExtensions|[|extensionId|] to the [=base64url encoding=] of |authenticatorExtensionInput|.
 
 1. Let |collectedClientData| be a new {{CollectedClientData}} instance whose fields are:
+    : {{CollectedClientData/type}}
+    :: The string "webauthn.get".
     : {{CollectedClientData/challenge}}
     :: The [=base64url encoding=] of |options|.{{PublicKeyCredentialRequestOptions/challenge}}
     : {{CollectedClientData/origin}}
@@ -1675,6 +1679,7 @@ following Web IDL.
 
 <pre class="idl">
     dictionary CollectedClientData {
+        required DOMString           type;
         required DOMString           challenge;
         required DOMString           origin;
         required DOMString           hashAlgorithm;
@@ -1685,6 +1690,10 @@ following Web IDL.
 </pre>
 
 <div dfn-type="dict-member" dfn-for="CollectedClientData">
+    The <dfn>type</dfn> member contains the string "webauthn.create" when creating new credentials, and "webauthn.get"
+    when getting an assertion from an existing credential. The purpose of this member is to prevent certain types of signature
+    confusion attacks (where an attacker substitutes one legitimate signature for another).
+
     The <dfn>challenge</dfn> member contains the base64url encoding of the challenge provided by the RP.
 
     The <dfn>origin</dfn> member contains the fully qualified [=origin=] of the requester, as provided to the authenticator by
@@ -2044,7 +2053,7 @@ When this operation is invoked, the authenticator must perform the following pro
     "{{NotAllowedError}}" and terminate the operation.
 
 1. Once [=user consent=] has been obtained, generate a new credential object:
-    1. Let (|publicKey|,|privateKey|) be a new set of cryptographic keys using the combination of {{PublicKeyCredentialType}}
+    1. Let (|publicKey|,|privateKey|) be a new pair of cryptographic keys using the combination of {{PublicKeyCredentialType}}
         and cryptographic parameters represented by the first [=list/item=] in |credTypesAndPubKeyAlgs| that is supported by
         this authenticator.
     1. Let |credentialId| be a new identifier for this credential that is globally unique with high probability across all
@@ -2466,6 +2475,8 @@ When registering a new credential, represented by a {{AuthenticatorAttestationRe
     {{AuthenticatorAttestationResponse}} object to extract the [=client data=] |C| claimed as collected during the credential
     creation.
 
+2. Verify that the {{CollectedClientData/type}} in |C| is the string `webauthn.create`.
+
 2. Verify that the {{CollectedClientData/challenge}} in |C| matches the challenge that was sent to the authenticator in the
     {{CredentialsContainer/create()}} call.
 
@@ -2549,6 +2560,8 @@ When verifying a given {{PublicKeyCredential}} structure (|credential|) as part 
     {{AuthenticatorAssertionResponse/signature}} respectively.
 
 3. Perform JSON deserialization on |cData| to extract the [=client data=] |C| used for the signature.
+
+3. Verify that the {{CollectedClientData/type}} in |C| is the string `webauthn.get`.
 
 4. Verify that the {{CollectedClientData/challenge}} member of |C| matches the challenge that was sent to the authenticator in
     the {{PublicKeyCredentialRequestOptions}} passed to the {{CredentialsContainer/get()}} call.
@@ -3618,7 +3631,7 @@ This [=registration extension=] and [=authentication extension=] enables use of 
 :: The Boolean value `true`, encoded in CBOR (major type 7, value 21).
 
 : Authenticator extension processing
-:: The [=authenticator=] sets the [=authenticator extension output=] to be a user verification index indicating the method used
+:: The [=authenticator=] sets the [=authenticator extension output=] to be one or more user verification methods indicating the method(s) used
     by the user to authorize the operation, as defined below. This extension can be added to attestation objects and assertions.
 
 : Authenticator extension output
@@ -3871,7 +3884,7 @@ The sample code for generating and registering a new key follows:
 
       timeout: 60000,  // 1 minute
       excludeCredentials: [], // No exclude list of PKCredDescriptors
-      extensions: {"webauthn.location": true}  // Include location information
+      extensions: {"loc": true}  // Include location information
                                                // in attestation
     };
 
@@ -4005,7 +4018,7 @@ extension for transaction authorization.
                     challenge: encoder.encode("climb a mountain"),
                     timeout: 60000,  // 1 minute
                     allowCredentials: [acceptableCredential1, acceptableCredential2],
-                    extensions: { 'webauthn.txauth.simple':
+                    extensions: { 'txAuthSimple':
                        "Wave your hands in the air like you just don't care" }
                   };
 
