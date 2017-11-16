@@ -838,19 +838,18 @@ When this method is invoked, the user agent MUST execute the following algorithm
                 1.  Let |attestationObject| be a new {{ArrayBuffer}}, created using |global|'s [=%ArrayBuffer%=], containing the
                     bytes of <code>|credentialCreationData|.[=attestationObjectResult=]</code>'s value.
 
-                1.  Let |attestationPreference| be the value of |options|.{{MakePublicKeyCredentialOptions/attestation}}.
+                1.  Let |attestationPresentationPreference| be the value of |options|.{{MakePublicKeyCredentialOptions/attestation}}.
                     <dl class="switch">
-                    <dt>If the value of |attestationPreference| is "none" (or it has been left unspecified),</dt>
+                    <dt>If the value of |attestationPresentationPreference| is "none" (or it has been left unspecified),</dt>
                     <dd>replace potentially identifying information (such as AAGUID and attestation certificates) 
-                        in the attested credential data and attestation statement with non-identifying versions of the same data.</dd>
+                        in the [=attested credential data=] and [=attestation statement=] with blinded versions of the same data.</dd>
 
-                    <dt>If the value of |attestationPreference| is "verifiable",</dt>
+                    <dt>If the value of |attestationPresentationPreference| is "verifiable",</dt>
                     <dd>potentially replace the attestation statement with a more privacy-friendly and/or more easily verifiable
-                        version of the same data (for example, by employing a Privacy CA).</dd>
- 
-                    <dt>If the value of |attestationPreference| is "direct",</dt>
-                    <dd>Obtain consent from the user to relay the authenticator's attestation statement to the RP. If the 
-                        user denies consent, return a {{DOMException}} whose name is "{{NotAllowedError}}".</dd>
+                        version of the same data (for example, by employing a [=Privacy CA=]).</dd>
+
+                    <dt>If the value of |attestationPresentationPreference| is "direct",</dt>
+                    <dd>relay the authenticator's attestation statement, unaltered, to the RP.</dd>
                     </dl>
 
                 1.  Let |id| be <code>|attestationObject|.authData.[=attestedCredentialData=].[=credentialId=]</code>.
@@ -1354,7 +1353,7 @@ optionally evidence of [=user consent=] to a specific transaction.
         unsigned long                                timeout;
         sequence<PublicKeyCredentialDescriptor>      excludeCredentials = [];
         AuthenticatorSelectionCriteria               authenticatorSelection;
-        AttestationPreference                        attestation = "none";
+        AttestationPresentationPreference            attestation = "none";
         AuthenticationExtensions                     extensions;
     };
 </xmp>
@@ -1546,15 +1545,15 @@ example of the latter, when the user is accessing the [=[RP]=] from a given clie
 use a [=roaming authenticator=] which was originally registered with the [=[RP]=] using a different client.
 
 
-### Attestation Preference enumeration (enum <dfn enum>AttestationPreference</dfn>) ### {#attestation}
+### Attestation Presentation Preference enumeration (enum <dfn enum>AttestationPresentationPreference</dfn>) ### {#attestation}
 
-[=[RPS]=] may use the {{AttestationPreference}} enum to specify their preference regarding attestation types used 
+[=[RPS]=] may use the {{AttestationPresentationPreference}} enum to specify their preference regarding attestation types used
 during credential generation.
 
 <pre class="idl">
-    enum AttestationPreference {
+    enum AttestationPresentationPreference {
         "none",
-        "verifiable",
+        "indirect",
         "direct"
     };
 </pre>
@@ -1564,23 +1563,18 @@ during credential generation.
       creation over obtaining a verifiable attestation. The client MAY replace the attestation statement generated
       by the authenticator with a meaningless client-generated attestation statement in this case, for example in order to prevent
       having to obtain user consent for relaying identifying information to the RP, or to save a roundtrip to a Privacy CA. 
-      The client SHOULD NOT prompt the user for consent to relay identifying information to the RP in this case, and MUST NOT 
-      fail the credential creation operation because of issues with the attestation. For example, if the client normally uses
-      a Privacy CA to anonymize attestations, and the Privacy CA is offline, the client must not fail the credential creation 
-      operation. Instead, it could replace the authenticator-generated attestation with a client-generated attestation.
 
       This is the default value.
-    <li><dfn>verifiable</dfn> - indicates that the [=[RP]=] prefers an attestation type that leads to verifiable attestation
+    <li><dfn>indirect</dfn> - indicates that the [=[RP]=] prefers an attestation type that leads to verifiable attestation
       statements, but leaves it up to the client how to obtain such attestation statements. The client MAY replace the
       authenticator-generated attestation statements with attestation statements generated by a Privacy CA, in order to protect
       the privacy of the user, or to assist [=RPS=] with attestation verification in a heterogeneous ecosystem.
-      
+
       Note that there is no guarantee that the [=RP=] will obtain a verifiable attestation statement in this case. The authenticator
       may use self-attestation, or the user may have opted out of relaying any kind of (identifying) attestation information to
       the RP
     <li><dfn>direct</dfn> - indicates that the [=[RP]=] wants the attestation statement as generated by the authenticator. If
       the client returns an attestation statement to the RP in this case, it MUST be the statement generated by the authenticator.
-      The client SHOULD obtain consent from the user in this case for relaying attestation information to the [=RP=].
       Note that the user may opt out of relaying attestation information to the [=RP=], or the client might have
       blacklisted certain types of authenticators for violating user privacy. If for whatever reason the client cannot pass on
       the authenticator-generated attestation statement, it MUST terminate the credential generation operation with a
