@@ -1597,7 +1597,7 @@ an assertion. Its {{PublicKeyCredentialRequestOptions/challenge}} member must be
 <dl dfn-type="dict-member" dfn-for="PublicKeyCredentialRequestOptions">
     :   <dfn>challenge</dfn>
     ::  This member represents a challenge that the selected [=authenticator=] signs, along with other data, when producing an
-        [=authentication assertion=].
+        [=authentication assertion=]. See the [[#cryptographic-challenges]] security consideration.
 
     :   <dfn>timeout</dfn>
     ::  This optional member specifies a time, in milliseconds, that the caller is willing to wait for the call to complete.
@@ -1632,9 +1632,9 @@ See [[dom#abortcontroller-api-integration]] section for detailed instructions.
     and {{PublicKeyCredential/[[DiscoverFromExternalSource]](options)}} methods, the algorithms for the two APIs fulfills this 
     requirement by checking the [=AbortSignal/aborted flag=] in three places. In the case of 
     {{PublicKeyCredential/[[Create]](options)}}, the aborted flag is checked first in 
-    [[credential-management-1#algorithm-create]] right before calling {{Credential/[[Create]](options)}}, 
-    then in [[#createCredential]] right before authenticator sessions start, and finally 
-    during authenticator sessions. The same goes for 
+    [[credential-management-1#algorithm-create]] immediately before calling {{Credential/[[Create]](options)}},
+    then in [[#createCredential]] right before [=authenticator sessions=] start, and finally
+    during [=authenticator sessions=]. The same goes for
     {{PublicKeyCredential/[[DiscoverFromExternalSource]](options)}}.
 
 The [=visibility states|visibility=] and [=focus=] state of the [=Window=] object determines whether the 
@@ -1688,6 +1688,7 @@ following Web IDL.
     confusion attacks (where an attacker substitutes one legitimate signature for another).
 
     The <dfn>challenge</dfn> member contains the base64url encoding of the challenge provided by the RP.
+    See the [[#cryptographic-challenges]] security consideration.
 
     The <dfn>origin</dfn> member contains the fully qualified [=origin=] of the requester, as provided to the authenticator by
     the client, in the syntax defined by [[RFC6454]].
@@ -1990,7 +1991,7 @@ Authenticators:
 ## Authenticator operations ## {#authenticator-ops}
 
 A client must connect to an authenticator in order to invoke any of the operations of that authenticator. This connection
-defines an authenticator session. An authenticator must maintain isolation between sessions. It may do this by only allowing one
+defines an <dfn>authenticator session</dfn>. An authenticator must maintain isolation between sessions. It may do this by only allowing one
 session to exist at any particular time, or by providing more complicated session management.
 
 The following operations can be invoked by the client in an authenticator session.
@@ -1998,8 +1999,7 @@ The following operations can be invoked by the client in an authenticator sessio
 
 <h4 id="op-make-cred" algorithm>The <dfn>authenticatorMakeCredential</dfn> operation</h4>
 
-This operation must be invoked in an authenticator session which has no other operations in progress. It takes the following
-input parameters:
+It takes the following input parameters:
 
 <!-- @@EDITOR-ANCHOR-01B: KEEP THIS LIST SYNC'D WITH THE LIST UP AT @@EDITOR-ANCHOR-01A -->
 : |hash|
@@ -2024,7 +2024,9 @@ input parameters:
 :: A [=map=] from [=extension identifiers=] to their [=authenticator extension inputs=], created by the client based on the
     extensions requested by the [=[RP]=], if any.
 
-When this operation is invoked, the authenticator must perform the following procedure:
+Note: Before performing this operation, all other operations in progress in the [=authenticator session=] must be aborted by running the [=authenticatorCancel=] operation.
+
+When this operation is invoked, the [=authenticator=] must perform the following procedure:
 1. Check if all the supplied parameters are syntactically well-formed and of the correct length. If not, return an error code
     equivalent to "{{UnknownError}}" and terminate the operation.
 1. Check if at least one of the specified combinations of {{PublicKeyCredentialType}} and cryptographic parameters in
@@ -2081,8 +2083,7 @@ On successful completion of this operation, the authenticator returns the [=atte
 
 <h4 id="op-get-assertion" algorithm> The <dfn>authenticatorGetAssertion</dfn> operation</h4>
 
-This operation must be invoked in an authenticator session which has no other operations in progress. It takes the following
-input parameters:
+It takes the following input parameters:
 
 : |rpId|
 :: The caller's [=RP ID=], as <a href='#GetAssn-DetermineRpId'>determined</a> by the user agent and the client.
@@ -2094,6 +2095,8 @@ input parameters:
 : |extensions|
 :: A [=map=] from [=extension identifiers=] to their [=authenticator extension inputs=], created by the client based on the
     extensions requested by the [=[RP]=], if any.
+
+Note: Before performing this operation, all other operations in progress in the [=authenticator session=] must be aborted by running the [=authenticatorCancel=] operation.
 
 When this method is invoked, the [=authenticator=] must perform the following procedure:
 1. Check if all the supplied parameters are syntactically well-formed and of the correct length. If not, return an error code
@@ -2154,12 +2157,12 @@ If the user refuses consent, the authenticator returns an appropriate error stat
 
 This operation takes no input parameters and returns no result.
 
-When this operation is invoked by the client in an authenticator session, it has the effect of terminating any
+When this operation is invoked by the client in an [=authenticator session=], it has the effect of terminating any
 [=authenticatorMakeCredential=] or [=authenticatorGetAssertion=] operation currently in progress in that authenticator
 session. The authenticator stops prompting for, or accepting, any user input related to authorizing the canceled operation. The
 client ignores any further responses from the authenticator for the canceled operation.
 
-This operation is ignored if it is invoked in an authenticator session which does not have an [=authenticatorMakeCredential=]
+This operation is ignored if it is invoked in an [=authenticator session=] which does not have an [=authenticatorMakeCredential=]
 or [=authenticatorGetAssertion=] operation currently in progress.
 
 
@@ -2793,7 +2796,8 @@ engine.
     Concatenate |authenticatorData| and |clientDataHash| to form |attToBeSigned|.
 
     Generate a signature using the procedure specified in [[TPMv2-Part3]] Section 18.2, using the attestation private key and
-    setting the `qualifyingData` parameter to |attToBeSigned|.
+    setting the `extraData` parameter to the digest of |attToBeSigned| using the hash algorithm corresponding to the "alg" signature algorithm.
+    (For the "RS256" algorithm, this would be a SHA-256 digest.)
 
     Set the |pubArea| field to the public area of the credential public key, the |certInfo| field to the output parameter of the
     same name, and the |sig| field to the signature obtained from the above procedure.
@@ -2813,7 +2817,7 @@ engine.
     Validate that |certInfo| is valid:
     - Verify that `magic` is set to `TPM_GENERATED_VALUE`.
     - Verify that `type` is set to `TPM_ST_ATTEST_CERTIFY`.
-    - Verify that `extraData` is set to |attToBeSigned|.
+    - Verify that `extraData` is set to the hash of |attToBeSigned| using the hash algorithm employed in "alg".
     - Verify that `attested` contains a `TPMS_CERTIFY_INFO` structure, whose `name` field contains a valid Name for |pubArea|,
         as computed using the algorithm in the `nameAlg` field of |pubArea| using the procedure specified in [[TPMv2-Part1]]
         section 16.
@@ -3179,7 +3183,8 @@ The entry key is the [=extension identifier=] and the value is the [=client exte
 <pre class="example" highlight="js">
     var assertionPromise = navigator.credentials.get({
         publicKey: {
-            challenge: "...",
+            // The challenge must be produced by the server, see the Security Considerations
+            challenge: new Uint8Array([4,99,22 /* 29 more random bytes generated by the server */]),
             extensions: {
                 "webauthnExample_foobar": 42
             }
@@ -3245,7 +3250,8 @@ the use of the extension. The [=[RP]=] sets this value in its request for an ass
     var assertionPromise =
         navigator.credentials.get({
             publicKey: {
-                challenge: "SGFuIFNvbG8gc2hvdCBmaXJzdC4",
+                // The challenge must be produced by the server, see the Security Considerations
+                challenge: new Uint8Array([11,103,35 /* 29 more random bytes generated by the server */]),
                 allowCredentials: [], /* Empty filter */
                 extensions: { 'webauthnExample_geo': true }
             }
@@ -3734,8 +3740,9 @@ IANA "WebAuthn Extension Identifier" registry established by [[!WebAuthn-Registr
 
 ## COSE Algorithm Registrations ## {#sctn-cose-alg-reg}
 
-This section registers identifiers for RSASSA-PKCS1-v1_5 [[RFC8017]] algorithms using SHA-2 hash functions in the
+This section registers identifiers for RSASSA-PKCS1-v1_5 [[RFC8017]] algorithms using SHA-2 and SHA-1 hash functions in the
 IANA COSE Algorithms registry [[!IANA-COSE-ALGS-REG]].
+It also registers identifiers for ECDAA algorithms.
 
 - Name: RS256
 - Value: -257
@@ -3766,6 +3773,12 @@ IANA COSE Algorithms registry [[!IANA-COSE-ALGS-REG]].
 - Description: ECC_BN_ISOP512 curve w/ SHA-512
 - Reference: Section 4.2 of [[!FIDOEcdaaAlgorithm]]
 - Recommended: Yes
+    <br/><br/>
+- Name: RS1
+- Value: -262
+- Description: RSASSA-PKCS1-v1_5 w/ SHA-1
+- Reference: Section 8.2 of [[RFC8017]]
+- Recommended: No
 
 # Sample scenarios # {#sample-scenarios}
 
@@ -3818,7 +3831,8 @@ The sample code for generating and registering a new key follows:
     if (!PublicKeyCredential) { /* Platform not capable. Handle error. */ }
 
     var publicKey = {
-      challenge: Uint8Array.from(window.atob("PGifxAoBwCkWkm4b1CiIl5otCphiIh6MijdjbWFjomA="), c=>c.charCodeAt(0)),
+      // The challenge must be produced by the server, see the Security Considerations
+      challenge: new Uint8Array([21,31,105 /* 29 more random bytes generated by the server */]),
 
       // Relying Party:
       rp: {
@@ -3948,7 +3962,8 @@ credentials, then the sample code for performing such an authentication might lo
     if (!PublicKeyCredential) { /* Platform not capable. Handle error. */ }
 
     var options = {
-                    challenge: new TextEncoder().encode("climb a mountain"),
+                    // The challenge must be produced by the server, see the Security Considerations
+                    challenge: new Uint8Array([4,101,15 /* 29 more random bytes generated by the server */]),
                     timeout: 60000,  // 1 minute
                     allowCredentials: [{ type: "public-key" }]
                   };
@@ -3979,7 +3994,8 @@ extension for transaction authorization.
     };
 
     var options = {
-                    challenge: encoder.encode("climb a mountain"),
+                    // The challenge must be produced by the server, see the Security Considerations
+                    challenge: new Uint8Array([8,18,33 /* 29 more random bytes generated by the server */]),
                     timeout: 60000,  // 1 minute
                     allowCredentials: [acceptableCredential1, acceptableCredential2],
                     extensions: { 'txAuthSimple':
@@ -4054,6 +4070,16 @@ handled on the server side and do not need support from the API specified here.
     * Sometime later, the server deregisters this credential due to inactivity.
 
 
+# Security Considerations # {#security-considerations}
+
+## Cryptographic Challenges ## {#cryptographic-challenges}
+As a cryptographic protocol, Web Authentication is dependent upon randomized challenges
+to avoid replay attacks. Therefore, the [=challenge=] field MUST be randomly generated
+by the [=Relying Party=] in an environment they trust, and the challenge in the client's
+response must match what was generated. This should be done in a fashion that does not rely
+upon a client's behavior; e.g.: the Relying Party should store the challenge temporarily
+until the operation is complete. Tolerating a mismatch will compromise the security
+of the protocol.
 
 
 # Acknowledgements # {#acknowledgements}
