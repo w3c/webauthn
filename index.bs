@@ -156,9 +156,9 @@ the existence, of credentials scoped to other [RPS].
 is [=Registration=], where a [=public key credential=] is created on an [=authenticator=], and associated by a [=[RP]=]
 with the present user's account (the account may already exist or may be created at this time). The second is
 [=Authentication=], where the [=[RP]=] is presented with an <em>[=Authentication Assertion=]</em> proving the presence
-and consent of the user who registered the [=public key credential=]. Functionally, the [=Web Authentication API=] comprises
-a {{PublicKeyCredential}} which extends the Credential Management API [[!CREDENTIAL-MANAGEMENT-1]], and infrastructure which
-allows those credentials to be used with {{CredentialsContainer/create()|navigator.credentials.create()}} and
+and [=user consent|consent=] of the user who registered the [=public key credential=]. Functionally, the [=Web Authentication
+API=] comprises a {{PublicKeyCredential}} which extends the Credential Management API [[!CREDENTIAL-MANAGEMENT-1]], and
+infrastructure which allows those credentials to be used with {{CredentialsContainer/create()|navigator.credentials.create()}} and
 {{CredentialsContainer/get()|navigator.credentials.get()}}. The former is used during [=Registration=], and the
 latter during [=Authentication=].
 
@@ -311,8 +311,8 @@ The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "S
 : <dfn>Authentication</dfn>
 :: The [=ceremony=] where a user, and the user's computing device(s) (containing at least one [=authenticator=]) work in
     concert to cryptographically prove to an [=[RP]=] that the user controls the [=credential private key=] associated with a
-    previously-registered [=public key credential=] (see [=Registration=]). Note that this typically includes employing a [=test
-    of user presence=] or [=user verification=].
+    previously-registered [=public key credential=] (see [=Registration=]). Note that this includes a [=test of user presence=] or
+    [=user verification=].
 
 : <dfn>Authentication Assertion</dfn>
 :: The cryptographically signed {{AuthenticatorAssertionResponse}} object returned by an [=authenticator=] as the result of a
@@ -437,7 +437,7 @@ The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "S
 : <dfn>Registration</dfn>
 :: The [=ceremony=] where a user, a [=[RP]=], and the user's computing device(s) (containing at least one
     [=authenticator=]) work in concert to create a [=public key credential=] and associate it with the user's [=[RP]=] account.
-    Note that this typically includes employing a [=test of user presence=] or [=user verification=].
+    Note that this includes employing a [=test of user presence=] or [=user verification=].
 
 : <dfn>[RP]</dfn>
 :: The entity whose web application utilizes the [=Web Authentication API=] to register and authenticate users. See
@@ -513,11 +513,11 @@ The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "S
 
 This section normatively specifies the API for creating and using [=public key credentials=]. The basic
 idea is that the credentials belong to the user and are managed by an authenticator, with which the [=[RP]=] interacts through the
-client (consisting of the browser and underlying OS platform). Scripts can (with the user's consent) request the browser to
-create a new credential for future use by the [=[RP]=]. Scripts can also request the user’s permission to perform authentication
-operations with an existing credential. All such operations are performed in the authenticator and are mediated by the browser
-and/or platform on the user's behalf. At no point does the script get access to the credentials themselves; it only gets
-information about the credentials in the form of objects.
+client (consisting of the browser and underlying OS platform). Scripts can (with the [=user consent|user's consent=]) request the
+browser to create a new credential for future use by the [=[RP]=]. Scripts can also request the user’s permission to perform
+authentication operations with an existing credential. All such operations are performed in the authenticator and are mediated by
+the browser and/or platform on the user's behalf. At no point does the script get access to the credentials themselves; it only
+gets information about the credentials in the form of objects.
 
 In addition to the above script interface, the authenticator may implement (or come with client software that implements) a user
 interface for management. Such an interface may be used, for example, to reset the authenticator to a clean state or to inspect
@@ -776,10 +776,36 @@ When this method is invoked, the user agent MUST execute the following algorithm
 
     1. If {{AuthenticatorSelectionCriteria/authenticatorAttachment}} is [=present|present=] and its value is not equal
         to |authenticator|'s attachment modality, [=iteration/continue=].
-    1. If {{AuthenticatorSelectionCriteria/requireResidentKey}} is set to |true| and the |authenticator|
+    1. If {{AuthenticatorSelectionCriteria/requireResidentKey}} is set to `true` and the |authenticator|
         is not capable of storing a [=Client-Side-Resident Credential Private Key=], [=iteration/continue=].
-    1. If {{AuthenticatorSelectionCriteria/requireUserVerification}} is set to |true| and the
+    1. If {{AuthenticatorSelectionCriteria/requireUserVerification}} is set to {{UserVerificationRequirement/required}} and the
         |authenticator| is not capable of performing [=user verification=], [=iteration/continue=].
+
+    1. Let |userVerification| be the <dfn>effective user verification requirement for credential creation</dfn>, a Boolean value,
+        as follows. If {{AuthenticatorSelectionCriteria/requireUserVerification}}
+
+            <dl class="switch">
+
+                :   is set to {{UserVerificationRequirement/required}}
+                ::  Let |userVerification| be `true`.
+
+                :   is set to {{UserVerificationRequirement/preferred}}
+                ::  If the |authenticator|
+
+                    <dl class="switch">
+                        :   is capable of [=user verification=]
+                        ::  Let |userVerification| be `true`.
+
+                        :   is not capable of [=user verification=]
+                        ::  Let |userVerification| be `false`.
+                    </dl>
+
+                :   is set to {{UserVerificationRequirement/discouraged}}
+                ::  Let |userVerification| be `false`.
+
+            </dl>
+
+    1. Let |userPresence| be a Boolean value set to the inverse of |userVerification|.
 
     1. Let |excludeCredentialDescriptorList| be a new [=list=].
 
@@ -793,7 +819,8 @@ When this method is invoked, the user agent MUST execute the following algorithm
         |clientDataHash|,
         <code>|options|.{{MakePublicKeyCredentialOptions/rp}}</code>, <code>|options|.{{MakePublicKeyCredentialOptions/user}}</code>,
         <code>|options|.{{MakePublicKeyCredentialOptions/authenticatorSelection}}.{{AuthenticatorSelectionCriteria/requireResidentKey}}</code>,
-        <code>|options|.{{MakePublicKeyCredentialOptions/authenticatorSelection}}.{{AuthenticatorSelectionCriteria/requireUserVerification}}</code>,
+        |userPresence|,
+        |userVerification|,
         |credTypesAndPubKeyAlgs|,
         |excludeCredentialDescriptorList|,
         and |authenticatorExtensions| as parameters.
@@ -908,7 +935,7 @@ authorizing an authenticator.
 </div>
 
 
-### Use an existing credential to make an assertion ### {#getAssertion}
+### Use an existing credential to make an assertion - PublicKeyCredential's `[[Get]](options)` method ### {#getAssertion}
 
 [=[RPS]=] call <code><a idl for="CredentialsContainer" lt="get()">navigator.credentials.get({publicKey:..., ...})</a></code> to
 discover and use an existing [=public key credential=], with the [=user consent|user's consent=]. [=[RP]=] script optionally specifies some criteria
@@ -1044,6 +1071,36 @@ When this method is invoked, the user agent MUST execute the following algorithm
     Resolving this with good definitions or some other means will be addressed by resolving
     [Issue #613](https://github.com/w3c/webauthn/issues/613).
 
+    1. If |options|.{{PublicKeyCredentialRequestOptions/userVerification}} is set to
+        {{UserVerificationRequirement/required}} and the |authenticator| is not capable of performing [=user verification=],
+        [=iteration/continue=].
+
+    1. Let |userVerification| be the <dfn>effective user verification requirement for assertion</dfn>, a Boolean value, as
+        follows. If <code>|options|.{{PublicKeyCredentialRequestOptions/userVerification}}</code>
+
+            <dl class="switch">
+
+                :   is set to {{UserVerificationRequirement/required}}
+                ::  Let |userVerification| be `true`.
+
+                :   is set to {{UserVerificationRequirement/preferred}}
+                ::  If the |authenticator|
+
+                    <dl class="switch">
+                        :   is capable of [=user verification=]
+                        ::  Let |userVerification| be `true`.
+
+                        :   is not capable of [=user verification=]
+                        ::  Let |userVerification| be `false`.
+                    </dl>
+
+                :   is set to {{UserVerificationRequirement/discouraged}}
+                ::  Let |userVerification| be `false`.
+
+            </dl>
+
+    1. Let |userPresence| be a Boolean value set to the inverse of |userVerification|.
+
     1. Let |allowCredentialDescriptorList| be a new [=list=].
 
     1. If <code>|options|.{{PublicKeyCredentialRequestOptions/allowCredentials}}</code> [=list/is not empty=], execute a
@@ -1081,19 +1138,20 @@ When this method is invoked, the user agent MUST execute the following algorithm
                             selection.
 
                             Then, using |transport|, invoke the [=authenticatorGetAssertion=] operation on
-                            |authenticator|, with |rpId|, |clientDataHash|, |allowCredentialDescriptorList|, and
-                            |authenticatorExtensions| as parameters.
+                            |authenticator|, with |rpId|, |clientDataHash|, |allowCredentialDescriptorList|, |userPresence|,
+                            |userVerification|, and |authenticatorExtensions| as parameters.
 
                         :   [=list/is empty=]
                         ::  Using local configuration knowledge of the appropriate transport to use with |authenticator|,
                             invoke the [=authenticatorGetAssertion=] operation on |authenticator| with |rpId|,
-                            |clientDataHash|, |allowCredentialDescriptorList|, and |clientExtensions| as parameters.
+                            |clientDataHash|, |allowCredentialDescriptorList|, |userPresence|, |userVerification|, and
+                            |clientExtensions| as parameters.
                     </dl>
 
             :   [=list/is empty=]
-            ::  Using local configuration knowledge of the appropriate transport to use with |authenticator|, invoke
-                the [=authenticatorGetAssertion=] operation on |authenticator| with |rpId|, |clientDataHash|,
-                and |clientExtensions| as parameters.
+            ::  Using local configuration knowledge of the appropriate transport to use with |authenticator|, invoke the
+                [=authenticatorGetAssertion=] operation on |authenticator| with |rpId|, |clientDataHash|, |userPresence|,
+                |userVerification| and |clientExtensions| as parameters.
 
                 Note: In this case, the [=[RP]=] did not supply a list of acceptable credential descriptors. Thus the
                     authenticator is being asked to exercise any credential it may possess that is bound to
@@ -1419,7 +1477,7 @@ optionally evidence of [=user consent=] to a specific transaction.
 
     :   <dfn>authenticatorSelection</dfn>
     ::  This member is intended for use by [=[RPS]=] that wish to select the appropriate authenticators to participate in
-        the {{CredentialsContainer/create()}} or {{CredentialsContainer/get()}} operation.
+        the {{CredentialsContainer/create()}} operation.
 
     :   <dfn>attestation</dfn>
     ::  This member is intended for use by [=[RPS]=] that wish to express their preference for [=attestation conveyance=].
@@ -1507,7 +1565,7 @@ attributes.
     dictionary AuthenticatorSelectionCriteria {
         AuthenticatorAttachment      authenticatorAttachment;
         boolean                      requireResidentKey = false;
-        boolean                      requireUserVerification = false;
+        UserVerificationRequirement  requireUserVerification = "preferred";
     };
 </xmp>
 
@@ -1522,10 +1580,9 @@ attributes.
         [=Client-side-resident Credential Private Key=] when creating a [=public key credential=].
 
     :   <dfn>requireUserVerification</dfn>
-    ::  This member describes the [=[RPS]=]' requirements regarding the authenticator being capable of performing user verification.
-        If the parameter is set to true, the authenticator MUST perform user verification when performing
-        the {{CredentialsContainer/create()}} operation and future [[#getAssertion]] operations when it is
-        requested to verify the credential.
+    ::  This member describes the [=[RP]=]'s requirements regarding [=user verification=] for the
+        {{CredentialsContainer/create()}} operation. Eligible authenticators are filtered to only those capable of satisfying this
+        requirement.
 </div>
 
 
@@ -1611,6 +1668,7 @@ an assertion. Its {{PublicKeyCredentialRequestOptions/challenge}} member must be
         unsigned long                        timeout;
         USVString                            rpId;
         sequence<PublicKeyCredentialDescriptor> allowCredentials = [];
+        UserVerificationRequirement          userVerification = "preferred";
         AuthenticationExtensions             extensions;
     };
 </xmp>
@@ -1630,9 +1688,14 @@ an assertion. Its {{PublicKeyCredentialRequestOptions/challenge}} member must be
         [=effective domain=].
 
     :   <dfn>allowCredentials</dfn>
-    ::  This optional member contains a list of {{PublicKeyCredentialDescriptor}} object representing [=public key credentials=]
+    ::  This optional member contains a list of {{PublicKeyCredentialDescriptor}} objects representing [=public key credentials=]
         acceptable to the caller, in decending order of the caller's preference (the first item in the list is the most
         preferred credential, and so on down the list).
+
+    :   <dfn>userVerification</dfn>
+    ::  This member describes the [=[RP]=]'s requirements regarding [=user verification=] for the
+        {{CredentialsContainer/get()}} operation. Eligible authenticators are filtered to only those capable of satisfying this
+        requirement.
 
     :   <dfn>extensions</dfn>
     ::  This optional member contains additional parameters requesting additional processing by the client and authenticator.
@@ -1667,6 +1730,7 @@ SHOULD be aborted.
     Issue: The WHATWG HTML WG is discussing whether to provide a hook when a browsing context gains or
     loses focuses. If a hook is provided, the above paragraph will be updated to include the hook.
     See [WHATWG HTML WG Issue #2711](https://github.com/whatwg/html/issues/2711) for more details. 
+
 
 ## Authentication Extensions (typedef <dfn>AuthenticationExtensions</dfn>) ## {#iface-authentication-extensions}
 
@@ -1811,6 +1875,30 @@ the {{CredentialsContainer/create()}} or {{CredentialsContainer/get()}} methods.
     The algorithm identifiers SHOULD be values registered in the IANA COSE Algorithms registry [[!IANA-COSE-ALGS-REG]],
     for instance, <code>-7</code> for "ES256" and <code>-257</code> for "RS256".
 </div>
+
+
+### User Verification Requirement enumeration (enum <dfn enum>UserVerificationRequirement</dfn>) ### {#userVerificationRequirement}
+
+<pre class="idl">
+    enum UserVerificationRequirement {
+        "required",
+        "preferred",
+        "discouraged"
+    };
+</pre>
+
+A [=[RP]=] may require [=user verification=] for some of its operations but not for others, and may use this type to express its
+needs.
+
+The value {{UserVerificationRequirement/required}} indicates that the [=[RP]=] requires [=user verification=] for the operation
+and will fail the operation if the response does not have the [=UV=] [=flag=] set.
+
+The value {{UserVerificationRequirement/preferred}} indicates that the [=[RP]=] prefers [=user verification=] for the
+operation if possible, but will not fail the operation if the response does not have the [=UV=] [=flag=] set.
+
+The value {{UserVerificationRequirement/discouraged}} indicates that the [=[RP]=] does not want [=user verification=] employed
+during the operation (e.g., in the interest of minimizing disruption to the user interaction flow).
+
 
 # WebAuthn Authenticator model # {#authenticator-model}
 
@@ -2031,8 +2119,12 @@ It takes the following input parameters:
 :: The user account's {{PublicKeyCredentialUserEntity}}, containing the [=user handle=] given by the [=[RP]=].
 : |requireResidentKey|
 :: |options|.{{MakePublicKeyCredentialOptions/authenticatorSelection}}.{{requireResidentKey}}.
+: |requireUserPresence|
+:: A Boolean value provided by the client, which in invocations from a [=[WAC]=]'s
+    {{PublicKeyCredential/[[Create]](origin, options)}} method is always set to the inverse of
+    |requireUserVerification|.
 : |requireUserVerification|
-:: |options|.{{MakePublicKeyCredentialOptions/authenticatorSelection}}.{{requireUserVerification}}.
+:: The [=effective user verification requirement for credential creation=], a Boolean value provided by the client.
 : |credTypesAndPubKeyAlgs|
 :: A sequence of pairs of {{PublicKeyCredentialType}} and public key algorithms ({{COSEAlgorithmIdentifier}}) requested by the
     [=[RP]=]. This sequence is ordered from most preferred to least preferred. The platform makes a best-effort to create the most
@@ -2058,15 +2150,24 @@ When this operation is invoked, the [=authenticator=] must perform the following
     item's <code>|excludeCredentialDescriptorList|.{{PublicKeyCredentialDescriptor/id}}</code> and 
     <code>|excludeCredentialDescriptorList|.{{PublicKeyCredentialDescriptor/type}}</code>.
     If so, return an error code equivalent to "{{NotAllowedError}}" and terminate the operation.
-1. If |requireResidentKey| is |true| and the authenticator cannot store a [=Client-side-resident Credential
+1. If |requireResidentKey| is `true` and the authenticator cannot store a [=Client-side-resident Credential
     Private Key=], return an error code equivalent to "{{ConstraintError}}" and terminate the operation.
-1. If |requireUserVerification| is |true| and the authenticator cannot perform user verification,
-    return an error code equivalent to "{{ConstraintError}}" and terminate the operation.
-1. Prompt the user for consent to create a new credential. The prompt for obtaining this consent is shown by the authenticator
-    if it has its own output capability, or by the user agent otherwise. If the user denies consent, return an error code
-    equivalent to "{{NotAllowedError}}" and terminate the operation. The Authenticator and user agent MAY skip this prompt
-    if the Authenticator is a [=platform authenticator=] and |excludeCredentialDescriptorList| is empty.
-1. Once user consent has been obtained, generate a new credential object:
+1. If |requireUserVerification| is `true` and the authenticator cannot perform [=user verification=], return an error code
+    equivalent to "{{ConstraintError}}" and terminate the operation.
+1. Obtain [=user consent=] for creating a new credential. The prompt for obtaining this [=user consent|consent=] is shown by the
+    authenticator if it has its own output capability, or by the user agent otherwise. The prompt SHOULD display
+    <code>|rpEntity|.{{PublicKeyCredentialRpEntity/id}}</code>, <code>|rpEntity|.{{PublicKeyCredentialEntity/name}}</code>,
+    <code>|userEntity|.{{PublicKeyCredentialEntity/name}}</code> and
+    <code>|userEntity|.{{PublicKeyCredentialUserEntity/displayName}}</code>, if possible.
+
+    If |requireUserVerification| is `true`, the method of obtaining [=user consent=] MUST include [=user verification=].
+
+    If |requireUserPresence| is `true`, the method of obtaining [=user consent=] MUST include a [=test of user presence=].
+
+    If the user denies [=user consent|consent=] or if [=user verification=] fails, return an error code equivalent to
+    "{{NotAllowedError}}" and terminate the operation.
+
+1. Once [=user consent=] has been obtained, generate a new credential object:
     1. Let (|publicKey|,|privateKey|) be a new pair of cryptographic keys using the combination of {{PublicKeyCredentialType}}
         and cryptographic parameters represented by the first [=list/item=] in |credTypesAndPubKeyAlgs| that is supported by
         this authenticator.
@@ -2111,8 +2212,14 @@ It takes the following input parameters:
 : |hash|
 :: The [=hash of the serialized client data=], provided by the client.
 : |allowCredentialDescriptorList|
-:: An optional list of {{PublicKeyCredentialDescriptor}}s describing credentials acceptable to the [=[RP]=] (possibly filtered
+:: An optional [=list=] of {{PublicKeyCredentialDescriptor}}s describing credentials acceptable to the [=[RP]=] (possibly filtered
     by the client), if any.
+: |requireUserPresence|
+:: A Boolean value provided by the client, which in invocations from a [=[WAC]=]'s
+    {{PublicKeyCredential/[[DiscoverFromExternalSource]](origin, options)}} method is always set to the inverse of
+    |requireUserVerification|.
+: |requireUserVerification|
+:: The [=effective user verification requirement for assertion=], a Boolean value provided by the client.
 : |extensions|
 :: A [=map=] from [=extension identifiers=] to their [=authenticator extension inputs=], created by the client based on the
     extensions requested by the [=[RP]=], if any.
@@ -2122,17 +2229,41 @@ Note: Before performing this operation, all other operations in progress in the 
 When this method is invoked, the [=authenticator=] must perform the following procedure:
 1. Check if all the supplied parameters are syntactically well-formed and of the correct length. If not, return an error code
     equivalent to "{{UnknownError}}" and terminate the operation.
-1. If |allowCredentialDescriptorList| was not supplied, set it to a list of all credentials stored for |rpId| (as determined by
-    an exact match of |rpId|).
-1. Remove any items from |allowCredentialDescriptorList| that do not match a credential bound to this authenticator. A match 
-    occurs if a credential matches <code>|rpId|</code> and an |allowCredentialDescriptorList| item's <code>|allowCredentialDescriptorList| 
-    {{PublicKeyCredentialDescriptor/id}}</code> and <code>|allowCredentialDescriptorList|{{PublicKeyCredentialDescriptor/type}}</code>. 
-1. If |allowCredentialDescriptorList| is now empty, return an error code equivalent to "{{NotAllowedError}}" and terminate the
-    operation.
-1. Prompt the user to select a [=public key credential|credential=] |selectedCredential| from |allowCredentialDescriptorList|.
-    Obtain [=user consent=] for using |selectedCredential|. The prompt for obtaining this [=user consent|consent=] may be shown
-    by the
-    [=authenticator=] if it has its own output capability, or by the user agent otherwise.
+1. If |requireUserVerification| is `true` and the authenticator cannot perform [=user
+    verification=], return an error code equivalent to "{{ConstraintError}}" and terminate the operation.
+1. If |allowCredentialDescriptorList| was not supplied, set it to a [=list=] of all credentials stored for |rpId| (as determined
+    by an exact match of |rpId|).
+1. Remove any [=list/items=] from |allowCredentialDescriptorList| that do not match a credential bound to this authenticator. A
+    match occurs if a credential matches <code>|rpId|</code> and an |allowCredentialDescriptorList| [=list/item=]'s
+    {{PublicKeyCredentialDescriptor/id}} and {{PublicKeyCredentialDescriptor/type}} members.
+1. If |allowCredentialDescriptorList| is now [=list/empty=], return an error code equivalent to "{{NotAllowedError}}" and
+    terminate the operation.
+
+1. Let |selectedCredential| be a [=public key credential|credential=] as follows. If the [=list/size=] of
+    |allowCredentialDescriptorList|
+
+    <dl class="switch">
+        :   is exactly 1
+        ::  Let |selectedCredential| be the [=public key credential|credential=] matching
+            <code>|allowCredentialDescriptorList|[0]</code>.
+
+        :   is greater than 1
+        ::  Prompt the user to select |selectedCredential| from the [=public key credential|credentials=] matching the
+            [=list/items=] in |allowCredentialDescriptorList|.
+    </dl>
+
+
+1. Obtain [=user consent=] for using |selectedCredential|. The prompt for obtaining this [=user consent|consent=] may be shown by
+    the [=authenticator=] if it has its own output capability, or by the user agent otherwise. The prompt SHOULD display the
+    |rpId| and any additional displayable data associated with |selectedCredential|, if possible.
+
+    If |requireUserVerification| is `true`, the method of obtaining [=user consent=] MUST include [=user verification=].
+
+    If |requireUserPresence| is `true`, the method of obtaining [=user consent=] MUST include a [=test of user presence=].
+
+    If the user denies [=user consent|consent=] or if [=user verification=] fails, return an error code equivalent to
+    "{{NotAllowedError}}" and terminate the operation.
+
 1. Let |processedExtensions| be the result of [=authenticator extension processing=] for each supported [=extension
     identifier=]/input pair in |extensions|.
 1. Increment the [=RP ID=]-associated
@@ -2156,10 +2287,10 @@ When this method is invoked, the [=authenticator=] must perform the following pr
 
     <li id='authenticatorGetAssertion-return-values'>
     Return to the user agent:
-        - |selectedCredential|'s [=credential ID=], if either a list of credentials of length 2 or greater was supplied by the
-            client, or no such list was supplied. Otherwise, return only the below values.
+        - |selectedCredential|'s [=credential ID=], if either a [=list=] of credentials of [=list/size=] 2 or greater was supplied
+            by the client, or no such [=list=] was supplied. Otherwise, return only the below values.
 
-            Note: If the client supplies a list of exactly one credential and it was successfully employed, then its
+            Note: If the client supplies a [=list=] of exactly one credential and it was successfully employed, then its
                 [=credential ID=] is not returned since the client already knows it. This saves transmitting these bytes over
                 what may be a constrained connection in what is likely a common case.
 
@@ -2170,8 +2301,6 @@ When this method is invoked, the [=authenticator=] must perform the following pr
 
 If the authenticator cannot find any credential corresponding to the specified [=[RP]=] that matches the specified criteria, it
 terminates the operation and returns an error.
-
-If the user refuses consent, the authenticator returns an appropriate error status to the client.
 
 
 ### The <dfn>authenticatorCancel</dfn> operation ### {#op-cancel}
@@ -3750,7 +3879,7 @@ IANA "WebAuthn Extension Identifier" registry established by [[!WebAuthn-Registr
     <br/><br/>
 - WebAuthn Extension Identifier: loc
 - Description: The location [=registration extension=] and [=authentication extension=] provides the client device's current
-    location to the WebAuthn relying party, if supported by the client device and subject to user consent.
+    location to the WebAuthn relying party, if supported by the client device and subject to [=user consent=].
 - Specification Document: Section [[#sctn-location-extension]] of this specification
     <br/><br/>
 - WebAuthn Extension Identifier: uvm
