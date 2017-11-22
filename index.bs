@@ -51,6 +51,11 @@ Boilerplate: omit conformance, omit feedback-header, omit abstract-header
 Markup Shorthands: css off, markdown on
 </pre>
 
+<!-- spec: HTML; urlPrefix: https://html.spec.whatwg.org/multipage/ -->
+<!-- L89: Remove these once Shepherd picks up the changes -->
+
+
+
 <pre class="anchors">
 
 spec: ECMAScript; urlPrefix: https://tc39.github.io/ecma262/#
@@ -74,7 +79,6 @@ spec: TokenBinding; urlPrefix: https://tools.ietf.org/html/draft-ietf-tokbind-pr
     type: dfn
         text: Token Binding
         text: Token Binding ID; url: section-3.2
-
 
 spec: WebCryptoAPI; urlPrefix: https://www.w3.org/TR/WebCryptoAPI/
     type: dfn
@@ -107,6 +111,8 @@ spec: WHATWG HTML; urlPrefix: https://html.spec.whatwg.org/
     type: dfn 
         text: focus
 </pre> <!-- class=anchors -->
+
+<!-- L128 spec:webappsec-credential-management-1; type:dictionary; for:/; text:CredentialRequestOptions -->
 
 <pre class="link-defaults">
 spec:credential-management; type:dfn; text:credentials
@@ -286,7 +292,8 @@ The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "S
     In the WebAuthn context, [=attestation=] is employed to <em>attest</em> to the <em>provenance</em> of an [=authenticator=]
     and the data it emits; including, for example: [=credential IDs=], [=credential key pairs=], signature counters, etc. An
     [=attestation statement=] is conveyed in an [=attestation object=] during [=registration=]. See also [[#sctn-attestation]]
-    and [Figure 3](#fig-attStructs).
+    and [Figure 3](#fig-attStructs). Whether or how the client platform conveys the [=attestation statement=] and [=AAGUID=] 
+    portions of the [=attestation object=] to the [=[RP]=] is described by [=attestation conveyance=].
 
 : <dfn>Attestation Certificate</dfn>
 :: A X.509 Certificate for the <dfn>attestation key pair</dfn> used by an [=authenticator=] to attest to its manufacture
@@ -822,7 +829,6 @@ When this method is invoked, the user agent MUST execute the following algorithm
 1. [=While=] |issuedRequests| [=list/is not empty=], perform the following actions depending upon
     |lifetimeTimer| and responses from the authenticators:
     <dl class="switch">
-
         :   If |lifetimeTimer| expires,
         ::  [=set/For each=] |authenticator| in |issuedRequests| invoke the [=authenticatorCancel=] operation on |authenticator|
             and [=set/remove=] |authenticator| from |issuedRequests|.
@@ -854,6 +860,9 @@ When this method is invoked, the user agent MUST execute the following algorithm
                 :   <code><dfn for="credentialCreationData">clientDataJSONResult</dfn></code>
                 ::  whose value is the bytes of |clientDataJSON|.
 
+                :   <code><dfn for="credentialCreationData">attestationConveyancePreferenceOption</dfn></code>
+                ::  whose value is the value of |options|.{{MakePublicKeyCredentialOptions/attestation}}.
+
                 :   <code><dfn for="credentialCreationData">clientExtensionResults</dfn></code>
                 ::  whose value is an {{AuthenticationExtensions}} object containing [=extension identifier=] →
                     [=client extension output=] entries. The entries are created by running each extension's
@@ -865,6 +874,28 @@ When this method is invoked, the user agent MUST execute the following algorithm
 
                 1.  Let |attestationObject| be a new {{ArrayBuffer}}, created using |global|'s [=%ArrayBuffer%=], containing the
                     bytes of <code>|credentialCreationData|.[=attestationObjectResult=]</code>'s value.
+
+                1.  If <code>|credentialCreationData|.[=attestationConveyancePreferenceOption=]</code>'s value is
+                    <dl class="switch">
+                        :   "none"
+                        ::  Replace potentially uniquely identifying information (such as [=AAGUID=] and
+                            [=attestation certificates=]) in the [=attested credential data=] and [=attestation statement=],
+                            respectively, with blinded versions of the same data.
+
+                        Issue(w3c/webauthn#694): need to define "blinding".  See also
+                            [#462](https://github.com/w3c/webauthn/issues/462).
+
+                        :   "indirect"
+                        ::  The client MAY replace the [=AAGUID=] and [=attestation statement=] with a more privacy-friendly
+                            and/or more easily verifiable version of the same data (for example, by employing a [=Privacy CA=]).
+
+                        :   "direct"
+                        ::  Convey the [=authenticator=]'s [=AAGUID=] and [=attestation statement=], unaltered, to the RP.
+
+                        Issue: @balfanz wishes to add to the "direct" case:
+                            If the [=authenticator=] violates the privacy requirements of the [=attestation type=] it is using, 
+                            the client SHOULD terminate this algorithm with a "{{AttestationNotPrivateError}}".
+                    </dl>
 
                 1.  Let |id| be <code>|attestationObject|.authData.[=attestedCredentialData=].[=credentialId=]</code>.
 
@@ -1400,6 +1431,7 @@ optionally evidence of [=user consent=] to a specific transaction.
         unsigned long                                timeout;
         sequence<PublicKeyCredentialDescriptor>      excludeCredentials = [];
         AuthenticatorSelectionCriteria               authenticatorSelection;
+        AttestationConveyancePreference              attestation = "none";
         AuthenticationExtensions                     extensions;
     };
 </xmp>
@@ -1447,6 +1479,10 @@ optionally evidence of [=user consent=] to a specific transaction.
     :   <dfn>authenticatorSelection</dfn>
     ::  This member is intended for use by [=[RPS]=] that wish to select the appropriate authenticators to participate in
         the {{CredentialsContainer/create()}} operation.
+
+    :   <dfn>attestation</dfn>
+    ::  This member is intended for use by [=[RPS]=] that wish to express their preference for [=attestation conveyance=].
+        The default is {{AttestationConveyancePreference/none}}.
 
     :   <dfn>extensions</dfn>
     ::  This member contains additional parameters requesting additional processing by the client and authenticator. For
@@ -1584,6 +1620,42 @@ credential on a [=platform authenticator=] may be used by [=[RPS]=] to quickly a
 a minimum of friction, e.g., the user will not have to dig around in their pocket for their key fob or phone. As a concrete
 example of the latter, when the user is accessing the [=[RP]=] from a given client for the first time, they may be required to
 use a [=roaming authenticator=] which was originally registered with the [=[RP]=] using a different client.
+
+
+### <dfn>Attestation Conveyance</dfn> Preference enumeration (enum <dfn enum>AttestationConveyancePreference</dfn>) ### {#attestation-convey}
+
+[=[RPS]=] may use {{AttestationConveyancePreference}} to specify their preference regarding [=attestation conveyance=]
+during credential generation.
+
+<pre class="idl">
+    enum AttestationConveyancePreference {
+        "none",
+        "indirect",
+        "direct"
+    };
+</pre>
+
+<div dfn-type="enum-value" dfn-for="AttestationConveyancePreference">
+    *   <dfn>none</dfn> - indicates that the [=[RP]=] is not interested in [=authenticator=] [=attestation=].
+        The client may replace the [=AAGUID=] and [=attestation statement=] generated
+        by the authenticator with meaningless client-generated values. For example, in order to avoid having to obtain
+        [=user consent=] to relay uniquely identifying information to the [=[RP]=], or to save a roundtrip to a Privacy CA.
+
+        This is the default value.
+
+    *   <dfn>indirect</dfn> - indicates that the [=[RP]=] prefers an [=attestation=] conveyance yielding verifiable
+        [=attestation statements=], but allows the client to decide how to obtain such [=attestation statements=].
+        The client may replace the authenticator-generated [=attestation statements=] with [=attestation statements=] generated
+        by a [=Privacy CA=], in order to protect the user's privacy, or to assist [=[RPS]=] with attestation verification in a
+        heterogeneous ecosystem.
+
+        Note: There is no guarantee that the [=[RP]=] will obtain a verifiable [=attestation statement=] in this case.
+        For example, in the case that the authenticator employs [=self attestation=].
+
+    *   <dfn>direct</dfn> - indicates that the [=[RP]=] wants to receive the [=attestation statement=] as generated by
+        the [=authenticator=].
+
+</div>
 
 
 ## Options for Assertion Generation (dictionary <dfn dictionary>PublicKeyCredentialRequestOptions</dfn>) ## {#assertion-options}
