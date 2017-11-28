@@ -51,11 +51,8 @@ Boilerplate: omit conformance, omit feedback-header, omit abstract-header
 Markup Shorthands: css off, markdown on
 </pre>
 
-<!-- spec: HTML; urlPrefix: https://html.spec.whatwg.org/multipage/ -->
-<!-- L89: Remove these once Shepherd picks up the changes -->
 
-
-
+<!-- TODO: Clean out these anchor lists once they appear in Shepherd -->
 <pre class="anchors">
 
 spec: ECMAScript; urlPrefix: https://tc39.github.io/ecma262/#
@@ -91,13 +88,16 @@ spec: credential-management-1; urlPrefix: https://w3c.github.io/webappsec-creden
         text: CredentialRequestOptions; url: dictdef-credentialrequestoptions
     for: Credential
         type: method
-            text: [[Create]](origin, options)
-            text: [[DiscoverFromExternalSource]](origin, options)
+            text: [[CollectFromCredentialStore]](origin, options, sameOriginWithAncestors)
+            text: [[Create]](origin, options, sameOriginWithAncestors)
+            text: [[DiscoverFromExternalSource]](origin, options, sameOriginWithAncestors)
+            text: [[Store]](credential, sameOriginWithAncestors)
     for: CredentialsContainer
         type: method
             text: create(); url: dom-credentialscontainer-create
     type: dfn
         text: signal
+        text: same-origin with its ancestors; url: same-origin-with-its-ancestors
 
 spec: mixed-content; urlPrefix: www.w3.org/TR/mixed-content/
     type: dfn
@@ -601,9 +601,10 @@ that are returned to the caller when a new credential is created, or a new asser
 </dl>
 
 {{PublicKeyCredential}}'s [=interface object=] inherits {{Credential}}'s implementation of
-{{Credential/[[CollectFromCredentialStore]](options)}} and {{Credential/[[Store]](credential)}}, and defines its own
-implementation of {{PublicKeyCredential/[[DiscoverFromExternalSource]](origin, options)}} and
-{{PublicKeyCredential/[[Create]](origin, options)}}.
+{{Credential/[[CollectFromCredentialStore]](origin, options, sameOriginWithAncestors)}}, and defines its own
+implementation of {{PublicKeyCredential/[[Create]](origin, options, sameOriginWithAncestors)}}, {{PublicKeyCredential/[[DiscoverFromExternalSource]](origin, options, sameOriginWithAncestors)}}, and
+{{Credential/[[Store]](credential, sameOriginWithAncestors)}}.
+
 
 ### `CredentialCreationOptions` Extension ### {#credentialcreationoptions-extension}
 
@@ -628,21 +629,21 @@ To support obtaining assertions via {{CredentialsContainer/get()|navigator.crede
 </pre>
 
 
-### Create a new credential - PublicKeyCredential's `[[Create]](origin, options)` method ### {#createCredential}
+### Create a new credential - PublicKeyCredential's `[[Create]](origin, options, sameOriginWithAncestors)` method ### {#createCredential}
 
-<div link-for-hint="PublicKeyCredential/[[Create]](origin, options)">
+<div link-for-hint="PublicKeyCredential/[[Create]](origin, options, sameOriginWithAncestors)">
 {{PublicKeyCredential}}'s [=interface object=]'s implementation of the
 
-<dfn for="PublicKeyCredential" method>\[[Create]](origin, options)</dfn> [=internal method=] [[CREDENTIAL-MANAGEMENT-1]] allows
+<dfn for="PublicKeyCredential" method>\[[Create]](origin, options, sameOriginWithAncestors)</dfn> [=internal method=] [[CREDENTIAL-MANAGEMENT-1]] allows
 [=[RP]=] scripts to call {{CredentialsContainer/create()|navigator.credentials.create()}} to request the creation of a new
 [=public key credential source=], bound to an [=authenticator=]. This
 {{CredentialsContainer/create()|navigator.credentials.create()}} operation can be aborted by leveraging the {{AbortController}};
 see [[dom#abortcontroller-api-integration]] for detailed instructions.
 
 
-This method accepts two arguments:
+This method accepts three arguments:
 
-<dl dfn-type="argument" dfn-for="PublicKeyCredential/[[Create]](origin, options)">
+<dl dfn-type="argument" dfn-for="PublicKeyCredential/[[Create]](origin, options, sameOriginWithAncestors)">
 
     :   <dfn>origin</dfn>
     ::  This argument is the [=relevant settings object=]'s [=environment settings object/origin=], as determined by the
@@ -652,6 +653,11 @@ This method accepts two arguments:
     ::  This argument is a {{CredentialCreationOptions}} object whose
         <code>|options|.{{CredentialCreationOptions/publicKey}}</code> member contains a {{MakePublicKeyCredentialOptions}}
         object specifying the desired attributes of the to-be-created [=public key credential=].
+
+    :   <dfn>sameOriginWithAncestors</dfn>
+    ::  This argument is a boolean which is true iff the caller's [=environment settings object=] is
+        [=same-origin with its ancestors=].
+
 </dl>
 
 Note: <strong>This algorithm is synchronous:</strong> the {{Promise}} resolution/rejection is handled by
@@ -661,6 +667,10 @@ When this method is invoked, the user agent MUST execute the following algorithm
 
 1. Assert: <code>|options|.{{CredentialCreationOptions/publicKey}}</code> is [=present=].
 
+1. If |sameOriginWithAncestors is `false`, return a "{{NotAllowedError}}" {{DOMException}}.
+
+    Note: This restriction aims to address the concern raised in [[CREDENTIAL-MANAGEMENT-1#security-origin-confusion]].
+
 1. Let |options| be the value of <code>|options|.{{CredentialCreationOptions/publicKey}}</code>.
 
 1. If the {{MakePublicKeyCredentialOptions/timeout}} member of |options| is [=present=], check if its value lies within a
@@ -668,7 +678,7 @@ When this method is invoked, the user agent MUST execute the following algorithm
     |lifetimeTimer| to this adjusted value. If the {{MakePublicKeyCredentialOptions/timeout}} member of |options| is [=present|not
     present=], then set |lifetimeTimer| to a platform-specific default.
 
-1. Let |callerOrigin| be {{PublicKeyCredential/[[Create]](origin, options)/origin}}. If |callerOrigin| is an [=opaque origin=], return a {{DOMException}} whose name is
+1. Let |callerOrigin| be {{PublicKeyCredential/[[Create]](origin, options, sameOriginWithAncestors)/origin}}. If |callerOrigin| is an [=opaque origin=], return a {{DOMException}} whose name is
     "{{NotAllowedError}}", and terminate this algorithm.
 
 1. Let |effectiveDomain| be the |callerOrigin|'s [=effective domain=].
@@ -953,17 +963,17 @@ exactly one of those, it then calls <code>PublicKeyCredential.{{PublicKeyCredent
 the user select a [=credential source=].
 
 Since this specification requires an [=authorization gesture=] to create any [=credentials=], the <code>PublicKeyCredential.<dfn
-for="PublicKeyCredential" method>\[[CollectFromCredentialStore]](options)</dfn></code> [=internal method=] inherits the default behavior of
+for="PublicKeyCredential" method>\[[CollectFromCredentialStore]](origin, options, sameOriginWithAncestors)</dfn></code> [=internal method=] inherits the default behavior of
 {{Credential/[[CollectFromCredentialStore]]()|Credential.[[CollectFromCredentialStore]]()}}, of returning an empty set.
 
 
-<h5 id="discover-from-external-source" algorithm>PublicKeyCredential's `[[DiscoverFromExternalSource]](origin, options)` method</h5>
+<h5 id="discover-from-external-source" algorithm>PublicKeyCredential's `[[DiscoverFromExternalSource]](origin, options, sameOriginWithAncestors)` method</h5>
 
-<div link-for-hint="PublicKeyCredential/[[DiscoverFromExternalSource]](origin, options)">
+<div link-for-hint="PublicKeyCredential/[[DiscoverFromExternalSource]](origin, options, sameOriginWithAncestors)">
 
-The <code>{{PublicKeyCredential}}.<dfn for="PublicKeyCredential" method>\[[DiscoverFromExternalSource]](origin, options)</dfn></code> [=internal method=] accepts two arguments:
+The <code>{{PublicKeyCredential}}.<dfn for="PublicKeyCredential" method>\[[DiscoverFromExternalSource]](origin, options, sameOriginWithAncestors)</dfn></code> [=internal method=] accepts three arguments:
 
-<dl dfn-type="argument" dfn-for="PublicKeyCredential/[[DiscoverFromExternalSource]](origin, options)">
+<dl dfn-type="argument" dfn-for="PublicKeyCredential/[[DiscoverFromExternalSource]](origin, options, sameOriginWithAncestors)">
 
     :   <dfn>origin</dfn>
     ::  This argument is the [=relevant settings object=]'s [=environment settings object/origin=], as determined by the
@@ -973,6 +983,10 @@ The <code>{{PublicKeyCredential}}.<dfn for="PublicKeyCredential" method>\[[Disco
     ::  This argument is a {{CredentialRequestOptions}} object whose
         <code>|options|.{{CredentialRequestOptions/publicKey}}</code> member contains a {{PublicKeyCredentialRequestOptions}}
         object specifying the desired attributes of the [=public key credential=] to discover.
+
+    :   <dfn>sameOriginWithAncestors</dfn>
+    ::  This argument is a boolean which is true iff the caller's [=environment settings object=] is
+        [=same-origin with its ancestors=].
 </dl>
 
 Note: <strong>This algorithm is synchronous:</strong> the {{Promise}} resolution/rejection is handled by
@@ -982,6 +996,10 @@ When this method is invoked, the user agent MUST execute the following algorithm
 
 1. Assert: <code>|options|.{{CredentialRequestOptions/publicKey}}</code> is [=present=].
 
+1. If |sameOriginWithAncestors is `false`, return a "{{NotAllowedError}}" {{DOMException}}.
+
+    Note: This restriction aims to address the concern raised in [[CREDENTIAL-MANAGEMENT-1#security-origin-confusion]].
+
 1. Let |options| be the value of <code>|options|.{{CredentialRequestOptions/publicKey}}</code>.
 
 1. If the {{PublicKeyCredentialRequestOptions/timeout}} member of |options| is [=present=], check if its value lies
@@ -989,7 +1007,7 @@ When this method is invoked, the user agent MUST execute the following algorithm
     Set a timer |lifetimeTimer| to this adjusted value. If the {{PublicKeyCredentialRequestOptions/timeout}} member of
     |options| is [=present|not present=], then set |lifetimeTimer| to a platform-specific default.
 
-1. Let |callerOrigin| be {{PublicKeyCredential/[[DiscoverFromExternalSource]](origin, options)/origin}}. If |callerOrigin| is 
+1. Let |callerOrigin| be {{PublicKeyCredential/[[DiscoverFromExternalSource]](origin, options, sameOriginWithAncestors)/origin}}. If |callerOrigin| is 
     an [=opaque origin=], return a {{DOMException}} whose name is "{{NotAllowedError}}", and terminate this algorithm.
 
 1. Let |effectiveDomain| be the |callerOrigin|'s [=effective domain=].
@@ -1258,11 +1276,11 @@ During the above process, the user agent SHOULD show some UI to the user to guid
 authorizing an authenticator with which to complete the operation.
 </div>
 
-### Store an existing credential - PublicKeyCredential's `[[Store]](credential)` method ### {#storeCredential}
+### Store an existing credential - PublicKeyCredential's `[[Store]](credential, sameOriginWithAncestors)` method ### {#storeCredential}
 
-<div link-for-hint="PublicKeyCredential/[[Store]](credential)">
+<div link-for-hint="PublicKeyCredential/[[Store]](credential, sameOriginWithAncestors)">
 
-The <dfn for="PublicKeyCredential" method>\[[Store]](credential)</dfn> method is not supported
+The <dfn for="PublicKeyCredential" method>\[[Store]](credential, sameOriginWithAncestors)</dfn> method is not supported
 for Web Authentication's {{PublicKeyCredential}} type, so it always returns an error.
 
 Note: This algorithm is synchronous; the {{Promise}} resolution/rejection is handled by
@@ -1270,7 +1288,7 @@ Note: This algorithm is synchronous; the {{Promise}} resolution/rejection is han
 
 This method accepts a single argument:
 
-<dl dfn-type="argument" dfn-for="PublicKeyCredential/[[Store]](credential)">
+<dl dfn-type="argument" dfn-for="PublicKeyCredential/[[Store]](credential, sameOriginWithAncestors)">
     :   <dfn>credential</dfn>
     ::  This argument is a {{PublicKeyCredential}} object.
 </dl>
@@ -2123,7 +2141,7 @@ It takes the following input parameters:
 :: The {{MakePublicKeyCredentialOptions/authenticatorSelection}}.{{requireResidentKey}} value given by the [=[RP]=].
 : |requireUserPresence|
 :: A Boolean value provided by the client, which in invocations from a [=[WAC]=]'s
-    {{PublicKeyCredential/[[Create]](origin, options)}} method is always set to the inverse of
+    {{PublicKeyCredential/[[Create]](origin, options, sameOriginWithAncestors)}} method is always set to the inverse of
     |requireUserVerification|.
 : |requireUserVerification|
 :: The [=effective user verification requirement for credential creation=], a Boolean value provided by the client.
@@ -2218,7 +2236,7 @@ It takes the following input parameters:
     by the client), if any.
 : |requireUserPresence|
 :: A Boolean value provided by the client, which in invocations from a [=[WAC]=]'s
-    {{PublicKeyCredential/[[DiscoverFromExternalSource]](origin, options)}} method is always set to the inverse of
+    {{PublicKeyCredential/[[DiscoverFromExternalSource]](origin, options, sameOriginWithAncestors)}} method is always set to the inverse of
     |requireUserVerification|.
 : |requireUserVerification|
 :: The [=effective user verification requirement for assertion=], a Boolean value provided by the client.
@@ -2643,7 +2661,7 @@ When registering a new credential, represented by a {{AuthenticatorAttestationRe
 
 13. If the attestation statement |attStmt| verified successfully and is found to be trustworthy, then register the new
     credential with the account that was denoted in the
-    {{PublicKeyCredential/[[Create]](origin, options)/options}}.{{MakePublicKeyCredentialOptions/user}} passed to
+    {{PublicKeyCredential/[[Create]](origin, options, sameOriginWithAncestors)/options}}.{{MakePublicKeyCredentialOptions/user}} passed to
     {{CredentialsContainer/create()}}, by associating it with the <code>[=credentialId=]</code> and
     <code>[=credentialPublicKey=]</code> in the <code>[=attestedCredentialData=]</code> in |authData|, as appropriate for the
     [=[RP]=]'s system.
