@@ -2562,64 +2562,6 @@ the [=authenticator=] MUST:
     attStmtTemplate .within $$attStmtType
     ```
 
-### Security Considerations ### {#sec-attestation-security-considerations}
-
-
-#### Privacy #### {#sec-attestation-privacy}
-
-Attestation keys may be used to track users or link various online identities of the same user together. This may be mitigated
-in several ways, including:
-
-- A WebAuthn [=authenticator=] manufacturer may choose to ship all of their devices with the same (or a fixed number of)
-    attestation key(s) (called [=Basic Attestation=]). This will anonymize the user at the risk of not being able to revoke a
-    particular attestation key should its WebAuthn Authenticator be compromised.
-
-- A WebAuthn Authenticator may be capable of dynamically generating different attestation keys (and requesting related
-    certificates) per [=origin=] (following the [=Privacy CA=] approach). For example, a WebAuthn Authenticator can ship with a
-    master attestation key (and certificate), and combined with a cloud operated privacy CA, can dynamically generate per
-    [=origin=] attestation keys and attestation certificates.
-
-- A WebAuthn Authenticator can implement [=Elliptic Curve based direct anonymous attestation=] (see [[FIDOEcdaaAlgorithm]]).
-    Using this scheme, the authenticator generates a blinded attestation signature. This allows the [=[RP]=] to verify the
-    signature using the [=ECDAA-Issuer public key=], but the attestation signature does not serve as a global correlation handle.
-
-
-#### Attestation Certificate and Attestation Certificate CA Compromise #### {#ca-compromise}
-
-When an intermediate CA or a root CA used for issuing attestation certificates is compromised, WebAuthn [=authenticator=]
-attestation keys are still safe although their certificates can no longer be trusted. A WebAuthn Authenticator manufacturer that
-has recorded the public attestation keys for their devices can issue new attestation certificates for these keys from a new
-intermediate CA or from a new root CA. If the root CA changes, the [=[RPS]=]  must update their trusted root certificates
-accordingly.
-
-A WebAuthn Authenticator attestation certificate must be revoked by the issuing CA if its key has been compromised. A WebAuthn
-Authenticator manufacturer may need to ship a firmware update and inject new attestation keys and certificates into already
-manufactured WebAuthn Authenticators, if the exposure was due to a firmware flaw. (The process by which this happens is out of
-scope for this specification.) If the WebAuthn Authenticator manufacturer does not have this capability, then it may not be
-possible for [=[RPS]=] to trust any further attestation statements from the affected WebAuthn Authenticators.
-
-If attestation certificate validation fails due to a revoked intermediate attestation CA certificate, and the [=[RP]=]'s policy
-requires rejecting the registration/authentication request in these situations, then it is recommended that the [=[RP]=] also
-un-registers (or marks with a trust level equivalent to "[=self attestation=]") [=public key credentials=] that were registered
-after the CA compromise date using an attestation certificate chaining up to the same intermediate CA. It is thus recommended
-that [=[RPS]=] remember intermediate attestation CA certificates during Authenticator registration in order to un-register
-related [=public key credentials=] if the registration was performed after revocation of such certificates.
-
-If an [=ECDAA=] attestation key has been compromised, it can be added to the RogueList (i.e., the list of revoked
-authenticators) maintained by the related ECDAA-Issuer. The [=[RP]=] should verify whether an authenticator belongs to the
-RogueList when performing ECDAA-Verify (see section 3.6 in [[!FIDOEcdaaAlgorithm]]). For example, the FIDO Metadata Service
-[[FIDOMetadataService]] provides one way to access such information.
-
-
-#### Attestation Certificate Hierarchy #### {#cert-hierarchy}
-
-A 3-tier hierarchy for attestation certificates is recommended (i.e., Attestation Root, Attestation Issuing CA, Attestation
-Certificate). It is also recommended that for each WebAuthn Authenticator device line (i.e., model), a separate issuing CA is
-used to help facilitate isolating problems with a specific version of a device.
-
-If the attestation root certificate is not dedicated to a single WebAuthn Authenticator device line (i.e., AAGUID), the AAGUID
-should be specified in the attestation certificate itself, so that it can be verified against the [=authenticator data=].
-
 
 # [=[RP]=] Operations # {#rp-operations}
 
@@ -4270,6 +4212,7 @@ handled on the server side and do not need support from the API specified here.
 # Security Considerations # {#security-considerations}
 
 ## Cryptographic Challenges ## {#cryptographic-challenges}
+
 As a cryptographic protocol, Web Authentication is dependent upon randomized challenges
 to avoid replay attacks. Therefore, both {MakePublicKeyCredentialOptions/challenge}}'s 
 and {{PublicKeyCredentialRequestOptions/challenge}}'s value, MUST be randomly generated
@@ -4278,6 +4221,68 @@ response must match what was generated. This should be done in a fashion that do
 upon a client's behavior; e.g.: the Relying Party should store the challenge temporarily
 until the operation is complete. Tolerating a mismatch will compromise the security
 of the protocol.
+
+## Attestation Security Considerations ## {#sec-attestation-security-considerations}
+
+### Attestation Certificate Hierarchy ### {#cert-hierarchy}
+
+A 3-tier hierarchy for attestation certificates is recommended (i.e., Attestation Root, Attestation Issuing CA, Attestation
+Certificate). It is also recommended that for each WebAuthn Authenticator device line (i.e., model), a separate issuing CA is
+used to help facilitate isolating problems with a specific version of a device.
+
+If the attestation root certificate is not dedicated to a single WebAuthn Authenticator device line (i.e., AAGUID), the AAGUID
+should be specified in the attestation certificate itself, so that it can be verified against the [=authenticator data=].
+
+
+### Attestation Certificate and Attestation Certificate CA Compromise ### {#ca-compromise}
+
+When an intermediate CA or a root CA used for issuing attestation certificates is compromised, WebAuthn [=authenticator=]
+attestation keys are still safe although their certificates can no longer be trusted. A WebAuthn Authenticator manufacturer that
+has recorded the public attestation keys for their devices can issue new attestation certificates for these keys from a new
+intermediate CA or from a new root CA. If the root CA changes, the [=[RPS]=]  must update their trusted root certificates
+accordingly.
+
+A WebAuthn Authenticator attestation certificate must be revoked by the issuing CA if its key has been compromised. A WebAuthn
+Authenticator manufacturer may need to ship a firmware update and inject new attestation keys and certificates into already
+manufactured WebAuthn Authenticators, if the exposure was due to a firmware flaw. (The process by which this happens is out of
+scope for this specification.) If the WebAuthn Authenticator manufacturer does not have this capability, then it may not be
+possible for [=[RPS]=] to trust any further attestation statements from the affected WebAuthn Authenticators.
+
+If attestation certificate validation fails due to a revoked intermediate attestation CA certificate, and the [=[RP]=]'s policy
+requires rejecting the registration/authentication request in these situations, then it is recommended that the [=[RP]=] also
+un-registers (or marks with a trust level equivalent to "[=self attestation=]") [=public key credentials=] that were registered
+after the CA compromise date using an attestation certificate chaining up to the same intermediate CA. It is thus recommended
+that [=[RPS]=] remember intermediate attestation CA certificates during Authenticator registration in order to un-register
+related [=public key credentials=] if the registration was performed after revocation of such certificates.
+
+If an [=ECDAA=] attestation key has been compromised, it can be added to the RogueList (i.e., the list of revoked
+authenticators) maintained by the related ECDAA-Issuer. The [=[RP]=] should verify whether an authenticator belongs to the
+RogueList when performing ECDAA-Verify (see section 3.6 in [[!FIDOEcdaaAlgorithm]]). For example, the FIDO Metadata Service
+[[FIDOMetadataService]] provides one way to access such information.
+
+
+
+
+# Privacy Considertations # {#sctn-privacy-considerations}
+
+## Attestation Privacy ## {#sec-attestation-privacy}
+
+Attestation keys may be used to track users or link various online identities of the same user together. This may be mitigated
+in several ways, including:
+
+- A WebAuthn [=authenticator=] manufacturer may choose to ship all of their devices with the same (or a fixed number of)
+    attestation key(s) (called [=Basic Attestation=]). This will anonymize the user at the risk of not being able to revoke a
+    particular attestation key should its WebAuthn Authenticator be compromised.
+
+- A WebAuthn Authenticator may be capable of dynamically generating different attestation keys (and requesting related
+    certificates) per [=origin=] (following the [=Privacy CA=] approach). For example, a WebAuthn Authenticator can ship with a
+    master attestation key (and certificate), and combined with a cloud operated privacy CA, can dynamically generate per
+    [=origin=] attestation keys and attestation certificates.
+
+- A WebAuthn Authenticator can implement [=Elliptic Curve based direct anonymous attestation=] (see [[FIDOEcdaaAlgorithm]]).
+    Using this scheme, the authenticator generates a blinded attestation signature. This allows the [=[RP]=] to verify the
+    signature using the [=ECDAA-Issuer public key=], but the attestation signature does not serve as a global correlation handle.
+
 
 
 # Acknowledgements # {#acknowledgements}
