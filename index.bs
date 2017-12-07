@@ -110,6 +110,11 @@ spec: page-visibility; urlPrefix: https://www.w3.org/TR/page-visibility/
 spec: WHATWG HTML; urlPrefix: https://html.spec.whatwg.org/
     type: dfn 
         text: focus
+
+spec: FIDO-APPID; urlPrefix: https://fidoalliance.org/specs/fido-u2f-v1.2-ps-20170411/fido-appid-and-facets-v1.2-ps-20170411.html
+    type: dfn
+        text: determining the FacetID of a calling application; url: determining-the-facetid-of-a-calling-application
+        text: determining if a caller's FacetID is authorized for an AppID; url: determining-if-a-caller-s-facetid-is-authorized-for-an-appid
 </pre> <!-- class=anchors -->
 
 <!-- L128 spec:webappsec-credential-management-1; type:dictionary; for:/; text:CredentialRequestOptions -->
@@ -284,6 +289,11 @@ below and in [[#index-defined-elsewhere]].
 :: Many of the interface definitions and all of the IDL in this specification depend on [[!WebIDL-1]]. This updated version of
     the Web IDL standard adds support for {{Promise}}s, which are now the preferred mechanism for asynchronous
     interaction in all new web APIs.
+
+: FIDO AppID
+:: The algorithms for [=determining the FacetID of a calling application=] and
+    [=determining if a caller's FacetID is authorized for an AppID=] (used only in
+    the `appid` extension) are defined by [[!FIDO-APPID]].
 
 The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "SHOULD NOT", "RECOMMENDED",  "MAY", and
 "OPTIONAL" in this document are to be interpreted as described in [[!RFC2119]].
@@ -3497,33 +3507,46 @@ IANA "WebAuthn Extension Identifier" registry established by [[!WebAuthn-Registr
 These are recommended for implementation by user agents targeting broad interoperability.
 
 
-## FIDO AppId Extension (appid) ## {#sctn-appid-extension}
+## FIDO AppID Extension (appid) ## {#sctn-appid-extension}
 
-This [=authentication extension=] allows [=[RPS]=] that have previously registered a
-credential using the legacy FIDO JavaScript APIs to request an assertion.
-Specifically, this extension allows [=[RPS]=] to specify an |appId| [[FIDO-APPID]]
-to overwrite the otherwise computed |rpId|.  This extension is only valid if
-used during the {{CredentialsContainer/get()}} call; other usage will result in client
-error.
+This [=client extension=] allows [=[RPS]=] that have previously registered a
+credential using the legacy FIDO JavaScript APIs to request an assertion. The
+FIDO APIs use an alternative identifier for [=relying parties=] called an |AppID|
+[[FIDO-APPID]], and any credentials created using those APIs will be bound to
+that identifier. Without this extension they would need to be re-registered in
+order to be bound to an [=RP ID=].
+
+This extension does not allow FIDO-compatible credentials to be created. Thus
+credentials created with WebAuthn cannot be backwards compatible with the FIDO
+JavaScript APIs.
 
 : Extension identifier
 :: `appid`
 
 : Client extension input
-:: A single JSON string specifying a FIDO |appId|.
+:: A single JSON string specifying a FIDO |AppID|.
 
 : Client extension processing
-:: If {{PublicKeyCredentialRequestOptions/rpId}} is present, return a DOMException
-    whose name is "{{NotAllowedError}}", and terminate this algorithm ([[#discover-from-external-source]]).
-
-    Otherwise, replace the calculation of |rpId| in Step 6 of [[#discover-from-external-source]] with the
-    following procedure:  The client uses the value of |appid| to perform
-    the AppId validation procedure (as defined by [[FIDO-APPID]]).  If valid,
-    the value of |rpId| for all client processing should be replaced by the
-    value of |appid|.
+::  1. If present in a {{CredentialsContainer/create()}} call, return a
+        "{{NotSupportedError}}" {{DOMException}}—this extension is only valid when
+        requesting an assertion.
+    1. Let |facetId| be the result of passing the caller's [=origin=] to the
+        FIDO algorithm for [=determining the FacetID of a calling application=].
+    1. Let |appId| be the extension input.
+    1. Pass |facetId| and |appId| to the FIDO algorithm for [=determining if a
+        caller's FacetID is authorized for an AppID=]. If that algorithm rejects
+        |appId| then return a "{{SecurityError}}" {{DOMException}}.
+    1. When building |allowCredentialDescriptorList|, if a U2F authenticator
+        indicates that a credential is inapplicable (i.e. by returning `SW_WRONG_DATA`)
+        then the client may retry with the U2F application parameter set to the SHA-256
+        hash of |appId|. If this results in an applicable credential, the client may
+        include the credential in |allowCredentialDescriptorList|. The value of |appId|
+        then becomes an additional input parameter for [=authenticatorGetAssertion=] to
+        allow the credential to be used by replacing `rp.id` when calcuating
+        `rpIdHash`. (See section 7.2 of [[!FIDO-CTAP]].)
 
 : Client extension output
-:: Returns the JSON value `true` to indicate to the RP that the extension was acted upon
+:: None.
 
 : Authenticator extension input
 :: None.
