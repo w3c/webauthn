@@ -1245,7 +1245,8 @@ When this method is invoked, the user agent MUST execute the following algorithm
                 ::  whose value is the bytes of the signature value returned by the [=authenticator=].
 
                 :   <code><dfn for="assertionCreationData">userHandleResult</dfn></code>
-                ::  whose value is the bytes of the [=user handle=] returned by the [=authenticator=].
+                ::  If |savedCredentialId| exists, set the value of [=userHandleResult=] to be the bytes of the [=user handle=]
+                    returned by the [=authenticator=]. Otherwise, set the value of [=userHandleResult=] to null.
 
                 :   <code><dfn for="assertionCreationData">clientExtensionResults</dfn></code>
                 ::  whose value is an {{AuthenticationExtensions}} object containing [=extension identifier=] →
@@ -1278,7 +1279,9 @@ When this method is invoked, the user agent MUST execute the following algorithm
                             <code>|assertionCreationData|.[=assertionCreationData/signatureResult=]</code>.
 
                         :   {{AuthenticatorAssertionResponse/userHandle}}
-                        ::  A new {{ArrayBuffer}}, created using |global|'s [=%ArrayBuffer%=], containing the bytes of
+                        ::  If <code>|assertionCreationData|.[=assertionCreationData/userHandleResult=]</code> is null, set this
+                            field to null. Otherwise, set this field to a new {{ArrayBuffer}}, created using |global|'s
+                            [=%ArrayBuffer%=], containing the bytes of
                             <code>|assertionCreationData|.[=assertionCreationData/userHandleResult=]</code>.
 
                     :   {{PublicKeyCredential/[[clientExtensionsResults]]}}
@@ -1423,7 +1426,7 @@ optionally evidence of [=user consent=] to a specific transaction.
     interface AuthenticatorAssertionResponse : AuthenticatorResponse {
         [SameObject] readonly attribute ArrayBuffer      authenticatorData;
         [SameObject] readonly attribute ArrayBuffer      signature;
-        [SameObject] readonly attribute ArrayBuffer      userHandle;
+        [SameObject] readonly attribute ArrayBuffer?     userHandle;
     };
 </pre>
 <div dfn-type="attribute" dfn-for="AuthenticatorAssertionResponse">
@@ -1440,7 +1443,8 @@ optionally evidence of [=user consent=] to a specific transaction.
     ::  This attribute contains the raw signature returned from the authenticator. See [[#op-get-assertion]].
 
     :   <dfn>userHandle</dfn>
-    ::  This attribute contains the [=user handle=] returned from the authenticator. See [[#op-get-assertion]].
+    ::  This attribute contains the [=user handle=] returned from the authenticator, or null if the authenticator did not return a
+        [=user handle=]. See [[#op-get-assertion]].
 </div>
 
 ## Parameters for Credential Generation (dictionary <dfn dictionary>PublicKeyCredentialParameters</dfn>) ## {#credential-params}
@@ -2336,14 +2340,16 @@ When this method is invoked, the [=authenticator=] must perform the following pr
     Return to the user agent:
         - |selectedCredential|'s [=credential ID=], if either a [=list=] of credentials of [=list/size=] 2 or greater was supplied
             by the client, or no such [=list=] was supplied. Otherwise, return only the below values.
-
-            Note: If the client supplies a [=list=] of exactly one credential and it was successfully employed, then its
-                [=credential ID=] is not returned since the client already knows it. This saves transmitting these bytes over
-                what may be a constrained connection in what is likely a common case.
-
         - |authenticatorData|
         - |signature|
-        - The [=user handle=] associated with |selectedCredential|.
+        - The [=user handle=] associated with |selectedCredential|, if no [=list=] of credentials was supplied by the client, or
+            no such [=list=] was supplied. Otherwise, do not return this value.
+
+      Note: If the client supplies a [=list=] of exactly one credential and it was successfully employed, then its
+          [=credential ID=] and [=user handle=] are not returned since the [=[RP]=], having provided the [=credential ID=] to the
+          client, already knows the [=credential ID=] and the identity of the user. This saves transmitting these bytes over what
+          may be a constrained connection in what is likely a common case, and enables backwards compatibility with legacy
+          [=authenticators=] that cannot store the [=user handle=].
     </li>
 
 If the authenticator cannot find any credential corresponding to the specified [=[RP]=] that matches the specified criteria, it
