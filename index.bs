@@ -77,10 +77,6 @@ spec: TokenBinding; urlPrefix: https://tools.ietf.org/html/draft-ietf-tokbind-pr
         text: Token Binding
         text: Token Binding ID; url: section-3.2
 
-spec: WebCryptoAPI; urlPrefix: https://www.w3.org/TR/WebCryptoAPI/
-    type: dfn
-        text: recognized algorithm name
-
 spec: credential-management-1; urlPrefix: https://w3c.github.io/webappsec-credential-management/
     type: dictionary
         text: CredentialCreationOptions; url: dictdef-credentialcreationoptions
@@ -392,7 +388,7 @@ The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "S
     * A [=Credential ID=].
     * A [=credential private key=].
     * The [=Relying Party Identifier=] for the [=[RP]=] that created this credential source.
-    * An optional [=user handle=] for the person who created this credential source.
+    * A [=user handle=] for the person who created this credential source.
     * Optional other information used by the authenticator to inform its UI. For example, this might include the user's
         {{displayName}}.
 
@@ -764,9 +760,6 @@ When this method is invoked, the user agent MUST execute the following algorithm
     :: The [=base64url encoding=] of |options|.{{MakePublicKeyCredentialOptions/challenge}}.
     : {{CollectedClientData/origin}}
     :: The [=ascii serialization of an origin|serialization of=] |callerOrigin|.
-    : {{CollectedClientData/hashAlgorithm}}
-    :: The [=recognized algorithm name=] of the hash algorithm selected by the client for generating the
-        [=hash of the serialized client data=].
     : {{CollectedClientData/tokenBindingId}}
     :: The [=Token Binding ID=] associated with |callerOrigin|, if one is available.
     : {{CollectedClientData/clientExtensions}}
@@ -1080,9 +1073,6 @@ When this method is invoked, the user agent MUST execute the following algorithm
     :: The [=base64url encoding=] of |options|.{{PublicKeyCredentialRequestOptions/challenge}}
     : {{CollectedClientData/origin}}
     :: The [=ascii serialization of an origin|serialization of=] |callerOrigin|.
-    : {{CollectedClientData/hashAlgorithm}}
-    :: The [=recognized algorithm name=] of the hash algorithm selected by the client for generating the
-        [=hash of the serialized client data=]
     : {{CollectedClientData/tokenBindingId}}
     :: The [=Token Binding ID=] associated with |callerOrigin|, if one is available.
     : {{CollectedClientData/clientExtensions}}
@@ -1142,20 +1132,22 @@ When this method is invoked, the user agent MUST execute the following algorithm
 
     1. Let |userPresence| be a Boolean value set to the inverse of |userVerification|.
 
-    1. Let |allowCredentialDescriptorList| be a new [=list=].
-
-    1. If <code>|options|.{{PublicKeyCredentialRequestOptions/allowCredentials}}</code> [=list/is not empty=], execute a
-        platform-specific procedure to determine which, if any, [=public key credentials=] described by
-        <code>|options|.{{PublicKeyCredentialRequestOptions/allowCredentials}}</code> are bound to this |authenticator|, by
-        matching with |rpId|,
-        <code>|options|.{{PublicKeyCredentialRequestOptions/allowCredentials}}.{{PublicKeyCredentialDescriptor/id}}</code>, and
-        <code>|options|.{{PublicKeyCredentialRequestOptions/allowCredentials}}.{{PublicKeyCredentialDescriptor/type}}</code>.
-        Set |allowCredentialDescriptorList| to this filtered list.
-
-    1. If |allowCredentialDescriptorList|
+    1. If <code>|options|.{{PublicKeyCredentialRequestOptions/allowCredentials}}</code>
         <dl class="switch">
             :   [=list/is not empty=]
-            ::  1. Let |distinctTransports| be a new [=ordered set=].
+            ::  1. Let |allowCredentialDescriptorList| be a new [=list=].
+
+                1. Execute a platform-specific procedure to determine which, if any, [=public key credentials=] described by
+                    <code>|options|.{{PublicKeyCredentialRequestOptions/allowCredentials}}</code> are bound to this
+                    |authenticator|, by matching with |rpId|,
+                    <code>|options|.{{PublicKeyCredentialRequestOptions/allowCredentials}}.{{PublicKeyCredentialDescriptor/id}}</code>,
+                    and
+                    <code>|options|.{{PublicKeyCredentialRequestOptions/allowCredentials}}.{{PublicKeyCredentialDescriptor/type}}</code>.
+                    Set |allowCredentialDescriptorList| to this filtered list.
+
+                1. If |allowCredentialDescriptorList| [=list/is empty=], [=continue=].
+
+                1. Let |distinctTransports| be a new [=ordered set=].
 
                 1. If |allowCredentialDescriptorList| has exactly one value, let |savedCredentialId| be a new 
                     {{PublicKeyCredentialDescriptor}}.{{PublicKeyCredentialDescriptor/id}} and set its value to <code>|allowCredentialDescriptorList|[0].id</code>'s
@@ -1807,7 +1799,6 @@ following Web IDL.
         required DOMString           type;
         required DOMString           challenge;
         required DOMString           origin;
-        required DOMString           hashAlgorithm;
         DOMString                    tokenBindingId;
         AuthenticationExtensions     clientExtensions;
         AuthenticationExtensions     authenticatorExtensions;
@@ -1825,10 +1816,6 @@ following Web IDL.
     The <dfn>origin</dfn> member contains the fully qualified [=origin=] of the requester, as provided to the authenticator by
     the client, in the syntax defined by [[RFC6454]].
 
-    The <dfn>hashAlgorithm</dfn> member is a [=recognized algorithm name=] that supports the `"digest"` operation, which
-    specifies the algorithm used to compute the [=hash of the serialized client data=]. This algorithm is chosen by the client
-    at its sole discretion.
-
     The <dfn>tokenBindingId</dfn> member contains the base64url encoding of the [=Token Binding ID=] that this client uses for
     the [=Token Binding=] protocol when communicating with the [=[RP]=]. This can be omitted if no [=Token Binding=] has been
     negotiated between the client and the [=[RP]=].
@@ -1844,7 +1831,7 @@ following Web IDL.
         {{CollectedClientData}} dictionary.
 
     : <dfn dfn>Hash of the serialized client data</dfn>
-    :: This is the hash (computed using {{hashAlgorithm}}) of the [=JSON-serialized client data=], as constructed by the client.
+    :: This is the hash (computed using SHA-256) of the [=JSON-serialized client data=], as constructed by the client.
 </div>
 
 
@@ -1875,14 +1862,14 @@ following Web IDL.
     };
 </xmp>
 
-This dictionary contains the attributes that are specified by a caller when referring to a credential as an input parameter to
-the {{CredentialsContainer/create()}} or {{CredentialsContainer/get()}} methods. It mirrors the fields of the
+This dictionary contains the attributes that are specified by a caller when referring to a [=public key credential=] as an input
+parameter to the {{CredentialsContainer/create()}} or {{CredentialsContainer/get()}} methods. It mirrors the fields of the
 {{PublicKeyCredential}} object returned by the latter methods.
 
 <div dfn-type="dict-member" dfn-for="PublicKeyCredentialDescriptor">
-    The <dfn>type</dfn> member contains the type of the credential the caller is referring to.
+    The <dfn>type</dfn> member contains the type of the [=public key credential=] the caller is referring to.
 
-    The <dfn>id</dfn> member contains the identifier of the credential that the caller is referring to.
+    The <dfn>id</dfn> member contains the [=credential ID=] of the [=public key credential=] that the caller is referring to.
 </div>
 
 
@@ -2653,8 +2640,7 @@ When registering a new credential, represented by a {{AuthenticatorAttestationRe
     and that the {{CollectedClientData/authenticatorExtensions}} in |C| is also a subset of the extensions requested by
     the RP.
 
-1. Compute the hash of {{AuthenticatorResponse/clientDataJSON}} using the algorithm identified by
-    <code>|C|.{{CollectedClientData/hashAlgorithm}}</code>.
+1. Compute the hash of {{AuthenticatorResponse/clientDataJSON}} using SHA-256.
 
 1. Perform CBOR decoding on the {{AuthenticatorAttestationResponse/attestationObject}} field of the
     {{AuthenticatorAttestationResponse}} structure to obtain the attestation statement format |fmt|, the [=authenticator data=]
@@ -2741,8 +2727,7 @@ When verifying a given {{PublicKeyCredential}} structure (|credential|) as part 
 
 8. Verify that the <code>[=rpIdHash=]</code> in |aData| is the SHA-256 hash of the [=RP ID=] expected by the [=[RP]=].
 
-9. Let |hash| be the result of computing a hash over the |cData| using the algorithm represented by the
-    {{CollectedClientData/hashAlgorithm}} member of |C|.
+9. Let |hash| be the result of computing a hash over the |cData| using SHA-256.
 
 10. Using the credential public key looked up in step 1, verify that |sig| is a valid signature over the binary concatenation of
     |aData| and |hash|.
@@ -3220,14 +3205,12 @@ This attestation statement format is used with FIDO U2F authenticators using the
 
 : Signing procedure
 :: If the credential public key of the given credential is not of algorithm -7 ("ES256"), stop and return an error.
-    Otherwise, let |authenticatorData| denote the [=authenticator data for the attestation=], 
-    and let |clientDataHash| denote the [=hash of the serialized client data=].
-
-    If |clientDataHash| is 256 bits long, set |tbsHash| to this value. Otherwise set |tbsHash| to the SHA-256 hash of
-    |clientDataHash|.
+    Otherwise, let |authenticatorData| denote the [=authenticator data for the attestation=],
+    and let |clientDataHash| denote the [=hash of the serialized client data=]. (Since SHA-256 is used to hash the
+    serialized client data, |clientDataHash| will be 32 bytes long.)
 
     Generate a Registration Response Message as specified in [[FIDO-U2F-Message-Formats]] section 4.3, with the application parameter set to the
-    SHA-256 hash of the [=RP ID=] associated with the given credential, the challenge parameter set to |tbsHash|, and the key handle
+    SHA-256 hash of the [=RP ID=] associated with the given credential, the challenge parameter set to |clientDataHash|, and the key handle
     parameter set to the [=credential ID=] of the given credential. Set the raw signature part of this Registration Response Message (i.e., without the user public key,
     key handle, and attestation certificates) as |sig| and set the attestation certificates of
     the attestation public key as |x5c|.
@@ -3237,14 +3220,12 @@ This attestation statement format is used with FIDO U2F authenticators using the
     as follows:
     1. Verify that |attStmt| is valid CBOR conforming to the syntax defined above, and perform CBOR decoding on it to extract the
         contained fields.
-    2. Let |attCert| be value of the first element of |x5c|. Let |certificate public key| be the public key
+    2. Let |attCert| be the value of the first element of |x5c|. Let |certificate public key| be the public key
         conveyed by |attCert|. If |certificate public key| is not an Elliptic Curve (EC) public 
         key over the P-256 curve, terminate this algorithm and return an appropriate error. 
     3. Extract the claimed |rpIdHash| from |authenticatorData|, and the claimed |credentialId| and |credentialPublicKey| from
         |authenticatorData|.<code>[=attestedCredentialData=]</code>.
-    4. If |clientDataHash| is 256 bits long, set |tbsHash| to this value. Otherwise set |tbsHash| to the SHA-256
-        hash of |clientDataHash|.
-    5. Convert the COSE_KEY formatted |credentialPublicKey| (see Section 7 of [[!RFC8152]]) to CTAP1/U2F public Key 
+    4. Convert the COSE_KEY formatted |credentialPublicKey| (see Section 7 of [[!RFC8152]]) to CTAP1/U2F public Key 
         format [[!FIDO-CTAP]]. 
         - Let |publicKeyU2F| represent the result of the 
             conversion operation and set its first byte to 0x04.
@@ -3257,10 +3238,10 @@ This attestation statement format is used with FIDO U2F authenticators using the
             (representing y coordinate) from |credentialPublicKey|, 
             confirm its size to be of 32 bytes and concatenate it with |publicKeyU2F|.
             If size differs or "-3" key is not found, terminate this algorithm and return an appropriate error. 
-    6. Let |verificationData| be the concatenation of (0x00 || |rpIdHash| || 
-        |tbsHash| || |credentialId| || |publicKeyU2F|) (see Section 4.3 of [[!FIDO-U2F-Message-Formats]]).
-    7. Verify the |sig| using |verificationData| and |certificate public key| per [[!SEC1]].
-    8. If successful, return attestation type Basic with the [=attestation trust path=] set to |x5c|.
+    5. Let |verificationData| be the concatenation of (0x00 || |rpIdHash| || 
+        |clientDataHash| || |credentialId| || |publicKeyU2F|) (see Section 4.3 of [[!FIDO-U2F-Message-Formats]]).
+    6. Verify the |sig| using |verificationData| and |certificate public key| per [[!SEC1]].
+    7. If successful, return attestation type Basic with the [=attestation trust path=] set to |x5c|.
 
 
 # WebAuthn Extensions # {#extensions}
@@ -3727,7 +3708,7 @@ This [=registration extension=] and [=authentication extension=] enables use of 
 ## Location Extension (loc) ## {#sctn-location-extension}
 
 The location [=registration extension=] and [=authentication extension=] provides the client device's current location to the
-WebAuthn [=[RP]=].
+WebAuthn [=[RP]=].  
 
 : Extension identifier
 :: `loc`
@@ -3759,6 +3740,16 @@ WebAuthn [=[RP]=].
     Specification](https://dev.w3.org/geo/api/spec-source.html#coordinates_interface).
 
     <pre>
+    CDDL:
+      {
+       loc: positionCoordinates,
+      }    
+      positionCoordinates = [
+         latitude: float64,
+         longitude: float64,
+         altitude: float64
+         ]
+     CBOR Example:
         ...                                         -- [=RP ID=] hash (32 bytes)
         81                                          -- UP and ED set
         00 00 00 01                                 -- (initial) signature counter
