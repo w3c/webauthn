@@ -22,15 +22,22 @@ Previous Version: https://www.w3.org/TR/2016/WD-webauthn-20160902/
 Previous Version: https://www.w3.org/TR/2016/WD-webauthn-20160531/
 Shortname: webauthn
 Level: 1
-Editor: Vijay Bharadwaj, w3cid 55440, Microsoft, vijay.bharadwaj@microsoft.com
-Editor: Hubert Le Van Gong, w3cid 84817, PayPal, hlevangong@paypal.com
 Editor: Dirk Balfanz, w3cid 47648, Google, balfanz@google.com
 Editor: Alexei Czeskis, w3cid 87258, Google, aczeskis@google.com
-Editor: Arnar Birgisson, w3cid 87332, Google, arnarb@google.com
 Editor: Jeff Hodges, w3cid 43843, PayPal, Jeff.Hodges@paypal.com
-Editor: Michael B. Jones, w3cid 38745, Microsoft, mbj@microsoft.com
-Editor: Rolf Lindemann, w3cid 84447, Nok Nok Labs, rolf@noknok.com
 Editor: J.C. Jones, w3cid 87240, Mozilla, jc@mozilla.com
+Editor: Michael B. Jones, w3cid 38745, Microsoft, mbj@microsoft.com
+Editor: Akshay Kumar, Microsoft, akshayku@microsoft.com
+Editor: Angelo Liao, Microsoft, huliao@microsoft.com
+Editor: Rolf Lindemann, w3cid 84447, Nok Nok Labs, rolf@noknok.com
+Former Editor: Vijay Bharadwaj, w3cid 55440, Microsoft, vijay.bharadwaj@microsoft.com
+Former Editor: Arnar Birgisson, w3cid 87332, Google, arnarb@google.com
+Former Editor: Hubert Le Van Gong, w3cid 84817, PayPal, hlevangong@paypal.com
+!Contributors: Christiaan Brand
+!Contributors: Emil Lundberg
+!Contributors: Giridhar Mandyam
+!Contributors: Mike West
+!Contributors: Jeffrey Yasskin
 group: webauthn
 Issue Tracking: Github https://github.com/w3c/webauthn/issues
 !Tests: <a href=https://github.com/w3c/web-platform-tests/tree/master/webauthn>web-platform-tests webauthn/</a> (<a href=https://github.com/w3c/web-platform-tests/labels/webauthn>ongoing work</a>)
@@ -51,6 +58,8 @@ Boilerplate: omit conformance, omit feedback-header, omit abstract-header
 Markup Shorthands: css off, markdown on
 </pre>
 
+
+<!-- TODO: Clean out these anchor lists once they appear in Shepherd -->
 <pre class="anchors">
 
 spec: ECMAScript; urlPrefix: https://tc39.github.io/ecma262/#
@@ -62,7 +71,6 @@ spec: ECMAScript; urlPrefix: https://tc39.github.io/ecma262/#
             text: internal method
             text: internal slot
 
-<!-- spec: HTML; urlPrefix: https://html.spec.whatwg.org/multipage/ -->
 spec: HTML52; urlPrefix: https://w3c.github.io/html/
     type: dfn
         urlPrefix: browsers.html
@@ -76,12 +84,6 @@ spec: TokenBinding; urlPrefix: https://tools.ietf.org/html/draft-ietf-tokbind-pr
         text: Token Binding
         text: Token Binding ID; url: section-3.2
 
-
-spec: WebCryptoAPI; urlPrefix: https://www.w3.org/TR/WebCryptoAPI/
-    type: dfn
-        text: recognized algorithm name
-
-<!-- Remove these once Shepherd picks up the changes -->
 spec: credential-management-1; urlPrefix: https://w3c.github.io/webappsec-credential-management/
     type: dictionary
         text: CredentialCreationOptions; url: dictdef-credentialcreationoptions
@@ -89,13 +91,16 @@ spec: credential-management-1; urlPrefix: https://w3c.github.io/webappsec-creden
         text: CredentialRequestOptions; url: dictdef-credentialrequestoptions
     for: Credential
         type: method
-            text: [[Create]](origin, options)
-            text: [[DiscoverFromExternalSource]](origin, options)
+            text: [[CollectFromCredentialStore]](origin, options, sameOriginWithAncestors)
+            text: [[Create]](origin, options, sameOriginWithAncestors)
+            text: [[DiscoverFromExternalSource]](origin, options, sameOriginWithAncestors)
+            text: [[Store]](credential, sameOriginWithAncestors)
     for: CredentialsContainer
         type: method
             text: create(); url: dom-credentialscontainer-create
     type: dfn
         text: signal
+        text: same-origin with its ancestors; url: same-origin-with-its-ancestors
 
 spec: mixed-content; urlPrefix: www.w3.org/TR/mixed-content/
     type: dfn
@@ -110,6 +115,8 @@ spec: WHATWG HTML; urlPrefix: https://html.spec.whatwg.org/
         text: focus
 </pre> <!-- class=anchors -->
 
+<!-- L128 spec:webappsec-credential-management-1; type:dictionary; for:/; text:CredentialRequestOptions -->
+
 <pre class="link-defaults">
 spec:credential-management; type:dfn; text:credentials
 spec:html; type:dfn; for:environment settings object; text:global object
@@ -118,7 +125,6 @@ spec:infra; type:dfn; for:struct; text:item
 spec:url; type:dfn; text:domain
 spec:url; type:dfn; for:url; text:host
 spec:url; type:dfn; text:valid domain;
-<!-- spec:webappsec-credential-management-1; type:dictionary; for:/; text:CredentialRequestOptions -->
 spec:webidl; type:interface; text:Promise
 </pre>
 
@@ -128,6 +134,13 @@ spec:webidl; type:interface; text:Promise
         "href": "https://www.iana.org/assignments/cose/cose.xhtml#algorithms",
         "title": "IANA CBOR Object Signing and Encryption (COSE) Algorithms Registry",
         "publisher": "IANA"
+    },
+
+    "Feature-Policy": {
+        "href": "https://wicg.github.io/feature-policy/",
+        "title": "Feature Policy",
+        "publisher": "WICG: Web Incubator Community Group",
+        "status": "Draft Community Group Report"
     }
 }
 </pre>
@@ -149,9 +162,9 @@ the existence, of credentials scoped to other [RPS].
 is [=Registration=], where a [=public key credential=] is created on an [=authenticator=], and associated by a [=[RP]=]
 with the present user's account (the account may already exist or may be created at this time). The second is
 [=Authentication=], where the [=[RP]=] is presented with an <em>[=Authentication Assertion=]</em> proving the presence
-and consent of the user who registered the [=public key credential=]. Functionally, the [=Web Authentication API=] comprises
-a {{PublicKeyCredential}} which extends the Credential Management API [[!CREDENTIAL-MANAGEMENT-1]], and infrastructure which
-allows those credentials to be used with {{CredentialsContainer/create()|navigator.credentials.create()}} and
+and [=user consent|consent=] of the user who registered the [=public key credential=]. Functionally, the [=Web Authentication
+API=] comprises a {{PublicKeyCredential}} which extends the Credential Management API [[!CREDENTIAL-MANAGEMENT-1]], and
+infrastructure which allows those credentials to be used with {{CredentialsContainer/create()|navigator.credentials.create()}} and
 {{CredentialsContainer/get()|navigator.credentials.get()}}. The former is used during [=Registration=], and the
 latter during [=Authentication=].
 
@@ -289,7 +302,8 @@ The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "S
     In the WebAuthn context, [=attestation=] is employed to <em>attest</em> to the <em>provenance</em> of an [=authenticator=]
     and the data it emits; including, for example: [=credential IDs=], [=credential key pairs=], signature counters, etc. An
     [=attestation statement=] is conveyed in an [=attestation object=] during [=registration=]. See also [[#sctn-attestation]]
-    and [Figure 3](#fig-attStructs).
+    and [Figure 3](#fig-attStructs). Whether or how the client platform conveys the [=attestation statement=] and [=AAGUID=] 
+    portions of the [=attestation object=] to the [=[RP]=] is described by [=attestation conveyance=].
 
 : <dfn>Attestation Certificate</dfn>
 :: A X.509 Certificate for the <dfn>attestation key pair</dfn> used by an [=authenticator=] to attest to its manufacture
@@ -303,8 +317,8 @@ The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "S
 : <dfn>Authentication</dfn>
 :: The [=ceremony=] where a user, and the user's computing device(s) (containing at least one [=authenticator=]) work in
     concert to cryptographically prove to an [=[RP]=] that the user controls the [=credential private key=] associated with a
-    previously-registered [=public key credential=] (see [=Registration=]). Note that this typically includes employing a [=test
-    of user presence=] or [=user verification=].
+    previously-registered [=public key credential=] (see [=Registration=]). Note that this includes a [=test of user presence=] or
+    [=user verification=].
 
 : <dfn>Authentication Assertion</dfn>
 :: The cryptographically signed {{AuthenticatorAssertionResponse}} object returned by an [=authenticator=] as the result of a
@@ -381,7 +395,7 @@ The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "S
     * A [=Credential ID=].
     * A [=credential private key=].
     * The [=Relying Party Identifier=] for the [=[RP]=] that created this credential source.
-    * An optional [=user handle=] for the person who created this credential source.
+    * A [=user handle=] for the person who created this credential source.
     * Optional other information used by the authenticator to inform its UI. For example, this might include the user's
         {{displayName}}.
 
@@ -429,7 +443,7 @@ The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "S
 : <dfn>Registration</dfn>
 :: The [=ceremony=] where a user, a [=[RP]=], and the user's computing device(s) (containing at least one
     [=authenticator=]) work in concert to create a [=public key credential=] and associate it with the user's [=[RP]=] account.
-    Note that this typically includes employing a [=test of user presence=] or [=user verification=].
+    Note that this includes employing a [=test of user presence=] or [=user verification=].
 
 : <dfn>[RP]</dfn>
 :: The entity whose web application utilizes the [=Web Authentication API=] to register and authenticate users. See
@@ -505,11 +519,11 @@ The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "S
 
 This section normatively specifies the API for creating and using [=public key credentials=]. The basic
 idea is that the credentials belong to the user and are managed by an authenticator, with which the [=[RP]=] interacts through the
-client (consisting of the browser and underlying OS platform). Scripts can (with the user's consent) request the browser to
-create a new credential for future use by the [=[RP]=]. Scripts can also request the user’s permission to perform authentication
-operations with an existing credential. All such operations are performed in the authenticator and are mediated by the browser
-and/or platform on the user's behalf. At no point does the script get access to the credentials themselves; it only gets
-information about the credentials in the form of objects.
+client (consisting of the browser and underlying OS platform). Scripts can (with the [=user consent|user's consent=]) request the
+browser to create a new credential for future use by the [=[RP]=]. Scripts can also request the user’s permission to perform
+authentication operations with an existing credential. All such operations are performed in the authenticator and are mediated by
+the browser and/or platform on the user's behalf. At no point does the script get access to the credentials themselves; it only
+gets information about the credentials in the form of objects.
 
 In addition to the above script interface, the authenticator may implement (or come with client software that implements) a user
 interface for management. Such an interface may be used, for example, to reset the authenticator to a clean state or to inspect
@@ -583,9 +597,11 @@ that are returned to the caller when a new credential is created, or a new asser
         "{{Credential/[[discovery]]/remote}}".
 
     :   <dfn>\[[identifier]]</dfn>
-    ::  This [=internal slot=] contains an identifier for the credential, chosen by the platform with help from the
-        authenticator. This identifier is used to look up credentials for use, and is therefore expected to be globally unique
-        with high probability across all credentials of the same type, across all authenticators. This API does not constrain
+    ::  This [=internal slot=] contains the [=credential ID=], chosen by the platform with help from the authenticator.
+        The [=credential ID=] is used to look up credentials for use, and is therefore expected to be globally unique
+        with high probability across all credentials of the same type, across all authenticators.
+
+        Note: This API does not constrain
         the format or length of this identifier, except that it must be sufficient for the platform to uniquely select a key.
         For example, an authenticator without on-board storage may create identifiers containing a [=credential private key=]
         wrapped with a symmetric key that is burned into the authenticator.
@@ -597,9 +613,10 @@ that are returned to the caller when a new credential is created, or a new asser
 </dl>
 
 {{PublicKeyCredential}}'s [=interface object=] inherits {{Credential}}'s implementation of
-{{Credential/[[CollectFromCredentialStore]](options)}} and {{Credential/[[Store]](credential)}}, and defines its own
-implementation of {{PublicKeyCredential/[[DiscoverFromExternalSource]](origin, options)}} and
-{{PublicKeyCredential/[[Create]](origin, options)}}.
+{{Credential/[[CollectFromCredentialStore]](origin, options, sameOriginWithAncestors)}}, and defines its own
+implementation of {{PublicKeyCredential/[[Create]](origin, options, sameOriginWithAncestors)}}, {{PublicKeyCredential/[[DiscoverFromExternalSource]](origin, options, sameOriginWithAncestors)}}, and
+{{Credential/[[Store]](credential, sameOriginWithAncestors)}}.
+
 
 ### `CredentialCreationOptions` Extension ### {#credentialcreationoptions-extension}
 
@@ -624,21 +641,21 @@ To support obtaining assertions via {{CredentialsContainer/get()|navigator.crede
 </pre>
 
 
-### Create a new credential - PublicKeyCredential's `[[Create]](origin, options)` method ### {#createCredential}
+### Create a new credential - PublicKeyCredential's `[[Create]](origin, options, sameOriginWithAncestors)` method ### {#createCredential}
 
-<div link-for-hint="PublicKeyCredential/[[Create]](origin, options)">
+<div link-for-hint="PublicKeyCredential/[[Create]](origin, options, sameOriginWithAncestors)">
 {{PublicKeyCredential}}'s [=interface object=]'s implementation of the
 
-<dfn for="PublicKeyCredential" method>\[[Create]](origin, options)</dfn> [=internal method=] [[CREDENTIAL-MANAGEMENT-1]] allows
+<dfn for="PublicKeyCredential" method>\[[Create]](origin, options, sameOriginWithAncestors)</dfn> [=internal method=] [[CREDENTIAL-MANAGEMENT-1]] allows
 [=[RP]=] scripts to call {{CredentialsContainer/create()|navigator.credentials.create()}} to request the creation of a new
 [=public key credential source=], bound to an [=authenticator=]. This
 {{CredentialsContainer/create()|navigator.credentials.create()}} operation can be aborted by leveraging the {{AbortController}};
 see [[dom#abortcontroller-api-integration]] for detailed instructions.
 
 
-This method accepts two arguments:
+This [=internal method=] accepts three arguments:
 
-<dl dfn-type="argument" dfn-for="PublicKeyCredential/[[Create]](origin, options)">
+<dl dfn-type="argument" dfn-for="PublicKeyCredential/[[Create]](origin, options, sameOriginWithAncestors)">
 
     :   <dfn>origin</dfn>
     ::  This argument is the [=relevant settings object=]'s [=environment settings object/origin=], as determined by the
@@ -648,6 +665,11 @@ This method accepts two arguments:
     ::  This argument is a {{CredentialCreationOptions}} object whose
         <code>|options|.{{CredentialCreationOptions/publicKey}}</code> member contains a {{MakePublicKeyCredentialOptions}}
         object specifying the desired attributes of the to-be-created [=public key credential=].
+
+    :   <dfn>sameOriginWithAncestors</dfn>
+    ::  This argument is a boolean which is true if and only if the caller's [=environment settings object=] is
+        [=same-origin with its ancestors=].
+
 </dl>
 
 Note: <strong>This algorithm is synchronous:</strong> the {{Promise}} resolution/rejection is handled by
@@ -657,6 +679,18 @@ When this method is invoked, the user agent MUST execute the following algorithm
 
 1. Assert: <code>|options|.{{CredentialCreationOptions/publicKey}}</code> is [=present=].
 
+1. If <var ignore>sameOriginWithAncestors</var> is `false`, return a "{{NotAllowedError}}" {{DOMException}}.
+
+    Note: This "sameOriginWithAncestors" restriction aims to address the concern raised in the
+    [[CREDENTIAL-MANAGEMENT-1#security-origin-confusion|Origin Confusion]] section of [[CREDENTIAL-MANAGEMENT-1]],
+    while allowing [=[RP]=] script access to Web Authentication functionality, e.g., when running in
+    a [=secure context=] framed document that is [=same-origin with its ancestors=].
+    However, in the future, this specification (in conjunction with 
+    [[CREDENTIAL-MANAGEMENT-1]]) may provide [=[RPS]=] with more fine-grained control--e.g., ranging
+    from allowing only top-level access to Web Authentication functionality,
+    to allowing cross-origin embedded cases--by leveraging
+    [[Feature-Policy]] once the latter specification becomes stably implemented in user agents.
+
 1. Let |options| be the value of <code>|options|.{{CredentialCreationOptions/publicKey}}</code>.
 
 1. If the {{MakePublicKeyCredentialOptions/timeout}} member of |options| is [=present=], check if its value lies within a
@@ -664,7 +698,7 @@ When this method is invoked, the user agent MUST execute the following algorithm
     |lifetimeTimer| to this adjusted value. If the {{MakePublicKeyCredentialOptions/timeout}} member of |options| is [=present|not
     present=], then set |lifetimeTimer| to a platform-specific default.
 
-1. Let |callerOrigin| be {{PublicKeyCredential/[[Create]](origin, options)/origin}}. If |callerOrigin| is an [=opaque origin=], return a {{DOMException}} whose name is
+1. Let |callerOrigin| be {{PublicKeyCredential/[[Create]](origin, options, sameOriginWithAncestors)/origin}}. If |callerOrigin| is an [=opaque origin=], return a {{DOMException}} whose name is
     "{{NotAllowedError}}", and terminate this algorithm.
 
 1. Let |effectiveDomain| be the |callerOrigin|'s [=effective domain=].
@@ -679,23 +713,23 @@ When this method is invoked, the user agent MUST execute the following algorithm
 -->
     <li id='CreateCred-DetermineRpId'>
 
-        If <code>|options|.{{MakePublicKeyCredentialOptions/rp}}.{{PublicKeyCredentialEntity/id}}</code>
+        If <code>|options|.{{MakePublicKeyCredentialOptions/rp}}.{{PublicKeyCredentialRpEntity/id}}</code>
             <dl class="switch">
 
                 :   Is [=present=]
-                ::  If <code>|options|.{{MakePublicKeyCredentialOptions/rp}}.{{PublicKeyCredentialEntity/id}}</code> [=is not a
+                ::  If <code>|options|.{{MakePublicKeyCredentialOptions/rp}}.{{PublicKeyCredentialRpEntity/id}}</code> [=is not a
                     registrable domain suffix of and is not equal to=] |effectiveDomain|, return a {{DOMException}} whose name
                     is "{{SecurityError}}", and terminate this algorithm.
 
                 :   Is [=present|not present=]
-                ::  Set <code>|options|.{{MakePublicKeyCredentialOptions/rp}}.{{PublicKeyCredentialEntity/id}}</code> to
+                ::  Set <code>|options|.{{MakePublicKeyCredentialOptions/rp}}.{{PublicKeyCredentialRpEntity/id}}</code> to
                     |effectiveDomain|.
             </dl>
 
-        Note: <code>|options|.{{MakePublicKeyCredentialOptions/rp}}.{{PublicKeyCredentialEntity/id}}</code> represents the
+        Note: <code>|options|.{{MakePublicKeyCredentialOptions/rp}}.{{PublicKeyCredentialRpEntity/id}}</code> represents the
             caller's [=RP ID=]. The [=RP ID=] defaults to being the caller's [=environment settings object/origin=]'s
             [=effective domain=] unless the caller has explicitly set
-            <code>|options|.{{MakePublicKeyCredentialOptions/rp}}.{{PublicKeyCredentialEntity/id}}</code> when calling
+            <code>|options|.{{MakePublicKeyCredentialOptions/rp}}.{{PublicKeyCredentialRpEntity/id}}</code> when calling
             {{CredentialsContainer/create()}}.
     </li>
 
@@ -735,9 +769,6 @@ When this method is invoked, the user agent MUST execute the following algorithm
     :: The [=base64url encoding=] of |options|.{{MakePublicKeyCredentialOptions/challenge}}.
     : {{CollectedClientData/origin}}
     :: The [=ascii serialization of an origin|serialization of=] |callerOrigin|.
-    : {{CollectedClientData/hashAlgorithm}}
-    :: The [=recognized algorithm name=] of the hash algorithm selected by the client for generating the
-        [=hash of the serialized client data=].
     : {{CollectedClientData/tokenBindingId}}
     :: The [=Token Binding ID=] associated with |callerOrigin|, if one is available.
     : {{CollectedClientData/clientExtensions}}
@@ -765,12 +796,43 @@ When this method is invoked, the user agent MUST execute the following algorithm
     Resolving this with good definitions or some other means will be addressed by resolving
     [Issue #613](https://github.com/w3c/webauthn/issues/613).
 
-    1. If {{AuthenticatorSelectionCriteria/authenticatorAttachment}} is [=present|present=] and its value is not equal
-        to |authenticator|'s attachment modality, [=iteration/continue=].
-    1. If {{AuthenticatorSelectionCriteria/requireResidentKey}} is set to |true| and the |authenticator|
-        is not capable of storing a [=Client-Side-Resident Credential Private Key=], [=iteration/continue=].
-    1. If {{AuthenticatorSelectionCriteria/requireUserVerification}} is set to |true| and the
-        |authenticator| is not capable of performing [=user verification=], [=iteration/continue=].
+    1. If <code>|options|.{{MakePublicKeyCredentialOptions/authenticatorSelection}}</code> is [=present=]:
+
+          1. If <code>|options|.{{MakePublicKeyCredentialOptions/authenticatorSelection}}.{{authenticatorAttachment}}</code> is
+            [=present|present=] and its value is not equal to |authenticator|'s attachment modality, [=iteration/continue=].
+          1. If <code>|options|.{{MakePublicKeyCredentialOptions/authenticatorSelection}}.{{requireResidentKey}}</code> is set to
+            `true` and the |authenticator| is not capable of storing a [=Client-Side-Resident Credential Private Key=],
+            [=iteration/continue=].
+          1. If <code>|options|.{{MakePublicKeyCredentialOptions/authenticatorSelection}}.{{AuthenticatorSelectionCriteria/userVerification}}</code> is
+            set to {{UserVerificationRequirement/required}} and the |authenticator| is not capable of performing [=user
+            verification=], [=iteration/continue=].
+
+    1. Let |userVerification| be the <dfn>effective user verification requirement for credential creation</dfn>, a Boolean value,
+        as follows. If
+        <code>|options|.{{MakePublicKeyCredentialOptions/authenticatorSelection}}.{{AuthenticatorSelectionCriteria/userVerification}}</code>
+
+            <dl class="switch">
+
+                :   is set to {{UserVerificationRequirement/required}}
+                ::  Let |userVerification| be `true`.
+
+                :   is set to {{UserVerificationRequirement/preferred}}
+                ::  If the |authenticator|
+
+                    <dl class="switch">
+                        :   is capable of [=user verification=]
+                        ::  Let |userVerification| be `true`.
+
+                        :   is not capable of [=user verification=]
+                        ::  Let |userVerification| be `false`.
+                    </dl>
+
+                :   is set to {{UserVerificationRequirement/discouraged}}
+                ::  Let |userVerification| be `false`.
+
+            </dl>
+
+    1. Let |userPresence| be a Boolean value set to the inverse of |userVerification|.
 
     1. Let |excludeCredentialDescriptorList| be a new [=list=].
 
@@ -784,7 +846,8 @@ When this method is invoked, the user agent MUST execute the following algorithm
         |clientDataHash|,
         <code>|options|.{{MakePublicKeyCredentialOptions/rp}}</code>, <code>|options|.{{MakePublicKeyCredentialOptions/user}}</code>,
         <code>|options|.{{MakePublicKeyCredentialOptions/authenticatorSelection}}.{{AuthenticatorSelectionCriteria/requireResidentKey}}</code>,
-        <code>|options|.{{MakePublicKeyCredentialOptions/authenticatorSelection}}.{{AuthenticatorSelectionCriteria/requireUserVerification}}</code>,
+        |userPresence|,
+        |userVerification|,
         |credTypesAndPubKeyAlgs|,
         |excludeCredentialDescriptorList|,
         and |authenticatorExtensions| as parameters.
@@ -794,7 +857,6 @@ When this method is invoked, the user agent MUST execute the following algorithm
 1. [=While=] |lifetimeTimer| has not expired, perform the following actions depending upon |lifetimeTimer| and responses from the
     authenticators:
     <dl class="switch">
-
         :   If |lifetimeTimer| expires,
         ::  [=set/For each=] |authenticator| in |issuedRequests| invoke the [=authenticatorCancel=] operation on |authenticator|
             and [=set/remove=] |authenticator| from |issuedRequests|.
@@ -826,6 +888,9 @@ When this method is invoked, the user agent MUST execute the following algorithm
                 :   <code><dfn for="credentialCreationData">clientDataJSONResult</dfn></code>
                 ::  whose value is the bytes of |clientDataJSON|.
 
+                :   <code><dfn for="credentialCreationData">attestationConveyancePreferenceOption</dfn></code>
+                ::  whose value is the value of |options|.{{MakePublicKeyCredentialOptions/attestation}}.
+
                 :   <code><dfn for="credentialCreationData">clientExtensionResults</dfn></code>
                 ::  whose value is an {{AuthenticationExtensions}} object containing [=extension identifier=] →
                     [=client extension output=] entries. The entries are created by running each extension's
@@ -837,6 +902,28 @@ When this method is invoked, the user agent MUST execute the following algorithm
 
                 1.  Let |attestationObject| be a new {{ArrayBuffer}}, created using |global|'s [=%ArrayBuffer%=], containing the
                     bytes of <code>|credentialCreationData|.[=attestationObjectResult=]</code>'s value.
+
+                1.  If <code>|credentialCreationData|.[=attestationConveyancePreferenceOption=]</code>'s value is
+                    <dl class="switch">
+                        :   "none"
+                        ::  Replace potentially uniquely identifying information (such as [=AAGUID=] and
+                            [=attestation certificates=]) in the [=attested credential data=] and [=attestation statement=],
+                            respectively, with blinded versions of the same data.
+
+                        Issue(w3c/webauthn#694): need to define "blinding".  See also
+                            [#462](https://github.com/w3c/webauthn/issues/462).
+
+                        :   "indirect"
+                        ::  The client MAY replace the [=AAGUID=] and [=attestation statement=] with a more privacy-friendly
+                            and/or more easily verifiable version of the same data (for example, by employing a [=Privacy CA=]).
+
+                        :   "direct"
+                        ::  Convey the [=authenticator=]'s [=AAGUID=] and [=attestation statement=], unaltered, to the RP.
+
+                        Issue: @balfanz wishes to add to the "direct" case:
+                            If the [=authenticator=] violates the privacy requirements of the [=attestation type=] it is using, 
+                            the client SHOULD terminate this algorithm with a "AttestationNotPrivateError".
+                    </dl>
 
                 1.  Let |id| be <code>|attestationObject|.authData.[=attestedCredentialData=].[=credentialId=]</code>.
 
@@ -875,7 +962,7 @@ authorizing an authenticator.
 </div>
 
 
-### Use an existing credential to make an assertion ### {#getAssertion}
+### Use an existing credential to make an assertion - PublicKeyCredential's `[[Get]](options)` method ### {#getAssertion}
 
 [=[RPS]=] call <code><a idl for="CredentialsContainer" lt="get()">navigator.credentials.get({publicKey:..., ...})</a></code> to
 discover and use an existing [=public key credential=], with the [=user consent|user's consent=]. [=[RP]=] script optionally specifies some criteria
@@ -893,17 +980,17 @@ exactly one of those, it then calls <code>PublicKeyCredential.{{PublicKeyCredent
 the user select a [=credential source=].
 
 Since this specification requires an [=authorization gesture=] to create any [=credentials=], the <code>PublicKeyCredential.<dfn
-for="PublicKeyCredential" method>\[[CollectFromCredentialStore]](options)</dfn></code> [=internal method=] inherits the default behavior of
+for="PublicKeyCredential" method>\[[CollectFromCredentialStore]](origin, options, sameOriginWithAncestors)</dfn></code> [=internal method=] inherits the default behavior of
 {{Credential/[[CollectFromCredentialStore]]()|Credential.[[CollectFromCredentialStore]]()}}, of returning an empty set.
 
+<h5 id="discover-from-external-source" algorithm>PublicKeyCredential's <code><dfn for="PublicKeyCredential" method>\[[DiscoverFromExternalSource]](origin, options, sameOriginWithAncestors)</dfn></code> method</h5>
 
-<h5 id="discover-from-external-source" algorithm>PublicKeyCredential's `[[DiscoverFromExternalSource]](origin, options)` method</h5>
 
-<div link-for-hint="PublicKeyCredential/[[DiscoverFromExternalSource]](origin, options)">
+<div link-for-hint="PublicKeyCredential/[[DiscoverFromExternalSource]](origin, options, sameOriginWithAncestors)">
 
-The <code>{{PublicKeyCredential}}.<dfn for="PublicKeyCredential" method>\[[DiscoverFromExternalSource]](origin, options)</dfn></code> [=internal method=] accepts two arguments:
+This [=internal method=] accepts three arguments:
 
-<dl dfn-type="argument" dfn-for="PublicKeyCredential/[[DiscoverFromExternalSource]](origin, options)">
+<dl dfn-type="argument" dfn-for="PublicKeyCredential/[[DiscoverFromExternalSource]](origin, options, sameOriginWithAncestors)">
 
     :   <dfn>origin</dfn>
     ::  This argument is the [=relevant settings object=]'s [=environment settings object/origin=], as determined by the
@@ -913,6 +1000,10 @@ The <code>{{PublicKeyCredential}}.<dfn for="PublicKeyCredential" method>\[[Disco
     ::  This argument is a {{CredentialRequestOptions}} object whose
         <code>|options|.{{CredentialRequestOptions/publicKey}}</code> member contains a {{PublicKeyCredentialRequestOptions}}
         object specifying the desired attributes of the [=public key credential=] to discover.
+
+    :   <dfn>sameOriginWithAncestors</dfn>
+    ::  This argument is a boolean which is true if and only if the caller's [=environment settings object=] is
+        [=same-origin with its ancestors=].
 </dl>
 
 Note: <strong>This algorithm is synchronous:</strong> the {{Promise}} resolution/rejection is handled by
@@ -922,6 +1013,18 @@ When this method is invoked, the user agent MUST execute the following algorithm
 
 1. Assert: <code>|options|.{{CredentialRequestOptions/publicKey}}</code> is [=present=].
 
+1. If <var ignore>sameOriginWithAncestors</var> is `false`, return a "{{NotAllowedError}}" {{DOMException}}.
+
+    Note: This "sameOriginWithAncestors" restriction aims to address the concern raised in the
+    [[CREDENTIAL-MANAGEMENT-1#security-origin-confusion|Origin Confusion]] section of [[CREDENTIAL-MANAGEMENT-1]],
+    while allowing [=[RP]=] script access to Web Authentication functionality, e.g., when running in
+    a [=secure context=] framed document that is [=same-origin with its ancestors=].
+    However, in the future, this specification (in conjunction with 
+    [[CREDENTIAL-MANAGEMENT-1]]) may provide [=[RPS]=] with more fine-grained control--e.g., ranging
+    from allowing only top-level access to Web Authentication functionality,
+    to allowing cross-origin embedded cases--by leveraging
+    [[Feature-Policy]] once the latter specification becomes stably implemented in user agents.
+
 1. Let |options| be the value of <code>|options|.{{CredentialRequestOptions/publicKey}}</code>.
 
 1. If the {{PublicKeyCredentialRequestOptions/timeout}} member of |options| is [=present=], check if its value lies
@@ -929,7 +1032,7 @@ When this method is invoked, the user agent MUST execute the following algorithm
     Set a timer |lifetimeTimer| to this adjusted value. If the {{PublicKeyCredentialRequestOptions/timeout}} member of
     |options| is [=present|not present=], then set |lifetimeTimer| to a platform-specific default.
 
-1. Let |callerOrigin| be {{PublicKeyCredential/[[DiscoverFromExternalSource]](origin, options)/origin}}. If |callerOrigin| is 
+1. Let |callerOrigin| be {{PublicKeyCredential/[[DiscoverFromExternalSource]](origin, options, sameOriginWithAncestors)/origin}}. If |callerOrigin| is 
     an [=opaque origin=], return a {{DOMException}} whose name is "{{NotAllowedError}}", and terminate this algorithm.
 
 1. Let |effectiveDomain| be the |callerOrigin|'s [=effective domain=].
@@ -979,9 +1082,6 @@ When this method is invoked, the user agent MUST execute the following algorithm
     :: The [=base64url encoding=] of |options|.{{PublicKeyCredentialRequestOptions/challenge}}
     : {{CollectedClientData/origin}}
     :: The [=ascii serialization of an origin|serialization of=] |callerOrigin|.
-    : {{CollectedClientData/hashAlgorithm}}
-    :: The [=recognized algorithm name=] of the hash algorithm selected by the client for generating the
-        [=hash of the serialized client data=]
     : {{CollectedClientData/tokenBindingId}}
     :: The [=Token Binding ID=] associated with |callerOrigin|, if one is available.
     : {{CollectedClientData/clientExtensions}}
@@ -1011,20 +1111,52 @@ When this method is invoked, the user agent MUST execute the following algorithm
     Resolving this with good definitions or some other means will be addressed by resolving
     [Issue #613](https://github.com/w3c/webauthn/issues/613).
 
-    1. Let |allowCredentialDescriptorList| be a new [=list=].
+    1. If <code>|options|.{{PublicKeyCredentialRequestOptions/userVerification}}</code> is set to
+        {{UserVerificationRequirement/required}} and the |authenticator| is not capable of performing [=user verification=],
+        [=iteration/continue=].
 
-    1. If <code>|options|.{{PublicKeyCredentialRequestOptions/allowCredentials}}</code> [=list/is not empty=], execute a
-        platform-specific procedure to determine which, if any, [=public key credentials=] described by
-        <code>|options|.{{PublicKeyCredentialRequestOptions/allowCredentials}}</code> are bound to this |authenticator|, by
-        matching with |rpId|,
-        <code>|options|.{{PublicKeyCredentialRequestOptions/allowCredentials}}.{{PublicKeyCredentialDescriptor/id}}</code>, and
-        <code>|options|.{{PublicKeyCredentialRequestOptions/allowCredentials}}.{{PublicKeyCredentialDescriptor/type}}</code>.
-        Set |allowCredentialDescriptorList| to this filtered list.
+    1. Let |userVerification| be the <dfn>effective user verification requirement for assertion</dfn>, a Boolean value, as
+        follows. If <code>|options|.{{PublicKeyCredentialRequestOptions/userVerification}}</code>
 
-    1. If |allowCredentialDescriptorList|
+            <dl class="switch">
+
+                :   is set to {{UserVerificationRequirement/required}}
+                ::  Let |userVerification| be `true`.
+
+                :   is set to {{UserVerificationRequirement/preferred}}
+                ::  If the |authenticator|
+
+                    <dl class="switch">
+                        :   is capable of [=user verification=]
+                        ::  Let |userVerification| be `true`.
+
+                        :   is not capable of [=user verification=]
+                        ::  Let |userVerification| be `false`.
+                    </dl>
+
+                :   is set to {{UserVerificationRequirement/discouraged}}
+                ::  Let |userVerification| be `false`.
+
+            </dl>
+
+    1. Let |userPresence| be a Boolean value set to the inverse of |userVerification|.
+
+    1. If <code>|options|.{{PublicKeyCredentialRequestOptions/allowCredentials}}</code>
         <dl class="switch">
             :   [=list/is not empty=]
-            ::  1. Let |distinctTransports| be a new [=ordered set=].
+            ::  1. Let |allowCredentialDescriptorList| be a new [=list=].
+
+                1. Execute a platform-specific procedure to determine which, if any, [=public key credentials=] described by
+                    <code>|options|.{{PublicKeyCredentialRequestOptions/allowCredentials}}</code> are bound to this
+                    |authenticator|, by matching with |rpId|,
+                    <code>|options|.{{PublicKeyCredentialRequestOptions/allowCredentials}}.{{PublicKeyCredentialDescriptor/id}}</code>,
+                    and
+                    <code>|options|.{{PublicKeyCredentialRequestOptions/allowCredentials}}.{{PublicKeyCredentialDescriptor/type}}</code>.
+                    Set |allowCredentialDescriptorList| to this filtered list.
+
+                1. If |allowCredentialDescriptorList| [=list/is empty=], [=continue=].
+
+                1. Let |distinctTransports| be a new [=ordered set=].
 
                 1. If |allowCredentialDescriptorList| has exactly one value, let |savedCredentialId| be a new 
                     {{PublicKeyCredentialDescriptor}}.{{PublicKeyCredentialDescriptor/id}} and set its value to <code>|allowCredentialDescriptorList|[0].id</code>'s
@@ -1048,19 +1180,20 @@ When this method is invoked, the user agent MUST execute the following algorithm
                             selection.
 
                             Then, using |transport|, invoke the [=authenticatorGetAssertion=] operation on
-                            |authenticator|, with |rpId|, |clientDataHash|, |allowCredentialDescriptorList|, and
-                            |authenticatorExtensions| as parameters.
+                            |authenticator|, with |rpId|, |clientDataHash|, |allowCredentialDescriptorList|, |userPresence|,
+                            |userVerification|, and |authenticatorExtensions| as parameters.
 
                         :   [=list/is empty=]
                         ::  Using local configuration knowledge of the appropriate transport to use with |authenticator|,
                             invoke the [=authenticatorGetAssertion=] operation on |authenticator| with |rpId|,
-                            |clientDataHash|, |allowCredentialDescriptorList|, and |clientExtensions| as parameters.
+                            |clientDataHash|, |allowCredentialDescriptorList|, |userPresence|, |userVerification|, and
+                            |clientExtensions| as parameters.
                     </dl>
 
             :   [=list/is empty=]
-            ::  Using local configuration knowledge of the appropriate transport to use with |authenticator|, invoke
-                the [=authenticatorGetAssertion=] operation on |authenticator| with |rpId|, |clientDataHash|,
-                and |clientExtensions| as parameters.
+            ::  Using local configuration knowledge of the appropriate transport to use with |authenticator|, invoke the
+                [=authenticatorGetAssertion=] operation on |authenticator| with |rpId|, |clientDataHash|, |userPresence|,
+                |userVerification| and |clientExtensions| as parameters.
 
                 Note: In this case, the [=[RP]=] did not supply a list of acceptable credential descriptors. Thus the
                     authenticator is being asked to exercise any credential it may possess that is bound to
@@ -1184,26 +1317,32 @@ for which [=public key credential|credentials=] are available. In particular, th
 before the |lifetimeTimer| has expired, as that difference in timing would constitute such an information leak.
 
 
-### Store an existing credential - PublicKeyCredential's `[[Store]](credential)` method ### {#storeCredential}
+### Store an existing credential - PublicKeyCredential's `[[Store]](credential, sameOriginWithAncestors)` method ### {#storeCredential}
 
-<div link-for-hint="PublicKeyCredential/[[Store]](credential)">
+<div link-for-hint="PublicKeyCredential/[[Store]](credential, sameOriginWithAncestors)">
 
-The <dfn for="PublicKeyCredential" method>\[[Store]](credential)</dfn> method is not supported
+The <dfn for="PublicKeyCredential" method>\[[Store]](credential, sameOriginWithAncestors)</dfn> method is not supported
 for Web Authentication's {{PublicKeyCredential}} type, so it always returns an error.
 
 Note: This algorithm is synchronous; the {{Promise}} resolution/rejection is handled by
 {{CredentialsContainer/store()|navigator.credentials.store()}}.
 
-This method accepts a single argument:
+This [=internal method=] accepts two arguments:
 
-<dl dfn-type="argument" dfn-for="PublicKeyCredential/[[Store]](credential)">
+<dl dfn-type="argument" dfn-for="PublicKeyCredential/[[Store]](credential, sameOriginWithAncestors)">
     :   <dfn>credential</dfn>
     ::  This argument is a {{PublicKeyCredential}} object.
+
+    :   <dfn>sameOriginWithAncestors</dfn>
+    ::  This argument is a boolean which is true if and only if the caller's [=environment settings object=] is
+        [=same-origin with its ancestors=].
 </dl>
 
 When this method is invoked, the user agent MUST execute the following algorithm:
 
 1. Return a {{DOMException}} whose name is "{{NotSupportedError}}", and terminate this algorithm
+
+</div>
 
 ### Availability of User-Verifying Platform Authenticator - PublicKeyCredential's `isUserVerifyingPlatformAuthenticatorAvailable()` method ### {#isUserVerifyingPlatformAuthenticatorAvailable}
 
@@ -1356,6 +1495,7 @@ optionally evidence of [=user consent=] to a specific transaction.
         unsigned long                                timeout;
         sequence<PublicKeyCredentialDescriptor>      excludeCredentials = [];
         AuthenticatorSelectionCriteria               authenticatorSelection;
+        AttestationConveyancePreference              attestation = "none";
         AuthenticationExtensions                     extensions;
     };
 </xmp>
@@ -1402,7 +1542,11 @@ optionally evidence of [=user consent=] to a specific transaction.
 
     :   <dfn>authenticatorSelection</dfn>
     ::  This member is intended for use by [=[RPS]=] that wish to select the appropriate authenticators to participate in
-        the {{CredentialsContainer/create()}} or {{CredentialsContainer/get()}} operation.
+        the {{CredentialsContainer/create()}} operation.
+
+    :   <dfn>attestation</dfn>
+    ::  This member is intended for use by [=[RPS]=] that wish to express their preference for [=attestation conveyance=].
+        The default is {{AttestationConveyancePreference/none}}.
 
     :   <dfn>extensions</dfn>
     ::  This member contains additional parameters requesting additional processing by the client and authenticator. For
@@ -1486,7 +1630,7 @@ attributes.
     dictionary AuthenticatorSelectionCriteria {
         AuthenticatorAttachment      authenticatorAttachment;
         boolean                      requireResidentKey = false;
-        boolean                      requireUserVerification = false;
+        UserVerificationRequirement  userVerification = "preferred";
     };
 </xmp>
 
@@ -1500,11 +1644,10 @@ attributes.
         Private Key=]. If the parameter is set to true, the authenticator MUST create a
         [=Client-side-resident Credential Private Key=] when creating a [=public key credential=].
 
-    :   <dfn>requireUserVerification</dfn>
-    ::  This member describes the [=[RPS]=]' requirements regarding the authenticator being capable of performing user verification.
-        If the parameter is set to true, the authenticator MUST perform user verification when performing
-        the {{CredentialsContainer/create()}} operation and future [[#getAssertion]] operations when it is
-        requested to verify the credential.
+    :   <dfn>userVerification</dfn>
+    ::  This member describes the [=[RP]=]'s requirements regarding [=user verification=] for the
+        {{CredentialsContainer/create()}} operation. Eligible authenticators are filtered to only those capable of satisfying this
+        requirement.
 </div>
 
 
@@ -1529,18 +1672,63 @@ them as <dfn>roaming authenticators</dfn>.
 <ul>
     <li><dfn>platform attachment</dfn> - the respective authenticator is attached
         using platform-specific transports.  Usually, authenticators of
-        this class are non-removable from the platform.
+        this class are non-removable from the platform. A [=public key credential=] bound to a [=platform authenticator=] is
+        called a <dfn>platform credential</dfn>.
     <li><dfn lt="cross-platform attached|cross-platform attachment">cross-platform attachment</dfn> - the respective
         authenticator is attached using cross-platform transports. Authenticators of this class are removable from, and can
-        "roam" among, client platforms.
+        "roam" among, client platforms. A [=public key credential=] bound to a [=roaming authenticator=] is called a <dfn>roaming
+        credential</dfn>.
 </ul>
 
-This distinction is important because there are use-cases where only [=platform authenticators=] are acceptable to a
-[=[RP]=], and conversely ones where only [=roaming authenticators=] are employed. As a concrete example of the former, a
-credential on a [=platform authenticator=] may be used by [=[RPS]=] to quickly and conveniently reauthenticate the user with
-a minimum of friction, e.g., the user will not have to dig around in their pocket for their key fob or phone. As a concrete
-example of the latter, when the user is accessing the [=[RP]=] from a given client for the first time, they may be required to
-use a [=roaming authenticator=] which was originally registered with the [=[RP]=] using a different client.
+This distinction is important because there are use-cases where only [=platform authenticators=] are acceptable to a [=[RP]=], and
+conversely ones where only [=roaming authenticators=] are employed. As a concrete example of the former, a [=platform credential=]
+may be used by [=[RPS]=] to quickly and conveniently reauthenticate the user with a minimum of friction, e.g., the user will not
+have to dig around in their pocket for their key fob or phone. As a concrete example of the latter, when the user is accessing the
+[=[RP]=] from a given client for the first time, they may be required to use a [=roaming credential=] which was originally
+registered with the [=[RP]=] using a different client.
+
+Note: An [=attachment modality=] selection option is available only in the {{PublicKeyCredential/[[Create]](origin, options,
+sameOriginWithAncestors)}} operation. The [=[RP]=] MAY use it to, for example, ensure the user has a [=roaming credential=] for
+authenticating using other [=clients=]; or to specifically register a [=platform credential=] for easier reauthentication using a
+particular [=client=]. The {{PublicKeyCredential/[[DiscoverFromExternalSource]](origin, options, sameOriginWithAncestors)}}
+operation has no [=attachment modality=] selection option, so the [=[RP]=] SHOULD accept any of the user's registered [=public key
+credential|credentials=]. The [=client=] and user will then use whichever is available and convenient at the time.
+
+
+### <dfn>Attestation Conveyance</dfn> Preference enumeration (enum <dfn enum>AttestationConveyancePreference</dfn>) ### {#attestation-convey}
+
+[=[RPS]=] may use {{AttestationConveyancePreference}} to specify their preference regarding [=attestation conveyance=]
+during credential generation.
+
+<pre class="idl">
+    enum AttestationConveyancePreference {
+        "none",
+        "indirect",
+        "direct"
+    };
+</pre>
+
+<div dfn-type="enum-value" dfn-for="AttestationConveyancePreference">
+    *   <dfn>none</dfn> - indicates that the [=[RP]=] is not interested in [=authenticator=] [=attestation=].
+        The client may replace the [=AAGUID=] and [=attestation statement=] generated
+        by the authenticator with meaningless client-generated values. For example, in order to avoid having to obtain
+        [=user consent=] to relay uniquely identifying information to the [=[RP]=], or to save a roundtrip to a Privacy CA.
+
+        This is the default value.
+
+    *   <dfn>indirect</dfn> - indicates that the [=[RP]=] prefers an [=attestation=] conveyance yielding verifiable
+        [=attestation statements=], but allows the client to decide how to obtain such [=attestation statements=].
+        The client may replace the authenticator-generated [=attestation statements=] with [=attestation statements=] generated
+        by a [=Privacy CA=], in order to protect the user's privacy, or to assist [=[RPS]=] with attestation verification in a
+        heterogeneous ecosystem.
+
+        Note: There is no guarantee that the [=[RP]=] will obtain a verifiable [=attestation statement=] in this case.
+        For example, in the case that the authenticator employs [=self attestation=].
+
+    *   <dfn>direct</dfn> - indicates that the [=[RP]=] wants to receive the [=attestation statement=] as generated by
+        the [=authenticator=].
+
+</div>
 
 
 ## Options for Assertion Generation (dictionary <dfn dictionary>PublicKeyCredentialRequestOptions</dfn>) ## {#assertion-options}
@@ -1554,6 +1742,7 @@ an assertion. Its {{PublicKeyCredentialRequestOptions/challenge}} member must be
         unsigned long                        timeout;
         USVString                            rpId;
         sequence<PublicKeyCredentialDescriptor> allowCredentials = [];
+        UserVerificationRequirement          userVerification = "preferred";
         AuthenticationExtensions             extensions;
     };
 </xmp>
@@ -1561,7 +1750,7 @@ an assertion. Its {{PublicKeyCredentialRequestOptions/challenge}} member must be
 <dl dfn-type="dict-member" dfn-for="PublicKeyCredentialRequestOptions">
     :   <dfn>challenge</dfn>
     ::  This member represents a challenge that the selected [=authenticator=] signs, along with other data, when producing an
-        [=authentication assertion=].
+        [=authentication assertion=]. See the [[#cryptographic-challenges]] security consideration.
 
     :   <dfn>timeout</dfn>
     ::  This optional member specifies a time, in milliseconds, that the caller is willing to wait for the call to complete.
@@ -1573,10 +1762,15 @@ an assertion. Its {{PublicKeyCredentialRequestOptions/challenge}} member must be
         [=effective domain=].
 
     :   <dfn>allowCredentials</dfn>
-    ::  This optional member contains a list of {{PublicKeyCredentialDescriptor}} object representing [=public key credentials=]
+    ::  This optional member contains a list of {{PublicKeyCredentialDescriptor}} objects representing [=public key credentials=]
         acceptable to the caller, in decending order of the caller's preference (the first item in the list is the most
         preferred credential, and so on down the list).
-    
+
+    :   <dfn>userVerification</dfn>
+    ::  This member describes the [=[RP]=]'s requirements regarding [=user verification=] for the
+        {{CredentialsContainer/get()}} operation. Eligible authenticators are filtered to only those capable of satisfying this
+        requirement.
+
     :   <dfn>extensions</dfn>
     ::  This optional member contains additional parameters requesting additional processing by the client and authenticator.
         For example, if transaction confirmation is sought from the user, then the prompt string might be included as an
@@ -1587,29 +1781,30 @@ an assertion. Its {{PublicKeyCredentialRequestOptions/challenge}} member must be
 ## Abort operations with `AbortSignal` ## {#abortoperation}
 
 Developers are encouraged to leverage the {{AbortController}} to manage the 
-{{PublicKeyCredential/[[Create]](options)}} and {{PublicKeyCredential/[[DiscoverFromExternalSource]](options)}} operations. 
+{{PublicKeyCredential/[[Create]](origin, options, sameOriginWithAncestors)}} and {{PublicKeyCredential/[[DiscoverFromExternalSource]](origin, options, sameOriginWithAncestors)}} operations.
 See [[dom#abortcontroller-api-integration]] section for detailed instructions. 
 
     Note: [[dom#abortcontroller-api-integration]] section specifies that web platform APIs integrating with the  
     {{AbortController}} must reject the promise immediately once the [=AbortSignal/aborted flag=] is set. 
-    Given the complex inheritance and parallelization structure of the {{PublicKeyCredential/[[Create]](options)}}
-    and {{PublicKeyCredential/[[DiscoverFromExternalSource]](options)}} methods, the algorithms for the two APIs fulfills this 
+    Given the complex inheritance and parallelization structure of the {{PublicKeyCredential/[[Create]](origin, options, sameOriginWithAncestors)}}
+    and {{PublicKeyCredential/[[DiscoverFromExternalSource]](origin, options, sameOriginWithAncestors)}} methods, the algorithms for the two APIs fulfills this
     requirement by checking the [=AbortSignal/aborted flag=] in three places. In the case of 
-    {{PublicKeyCredential/[[Create]](options)}}, the aborted flag is checked first in 
-    [[credential-management-1#algorithm-create]] right before calling {{Credential/[[Create]](options)}}, 
-    then in [[#createCredential]] right before authenticator sessions start, and finally 
-    during authenticator sessions. The same goes for 
-    {{PublicKeyCredential/[[DiscoverFromExternalSource]](options)}}.
+    {{PublicKeyCredential/[[Create]](origin, options, sameOriginWithAncestors)}}, the aborted flag is checked first in
+    [[credential-management-1#algorithm-create]] immediately before calling {{Credential/[[Create]](origin, options, sameOriginWithAncestors)}},
+    then in [[#createCredential]] right before [=authenticator sessions=] start, and finally
+    during [=authenticator sessions=]. The same goes for
+    {{PublicKeyCredential/[[DiscoverFromExternalSource]](origin, options, sameOriginWithAncestors)}}.
 
 The [=visibility states|visibility=] and [=focus=] state of the [=Window=] object determines whether the 
-{{PublicKeyCredential/[[Create]](options)}} and {{PublicKeyCredential/[[DiscoverFromExternalSource]](options)}} operations
+{{PublicKeyCredential/[[Create]](origin, options, sameOriginWithAncestors)}} and {{PublicKeyCredential/[[DiscoverFromExternalSource]](origin, options, sameOriginWithAncestors)}} operations
 should continue. When the [=Window=] object associated with the [[=Document=] loses focus, 
-{{PublicKeyCredential/[[Create]](options)}} and {{PublicKeyCredential/[[DiscoverFromExternalSource]](options)}} operations
+{{PublicKeyCredential/[[Create]](origin, options, sameOriginWithAncestors)}} and {{PublicKeyCredential/[[DiscoverFromExternalSource]](origin, options, sameOriginWithAncestors)}} operations
 SHOULD be aborted. 
 
     Issue: The WHATWG HTML WG is discussing whether to provide a hook when a browsing context gains or
     loses focuses. If a hook is provided, the above paragraph will be updated to include the hook.
     See [WHATWG HTML WG Issue #2711](https://github.com/whatwg/html/issues/2711) for more details. 
+
 
 ## Authentication Extensions (typedef <dfn>AuthenticationExtensions</dfn>) ## {#iface-authentication-extensions}
 
@@ -1639,7 +1834,6 @@ following Web IDL.
         required DOMString           type;
         required DOMString           challenge;
         required DOMString           origin;
-        required DOMString           hashAlgorithm;
         DOMString                    tokenBindingId;
         AuthenticationExtensions     clientExtensions;
         AuthenticationExtensions     authenticatorExtensions;
@@ -1652,13 +1846,10 @@ following Web IDL.
     confusion attacks (where an attacker substitutes one legitimate signature for another).
 
     The <dfn>challenge</dfn> member contains the base64url encoding of the challenge provided by the RP.
+    See the [[#cryptographic-challenges]] security consideration.
 
     The <dfn>origin</dfn> member contains the fully qualified [=origin=] of the requester, as provided to the authenticator by
     the client, in the syntax defined by [[RFC6454]].
-
-    The <dfn>hashAlgorithm</dfn> member is a [=recognized algorithm name=] that supports the `"digest"` operation, which
-    specifies the algorithm used to compute the [=hash of the serialized client data=]. This algorithm is chosen by the client
-    at its sole discretion.
 
     The <dfn>tokenBindingId</dfn> member contains the base64url encoding of the [=Token Binding ID=] that this client uses for
     the [=Token Binding=] protocol when communicating with the [=[RP]=]. This can be omitted if no [=Token Binding=] has been
@@ -1675,7 +1866,7 @@ following Web IDL.
         {{CollectedClientData}} dictionary.
 
     : <dfn dfn>Hash of the serialized client data</dfn>
-    :: This is the hash (computed using {{hashAlgorithm}}) of the [=JSON-serialized client data=], as constructed by the client.
+    :: This is the hash (computed using SHA-256) of the [=JSON-serialized client data=], as constructed by the client.
 </div>
 
 
@@ -1706,14 +1897,14 @@ following Web IDL.
     };
 </xmp>
 
-This dictionary contains the attributes that are specified by a caller when referring to a credential as an input parameter to
-the {{CredentialsContainer/create()}} or {{CredentialsContainer/get()}} methods. It mirrors the fields of the
+This dictionary contains the attributes that are specified by a caller when referring to a [=public key credential=] as an input
+parameter to the {{CredentialsContainer/create()}} or {{CredentialsContainer/get()}} methods. It mirrors the fields of the
 {{PublicKeyCredential}} object returned by the latter methods.
 
 <div dfn-type="dict-member" dfn-for="PublicKeyCredentialDescriptor">
-    The <dfn>type</dfn> member contains the type of the credential the caller is referring to.
+    The <dfn>type</dfn> member contains the type of the [=public key credential=] the caller is referring to.
 
-    The <dfn>id</dfn> member contains the identifier of the credential that the caller is referring to.
+    The <dfn>id</dfn> member contains the [=credential ID=] of the [=public key credential=] that the caller is referring to.
 </div>
 
 
@@ -1753,6 +1944,30 @@ the {{CredentialsContainer/create()}} or {{CredentialsContainer/get()}} methods.
     The algorithm identifiers SHOULD be values registered in the IANA COSE Algorithms registry [[!IANA-COSE-ALGS-REG]],
     for instance, <code>-7</code> for "ES256" and <code>-257</code> for "RS256".
 </div>
+
+
+### User Verification Requirement enumeration (enum <dfn enum>UserVerificationRequirement</dfn>) ### {#userVerificationRequirement}
+
+<pre class="idl">
+    enum UserVerificationRequirement {
+        "required",
+        "preferred",
+        "discouraged"
+    };
+</pre>
+
+A [=[RP]=] may require [=user verification=] for some of its operations but not for others, and may use this type to express its
+needs.
+
+The value {{UserVerificationRequirement/required}} indicates that the [=[RP]=] requires [=user verification=] for the operation
+and will fail the operation if the response does not have the [=UV=] [=flag=] set.
+
+The value {{UserVerificationRequirement/preferred}} indicates that the [=[RP]=] prefers [=user verification=] for the
+operation if possible, but will not fail the operation if the response does not have the [=UV=] [=flag=] set.
+
+The value {{UserVerificationRequirement/discouraged}} indicates that the [=[RP]=] does not want [=user verification=] employed
+during the operation (e.g., in the interest of minimizing disruption to the user interaction flow).
+
 
 # WebAuthn Authenticator model # {#authenticator-model}
 
@@ -1954,7 +2169,7 @@ Authenticators:
 ## Authenticator operations ## {#authenticator-ops}
 
 A client must connect to an authenticator in order to invoke any of the operations of that authenticator. This connection
-defines an authenticator session. An authenticator must maintain isolation between sessions. It may do this by only allowing one
+defines an <dfn>authenticator session</dfn>. An authenticator must maintain isolation between sessions. It may do this by only allowing one
 session to exist at any particular time, or by providing more complicated session management.
 
 The following operations can be invoked by the client in an authenticator session.
@@ -1962,8 +2177,7 @@ The following operations can be invoked by the client in an authenticator sessio
 
 <h4 id="op-make-cred" algorithm>The <dfn>authenticatorMakeCredential</dfn> operation</h4>
 
-This operation must be invoked in an authenticator session which has no other operations in progress. It takes the following
-input parameters:
+It takes the following input parameters:
 
 <!-- @@EDITOR-ANCHOR-01B: KEEP THIS LIST SYNC'D WITH THE LIST UP AT @@EDITOR-ANCHOR-01A -->
 : |hash|
@@ -1973,9 +2187,13 @@ input parameters:
 : |userEntity|
 :: The user account's {{PublicKeyCredentialUserEntity}}, containing the [=user handle=] given by the [=[RP]=].
 : |requireResidentKey|
-:: |options|.{{MakePublicKeyCredentialOptions/authenticatorSelection}}.{{requireResidentKey}}.
+:: The {{MakePublicKeyCredentialOptions/authenticatorSelection}}.{{requireResidentKey}} value given by the [=[RP]=].
+: |requireUserPresence|
+:: A Boolean value provided by the client, which in invocations from a [=[WAC]=]'s
+    {{PublicKeyCredential/[[Create]](origin, options, sameOriginWithAncestors)}} method is always set to the inverse of
+    |requireUserVerification|.
 : |requireUserVerification|
-:: |options|.{{MakePublicKeyCredentialOptions/authenticatorSelection}}.{{requireUserVerification}}.
+:: The [=effective user verification requirement for credential creation=], a Boolean value provided by the client.
 : |credTypesAndPubKeyAlgs|
 :: A sequence of pairs of {{PublicKeyCredentialType}} and public key algorithms ({{COSEAlgorithmIdentifier}}) requested by the
     [=[RP]=]. This sequence is ordered from most preferred to least preferred. The platform makes a best-effort to create the most
@@ -1988,7 +2206,9 @@ input parameters:
 :: A [=map=] from [=extension identifiers=] to their [=authenticator extension inputs=], created by the client based on the
     extensions requested by the [=[RP]=], if any.
 
-When this operation is invoked, the authenticator must perform the following procedure:
+Note: Before performing this operation, all other operations in progress in the [=authenticator session=] must be aborted by running the [=authenticatorCancel=] operation.
+
+When this operation is invoked, the [=authenticator=] must perform the following procedure:
 1. Check if all the supplied parameters are syntactically well-formed and of the correct length. If not, return an error code
     equivalent to "{{UnknownError}}" and terminate the operation.
 1. Check if at least one of the specified combinations of {{PublicKeyCredentialType}} and cryptographic parameters in
@@ -1999,15 +2219,24 @@ When this operation is invoked, the authenticator must perform the following pro
     item's <code>|excludeCredentialDescriptorList|.{{PublicKeyCredentialDescriptor/id}}</code> and 
     <code>|excludeCredentialDescriptorList|.{{PublicKeyCredentialDescriptor/type}}</code>.
     If so, return an error code equivalent to "{{NotAllowedError}}" and terminate the operation.
-1. If |requireResidentKey| is |true| and the authenticator cannot store a [=Client-side-resident Credential
+1. If |requireResidentKey| is `true` and the authenticator cannot store a [=Client-side-resident Credential
     Private Key=], return an error code equivalent to "{{ConstraintError}}" and terminate the operation.
-1. If |requireUserVerification| is |true| and the authenticator cannot perform user verification,
-    return an error code equivalent to "{{ConstraintError}}" and terminate the operation.
-1. Prompt the user for consent to create a new credential. The prompt for obtaining this consent is shown by the authenticator
-    if it has its own output capability, or by the user agent otherwise. If the user denies consent, return an error code
-    equivalent to "{{NotAllowedError}}" and terminate the operation. The Authenticator and user agent MAY skip this prompt
-    if the Authenticator is a [=platform authenticator=] and |excludeCredentialDescriptorList| is empty.
-1. Once user consent has been obtained, generate a new credential object:
+1. If |requireUserVerification| is `true` and the authenticator cannot perform [=user verification=], return an error code
+    equivalent to "{{ConstraintError}}" and terminate the operation.
+1. Obtain [=user consent=] for creating a new credential. The prompt for obtaining this [=user consent|consent=] is shown by the
+    authenticator if it has its own output capability, or by the user agent otherwise. The prompt SHOULD display
+    <code>|rpEntity|.{{PublicKeyCredentialRpEntity/id}}</code>, <code>|rpEntity|.{{PublicKeyCredentialEntity/name}}</code>,
+    <code>|userEntity|.{{PublicKeyCredentialEntity/name}}</code> and
+    <code>|userEntity|.{{PublicKeyCredentialUserEntity/displayName}}</code>, if possible.
+
+    If |requireUserVerification| is `true`, the method of obtaining [=user consent=] MUST include [=user verification=].
+
+    If |requireUserPresence| is `true`, the method of obtaining [=user consent=] MUST include a [=test of user presence=].
+
+    If the user denies [=user consent|consent=] or if [=user verification=] fails, return an error code equivalent to
+    "{{NotAllowedError}}" and terminate the operation.
+
+1. Once [=user consent=] has been obtained, generate a new credential object:
     1. Let (|publicKey|,|privateKey|) be a new pair of cryptographic keys using the combination of {{PublicKeyCredentialType}}
         and cryptographic parameters represented by the first [=list/item=] in |credTypesAndPubKeyAlgs| that is supported by
         this authenticator.
@@ -2045,34 +2274,65 @@ On successful completion of this operation, the authenticator returns the [=atte
 
 <h4 id="op-get-assertion" algorithm> The <dfn>authenticatorGetAssertion</dfn> operation</h4>
 
-This operation must be invoked in an authenticator session which has no other operations in progress. It takes the following
-input parameters:
+It takes the following input parameters:
 
 : |rpId|
 :: The caller's [=RP ID=], as <a href='#GetAssn-DetermineRpId'>determined</a> by the user agent and the client.
 : |hash|
 :: The [=hash of the serialized client data=], provided by the client.
 : |allowCredentialDescriptorList|
-:: An optional list of {{PublicKeyCredentialDescriptor}}s describing credentials acceptable to the [=[RP]=] (possibly filtered
+:: An optional [=list=] of {{PublicKeyCredentialDescriptor}}s describing credentials acceptable to the [=[RP]=] (possibly filtered
     by the client), if any.
+: |requireUserPresence|
+:: A Boolean value provided by the client, which in invocations from a [=[WAC]=]'s
+    {{PublicKeyCredential/[[DiscoverFromExternalSource]](origin, options, sameOriginWithAncestors)}} method is always set to the inverse of
+    |requireUserVerification|.
+: |requireUserVerification|
+:: The [=effective user verification requirement for assertion=], a Boolean value provided by the client.
 : |extensions|
 :: A [=map=] from [=extension identifiers=] to their [=authenticator extension inputs=], created by the client based on the
     extensions requested by the [=[RP]=], if any.
 
+Note: Before performing this operation, all other operations in progress in the [=authenticator session=] must be aborted by running the [=authenticatorCancel=] operation.
+
 When this method is invoked, the [=authenticator=] must perform the following procedure:
 1. Check if all the supplied parameters are syntactically well-formed and of the correct length. If not, return an error code
     equivalent to "{{UnknownError}}" and terminate the operation.
-1. If |allowCredentialDescriptorList| was not supplied, set it to a list of all credentials stored for |rpId| (as determined by
-    an exact match of |rpId|).
-1. Remove any items from |allowCredentialDescriptorList| that do not match a credential bound to this authenticator. A match 
-    occurs if a credential matches <code>|rpId|</code> and an |allowCredentialDescriptorList| item's <code>|allowCredentialDescriptorList| 
-    {{PublicKeyCredentialDescriptor/id}}</code> and <code>|allowCredentialDescriptorList|{{PublicKeyCredentialDescriptor/type}}</code>. 
-1. If |allowCredentialDescriptorList| is now empty, return an error code equivalent to "{{NotAllowedError}}" and terminate the
-    operation.
-1. Prompt the user to select a [=public key credential|credential=] |selectedCredential| from |allowCredentialDescriptorList|.
-    Obtain [=user consent=] for using |selectedCredential|. The prompt for obtaining this [=user consent|consent=] may be shown
-    by the
-    [=authenticator=] if it has its own output capability, or by the user agent otherwise.
+1. If |requireUserVerification| is `true` and the authenticator cannot perform [=user
+    verification=], return an error code equivalent to "{{ConstraintError}}" and terminate the operation.
+1. If |allowCredentialDescriptorList| was not supplied, set it to a [=list=] of all credentials stored for |rpId| (as determined
+    by an exact match of |rpId|).
+1. Remove any [=list/items=] from |allowCredentialDescriptorList| that do not match a credential bound to this authenticator. A
+    match occurs if a credential matches <code>|rpId|</code> and an |allowCredentialDescriptorList| [=list/item=]'s
+    {{PublicKeyCredentialDescriptor/id}} and {{PublicKeyCredentialDescriptor/type}} members.
+1. If |allowCredentialDescriptorList| is now [=list/empty=], return an error code equivalent to "{{NotAllowedError}}" and
+    terminate the operation.
+
+1. Let |selectedCredential| be a [=public key credential|credential=] as follows. If the [=list/size=] of
+    |allowCredentialDescriptorList|
+
+    <dl class="switch">
+        :   is exactly 1
+        ::  Let |selectedCredential| be the [=public key credential|credential=] matching
+            <code>|allowCredentialDescriptorList|[0]</code>.
+
+        :   is greater than 1
+        ::  Prompt the user to select |selectedCredential| from the [=public key credential|credentials=] matching the
+            [=list/items=] in |allowCredentialDescriptorList|.
+    </dl>
+
+
+1. Obtain [=user consent=] for using |selectedCredential|. The prompt for obtaining this [=user consent|consent=] may be shown by
+    the [=authenticator=] if it has its own output capability, or by the user agent otherwise. The prompt SHOULD display the
+    |rpId| and any additional displayable data associated with |selectedCredential|, if possible.
+
+    If |requireUserVerification| is `true`, the method of obtaining [=user consent=] MUST include [=user verification=].
+
+    If |requireUserPresence| is `true`, the method of obtaining [=user consent=] MUST include a [=test of user presence=].
+
+    If the user denies [=user consent|consent=] or if [=user verification=] fails, return an error code equivalent to
+    "{{NotAllowedError}}" and terminate the operation.
+
 1. Let |processedExtensions| be the result of [=authenticator extension processing=] for each supported [=extension
     identifier=]/input pair in |extensions|.
 1. Increment the [=RP ID=]-associated
@@ -2096,10 +2356,10 @@ When this method is invoked, the [=authenticator=] must perform the following pr
 
     <li id='authenticatorGetAssertion-return-values'>
     Return to the user agent:
-        - |selectedCredential|'s [=credential ID=], if either a list of credentials of length 2 or greater was supplied by the
-            client, or no such list was supplied. Otherwise, return only the below values.
+        - |selectedCredential|'s [=credential ID=], if either a [=list=] of credentials of [=list/size=] 2 or greater was supplied
+            by the client, or no such [=list=] was supplied. Otherwise, return only the below values.
 
-            Note: If the client supplies a list of exactly one credential and it was successfully employed, then its
+            Note: If the client supplies a [=list=] of exactly one credential and it was successfully employed, then its
                 [=credential ID=] is not returned since the client already knows it. This saves transmitting these bytes over
                 what may be a constrained connection in what is likely a common case.
 
@@ -2111,19 +2371,17 @@ When this method is invoked, the [=authenticator=] must perform the following pr
 If the authenticator cannot find any credential corresponding to the specified [=[RP]=] that matches the specified criteria, it
 terminates the operation and returns an error.
 
-If the user refuses consent, the authenticator returns an appropriate error status to the client.
-
 
 ### The <dfn>authenticatorCancel</dfn> operation ### {#op-cancel}
 
 This operation takes no input parameters and returns no result.
 
-When this operation is invoked by the client in an authenticator session, it has the effect of terminating any
+When this operation is invoked by the client in an [=authenticator session=], it has the effect of terminating any
 [=authenticatorMakeCredential=] or [=authenticatorGetAssertion=] operation currently in progress in that authenticator
 session. The authenticator stops prompting for, or accepting, any user input related to authorizing the canceled operation. The
 client ignores any further responses from the authenticator for the canceled operation.
 
-This operation is ignored if it is invoked in an authenticator session which does not have an [=authenticatorMakeCredential=]
+This operation is ignored if it is invoked in an [=authenticator session=] which does not have an [=authenticatorMakeCredential=]
 or [=authenticatorGetAssertion=] operation currently in progress.
 
 
@@ -2403,61 +2661,64 @@ When registering a new credential, represented by a {{AuthenticatorAttestationRe
     {{AuthenticatorAttestationResponse}} object to extract the [=client data=] |C| claimed as collected during the credential
     creation.
 
-2. Verify that the {{CollectedClientData/type}} in |C| is the string `webauthn.create`.
+1. Verify that the {{CollectedClientData/type}} in |C| is the string `webauthn.create`.
 
-2. Verify that the {{CollectedClientData/challenge}} in |C| matches the challenge that was sent to the authenticator in the
+1. Verify that the {{CollectedClientData/challenge}} in |C| matches the challenge that was sent to the authenticator in the
     {{CredentialsContainer/create()}} call.
 
-3. Verify that the {{CollectedClientData/origin}} in |C| matches the [=[RP]=]'s [=origin=].
+1. Verify that the {{CollectedClientData/origin}} in |C| matches the [=[RP]=]'s [=origin=].
 
-4. Verify that the {{CollectedClientData/tokenBindingId}} in |C| matches the [=Token Binding ID=] for the TLS connection over
+1. Verify that the {{CollectedClientData/tokenBindingId}} in |C| matches the [=Token Binding ID=] for the TLS connection over
     which the attestation was obtained.
 
-5. Verify that the {{CollectedClientData/clientExtensions}} in |C| is a subset of the extensions requested by the RP
+1. Verify that the {{CollectedClientData/clientExtensions}} in |C| is a subset of the extensions requested by the RP
     and that the {{CollectedClientData/authenticatorExtensions}} in |C| is also a subset of the extensions requested by
     the RP.
 
-6. Compute the hash of {{AuthenticatorResponse/clientDataJSON}} using the algorithm identified by
-    <code>|C|.{{CollectedClientData/hashAlgorithm}}</code>.
+1. Compute the hash of {{AuthenticatorResponse/clientDataJSON}} using SHA-256.
 
-7. Perform CBOR decoding on the {{AuthenticatorAttestationResponse/attestationObject}} field of the
+1. Perform CBOR decoding on the {{AuthenticatorAttestationResponse/attestationObject}} field of the
     {{AuthenticatorAttestationResponse}} structure to obtain the attestation statement format |fmt|, the [=authenticator data=]
     |authData|, and the attestation statement |attStmt|.
 
-8. Verify that the [=RP ID=] hash in |authData| is indeed the SHA-256 hash of the [=RP ID=] expected by the RP.
+1. Verify that the [=RP ID=] hash in |authData| is indeed the SHA-256 hash of the [=RP ID=] expected by the RP.
 
-9. Determine the attestation statement format by performing an USASCII case-sensitive match on |fmt| against the set of
+1. Determine the attestation statement format by performing an USASCII case-sensitive match on |fmt| against the set of
     supported WebAuthn Attestation Statement Format Identifier values.
     The up-to-date list of registered WebAuthn Attestation Statement Format Identifier values
     is maintained in the in the IANA registry of the same name [[!WebAuthn-Registries]].
 
-10. Verify that |attStmt| is a correct [=attestation statement=], conveying a valid [=attestation signature=], by using the
+1. Verify that |attStmt| is a correct [=attestation statement=], conveying a valid [=attestation signature=], by using the
     [=attestation statement format=] |fmt|'s verification procedure given |attStmt|, |authData| and the [=hash of the serialized
     client data=] computed in step 6.
 
     Note: Each [=attestation statement format=] specifies its own verification procedure. See [[#defined-attestation-formats]] for
     the initially-defined formats, and [[!WebAuthn-Registries]] for the up-to-date list.
 
-11. If validation is successful, obtain a list of acceptable trust anchors (attestation root certificates or [=ECDAA-Issuer
+1. If validation is successful, obtain a list of acceptable trust anchors (attestation root certificates or [=ECDAA-Issuer
     public key=]s) for that attestation type and attestation statement format |fmt|, from a trusted source or from policy. For
     example, the FIDO Metadata Service [[FIDOMetadataService]] provides one way to obtain such information, using the
     <code>[=aaguid=]</code> in the <code>[=attestedCredentialData=]</code> in |authData|.
 
-12. Assess the attestation trustworthiness using the outputs of the verification procedure in step 10, as follows:
+1. Assess the attestation trustworthiness using the outputs of the verification procedure in step 10, as follows:
         - If [=self attestation=] was used, check if [=self attestation=] is acceptable under [=[RP]=] policy.
         - If [=ECDAA=] was used, verify that the [=identifier of the ECDAA-Issuer public key=] used is included in the set of
             acceptable trust anchors obtained in step 11.
         - Otherwise, use the X.509 certificates returned by the verification procedure to verify that the attestation public key
             correctly chains up to an acceptable root certificate.
 
-13. If the attestation statement |attStmt| verified successfully and is found to be trustworthy, then register the new
+1. Check that the <code>[=credentialId=]</code> is not yet registered to any other user. If registration 
+    is requested for a credential that is already registered to a different user, the [=[RP]=] SHOULD 
+    fail this [=registration=] ceremony, or it MAY decide to accept the registration, e.g. while deleting the older registration.
+
+1. If the attestation statement |attStmt| verified successfully and is found to be trustworthy, then register the new
     credential with the account that was denoted in the
-    {{PublicKeyCredential/[[Create]](origin, options)/options}}.{{MakePublicKeyCredentialOptions/user}} passed to
+    {{PublicKeyCredential/[[Create]](origin, options, sameOriginWithAncestors)/options}}.{{MakePublicKeyCredentialOptions/user}} passed to
     {{CredentialsContainer/create()}}, by associating it with the <code>[=credentialId=]</code> and
     <code>[=credentialPublicKey=]</code> in the <code>[=attestedCredentialData=]</code> in |authData|, as appropriate for the
     [=[RP]=]'s system.
 
-14. If the attestation statement |attStmt| successfully verified but is not trustworthy per step 12 above, the [=[RP]=] SHOULD fail
+1. If the attestation statement |attStmt| successfully verified but is not trustworthy per step 12 above, the [=[RP]=] SHOULD fail
     the registration ceremony.
 
     NOTE: However, if permitted by policy, the [=[RP]=] MAY register the [=credential ID=] and credential public key but treat the
@@ -2469,10 +2730,6 @@ Verification of [=attestation objects=] requires that the [=[RP]=] has a trusted
 in step 11 above. Also, if certificates are being used, the [=[RP]=] must have access to certificate status information for the
 intermediate CA certificates. The [=[RP]=] must also be able to build the attestation certificate chain if the client did not
 provide this chain in the attestation information.
-
-To avoid ambiguity during authentication, the [=[RP]=] SHOULD check that each credential is registered to no more than one user.
-If registration is requested for a credential that is already registered to a different user, the [=[RP]=] SHOULD fail this
-ceremony, or it MAY decide to accept the registration, e.g. while deleting the older registration.
 
 
 ## Verifying an authentication assertion ## {#verifying-assertion}
@@ -2505,8 +2762,7 @@ When verifying a given {{PublicKeyCredential}} structure (|credential|) as part 
 
 8. Verify that the <code>[=rpIdHash=]</code> in |aData| is the SHA-256 hash of the [=RP ID=] expected by the [=[RP]=].
 
-9. Let |hash| be the result of computing a hash over the |cData| using the algorithm represented by the
-    {{CollectedClientData/hashAlgorithm}} member of |C|.
+9. Let |hash| be the result of computing a hash over the |cData| using SHA-256.
 
 10. Using the credential public key looked up in step 1, verify that |sig| is a valid signature over the binary concatenation of
     |aData| and |hash|.
@@ -2757,7 +3013,8 @@ engine.
     Concatenate |authenticatorData| and |clientDataHash| to form |attToBeSigned|.
 
     Generate a signature using the procedure specified in [[TPMv2-Part3]] Section 18.2, using the attestation private key and
-    setting the `qualifyingData` parameter to |attToBeSigned|.
+    setting the `extraData` parameter to the digest of |attToBeSigned| using the hash algorithm corresponding to the "alg" signature algorithm.
+    (For the "RS256" algorithm, this would be a SHA-256 digest.)
 
     Set the |pubArea| field to the public area of the credential public key, the |certInfo| field to the output parameter of the
     same name, and the |sig| field to the signature obtained from the above procedure.
@@ -2777,7 +3034,7 @@ engine.
     Validate that |certInfo| is valid:
     - Verify that `magic` is set to `TPM_GENERATED_VALUE`.
     - Verify that `type` is set to `TPM_ST_ATTEST_CERTIFY`.
-    - Verify that `extraData` is set to |attToBeSigned|.
+    - Verify that `extraData` is set to the hash of |attToBeSigned| using the hash algorithm employed in "alg".
     - Verify that `attested` contains a `TPMS_CERTIFY_INFO` structure, whose `name` field contains a valid Name for |pubArea|,
         as computed using the algorithm in the `nameAlg` field of |pubArea| using the procedure specified in [[TPMv2-Part1]]
         section 16.
@@ -2869,16 +3126,17 @@ the attestation=] is consistent with the fields of the attestation certificate's
     as follows:
     - Verify that |attStmt| is valid CBOR conforming to the syntax defined above, and perform CBOR decoding on it to extract the
         contained fields.
-    - Verify that the public key in the first certificate in the series of certificates represented by the signature matches the
+    - Verify that |sig| is a valid signature over the concatenation of |authenticatorData| and |clientDataHash| using the
+        public key in the first certificate in |x5c| with the algorithm specified in |alg|.
+    - Verify that the public key in the first certificate in in |x5c| matches the
         <code>[=credentialPublicKey=]</code> in the <code>[=attestedCredentialData=]</code> in |authenticatorData|.
     - Verify that in the attestation certificate extension data:
-        - The value of the `attestationChallenge` field is identical to the concatenation of |authenticatorData| and
-            |clientDataHash|.
+        - The value of the `attestationChallenge` field is identical to |clientDataHash|.
         - The `AuthorizationList.allApplications` field is <em>not</em> present, since PublicKeyCredentials must be bound to the
             [=RP ID=].
         - The value in the `AuthorizationList.origin` field is equal to `KM_TAG_GENERATED`.
         - The value in the `AuthorizationList.purpose` field is equal to `KM_PURPOSE_SIGN`.
-    - If successful, return attestation type Basic with the [=attestation trust path=] set to the entire attestation statement.
+    - If successful, return attestation type Basic with the [=attestation trust path=] set to |x5c|.
 
 
 ## Android SafetyNet Attestation Statement Format ## {#android-safetynet-attestation}
@@ -2983,14 +3241,12 @@ This attestation statement format is used with FIDO U2F authenticators using the
 
 : Signing procedure
 :: If the credential public key of the given credential is not of algorithm -7 ("ES256"), stop and return an error.
-    Otherwise, let |authenticatorData| denote the [=authenticator data for the attestation=], 
-    and let |clientDataHash| denote the [=hash of the serialized client data=].
-
-    If |clientDataHash| is 256 bits long, set |tbsHash| to this value. Otherwise set |tbsHash| to the SHA-256 hash of
-    |clientDataHash|.
+    Otherwise, let |authenticatorData| denote the [=authenticator data for the attestation=],
+    and let |clientDataHash| denote the [=hash of the serialized client data=]. (Since SHA-256 is used to hash the
+    serialized client data, |clientDataHash| will be 32 bytes long.)
 
     Generate a Registration Response Message as specified in [[FIDO-U2F-Message-Formats]] section 4.3, with the application parameter set to the
-    SHA-256 hash of the [=RP ID=] associated with the given credential, the challenge parameter set to |tbsHash|, and the key handle
+    SHA-256 hash of the [=RP ID=] associated with the given credential, the challenge parameter set to |clientDataHash|, and the key handle
     parameter set to the [=credential ID=] of the given credential. Set the raw signature part of this Registration Response Message (i.e., without the user public key,
     key handle, and attestation certificates) as |sig| and set the attestation certificates of
     the attestation public key as |x5c|.
@@ -3000,14 +3256,12 @@ This attestation statement format is used with FIDO U2F authenticators using the
     as follows:
     1. Verify that |attStmt| is valid CBOR conforming to the syntax defined above, and perform CBOR decoding on it to extract the
         contained fields.
-    2. Let |attCert| be value of the first element of |x5c|. Let |certificate public key| be the public key
+    2. Let |attCert| be the value of the first element of |x5c|. Let |certificate public key| be the public key
         conveyed by |attCert|. If |certificate public key| is not an Elliptic Curve (EC) public 
         key over the P-256 curve, terminate this algorithm and return an appropriate error. 
     3. Extract the claimed |rpIdHash| from |authenticatorData|, and the claimed |credentialId| and |credentialPublicKey| from
         |authenticatorData|.<code>[=attestedCredentialData=]</code>.
-    4. If |clientDataHash| is 256 bits long, set |tbsHash| to this value. Otherwise set |tbsHash| to the SHA-256
-        hash of |clientDataHash|.
-    5. Convert the COSE_KEY formatted |credentialPublicKey| (see Section 7 of [[!RFC8152]]) to CTAP1/U2F public Key 
+    4. Convert the COSE_KEY formatted |credentialPublicKey| (see Section 7 of [[!RFC8152]]) to CTAP1/U2F public Key 
         format [[!FIDO-CTAP]]. 
         - Let |publicKeyU2F| represent the result of the 
             conversion operation and set its first byte to 0x04.
@@ -3020,10 +3274,10 @@ This attestation statement format is used with FIDO U2F authenticators using the
             (representing y coordinate) from |credentialPublicKey|, 
             confirm its size to be of 32 bytes and concatenate it with |publicKeyU2F|.
             If size differs or "-3" key is not found, terminate this algorithm and return an appropriate error. 
-    6. Let |verificationData| be the concatenation of (0x00 || |rpIdHash| || 
-        |tbsHash| || |credentialId| || |publicKeyU2F|) (see Section 4.3 of [[!FIDO-U2F-Message-Formats]]).
-    7. Verify the |sig| using |verificationData| and |certificate public key| per [[!SEC1]].
-    8. If successful, return attestation type Basic with the [=attestation trust path=] set to |x5c|.
+    5. Let |verificationData| be the concatenation of (0x00 || |rpIdHash| || 
+        |clientDataHash| || |credentialId| || |publicKeyU2F|) (see Section 4.3 of [[!FIDO-U2F-Message-Formats]]).
+    6. Verify the |sig| using |verificationData| and |certificate public key| per [[!SEC1]].
+    7. If successful, return attestation type Basic with the [=attestation trust path=] set to |x5c|.
 
 
 # WebAuthn Extensions # {#extensions}
@@ -3143,7 +3397,8 @@ The entry key is the [=extension identifier=] and the value is the [=client exte
 <pre class="example" highlight="js">
     var assertionPromise = navigator.credentials.get({
         publicKey: {
-            challenge: "...",
+            // The challenge must be produced by the server, see the Security Considerations
+            challenge: new Uint8Array([4,99,22 /* 29 more random bytes generated by the server */]),
             extensions: {
                 "webauthnExample_foobar": 42
             }
@@ -3209,7 +3464,8 @@ the use of the extension. The [=[RP]=] sets this value in its request for an ass
     var assertionPromise =
         navigator.credentials.get({
             publicKey: {
-                challenge: "SGFuIFNvbG8gc2hvdCBmaXJzdC4",
+                // The challenge must be produced by the server, see the Security Considerations
+                challenge: new Uint8Array([11,103,35 /* 29 more random bytes generated by the server */]),
                 allowCredentials: [], /* Empty filter */
                 extensions: { 'webauthnExample_geo': true }
             }
@@ -3488,7 +3744,7 @@ This [=registration extension=] and [=authentication extension=] enables use of 
 ## Location Extension (loc) ## {#sctn-location-extension}
 
 The location [=registration extension=] and [=authentication extension=] provides the client device's current location to the
-WebAuthn [=[RP]=].
+WebAuthn [=[RP]=].  
 
 : Extension identifier
 :: `loc`
@@ -3520,6 +3776,16 @@ WebAuthn [=[RP]=].
     Specification](https://dev.w3.org/geo/api/spec-source.html#coordinates_interface).
 
     <pre>
+    CDDL:
+      {
+       loc: positionCoordinates,
+      }    
+      positionCoordinates = [
+         latitude: float64,
+         longitude: float64,
+         altitude: float64
+         ]
+     CBOR Example:
         ...                                         -- [=RP ID=] hash (32 bytes)
         81                                          -- UP and ED set
         00 00 00 01                                 -- (initial) signature counter
@@ -3687,7 +3953,7 @@ IANA "WebAuthn Extension Identifier" registry established by [[!WebAuthn-Registr
     <br/><br/>
 - WebAuthn Extension Identifier: loc
 - Description: The location [=registration extension=] and [=authentication extension=] provides the client device's current
-    location to the WebAuthn relying party, if supported by the client device and subject to user consent.
+    location to the WebAuthn relying party, if supported by the client device and subject to [=user consent=].
 - Specification Document: Section [[#sctn-location-extension]] of this specification
     <br/><br/>
 - WebAuthn Extension Identifier: uvm
@@ -3698,8 +3964,9 @@ IANA "WebAuthn Extension Identifier" registry established by [[!WebAuthn-Registr
 
 ## COSE Algorithm Registrations ## {#sctn-cose-alg-reg}
 
-This section registers identifiers for RSASSA-PKCS1-v1_5 [[RFC8017]] algorithms using SHA-2 hash functions in the
+This section registers identifiers for RSASSA-PKCS1-v1_5 [[RFC8017]] algorithms using SHA-2 and SHA-1 hash functions in the
 IANA COSE Algorithms registry [[!IANA-COSE-ALGS-REG]].
+It also registers identifiers for ECDAA algorithms.
 
 - Name: RS256
 - Value: -257
@@ -3730,6 +3997,12 @@ IANA COSE Algorithms registry [[!IANA-COSE-ALGS-REG]].
 - Description: ECC_BN_ISOP512 curve w/ SHA-512
 - Reference: Section 4.2 of [[!FIDOEcdaaAlgorithm]]
 - Recommended: Yes
+    <br/><br/>
+- Name: RS1
+- Value: -262
+- Description: RSASSA-PKCS1-v1_5 w/ SHA-1
+- Reference: Section 8.2 of [[RFC8017]]
+- Recommended: No
 
 # Sample scenarios # {#sample-scenarios}
 
@@ -3782,7 +4055,8 @@ The sample code for generating and registering a new key follows:
     if (!PublicKeyCredential) { /* Platform not capable. Handle error. */ }
 
     var publicKey = {
-      challenge: Uint8Array.from(window.atob("PGifxAoBwCkWkm4b1CiIl5otCphiIh6MijdjbWFjomA="), c=>c.charCodeAt(0)),
+      // The challenge must be produced by the server, see the Security Considerations
+      challenge: new Uint8Array([21,31,105 /* 29 more random bytes generated by the server */]),
 
       // Relying Party:
       rp: {
@@ -3912,7 +4186,8 @@ credentials, then the sample code for performing such an authentication might lo
     if (!PublicKeyCredential) { /* Platform not capable. Handle error. */ }
 
     var options = {
-                    challenge: new TextEncoder().encode("climb a mountain"),
+                    // The challenge must be produced by the server, see the Security Considerations
+                    challenge: new Uint8Array([4,101,15 /* 29 more random bytes generated by the server */]),
                     timeout: 60000,  // 1 minute
                     allowCredentials: [{ type: "public-key" }]
                   };
@@ -3943,7 +4218,8 @@ extension for transaction authorization.
     };
 
     var options = {
-                    challenge: encoder.encode("climb a mountain"),
+                    // The challenge must be produced by the server, see the Security Considerations
+                    challenge: new Uint8Array([8,18,33 /* 29 more random bytes generated by the server */]),
                     timeout: 60000,  // 1 minute
                     allowCredentials: [acceptableCredential1, acceptableCredential2],
                     extensions: { 'txAuthSimple':
@@ -4018,12 +4294,42 @@ handled on the server side and do not need support from the API specified here.
     * Sometime later, the server deregisters this credential due to inactivity.
 
 
+# Security Considerations # {#security-considerations}
+
+## Cryptographic Challenges ## {#cryptographic-challenges}
+As a cryptographic protocol, Web Authentication is dependent upon randomized challenges
+to avoid replay attacks. Therefore, both {MakePublicKeyCredentialOptions/challenge}}'s 
+and {{PublicKeyCredentialRequestOptions/challenge}}'s value, MUST be randomly generated
+by the [=Relying Party=] in an environment they trust (e.g., on the server-side), and the challenge in the client's
+response must match what was generated. This should be done in a fashion that does not rely
+upon a client's behavior; e.g.: the Relying Party should store the challenge temporarily
+until the operation is complete. Tolerating a mismatch will compromise the security
+of the protocol.
 
 
 # Acknowledgements # {#acknowledgements}
-We thank the following for their contributions to, and thorough review of, this specification: Richard Barnes, Dominic Battré,
-Domenic Denicola, Rahul Ghosh, Brad Hill, Jing Jin, Angelo Liao, Anne van Kesteren, Ian Kilpatrick, Giridhar Mandyam,
-Axel Nennker, Kimberly Paulhamus, Adam Powers, Yaron Sheffer, Mike West, Jeffrey Yasskin, Boris Zbarsky.
+We thank the following people for their contributions to and thorough review of this specification:
+Yuriy Ackermann,
+Richard Barnes,
+Dominic Battré,
+John Bradley,
+Domenic Denicola,
+John Fontana,
+Rahul Ghosh,
+Brad Hill,
+Jing Jin,
+Adam Langley,
+Ian Kilpatrick,
+Anthony Nadalin,
+Axel Nennker,
+Kimberly Paulhamus,
+Adam Powers,
+Wendy Seltzer,
+Yaron Sheffer,
+Anne van Kesteren,
+Johan Verrept,
+and
+Boris Zbarsky.
 
 <pre class=biblio>
 {
