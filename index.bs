@@ -955,7 +955,9 @@ When this method is invoked, the user agent MUST execute the following algorithm
 
     </dl>
 
-1. Return a {{DOMException}} whose name is "{{NotAllowedError}}".
+1. Return a {{DOMException}} whose name is "{{NotAllowedError}}". In order to prevent information leak that could identify the
+    user without [=user consent|consent=], this step MUST NOT be executed before |lifetimeTimer| has expired. See
+    [[#sec-assertion-privacy]] for details.
 
 During the above process, the user agent SHOULD show some UI to the user to guide them in the process of selecting and
 authorizing an authenticator.
@@ -1222,9 +1224,6 @@ When this method is invoked, the user agent MUST execute the following algorithm
             1. [=set/For each=] remaining |authenticator| in |issuedRequests| invoke the [=authenticatorCancel=] operation
                 on |authenticator| and [=set/remove=] it from |issuedRequests|.
 
-            Note: This does not mean that the algorithm should be terminated, as that could leak identifying information about the
-            user. See [[#sec-assertion-privacy]].
-
         :   If any |authenticator| returns an error status,
         ::  [=set/Remove=] |authenticator| from |issuedRequests|.
 
@@ -1297,7 +1296,9 @@ When this method is invoked, the user agent MUST execute the following algorithm
             1.  Return |constructAssertionAlg| and terminate this algorithm.
     </dl>
 
-1. Return a {{DOMException}} whose name is "{{NotAllowedError}}".
+1. Return a {{DOMException}} whose name is "{{NotAllowedError}}". In order to prevent information leak that could identify the
+    user without [=user consent|consent=], this step MUST NOT be executed before |lifetimeTimer| has expired. See
+    [[#sec-assertion-privacy]] for details.
 
 During the above process, the user agent SHOULD show some UI to the user to guide them in the process of selecting and
 authorizing an authenticator with which to complete the operation.
@@ -2595,15 +2596,19 @@ in several ways, including:
 
 #### Privacy and Authentication Ceremonies #### {#sec-assertion-privacy}
 
-In order to protect the user from being identified without [=user consent|consent=], the client MUST make it impossible for the
-[=[RP]=] to distinguish between the cases:
+In order to protect the user from being identified without [=user consent|consent=], implementations of the
+{{PublicKeyCredential/[[DiscoverFromExternalSource]](origin, options, sameOriginWithAncestors)}} method need to take care to
+not leak information that could enable the [=[RP]=] to distinguish between the cases:
 
 - A named [=public key credential|credential=] is not available.
 - A named [=public key credential|credential=] is available, but the user denies [=user consent|consent=] to use it.
 
-If the above cases are distinguishable, information is leaked by which a malicious [=[RP]=] could identify the user by probing
-for which [=public key credential|credentials=] are available. In particular, the client MUST NOT return a "{{NotAllowedError}}"
-before the |lifetimeTimer| has expired, as that difference in timing would constitute such an information leak.
+If the above cases are distinguishable, information is leaked by which a malicious [=[RP]=] could identify the user by probing for
+which [=public key credential|credentials=] are available. For example, one such information leak is if the client returns a
+failure response as soon as the user denies [=user consent|consent=] to proceed with the operation. In this case the [=[RP]=]
+could detect that the operation was canceled by the user and not the timeout, and thus conclude that at least one of the [=public
+key credential|credentials=] listed in the {{PublicKeyCredentialRequestOptions/allowCredentials}} parameter is available to the
+user.
 
 
 #### Attestation Certificate and Attestation Certificate CA Compromise #### {#ca-compromise}
