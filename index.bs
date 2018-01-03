@@ -1260,7 +1260,8 @@ When this method is invoked, the user agent MUST execute the following algorithm
                 ::  whose value is the bytes of the signature value returned by the [=authenticator=].
 
                 :   <code><dfn for="assertionCreationData">userHandleResult</dfn></code>
-                ::  whose value is the bytes of the [=user handle=] returned by the [=authenticator=].
+                ::  If the [=authenticator=] returned a [=user handle=], set the value of [=userHandleResult=] to be the bytes of
+                    the returned [=user handle=]. Otherwise, set the value of [=userHandleResult=] to null.
 
                 :   <code><dfn for="assertionCreationData">clientExtensionResults</dfn></code>
                 ::  whose value is an {{AuthenticationExtensions}} object containing [=extension identifier=] →
@@ -1293,7 +1294,9 @@ When this method is invoked, the user agent MUST execute the following algorithm
                             <code>|assertionCreationData|.[=assertionCreationData/signatureResult=]</code>.
 
                         :   {{AuthenticatorAssertionResponse/userHandle}}
-                        ::  A new {{ArrayBuffer}}, created using |global|'s [=%ArrayBuffer%=], containing the bytes of
+                        ::  If <code>|assertionCreationData|.[=assertionCreationData/userHandleResult=]</code> is null, set this
+                            field to null. Otherwise, set this field to a new {{ArrayBuffer}}, created using |global|'s
+                            [=%ArrayBuffer%=], containing the bytes of
                             <code>|assertionCreationData|.[=assertionCreationData/userHandleResult=]</code>.
 
                     :   {{PublicKeyCredential/[[clientExtensionsResults]]}}
@@ -1438,7 +1441,7 @@ optionally evidence of [=user consent=] to a specific transaction.
     interface AuthenticatorAssertionResponse : AuthenticatorResponse {
         [SameObject] readonly attribute ArrayBuffer      authenticatorData;
         [SameObject] readonly attribute ArrayBuffer      signature;
-        [SameObject] readonly attribute ArrayBuffer      userHandle;
+        [SameObject] readonly attribute ArrayBuffer?     userHandle;
     };
 </pre>
 <div dfn-type="attribute" dfn-for="AuthenticatorAssertionResponse">
@@ -1455,7 +1458,8 @@ optionally evidence of [=user consent=] to a specific transaction.
     ::  This attribute contains the raw signature returned from the authenticator. See [[#op-get-assertion]].
 
     :   <dfn>userHandle</dfn>
-    ::  This attribute contains the [=user handle=] returned from the authenticator. See [[#op-get-assertion]].
+    ::  This attribute contains the [=user handle=] returned from the authenticator, or null if the authenticator did not return a
+        [=user handle=]. See [[#op-get-assertion]].
 </div>
 
 ## Parameters for Credential Generation (dictionary <dfn dictionary>PublicKeyCredentialParameters</dfn>) ## {#credential-params}
@@ -2240,7 +2244,9 @@ When this operation is invoked, the [=authenticator=] must perform the following
     1. Let |credentialId| be a new identifier for this credential that is globally unique with high probability across all
         credentials with the same type across all authenticators.
     1. Let |userHandle| be <code>|userEntity|.{{PublicKeyCredentialUserEntity/id}}</code>.
-    1. Associate the |credentialId| and |privateKey| with <code>|rpEntity|.{{PublicKeyCredentialRpEntity/id}}</code> and |userHandle|.
+    1. Associate the |credentialId| and |privateKey| with <code>|rpEntity|.{{PublicKeyCredentialRpEntity/id}}</code> and
+        |userHandle|. The authenticator MAY discard |userHandle| from this association if |privateKey| is not a
+        [=Client-side-resident Credential Private Key=].
     1. Delete any older credentials with the same <code>|rpEntity|.{{PublicKeyCredentialRpEntity/id}}</code> and |userHandle| that are stored locally by the [=authenticator=].
 1. If any error occurred while creating the new credential object, return an error code equivalent to "{{UnknownError}}" and
     terminate the operation.
@@ -2362,7 +2368,7 @@ When this method is invoked, the [=authenticator=] must perform the following pr
 
         - |authenticatorData|
         - |signature|
-        - The [=user handle=] associated with |selectedCredential|.
+        - The [=user handle=] associated with |selectedCredential|, if available.
     </li>
 
 If the authenticator cannot find any credential corresponding to the specified [=[RP]=] that matches the specified criteria, it
