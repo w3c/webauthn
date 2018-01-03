@@ -22,15 +22,22 @@ Previous Version: https://www.w3.org/TR/2016/WD-webauthn-20160902/
 Previous Version: https://www.w3.org/TR/2016/WD-webauthn-20160531/
 Shortname: webauthn
 Level: 1
-Editor: Vijay Bharadwaj, w3cid 55440, Microsoft, vijay.bharadwaj@microsoft.com
-Editor: Hubert Le Van Gong, w3cid 84817, PayPal, hlevangong@paypal.com
 Editor: Dirk Balfanz, w3cid 47648, Google, balfanz@google.com
 Editor: Alexei Czeskis, w3cid 87258, Google, aczeskis@google.com
-Editor: Arnar Birgisson, w3cid 87332, Google, arnarb@google.com
 Editor: Jeff Hodges, w3cid 43843, PayPal, Jeff.Hodges@paypal.com
-Editor: Michael B. Jones, w3cid 38745, Microsoft, mbj@microsoft.com
-Editor: Rolf Lindemann, w3cid 84447, Nok Nok Labs, rolf@noknok.com
 Editor: J.C. Jones, w3cid 87240, Mozilla, jc@mozilla.com
+Editor: Michael B. Jones, w3cid 38745, Microsoft, mbj@microsoft.com
+Editor: Akshay Kumar, Microsoft, akshayku@microsoft.com
+Editor: Angelo Liao, Microsoft, huliao@microsoft.com
+Editor: Rolf Lindemann, w3cid 84447, Nok Nok Labs, rolf@noknok.com
+Former Editor: Vijay Bharadwaj, w3cid 55440, Microsoft, vijay.bharadwaj@microsoft.com
+Former Editor: Arnar Birgisson, w3cid 87332, Google, arnarb@google.com
+Former Editor: Hubert Le Van Gong, w3cid 84817, PayPal, hlevangong@paypal.com
+!Contributors: Christiaan Brand
+!Contributors: Emil Lundberg
+!Contributors: Giridhar Mandyam
+!Contributors: Mike West
+!Contributors: Jeffrey Yasskin
 group: webauthn
 Issue Tracking: Github https://github.com/w3c/webauthn/issues
 !Tests: <a href=https://github.com/w3c/web-platform-tests/tree/master/webauthn>web-platform-tests webauthn/</a> (<a href=https://github.com/w3c/web-platform-tests/labels/webauthn>ongoing work</a>)
@@ -590,9 +597,11 @@ that are returned to the caller when a new credential is created, or a new asser
         "{{Credential/[[discovery]]/remote}}".
 
     :   <dfn>\[[identifier]]</dfn>
-    ::  This [=internal slot=] contains an identifier for the credential, chosen by the platform with help from the
-        authenticator. This identifier is used to look up credentials for use, and is therefore expected to be globally unique
-        with high probability across all credentials of the same type, across all authenticators. This API does not constrain
+    ::  This [=internal slot=] contains the [=credential ID=], chosen by the platform with help from the authenticator.
+        The [=credential ID=] is used to look up credentials for use, and is therefore expected to be globally unique
+        with high probability across all credentials of the same type, across all authenticators.
+
+        Note: This API does not constrain
         the format or length of this identifier, except that it must be sufficient for the platform to uniquely select a key.
         For example, an authenticator without on-board storage may create identifiers containing a [=credential private key=]
         wrapped with a symmetric key that is burned into the authenticator.
@@ -704,23 +713,23 @@ When this method is invoked, the user agent MUST execute the following algorithm
 -->
     <li id='CreateCred-DetermineRpId'>
 
-        If <code>|options|.{{MakePublicKeyCredentialOptions/rp}}.{{PublicKeyCredentialEntity/id}}</code>
+        If <code>|options|.{{MakePublicKeyCredentialOptions/rp}}.{{PublicKeyCredentialRpEntity/id}}</code>
             <dl class="switch">
 
                 :   Is [=present=]
-                ::  If <code>|options|.{{MakePublicKeyCredentialOptions/rp}}.{{PublicKeyCredentialEntity/id}}</code> [=is not a
+                ::  If <code>|options|.{{MakePublicKeyCredentialOptions/rp}}.{{PublicKeyCredentialRpEntity/id}}</code> [=is not a
                     registrable domain suffix of and is not equal to=] |effectiveDomain|, return a {{DOMException}} whose name
                     is "{{SecurityError}}", and terminate this algorithm.
 
                 :   Is [=present|not present=]
-                ::  Set <code>|options|.{{MakePublicKeyCredentialOptions/rp}}.{{PublicKeyCredentialEntity/id}}</code> to
+                ::  Set <code>|options|.{{MakePublicKeyCredentialOptions/rp}}.{{PublicKeyCredentialRpEntity/id}}</code> to
                     |effectiveDomain|.
             </dl>
 
-        Note: <code>|options|.{{MakePublicKeyCredentialOptions/rp}}.{{PublicKeyCredentialEntity/id}}</code> represents the
+        Note: <code>|options|.{{MakePublicKeyCredentialOptions/rp}}.{{PublicKeyCredentialRpEntity/id}}</code> represents the
             caller's [=RP ID=]. The [=RP ID=] defaults to being the caller's [=environment settings object/origin=]'s
             [=effective domain=] unless the caller has explicitly set
-            <code>|options|.{{MakePublicKeyCredentialOptions/rp}}.{{PublicKeyCredentialEntity/id}}</code> when calling
+            <code>|options|.{{MakePublicKeyCredentialOptions/rp}}.{{PublicKeyCredentialRpEntity/id}}</code> when calling
             {{CredentialsContainer/create()}}.
     </li>
 
@@ -1646,18 +1655,27 @@ them as <dfn>roaming authenticators</dfn>.
 <ul>
     <li><dfn>platform attachment</dfn> - the respective authenticator is attached
         using platform-specific transports.  Usually, authenticators of
-        this class are non-removable from the platform.
+        this class are non-removable from the platform. A [=public key credential=] bound to a [=platform authenticator=] is
+        called a <dfn>platform credential</dfn>.
     <li><dfn lt="cross-platform attached|cross-platform attachment">cross-platform attachment</dfn> - the respective
         authenticator is attached using cross-platform transports. Authenticators of this class are removable from, and can
-        "roam" among, client platforms.
+        "roam" among, client platforms. A [=public key credential=] bound to a [=roaming authenticator=] is called a <dfn>roaming
+        credential</dfn>.
 </ul>
 
-This distinction is important because there are use-cases where only [=platform authenticators=] are acceptable to a
-[=[RP]=], and conversely ones where only [=roaming authenticators=] are employed. As a concrete example of the former, a
-credential on a [=platform authenticator=] may be used by [=[RPS]=] to quickly and conveniently reauthenticate the user with
-a minimum of friction, e.g., the user will not have to dig around in their pocket for their key fob or phone. As a concrete
-example of the latter, when the user is accessing the [=[RP]=] from a given client for the first time, they may be required to
-use a [=roaming authenticator=] which was originally registered with the [=[RP]=] using a different client.
+This distinction is important because there are use-cases where only [=platform authenticators=] are acceptable to a [=[RP]=], and
+conversely ones where only [=roaming authenticators=] are employed. As a concrete example of the former, a [=platform credential=]
+may be used by [=[RPS]=] to quickly and conveniently reauthenticate the user with a minimum of friction, e.g., the user will not
+have to dig around in their pocket for their key fob or phone. As a concrete example of the latter, when the user is accessing the
+[=[RP]=] from a given client for the first time, they may be required to use a [=roaming credential=] which was originally
+registered with the [=[RP]=] using a different client.
+
+Note: An [=attachment modality=] selection option is available only in the {{PublicKeyCredential/[[Create]](origin, options,
+sameOriginWithAncestors)}} operation. The [=[RP]=] MAY use it to, for example, ensure the user has a [=roaming credential=] for
+authenticating using other [=clients=]; or to specifically register a [=platform credential=] for easier reauthentication using a
+particular [=client=]. The {{PublicKeyCredential/[[DiscoverFromExternalSource]](origin, options, sameOriginWithAncestors)}}
+operation has no [=attachment modality=] selection option, so the [=[RP]=] SHOULD accept any of the user's registered [=public key
+credential|credentials=]. The [=client=] and user will then use whichever is available and convenient at the time.
 
 
 ### <dfn>Attestation Conveyance</dfn> Preference enumeration (enum <dfn enum>AttestationConveyancePreference</dfn>) ### {#attestation-convey}
@@ -2639,7 +2657,7 @@ When registering a new credential, represented by a {{AuthenticatorAttestationRe
     the RP and that the value of <code>|C|.{{CollectedClientData/authenticatorExtensions}}</code> is also a subset of the
     extensions requested by the RP.
 
-1. Compute the hash of <code>|response|.{{AuthenticatorResponse/clientDataJSON}}</code> using SHA-256.
+1. Compute the hash of <code>|resoinse|.{{AuthenticatorResponse/clientDataJSON}}</code> using SHA-256.
 
 1. Perform CBOR decoding on the {{AuthenticatorAttestationResponse/attestationObject}} field of the
     {{AuthenticatorAttestationResponse}} structure to obtain the attestation statement format |fmt|, the [=authenticator data=]
@@ -2671,6 +2689,10 @@ When registering a new credential, represented by a {{AuthenticatorAttestationRe
         - Otherwise, use the X.509 certificates returned by the verification procedure to verify that the attestation public key
             correctly chains up to an acceptable root certificate.
 
+1. Check that the <code>[=credentialId=]</code> is not yet registered to any other user. If registration 
+    is requested for a credential that is already registered to a different user, the [=[RP]=] SHOULD 
+    fail this [=registration=] ceremony, or it MAY decide to accept the registration, e.g. while deleting the older registration.
+
 1. If the attestation statement |attStmt| verified successfully and is found to be trustworthy, then register the new
     credential with the account that was denoted in the
     {{PublicKeyCredential/[[Create]](origin, options, sameOriginWithAncestors)/options}}.{{MakePublicKeyCredentialOptions/user}} passed to
@@ -2690,10 +2712,6 @@ Verification of [=attestation objects=] requires that the [=[RP]=] has a trusted
 in step 11 above. Also, if certificates are being used, the [=[RP]=] must have access to certificate status information for the
 intermediate CA certificates. The [=[RP]=] must also be able to build the attestation certificate chain if the client did not
 provide this chain in the attestation information.
-
-To avoid ambiguity during authentication, the [=[RP]=] SHOULD check that each credential is registered to no more than one user.
-If registration is requested for a credential that is already registered to a different user, the [=[RP]=] SHOULD fail this
-ceremony, or it MAY decide to accept the registration, e.g. while deleting the older registration.
 
 
 ## Verifying an authentication assertion ## {#verifying-assertion}
@@ -3091,16 +3109,17 @@ the attestation=] is consistent with the fields of the attestation certificate's
     as follows:
     - Verify that |attStmt| is valid CBOR conforming to the syntax defined above, and perform CBOR decoding on it to extract the
         contained fields.
-    - Verify that the public key in the first certificate in the series of certificates represented by the signature matches the
+    - Verify that |sig| is a valid signature over the concatenation of |authenticatorData| and |clientDataHash| using the
+        public key in the first certificate in |x5c| with the algorithm specified in |alg|.
+    - Verify that the public key in the first certificate in in |x5c| matches the
         <code>[=credentialPublicKey=]</code> in the <code>[=attestedCredentialData=]</code> in |authenticatorData|.
     - Verify that in the attestation certificate extension data:
-        - The value of the `attestationChallenge` field is identical to the concatenation of |authenticatorData| and
-            |clientDataHash|.
+        - The value of the `attestationChallenge` field is identical to |clientDataHash|.
         - The `AuthorizationList.allApplications` field is <em>not</em> present, since PublicKeyCredentials must be bound to the
             [=RP ID=].
         - The value in the `AuthorizationList.origin` field is equal to `KM_TAG_GENERATED`.
         - The value in the `AuthorizationList.purpose` field is equal to `KM_PURPOSE_SIGN`.
-    - If successful, return attestation type Basic with the [=attestation trust path=] set to the entire attestation statement.
+    - If successful, return attestation type Basic with the [=attestation trust path=] set to |x5c|.
 
 
 ## Android SafetyNet Attestation Statement Format ## {#android-safetynet-attestation}
@@ -4272,9 +4291,28 @@ of the protocol.
 
 
 # Acknowledgements # {#acknowledgements}
-We thank the following for their contributions to, and thorough review of, this specification: Richard Barnes, Dominic Battré,
-Domenic Denicola, Rahul Ghosh, Brad Hill, Jing Jin, Angelo Liao, Anne van Kesteren, Ian Kilpatrick, Giridhar Mandyam,
-Axel Nennker, Kimberly Paulhamus, Adam Powers, Yaron Sheffer, Mike West, Jeffrey Yasskin, Boris Zbarsky.
+We thank the following people for their contributions to and thorough review of this specification:
+Yuriy Ackermann,
+Richard Barnes,
+Dominic Battré,
+John Bradley,
+Domenic Denicola,
+John Fontana,
+Rahul Ghosh,
+Brad Hill,
+Jing Jin,
+Adam Langley,
+Ian Kilpatrick,
+Anthony Nadalin,
+Axel Nennker,
+Kimberly Paulhamus,
+Adam Powers,
+Wendy Seltzer,
+Yaron Sheffer,
+Anne van Kesteren,
+Johan Verrept,
+and
+Boris Zbarsky.
 
 <pre class=biblio>
 {
