@@ -113,6 +113,7 @@ spec: page-visibility; urlPrefix: https://www.w3.org/TR/page-visibility/
 spec: WHATWG HTML; urlPrefix: https://html.spec.whatwg.org/
     type: dfn 
         text: focus
+        text: username; url: attr-fe-autocomplete-username
 
 spec: FIDO-CTAP; urlPrefix: https://fidoalliance.org/specs/fido-v2.0-ps-20170927/fido-client-to-authenticator-protocol-v2.0-ps-20170927.html
     type: dfn
@@ -402,6 +403,12 @@ The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "S
     [=credential key pair=] is known as the <dfn>credential private key</dfn>. Note that in the case of [=self
     attestation=], the [=credential key pair=] is also used as the [=attestation key pair=], see [=self attestation=]
     for details.
+
+
+: <dfn>Human Palatability</dfn>
+:: An identifier that is [=human palatability|human-palatable=] is intended to be rememberable and reproducible by typical human
+    users, in contrast to identifiers that are, for example, randomly generated sequences of bits [[EduPersonObjectClassSpec]].
+
 
 : <dfn>Public Key Credential Source</dfn>
 :: A [=credential source=] ([[CREDENTIAL-MANAGEMENT-1]]) used by an [=authenticator=] to generate [=authentication assertions=]. A public key credential source has:
@@ -1504,8 +1511,7 @@ optionally evidence of [=user consent=] to a specific transaction.
     :   <dfn>rp</dfn>
     ::  This member contains data about the [=[RP]=] responsible for the request.
 
-        Its value's {{PublicKeyCredentialEntity/name}} member contains the friendly name of the [=[RP]=] (e.g. "Acme Corporation",
-        "Widgets, Inc.", or "Awesome Site".
+        Its value's {{PublicKeyCredentialEntity/name}} member is required.
 
         Its value's {{PublicKeyCredentialRpEntity/id}} member specifies the [=relying party identifier=] with which the credential
         should be associated. If omitted, its value will be the {{CredentialsContainer}} object's [=relevant
@@ -1514,14 +1520,8 @@ optionally evidence of [=user consent=] to a specific transaction.
     :   <dfn>user</dfn>
     ::  This member contains data about the user account for which the [=[RP]=] is requesting attestation.
 
-        Its value's {{PublicKeyCredentialEntity/name}} member contains a name for the user account (e.g.,
-        "john.p.smith@example.com" or "+14255551234").
-
-        Its value's {{PublicKeyCredentialUserEntity/displayName}} member contains a friendly name for the user account (e.g.,
-        "John P. Smith").
-
-        Its value's {{PublicKeyCredentialUserEntity/id}} member contains the [=user handle=] for the account, specified by the
-        [=[RP]=].
+        Its value's {{PublicKeyCredentialEntity/name}}, {{PublicKeyCredentialUserEntity/displayName}} and
+        {{PublicKeyCredentialUserEntity/id}} members are required.
 
     :   <dfn>challenge</dfn>
     ::  This member contains a challenge intended to be used for generating the newly created credential's [=attestation
@@ -1570,10 +1570,20 @@ associated.
 </xmp>
 <div dfn-type="dict-member" dfn-for="PublicKeyCredentialEntity">
     :   <dfn>name</dfn>
-    ::  A human-friendly identifier for the entity. For example, this could be a company name for a [=[RP]=], or a
-        user's name. This identifier is intended for display. [=Authenticators=] MUST accept and store a 64 byte minimum length
-        for a name members's value. Authenticators MAY truncate a
-        name member's value to a length equal to or greater than 64 bytes.
+    ::  A human-readable name for the entity. Its function depends on what the {{PublicKeyCredentialEntity}} represents:
+
+          - When inherited by {{PublicKeyCredentialRpEntity}} it is a human-friendly identifier for the [=[RP]=], intended only
+            for display. For example, "ACME Corporation", "Wonderful Widgets, Inc." or "Awesome Site".
+          - When inherited by {{PublicKeyCredentialUserEntity}}, it is a [=human palatability|human-palatable=] identifier for a
+            user account. It is intended only for display, and SHOULD allow the user to easily tell the difference between user
+            accounts with similar {{PublicKeyCredentialUserEntity/displayName}}s. For example, "alexm", "alex.p.mueller@acme.com"
+            or "+14255551234". The [=[RP]=] MAY let the user choose this, and MAY restrict the choice as needed or appropriate.
+            For example, a [=[RP]=] might choose to map [=human palatability|human-palatable=] [=username=] account identifiers to
+            the {{PublicKeyCredentialEntity/name}} member of {{PublicKeyCredentialUserEntity}}.
+
+        [=Authenticators=] MUST accept and store a 64 byte minimum length for a {{PublicKeyCredentialEntity/name}} members's
+        value. Authenticators MAY truncate a {{PublicKeyCredentialEntity/name}} member's value to a length equal to or greater
+        than 64 bytes.
 
     :   <dfn>icon</dfn>
     ::  A [=URL serializer|serialized=] URL which resolves to an image associated with the entity. For example, this could be
@@ -1616,9 +1626,12 @@ credential.
     ::  The [=user handle=] of the user account entity.
 
     :   <dfn>displayName</dfn>
-    ::  A friendly name for the user account (e.g., "John P. Smith"). [=Authenticators=] MUST accept and store a 64 byte minimum
-        length for a displayName members's value. Authenticators MAY truncate a
-        displayName member's value to a length equal to or greater than 64 bytes.
+    ::  A human-friendly name for the user account, intended only for display. For example, "Alex P. Müller" or "田中 倫". The
+        [=[RP]=] SHOULD let the user choose this, and SHOULD NOT restrict the choice more than necessary.
+
+        [=Authenticators=] MUST accept and store a 64 byte minimum length for a {{PublicKeyCredentialUserEntity/displayName}}
+        members's value. Authenticators MAY truncate a {{PublicKeyCredentialUserEntity/displayName}} member's value to a length
+        equal to or greater than 64 bytes.
 </div>
 
 
@@ -4063,14 +4076,14 @@ The sample code for generating and registering a new key follows:
 
       // Relying Party:
       rp: {
-        name: "Acme"
+        name: "ACME Corporation"
       },
 
       // User:
       user: {
         id: Uint8Array.from(window.atob("MIIBkzCCATigAwIBAjCCAZMwggE4oAMCAQIwggGTMII="), c=>c.charCodeAt(0)),
-        name: "john.p.smith@example.com",
-        displayName: "John P. Smith",
+        name: "alex.p.mueller@example.com",
+        displayName: "Alex P. Müller",
         icon: "https://pics.acme.com/00/p/aBjjjpqPb.png"
       },
 
@@ -4491,6 +4504,13 @@ Boris Zbarsky.
     "href": "https://tools.ietf.org/html/draft-ietf-tokbind-protocol",
     "status": "Internet-Draft",
     "date": "February 16, 2017"
+  },
+
+  "EduPersonObjectClassSpec": {
+    "publisher": ["Internet2 Middleware Architecture Committee for Education, Directory Working Group (MACE-Dir)"],
+    "title": "EduPerson Object Class Specification (200604a)",
+    "href": "https://www.internet2.edu/media/medialibrary/2013/09/04/internet2-mace-dir-eduperson-200604.html",
+    "date": "May 15, 2007"
   }
 }
 </pre>
