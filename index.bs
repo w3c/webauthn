@@ -113,6 +113,17 @@ spec: page-visibility; urlPrefix: https://www.w3.org/TR/page-visibility/
 spec: WHATWG HTML; urlPrefix: https://html.spec.whatwg.org/
     type: dfn 
         text: focus
+        text: username; url: attr-fe-autocomplete-username
+
+spec: FIDO-CTAP; urlPrefix: https://fidoalliance.org/specs/fido-v2.0-ps-20170927/fido-client-to-authenticator-protocol-v2.0-ps-20170927.html
+    type: dfn
+        text: CTAP canonical CBOR encoding form; url: message-encoding
+
+spec: FIDO-APPID; urlPrefix: https://fidoalliance.org/specs/fido-u2f-v1.2-ps-20170411/fido-appid-and-facets-v1.2-ps-20170411.html
+    type: dfn
+        text: determining the FacetID of a calling application; url: determining-the-facetid-of-a-calling-application
+        text: determining if a caller's FacetID is authorized for an AppID; url: determining-if-a-caller-s-facetid-is-authorized-for-an-appid
+
 </pre> <!-- class=anchors -->
 
 <!-- L128 spec:webappsec-credential-management-1; type:dictionary; for:/; text:CredentialRequestOptions -->
@@ -248,7 +259,15 @@ external hardware, or a combination of both.
 
 ## [RPS] ## {#conforming-relying-parties}
 
-A [=[RP]=] MUST behave as described in [[#rp-operations]] to get the security benefits offered by this specification.
+A [=[RP]=] MUST behave as described in [[#rp-operations]] to obtain the security benefits offered by this specification.
+
+## All Conformance Classes ## {#conforming-all-classes}
+
+All [=CBOR=] encoding performed by the members of the above conformance classes MUST be done using the
+[=CTAP canonical CBOR encoding form=]. 
+All decoders of the above conformance classes SHOULD reject CBOR that is not validly encoded
+in the [=CTAP canonical CBOR encoding form=] and SHOULD reject messages with duplicate map keys.
+
 
 # Dependencies # {#dependencies}
 
@@ -261,11 +280,12 @@ below and in [[#index-defined-elsewhere]].
     inclusion of any line breaks, whitespace, or other additional characters.
 
 : CBOR
-:: A number of structures in this specification, including attestation statements and extensions, are encoded using the Compact
-    Binary Object Representation (<dfn>CBOR</dfn>) [[!RFC7049]].
+:: A number of structures in this specification, including attestation statements and extensions, are encoded using the
+    [=CTAP canonical CBOR encoding form=] of the Compact Binary Object Representation (<dfn>CBOR</dfn>) [[!RFC7049]],
+    as defined in [[!FIDO-CTAP]].
 
 : CDDL
-:: This specification describes the syntax of all CBOR-encoded data using the CBOR Data Definition Language (CDDL) [[!CDDL]].
+:: This specification describes the syntax of all [=CBOR=]-encoded data using the CBOR Data Definition Language (CDDL) [[!CDDL]].
 
 : COSE
 :: CBOR Object Signing and Encryption (COSE) [[!RFC8152]].  The IANA COSE Algorithms registry established by this specification is also used.
@@ -287,6 +307,11 @@ below and in [[#index-defined-elsewhere]].
 :: Many of the interface definitions and all of the IDL in this specification depend on [[!WebIDL-1]]. This updated version of
     the Web IDL standard adds support for {{Promise}}s, which are now the preferred mechanism for asynchronous
     interaction in all new web APIs.
+
+: FIDO AppID
+:: The algorithms for [=determining the FacetID of a calling application=] and
+    [=determining if a caller's FacetID is authorized for an AppID=] (used only in
+    the `appid` extension) are defined by [[!FIDO-APPID]].
 
 The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "SHOULD NOT", "RECOMMENDED",  "MAY", and
 "OPTIONAL" in this document are to be interpreted as described in [[!RFC2119]].
@@ -388,6 +413,12 @@ The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "S
     [=credential key pair=] is known as the <dfn>credential private key</dfn>. Note that in the case of [=self
     attestation=], the [=credential key pair=] is also used as the [=attestation key pair=], see [=self attestation=]
     for details.
+
+
+: <dfn>Human Palatability</dfn>
+:: An identifier that is [=human palatability|human-palatable=] is intended to be rememberable and reproducible by typical human
+    users, in contrast to identifiers that are, for example, randomly generated sequences of bits [[EduPersonObjectClassSpec]].
+
 
 : <dfn>Public Key Credential Source</dfn>
 :: A [=credential source=] ([[CREDENTIAL-MANAGEMENT-1]]) used by an [=authenticator=] to generate [=authentication assertions=]. A public key credential source has:
@@ -618,7 +649,7 @@ implementation of {{PublicKeyCredential/[[Create]](origin, options, sameOriginWi
 {{Credential/[[Store]](credential, sameOriginWithAncestors)}}.
 
 
-### `CredentialCreationOptions` Extension ### {#credentialcreationoptions-extension}
+### `CredentialCreationOptions` Dictionary Extension ### {#credentialcreationoptions-extension}
 
 To support registration via {{CredentialsContainer/create()|navigator.credentials.create()}}, this document extends
 the {{CredentialCreationOptions}} dictionary as follows:
@@ -629,7 +660,7 @@ the {{CredentialCreationOptions}} dictionary as follows:
     };
 </pre>
 
-### `CredentialRequestOptions` Extension ### {#credentialrequestoptions-extension}
+### `CredentialRequestOptions` Dictionary Extension ### {#credentialrequestoptions-extension}
 
 To support obtaining assertions via {{CredentialsContainer/get()|navigator.credentials.get()}}, this document extends the
 {{CredentialRequestOptions}} dictionary as follows:
@@ -1141,7 +1172,8 @@ When this method is invoked, the user agent MUST execute the following algorithm
 
     1. Let |userPresence| be a Boolean value set to the inverse of |userVerification|.
 
-    1. If <code>|options|.{{PublicKeyCredentialRequestOptions/allowCredentials}}</code>
+    1. <span id="allowCredentialDescriptorListCreation"></span>
+        If <code>|options|.{{PublicKeyCredentialRequestOptions/allowCredentials}}</code>
         <dl class="switch">
             :   [=list/is not empty=]
             ::  1. Let |allowCredentialDescriptorList| be a new [=list=].
@@ -1246,7 +1278,8 @@ When this method is invoked, the user agent MUST execute the following algorithm
                 ::  whose value is the bytes of the signature value returned by the [=authenticator=].
 
                 :   <code><dfn for="assertionCreationData">userHandleResult</dfn></code>
-                ::  whose value is the bytes of the [=user handle=] returned by the [=authenticator=].
+                ::  If the [=authenticator=] returned a [=user handle=], set the value of [=userHandleResult=] to be the bytes of
+                    the returned [=user handle=]. Otherwise, set the value of [=userHandleResult=] to null.
 
                 :   <code><dfn for="assertionCreationData">clientExtensionResults</dfn></code>
                 ::  whose value is an {{AuthenticationExtensions}} object containing [=extension identifier=] →
@@ -1279,7 +1312,9 @@ When this method is invoked, the user agent MUST execute the following algorithm
                             <code>|assertionCreationData|.[=assertionCreationData/signatureResult=]</code>.
 
                         :   {{AuthenticatorAssertionResponse/userHandle}}
-                        ::  A new {{ArrayBuffer}}, created using |global|'s [=%ArrayBuffer%=], containing the bytes of
+                        ::  If <code>|assertionCreationData|.[=assertionCreationData/userHandleResult=]</code> is null, set this
+                            field to null. Otherwise, set this field to a new {{ArrayBuffer}}, created using |global|'s
+                            [=%ArrayBuffer%=], containing the bytes of
                             <code>|assertionCreationData|.[=assertionCreationData/userHandleResult=]</code>.
 
                     :   {{PublicKeyCredential/[[clientExtensionsResults]]}}
@@ -1424,7 +1459,7 @@ optionally evidence of [=user consent=] to a specific transaction.
     interface AuthenticatorAssertionResponse : AuthenticatorResponse {
         [SameObject] readonly attribute ArrayBuffer      authenticatorData;
         [SameObject] readonly attribute ArrayBuffer      signature;
-        [SameObject] readonly attribute ArrayBuffer      userHandle;
+        [SameObject] readonly attribute ArrayBuffer?     userHandle;
     };
 </pre>
 <div dfn-type="attribute" dfn-for="AuthenticatorAssertionResponse">
@@ -1441,7 +1476,8 @@ optionally evidence of [=user consent=] to a specific transaction.
     ::  This attribute contains the raw signature returned from the authenticator. See [[#op-get-assertion]].
 
     :   <dfn>userHandle</dfn>
-    ::  This attribute contains the [=user handle=] returned from the authenticator. See [[#op-get-assertion]].
+    ::  This attribute contains the [=user handle=] returned from the authenticator, or null if the authenticator did not return a
+        [=user handle=]. See [[#op-get-assertion]].
 </div>
 
 ## Parameters for Credential Generation (dictionary <dfn dictionary>PublicKeyCredentialParameters</dfn>) ## {#credential-params}
@@ -1486,8 +1522,7 @@ optionally evidence of [=user consent=] to a specific transaction.
     :   <dfn>rp</dfn>
     ::  This member contains data about the [=[RP]=] responsible for the request.
 
-        Its value's {{PublicKeyCredentialEntity/name}} member contains the friendly name of the [=[RP]=] (e.g. "Acme Corporation",
-        "Widgets, Inc.", or "Awesome Site".
+        Its value's {{PublicKeyCredentialEntity/name}} member is required.
 
         Its value's {{PublicKeyCredentialRpEntity/id}} member specifies the [=relying party identifier=] with which the credential
         should be associated. If omitted, its value will be the {{CredentialsContainer}} object's [=relevant
@@ -1496,14 +1531,8 @@ optionally evidence of [=user consent=] to a specific transaction.
     :   <dfn>user</dfn>
     ::  This member contains data about the user account for which the [=[RP]=] is requesting attestation.
 
-        Its value's {{PublicKeyCredentialEntity/name}} member contains a name for the user account (e.g.,
-        "john.p.smith@example.com" or "+14255551234").
-
-        Its value's {{PublicKeyCredentialUserEntity/displayName}} member contains a friendly name for the user account (e.g.,
-        "John P. Smith").
-
-        Its value's {{PublicKeyCredentialUserEntity/id}} member contains the [=user handle=] for the account, specified by the
-        [=[RP]=].
+        Its value's {{PublicKeyCredentialEntity/name}}, {{PublicKeyCredentialUserEntity/displayName}} and
+        {{PublicKeyCredentialUserEntity/id}} members are required.
 
     :   <dfn>challenge</dfn>
     ::  This member contains a challenge intended to be used for generating the newly created credential's [=attestation
@@ -1552,10 +1581,20 @@ associated.
 </xmp>
 <div dfn-type="dict-member" dfn-for="PublicKeyCredentialEntity">
     :   <dfn>name</dfn>
-    ::  A human-friendly identifier for the entity. For example, this could be a company name for a [=[RP]=], or a
-        user's name. This identifier is intended for display. [=Authenticators=] MUST accept and store a 64 byte minimum length
-        for a name members's value. Authenticators MAY truncate a
-        name member's value to a length equal to or greater than 64 bytes.
+    ::  A human-readable name for the entity. Its function depends on what the {{PublicKeyCredentialEntity}} represents:
+
+          - When inherited by {{PublicKeyCredentialRpEntity}} it is a human-friendly identifier for the [=[RP]=], intended only
+            for display. For example, "ACME Corporation", "Wonderful Widgets, Inc." or "Awesome Site".
+          - When inherited by {{PublicKeyCredentialUserEntity}}, it is a [=human palatability|human-palatable=] identifier for a
+            user account. It is intended only for display, and SHOULD allow the user to easily tell the difference between user
+            accounts with similar {{PublicKeyCredentialUserEntity/displayName}}s. For example, "alexm", "alex.p.mueller@acme.com"
+            or "+14255551234". The [=[RP]=] MAY let the user choose this, and MAY restrict the choice as needed or appropriate.
+            For example, a [=[RP]=] might choose to map [=human palatability|human-palatable=] [=username=] account identifiers to
+            the {{PublicKeyCredentialEntity/name}} member of {{PublicKeyCredentialUserEntity}}.
+
+        [=Authenticators=] MUST accept and store a 64 byte minimum length for a {{PublicKeyCredentialEntity/name}} members's
+        value. Authenticators MAY truncate a {{PublicKeyCredentialEntity/name}} member's value to a length equal to or greater
+        than 64 bytes.
 
     :   <dfn>icon</dfn>
     ::  A [=URL serializer|serialized=] URL which resolves to an image associated with the entity. For example, this could be
@@ -1598,9 +1637,12 @@ credential.
     ::  The [=user handle=] of the user account entity.
 
     :   <dfn>displayName</dfn>
-    ::  A friendly name for the user account (e.g., "John P. Smith"). [=Authenticators=] MUST accept and store a 64 byte minimum
-        length for a displayName members's value. Authenticators MAY truncate a
-        displayName member's value to a length equal to or greater than 64 bytes.
+    ::  A human-friendly name for the user account, intended only for display. For example, "Alex P. Müller" or "田中 倫". The
+        [=[RP]=] SHOULD let the user choose this, and SHOULD NOT restrict the choice more than necessary.
+
+        [=Authenticators=] MUST accept and store a 64 byte minimum length for a {{PublicKeyCredentialUserEntity/displayName}}
+        members's value. Authenticators MAY truncate a {{PublicKeyCredentialUserEntity/displayName}} member's value to a length
+        equal to or greater than 64 bytes.
 </div>
 
 
@@ -2227,7 +2269,9 @@ When this operation is invoked, the [=authenticator=] MUST perform the following
     1. Let |credentialId| be a new identifier for this credential that is globally unique with high probability across all
         credentials with the same type across all authenticators.
     1. Let |userHandle| be <code>|userEntity|.{{PublicKeyCredentialUserEntity/id}}</code>.
-    1. Associate the |credentialId| and |privateKey| with <code>|rpEntity|.{{PublicKeyCredentialRpEntity/id}}</code> and |userHandle|.
+    1. Associate the |credentialId| and |privateKey| with <code>|rpEntity|.{{PublicKeyCredentialRpEntity/id}}</code> and
+        |userHandle|. The authenticator MAY discard |userHandle| from this association if |privateKey| is not a
+        [=Client-side-resident Credential Private Key=].
     1. Delete any older credentials with the same <code>|rpEntity|.{{PublicKeyCredentialRpEntity/id}}</code> and |userHandle| that are stored locally by the [=authenticator=].
 1. If any error occurred while creating the new credential object, return an error code equivalent to "{{UnknownError}}" and
     terminate the operation.
@@ -2349,7 +2393,7 @@ When this method is invoked, the [=authenticator=] MUST perform the following pr
 
         - |authenticatorData|
         - |signature|
-        - The [=user handle=] associated with |selectedCredential|.
+        - The [=user handle=] associated with |selectedCredential|, if available.
     </li>
 
 If the authenticator cannot find any credential corresponding to the specified [=[RP]=] that matches the specified criteria, it
@@ -3498,33 +3542,45 @@ IANA "WebAuthn Extension Identifier" registry established by [[!WebAuthn-Registr
 These are RECOMMENDED for implementation by user agents targeting broad interoperability.
 
 
-## FIDO AppId Extension (appid) ## {#sctn-appid-extension}
+## FIDO AppID Extension (appid) ## {#sctn-appid-extension}
 
-This [=authentication extension=] allows [=[RPS]=] that have previously registered a
-credential using the legacy FIDO JavaScript APIs to request an assertion.
-Specifically, this extension allows [=[RPS]=] to specify an |appId| [[FIDO-APPID]]
-to overwrite the otherwise computed |rpId|.  This extension is only valid if
-used during the {{CredentialsContainer/get()}} call; other usage will result in client
-error.
+This [=client extension=] allows [=[RPS]=] that have previously registered a
+credential using the legacy FIDO JavaScript APIs to request an [=assertion=]. The
+FIDO APIs use an alternative identifier for [=relying parties=] called an |AppID|
+[[FIDO-APPID]], and any credentials created using those APIs will be bound to
+that identifier. Without this extension they would need to be re-registered in
+order to be bound to an [=RP ID=].
+
+This extension does not allow FIDO-compatible credentials to be created. Thus
+credentials created with WebAuthn are not backwards compatible with the FIDO
+JavaScript APIs.
 
 : Extension identifier
 :: `appid`
 
 : Client extension input
-:: A single JSON string specifying a FIDO |appId|.
+:: A single JSON string specifying a FIDO |AppID|.
 
 : Client extension processing
-:: If {{PublicKeyCredentialRequestOptions/rpId}} is present, return a DOMException
-    whose name is "{{NotAllowedError}}", and terminate this algorithm ([[#discover-from-external-source]]).
-
-    Otherwise, replace the calculation of |rpId| in Step 6 of [[#discover-from-external-source]] with the
-    following procedure:  The client uses the value of |appid| to perform
-    the AppId validation procedure (as defined by [[FIDO-APPID]]).  If valid,
-    the value of |rpId| for all client processing SHOULD be replaced by the
-    value of |appid|.
+::  1. If present in a {{CredentialsContainer/create()}} call, return a
+        "{{NotSupportedError}}" {{DOMException}}—this extension is only valid when
+        requesting an assertion.
+    1. Let |facetId| be the result of passing the caller's [=origin=] to the
+        FIDO algorithm for [=determining the FacetID of a calling application=].
+    1. Let |appId| be the extension input.
+    1. Pass |facetId| and |appId| to the FIDO algorithm for [=determining if a
+        caller's FacetID is authorized for an AppID=]. If that algorithm rejects
+        |appId| then return a "{{SecurityError}}" {{DOMException}}.
+    1. When [building allowCredentialDescriptorList](#allowCredentialDescriptorListCreation),
+        if a U2F authenticator indicates that a credential is inapplicable (i.e. by
+        returning `SW_WRONG_DATA`) then the client MUST retry with the U2F application
+        parameter set to the SHA-256 hash of |appId|. If this results in an applicable
+        credential, the client MUST include the credential in
+        |allowCredentialDescriptorList|. The value of |appId| then replaces the `rpId`
+        parameter of [=authenticatorGetAssertion=].
 
 : Client extension output
-:: Returns the JSON value `true` to indicate to the RP that the extension was acted upon
+:: Returns the JSON value `true` to indicate to the RP that the extension was acted upon.
 
 : Authenticator extension input
 :: None.
@@ -4044,14 +4100,14 @@ The sample code for generating and registering a new key follows:
 
       // Relying Party:
       rp: {
-        name: "Acme"
+        name: "ACME Corporation"
       },
 
       // User:
       user: {
         id: Uint8Array.from(window.atob("MIIBkzCCATigAwIBAjCCAZMwggE4oAMCAQIwggGTMII="), c=>c.charCodeAt(0)),
-        name: "john.p.smith@example.com",
-        displayName: "John P. Smith",
+        name: "alex.p.mueller@example.com",
+        displayName: "Alex P. Müller",
         icon: "https://pics.acme.com/00/p/aBjjjpqPb.png"
       },
 
@@ -4424,8 +4480,8 @@ Boris Zbarsky.
   "FIDO-APPID": {
     "authors": ["D. Balfanz", "B. Hill", "R. Lindemann", "D. Baghdasaryan"],
     "title": "FIDO AppID and Facets",
-    "href": "https://fidoalliance.org/specs/fido-uaf-v1.1-rd-20161005/fido-appid-and-facets-v1.1-rd-20161005.html",
-    "status": "FIDO Alliance Review Draft"
+    "href": "https://fidoalliance.org/specs/fido-v2.0-ps-20170927/fido-appid-and-facets-v2.0-ps-20170927.html",
+    "status": "FIDO Alliance Proposed Standard"
   },
 
   "FIDO-U2F-Message-Formats": {
@@ -4439,8 +4495,8 @@ Boris Zbarsky.
     "authors": ["R. Lindemann", "V. Bharadwaj", "A. Czeskis", "M. B. Jones", "J. Hodges", "A. Kumar", "C. Brand", "J. Verrept",
         "J. Ehrensvard"],
     "title": "FIDO 2.0: Client to Authenticator Protocol",
-    "href": "https://fidoalliance.org/specs/fido-v2.0-rd-20170927/fido-client-to-authenticator-protocol-v2.0-rd-20170927.html",
-    "status": "FIDO Alliance Review Draft"
+    "href": "https://fidoalliance.org/specs/fido-v2.0-ps-20170927/fido-client-to-authenticator-protocol-v2.0-ps-20170927.html",
+    "status": "FIDO Alliance Proposed Standard"
   },
 
   "FIDO-UAF-AUTHNR-CMDS": {
@@ -4472,6 +4528,13 @@ Boris Zbarsky.
     "href": "https://tools.ietf.org/html/draft-ietf-tokbind-protocol",
     "status": "Internet-Draft",
     "date": "February 16, 2017"
+  },
+
+  "EduPersonObjectClassSpec": {
+    "publisher": ["Internet2 Middleware Architecture Committee for Education, Directory Working Group (MACE-Dir)"],
+    "title": "EduPerson Object Class Specification (200604a)",
+    "href": "https://www.internet2.edu/media/medialibrary/2013/09/04/internet2-mace-dir-eduperson-200604.html",
+    "date": "May 15, 2007"
   }
 }
 </pre>
