@@ -936,16 +936,15 @@ When this method is invoked, the user agent MUST execute the following algorithm
             1.  Let |constructCredentialAlg| be an algorithm that takes a [=global object=]
                 |global|, and whose steps are:
 
-                1.  Let |attestationObject| be a new {{ArrayBuffer}}, created using |global|'s [=%ArrayBuffer%=], containing the
-                    bytes of <code>|credentialCreationData|.[=attestationObjectResult=]</code>'s value.
-
                 1.  If <code>|credentialCreationData|.[=attestationConveyancePreferenceOption=]</code>'s value is
                     <dl class="switch">
                         :   "none"
                         ::  Replace potentially uniquely identifying information with non-identifying versions of the
-                            same. Specifically, implementations SHOULD, at least:
-                               1. Replace the [=AAGUID=] in the [=attested credential data=] with 16 zero bytes.
-                               1. Replace the [=attestation statement=] with a  <a href="#none-attestation">&ldquo;none&rdquo; attestation</a>. Alternatively, replace it with a <a href="#packed-attestation">packed</a> or <a href="#fido-u2f-attestation">U2F</a> attestation containing a single, fresh, self-signed certificate. (If the original attestation used X.509 certificates then any FIDO transports extension [[!FIDO-TRANSPORTS-EXT]] from the original MAY be duplicated into the self-signed replacement.)
+                            same:
+                               1. If the [=AAGUID=] in the [=attested credential data=] is 16 zero bytes, <code>|credentialCreationData|.[=attestationObjectResult=].fmt</code> is "packed", and "x5c" & "ecdaaKeyId" are both absent from <code>|credentialCreationData|.[=attestationObjectResult=]</code>, then [=self attestation=] is being used no further action is needed.
+                               1. Otherwise
+                                  1. Replace the [=AAGUID=] in the [=attested credential data=] with 16 zero bytes.
+                                  1. Set the value of <code>|credentialCreationData|.[=attestationObjectResult=].fmt</code> to "none", and set the value of <code>|credentialCreationData|.[=attestationObjectResult=].attStmt</code> to be an empty [=CBOR=] map. (See [[#none-attestation]] and [[#generating-an-attestation-object]]).
 
                         :   "indirect"
                         ::  The client MAY replace the [=AAGUID=] and [=attestation statement=] with a more privacy-friendly
@@ -958,6 +957,9 @@ When this method is invoked, the user agent MUST execute the following algorithm
                             If the [=authenticator=] violates the privacy requirements of the [=attestation type=] it is using, 
                             the client SHOULD terminate this algorithm with a "AttestationNotPrivateError".
                     </dl>
+
+                1.  Let |attestationObject| be a new {{ArrayBuffer}}, created using |global|'s [=%ArrayBuffer%=], containing the
+                    bytes of <code>|credentialCreationData|.[=attestationObjectResult=]</code>'s value.
 
                 1.  Let |id| be <code>|attestationObject|.authData.[=attestedCredentialData=].[=credentialId=]</code>.
 
@@ -1754,9 +1756,8 @@ during credential generation.
 
 <div dfn-type="enum-value" dfn-for="AttestationConveyancePreference">
     *   <dfn>none</dfn> - indicates that the [=[RP]=] is not interested in [=authenticator=] [=attestation=].
-        The client MAY replace the [=AAGUID=] and [=attestation statement=] generated
-        by the authenticator with meaningless client-generated values. For example, in order to avoid having to obtain
-        [=user consent=] to relay uniquely identifying information to the [=[RP]=], or to save a roundtrip to a Privacy CA.
+        For example, in order to avoid having to obtain [=user consent=] to relay uniquely identifying information to
+        the [=[RP]=], or to save a roundtrip to a Privacy CA.
 
         This is the default value.
 
@@ -2672,7 +2673,7 @@ WebAuthn supports multiple attestation types:
     bilinear pairings, called [=ECDAA=] (see [[FIDOEcdaaAlgorithm]]) in this specification. Consequently we denote the DAA-Issuer
     as ECDAA-Issuer (see [[FIDOEcdaaAlgorithm]]).
 
-: <dfn>None</dfn>
+: <dfn>No attestation statement</dfn> (<dfn>None</dfn>)
 :: In this case, no attestation information is available.
 
 <h4 id="generating-an-attestation-object" algorithm>Generating an Attestation Object</h4>
@@ -3353,18 +3354,18 @@ This attestation statement format is used with FIDO U2F authenticators using the
     1. Verify the |sig| using |verificationData| and |certificate public key| per [[!SEC1]].
     1. If successful, return attestation type Basic with the [=attestation trust path=] set to |x5c|.
 
-## &ldquo;None&rdquo; Attestation Statement Format ## {#none-attestation}
+## None Attestation Statement Format ## {#none-attestation}
 
-This attestation statement format is used to indicate that no attestation information is provided.
+The <dfn>none attestation statement format</dfn> is used to replace any [=authenticator=]-provided [=attestation statement=] when an [=[RP]=] indicates it does not wish to receive attestation information, see  [[#attestation-convey]].
 
 : Attestation statement format identifier
 :: none
 
 : Attestation types supported
-:: (None)
+:: [=None=]
 
 : Syntax
-:: The syntax of a None attestation statement is defined as follows:
+:: The syntax of a none attestation statement is defined as follows:
 
     ```
     $$attStmtType //= (
@@ -4656,13 +4657,6 @@ Boris Zbarsky.
     "authors": ["R. Lindemann", "D. Baghdasaryan", "B. Hill"],
     "title": "FIDO UAF Registry of Predefined Values",
     "href": "https://fidoalliance.org/specs/fido-uaf-v1.0-ps-20141208/fido-uaf-reg-v1.0-ps-20141208.html",
-    "status": "FIDO Alliance Proposed Standard"
-  },
-
-  "FIDO-TRANSPORTS-EXT": {
-    "authors": ["J. Lang", "R. Bertels", "A. Czeskis"],
-    "title": "FIDO U2F Authenticator Transports Extension",
-    "href": "https://fidoalliance.org/specs/fido-u2f-v1.2-ps-20170411/fido-u2f-authenticator-transports-extension-v1.2-ps-20170411.html",
     "status": "FIDO Alliance Proposed Standard"
   },
 
