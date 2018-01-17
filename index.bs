@@ -890,8 +890,8 @@ When this method is invoked, the user agent MUST execute the following algorithm
 
     1. [=set/Append=] |authenticator| to |issuedRequests|.
 
-1. [=While=] |issuedRequests| [=list/is not empty=], perform the following actions depending upon
-    |lifetimeTimer| and responses from the authenticators:
+1. [=While=] |lifetimeTimer| has not expired, perform the following actions depending upon |lifetimeTimer| and responses from the
+    authenticators:
     <dl class="switch">
         :   If |lifetimeTimer| expires,
         ::  [=set/For each=] |authenticator| in |issuedRequests| invoke the [=authenticatorCancel=] operation on |authenticator|
@@ -991,7 +991,9 @@ When this method is invoked, the user agent MUST execute the following algorithm
 
     </dl>
 
-1. Return a {{DOMException}} whose name is "{{NotAllowedError}}".
+1. Return a {{DOMException}} whose name is "{{NotAllowedError}}". In order to prevent information leak that could identify the
+    user without [=user consent|consent=], this step MUST NOT be executed before |lifetimeTimer| has expired. See
+    [[#sec-assertion-privacy]] for details.
 
 During the above process, the user agent SHOULD show some UI to the user to guide them in the process of selecting and
 authorizing an authenticator.
@@ -1238,7 +1240,7 @@ When this method is invoked, the user agent MUST execute the following algorithm
 
     1. [=set/Append=] |authenticator| to |issuedRequests|.
 
-1. While |issuedRequests| [=list/is not empty=], perform the following actions depending upon |lifetimeTimer|
+1. [=While=] |lifetimeTimer| has not expired, perform the following actions depending upon |lifetimeTimer|
     and responses from the authenticators:
 
     <dl class="switch">
@@ -1333,11 +1335,14 @@ When this method is invoked, the user agent MUST execute the following algorithm
             1.  Return |constructAssertionAlg| and terminate this algorithm.
     </dl>
 
-1. Return a {{DOMException}} whose name is "{{NotAllowedError}}".
+1. Return a {{DOMException}} whose name is "{{NotAllowedError}}". In order to prevent information leak that could identify the
+    user without [=user consent|consent=], this step MUST NOT be executed before |lifetimeTimer| has expired. See
+    [[#sec-assertion-privacy]] for details.
 
 During the above process, the user agent SHOULD show some UI to the user to guide them in the process of selecting and
 authorizing an authenticator with which to complete the operation.
 </div>
+
 
 ### Store an existing credential - PublicKeyCredential's `[[Store]](credential, sameOriginWithAncestors)` method ### {#storeCredential}
 
@@ -1603,8 +1608,8 @@ associated.
     :   <dfn>icon</dfn>
     ::  A [=URL serializer|serialized=] URL which resolves to an image associated with the entity. For example, this could be
         a user's avatar or a [=[RP]=]'s logo. This URL MUST be an [=a priori authenticated URL=]. [=Authenticators=] MUST
-        accept and store a 128 byte minimum length for a icon members's value.
-        Authenticators MAY ignore a icon members's value if its length is greater than 128 byes.
+        accept and store a 128 byte minimum length for an icon members's value.
+        Authenticators MAY ignore an icon members's value if its length is greater than 128 bytes.
 </div>
 
 
@@ -2692,7 +2697,6 @@ the [=authenticator=] MUST:
     attStmtTemplate .within $$attStmtType
     ```
 
-
 # [=[RP]=] Operations # {#rp-operations}
 
 Upon successful execution of {{CredentialsContainer/create()}} or {{CredentialsContainer/get()}}, the [=[RP]=]'s script receives
@@ -3354,7 +3358,7 @@ platform. The client platform performs [=client extension processing=] for each 
 [=client data=] as specified by each extension, by including the [=extension identifier=] and [=client extension output=]
 values.
 
-An extension can also be an <dfn>authenticator extension</dfn>, meaning that the extension invoves communication with and
+An extension can also be an <dfn>authenticator extension</dfn>, meaning that the extension involves communication with and
 processing by the authenticator. [=Authenticator extensions=] define the following steps and data:
 
 - [=authenticatorMakeCredential=] extension request parameters and response values for [=registration extensions=].
@@ -4425,7 +4429,7 @@ RogueList when performing ECDAA-Verify (see section 3.6 in [[!FIDOEcdaaAlgorithm
 
 
 
-# Privacy Considertations # {#sctn-privacy-considerations}
+# Privacy Considerations # {#sctn-privacy-considerations}
 
 ## Attestation Privacy ## {#sec-attestation-privacy}
 
@@ -4445,6 +4449,22 @@ in several ways, including:
     Using this scheme, the authenticator generates a blinded attestation signature. This allows the [=[RP]=] to verify the
     signature using the [=ECDAA-Issuer public key=], but the attestation signature does not serve as a global correlation handle.
 
+
+## Authentication Ceremonies ## {#sec-assertion-privacy}
+
+In order to protect the user from being identified without [=user consent|consent=], implementations of the
+{{PublicKeyCredential/[[DiscoverFromExternalSource]](origin, options, sameOriginWithAncestors)}} method need to take care to
+not leak information that could enable the [=[RP]=] to distinguish between these cases:
+
+- A named [=public key credential|credential=] is not available.
+- A named [=public key credential|credential=] is available, but the user does not [=user consent|consent=] to use it.
+
+If the above cases are distinguishable, information is leaked by which a malicious [=[RP]=] could identify the user by probing for
+which [=public key credential|credentials=] are available. For example, one such information leak is if the client returns a
+failure response as soon as the user denies [=user consent|consent=] to proceed with the operation. In this case the [=[RP]=]
+could detect that the operation was canceled by the user and not the timeout, and thus conclude that at least one of the [=public
+key credential|credentials=] listed in the {{PublicKeyCredentialRequestOptions/allowCredentials}} parameter is available to the
+user.
 
 
 # Acknowledgements # {#acknowledgements}
