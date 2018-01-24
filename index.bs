@@ -951,7 +951,7 @@ When this method is invoked, the user agent MUST execute the following algorithm
 
                         :   "indirect"
                         ::  The client MAY replace the [=AAGUID=] and [=attestation statement=] with a more privacy-friendly
-                            and/or more easily verifiable version of the same data (for example, by employing a [=Privacy CA=]).
+                            and/or more easily verifiable version of the same data (for example, by employing an [=Anonymization CA=]).
 
                         :   "direct"
                         ::  Convey the [=authenticator=]'s [=AAGUID=] and [=attestation statement=], unaltered, to the RP.
@@ -1746,14 +1746,15 @@ during credential generation.
     *   <dfn>none</dfn> - indicates that the [=[RP]=] is not interested in [=authenticator=] [=attestation=].
         The client MAY replace the [=AAGUID=] and [=attestation statement=] generated
         by the authenticator with meaningless client-generated values. For example, in order to avoid having to obtain
-        [=user consent=] to relay uniquely identifying information to the [=[RP]=], or to save a roundtrip to a Privacy CA.
+        [=user consent=] to relay uniquely identifying information to the [=[RP]=], or to save a roundtrip to a
+        [=Attestation CA=].
 
         This is the default value.
 
     *   <dfn>indirect</dfn> - indicates that the [=[RP]=] prefers an [=attestation=] conveyance yielding verifiable
         [=attestation statements=], but allows the client to decide how to obtain such [=attestation statements=].
         The client MAY replace the authenticator-generated [=attestation statements=] with [=attestation statements=] generated
-        by a [=Privacy CA=], in order to protect the user's privacy, or to assist [=[RPS]=] with attestation verification in a
+        by an [=Anonymization CA=], in order to protect the user's privacy, or to assist [=[RPS]=] with attestation verification in a
         heterogeneous ecosystem.
 
         Note: There is no guarantee that the [=[RP]=] will obtain a verifiable [=attestation statement=] in this case.
@@ -2645,12 +2646,14 @@ WebAuthn supports multiple attestation types:
     any specific attestation key. Instead it uses the credential private key to create the attestation signature.
     Authenticators without meaningful protection measures for an attestation private key typically use this attestation type.
 
-: <dfn>Privacy CA</dfn>
-:: In this case, the Authenticator owns an authenticator-specific (endorsement) key. This key is used to securely communicate
-    with a trusted third party, the Privacy CA.  The Authenticator can generate multiple attestation key pairs and asks the
-    Privacy CA to issue an attestation certificate for it. Using this approach, the Authenticator can limit the exposure of the
-    endorsement key (which is a global correlation handle) to Privacy CA(s). Attestation keys can be requested for each [=public
-    key credential=] individually.
+: <dfn>Attestation CA</dfn>
+:: In this case, an [=authenticator=] is based on a Trusted Platform Module (TPM) and holds an authenticator-specific
+    "endorsement key" (EK). This key is used to securely communicate with a trusted third party, the [=Attestation CA=]
+    [[!TCG-CMCProfile-AIKCertEnroll]] (formerly known as a "Privacy CA"). The [=authenticator=] can generate multiple
+    attestation identity key pairs (AIK) and requests an [=Attestation CA=] to issue an attestation identity certificate (AIK)
+    for each. Using this approach, such an [=authenticator=] can limit the exposure of the EK (which is a global correlation
+    handle) to Attestation CA(s). AIKs can be requested for each [=authenticator=]-generated [=public key credential=]
+    individually, and conveyed to [=[RPS]=] as [=attestation certificates=].
 
     Note: This concept typically leads to multiple attestation certificates. The attestation certificate requested most recently
         is called "active".
@@ -2932,7 +2935,7 @@ implementable by [=authenticators=] with limited resources (e.g., secure element
         1. Let |authenticatorData| denote the [=authenticator data for the attestation=], 
             and let |clientDataHash| denote the [=hash of the serialized client data=].
 
-        1. If Basic or Privacy CA attestation is in use, the authenticator produces the |sig| by concatenating |authenticatorData| and
+        1. If Basic or [=Attestation CA=] attestation is in use, the authenticator produces the |sig| by concatenating |authenticatorData| and
             |clientDataHash|, and signing the result using an attestation private key selected through an authenticator-specific
             mechanism. It sets |x5c| to the certificate chain of the attestation public key and |alg| to the algorithm of the
             attestation private key.
@@ -3008,7 +3011,7 @@ engine.
 :: tpm
 
 : Attestation types supported
-:: [=Privacy CA=], [=ECDAA=]
+:: [=Attestation CA=], [=ECDAA=]
 
 : Syntax
 :: The syntax of a TPM Attestation statement is as follows:
@@ -3099,7 +3102,7 @@ engine.
     - Verify that |x5c| meets the requirements in [[#tpm-cert-requirements]].
     - If |x5c| contains an extension with OID `1 3 6 1 4 1 45724 1 1 4` (id-fido-gen-ce-aaguid) verify that the value of this
         extension matches the <code>[=aaguid=]</code> in |authenticatorData|.
-    - If successful, return attestation type Privacy CA and [=attestation trust path=] |x5c|.
+    - If successful, return attestation type [=Attestation CA=] and [=attestation trust path=] |x5c|.
 
     If |ecdaaKeyId| is present, then the attestation type is [=ECDAA=].
     - Perform ECDAA-Verify on |sig| to verify that it is a valid signature over |certInfo| (see [[!FIDOEcdaaAlgorithm]]).
@@ -3265,7 +3268,7 @@ This attestation statement format is used with FIDO U2F authenticators using the
 :: fido-u2f
 
 : Attestation types supported
-:: [=Basic Attestation=], [=Self Attestation=], [=Privacy CA=]
+:: [=Basic Attestation=], [=Self Attestation=], [=Attestation CA=]
 
 : Syntax
 :: The syntax of a FIDO U2F attestation statement is defined as follows:
@@ -4440,10 +4443,15 @@ in several ways, including:
     attestation key(s) (called [=Basic Attestation=]). This will anonymize the user at the risk of not being able to revoke a
     particular attestation key if its WebAuthn Authenticator be compromised.
 
-- A WebAuthn Authenticator may be capable of dynamically generating different attestation keys (and requesting related
-    certificates) per [=origin=] (following the [=Privacy CA=] approach). For example, a WebAuthn Authenticator can ship with a
-    master attestation key (and certificate), and combined with a cloud operated privacy CA, can dynamically generate per
-    [=origin=] attestation keys and attestation certificates.
+- A WebAuthn [=authenticator=] may be capable of dynamically generating different attestation keys (and requesting related
+    certificates) per-[=origin=] (similar to the [=Attestation CA=] approach). For example, an [=authenticator=] can ship with a
+    master attestation key (and certificate), and combined with a cloud-operated <dfn>Anonymization CA</dfn>, can dynamically generate per-[=origin=] attestation keys and attestation certificates.
+
+    Note: In various places outside this specifcation, the term "Privacy CA" is used to refer to what is termed here
+        as an [=Anonymization CA=]. Because the Trusted Computing Group (TCG) also used the term "Privacy CA" to refer to what
+        the TCG now refers to as an [=Attestation CA=] (ACA) [[!TCG-CMCProfile-AIKCertEnroll]], and the envisioned functionality
+        of an [=Anonymization CA=] is not firmly established, we are using the term [=Anonymization CA=] here to try to mitigate
+        confusion in the specific context of this specification.
 
 - A WebAuthn Authenticator can implement [=Elliptic Curve based direct anonymous attestation=] (see [[FIDOEcdaaAlgorithm]]).
     Using this scheme, the authenticator generates a blinded attestation signature. This allows the [=[RP]=] to verify the
