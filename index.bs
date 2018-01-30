@@ -425,17 +425,28 @@ The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "S
     users, in contrast to identifiers that are, for example, randomly generated sequences of bits [[EduPersonObjectClassSpec]].
 
 : <dfn>Public Key Credential Source</dfn>
-:: A [=credential source=] ([[CREDENTIAL-MANAGEMENT-1]]) used by an [=authenticator=] to generate [=authentication assertions=]. A [=public key credential source=] has:
+:: A [=credential source=] ([[CREDENTIAL-MANAGEMENT-1]]) used by an [=authenticator=] to generate [=authentication assertions=]. A [=public key credential source=] consists of a [=struct=] with the following [=struct/items=]:
 
-    * A <dfn for='public key credential source'>type</dfn>, i.e., a value of {{PublicKeyCredentialType}}.
-    * An <dfn for='public key credential source'>id</dfn>, i.e., a [=Credential ID=].
-    * A <dfn for='public key credential source'>privateKey</dfn>, i.e., a [=credential private key=].
-    * The <dfn for='public key credential source'>rpId</dfn>, [=Relying Party Identifier=], for the [=[RP]=] this
-        public key credential source is associated with.
-    * A <dfn for='public key credential source'>userHandle</dfn>, i.e., a [=user handle=] for the person who created
-        this public key credential source.
-    * <dfn for='public key credential source'>otherUI</dfn>: optional other information used by the authenticator to inform its UI. For example, this might include the user's
-        {{displayName}}.
+    <dl dfn-for="public key credential source">
+        :   <dfn>type</dfn>
+        ::  whose value is of {{PublicKeyCredentialType}}, defaulting to {{public-key}}.
+
+        :   <dfn>id</dfn>
+        ::  A [=Credential ID=].
+
+        :   <dfn>privateKey</dfn>
+        ::  The [=credential private key=].
+
+        :   <dfn>rpId</dfn>
+        ::  The [=Relying Party Identifier=], for the [=[RP]=] this [=public key credential source=] is associated with.
+
+        :   <dfn>userHandle</dfn>
+        ::  The [=user handle=] associated when this [=public key credential source=] was created.
+
+        :   <dfn>otherUI</dfn>
+        ::  Optional other information used by the [=authenticator=] to inform its UI. For example, this might include the user's
+            {{displayName}}.
+    </dl>
 
     The [=authenticatorMakeCredential=] operation creates a [=public key credential source=] bound to a <dfn for="public key
     credential source">managing authenticator</dfn> and returns the [=credential public key=] associated with its [=credential
@@ -2275,11 +2286,15 @@ When this operation is invoked, the [=authenticator=] MUST perform the following
 1. Check if at least one of the specified combinations of {{PublicKeyCredentialType}} and cryptographic parameters in
     |credTypesAndPubKeyAlgs| is supported.
     If not, return an error code equivalent to "{{NotSupportedError}}" and terminate the operation.
-1. Check if any credential bound to this authenticator matches an [=list/item=] of |excludeCredentialDescriptorList|. A match 
-    occurs if a credential matches <code>|rpEntity|.{{PublicKeyCredentialRpEntity/id}}</code> and an |excludeCredentialDescriptorList| 
-    item's <code>|excludeCredentialDescriptorList|.{{PublicKeyCredentialDescriptor/id}}</code> and 
-    <code>|excludeCredentialDescriptorList|.{{PublicKeyCredentialDescriptor/type}}</code>.
-    If so, return an error code equivalent to "{{NotAllowedError}}" and terminate the operation.
+
+1. [=list/For each=] |descriptor| of |excludeCredentialDescriptorList|:
+
+    1.  If [=credential id/looking up=] <code>|descriptor|.{{PublicKeyCredentialDescriptor/id}}</code> in this authenticator
+        returns non-`null`, and the returned [=list/item=]'s [=RP ID=] and [=type=] match
+        <code>|rpEntity|.{{PublicKeyCredentialRpEntity/id}}</code> and
+        <code>|excludeCredentialDescriptorList|.{{PublicKeyCredentialDescriptor/type}}</code> respectively, then
+        return an error code equivalent to "{{NotAllowedError}}" and terminate the operation.
+
 1. If |requireResidentKey| is `true` and the authenticator cannot store a [=Client-side-resident Credential
     Private Key=], return an error code equivalent to "{{ConstraintError}}" and terminate the operation.
 1. If |requireUserVerification| is `true` and the authenticator cannot perform [=user verification=], return an error code
@@ -2387,19 +2402,18 @@ When this method is invoked, the [=authenticator=] MUST perform the following pr
 1. [=list/Remove=] any items from |credentialOptions| whose [=public key credential source/rpId=] is not equal to
     |rpId|.
 1. If |credentialOptions| is now empty, return an error code equivalent to "{{NotAllowedError}}" and terminate the operation.
-1. Prompt the user to select a [=public key credential source=] |selectedCredential| from |credentialOptions|. Obtain [=user
-    consent=] for using |selectedCredential|. The prompt for obtaining this [=user consent|consent=] may be shown by the
-    [=authenticator=] if it has its own output capability, or by the user agent otherwise.
+
 1. If |allowCredentialDescriptorList| was not supplied, set it to a list of all credentials stored for |rpId| (as determined by
     an exact match of |rpId|).
 1. Remove any items from |allowCredentialDescriptorList| that are not present on this [=authenticator=].
 1. If |allowCredentialDescriptorList| is now empty, return an error code equivalent to "{{NotAllowedError}}" and terminate the
     operation.
-1. Prompt the user to select a [=public key credential|credential=] |selectedCredential| from |allowCredentialDescriptorList|.
+1. Prompt the user to select a [=public key credential source=] |selectedCredential| from |allowCredentialDescriptorList|.
     Obtain [=user consent=] for using |selectedCredential|. The prompt for obtaining this [=user consent|consent=] may be shown
-    by the
-    [=authenticator=] if it has its own output capability, or by the user agent otherwise.
+    by the [=authenticator=] if it has its own output capability, or by the user agent otherwise.
 
+    If the user does not [=user consent|consent=], return an error code equivalent to
+    "{{NotAllowedError}}" and terminate the operation.
 
 1. Let |processedExtensions| be the result of [=authenticator extension processing=] for each supported [=extension
     identifier=]/input pair in |extensions|.
