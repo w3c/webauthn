@@ -1377,6 +1377,18 @@ When this method is invoked, the user agent MUST execute the following algorithm
 
 </div>
 
+###  Preventing silent access to an existing credential - PublicKeyCredential's `[[preventSilentAccess]](credential, sameOriginWithAncestors)` method ### {#preventSilentAccessCredential}
+
+<div link-for-hint="PublicKeyCredential/[[preventSilentAccess]](credential, sameOriginWithAncestors)">
+
+Calling the <dfn for="PublicKeyCredential" method>\[[preventSilentAccess]](credential, sameOriginWithAncestors)</dfn> method
+will have no effect on authenticators that require an [=authorization gesture=],
+but setting that flag may potentially exclude authenticators that can operate without user intervention.
+
+This [=internal method=] accepts no arguments.
+
+</div>
+
 ### Availability of User-Verifying Platform Authenticator - PublicKeyCredential's `isUserVerifyingPlatformAuthenticatorAvailable()` method ### {#isUserVerifyingPlatformAuthenticatorAvailable}
 
 <div link-for-hint="WebAuthentication/isUserVerifyingPlatformAuthenticatorAvailable">
@@ -2503,7 +2515,7 @@ object=] for a given credential. It has the following format:
     <tr>
         <td><dfn>credentialIdLength</dfn></td>
         <td>2</td>
-        <td>Byte length <strong>L</strong> of Credential ID</td>
+        <td>Byte length <strong>L</strong> of Credential ID, 16-bit unsigned big-endian integer.</td>
     </tr>
     <tr>
         <td><dfn>credentialId</dfn></td>
@@ -2796,6 +2808,14 @@ provide this chain in the attestation information.
 
 When verifying a given {{PublicKeyCredential}} structure (|credential|) as part of an [=authentication=] [=ceremony=], the
 [=[RP]=] MUST proceed as follows:
+
+1. If the {{PublicKeyCredentialRequestOptions/allowCredentials}} option was given when this [=authentication=] [=ceremony=] was
+    initiated, verify that <code>|credential|.{{Credential/id}}</code> identifies one of the [=public key credentials=] that were
+    listed in {{PublicKeyCredentialRequestOptions/allowCredentials}}.
+
+1. If <code>|credential|.{{PublicKeyCredential/response}}.{{AuthenticatorAssertionResponse/userHandle}}</code> is present, verify
+    that the user identified by this value is the owner of the [=public key credential=] identified by
+    <code>|credential|.{{Credential/id}}</code>.
 
 1. Using |credential|'s {{Credential/id}} attribute (or the corresponding {{PublicKeyCredential/rawId}}, if
     [=base64url encoding=] is inappropriate for your use case), look up the corresponding credential public key.
@@ -3608,7 +3628,7 @@ JavaScript APIs.
         returning `SW_WRONG_DATA`) then the client MUST retry with the U2F application
         parameter set to the SHA-256 hash of |appId|. If this results in an applicable
         credential, the client MUST include the credential in
-        |allowCredentialDescriptorList|. The value of |appId| then replaces the `rpId`
+        <var ignore>allowCredentialDescriptorList</var>. The value of |appId| then replaces the `rpId`
         parameter of [=authenticatorGetAssertion=].
 
 : Client extension output
@@ -4433,9 +4453,17 @@ RogueList when performing ECDAA-Verify (see section 3.6 in [[!FIDOEcdaaAlgorithm
 [[FIDOMetadataService]] provides one way to access such information.
 
 
+## credentialId Unsigned ## {#credentialIdSecurity}
 
+The [=credential ID=] is not signed.
+This is not a problem because all that would happen if an [=authenticator=] returns
+the wrong [=credential ID=], or if an attacker intercepts and manipulates the [=credential ID=], is that the [=[RP]=] would not look up the correct
+[=credential public key=] with which to verify the returned signed [=authenticator data=]
+(a.k.a., [=assertion=]), and thus the interaction would end in an error.
 
 # Privacy Considerations # {#sctn-privacy-considerations}
+
+The privacy principles in [[!FIDO-Privacy-Principles]] also apply to this specification.
 
 ## Attestation Privacy ## {#sec-attestation-privacy}
 
@@ -4444,7 +4472,10 @@ in several ways, including:
 
 - A WebAuthn [=authenticator=] manufacturer may choose to ship all of their devices with the same (or a fixed number of)
     attestation key(s) (called [=Basic Attestation=]). This will anonymize the user at the risk of not being able to revoke a
-    particular attestation key if its WebAuthn Authenticator be compromised.
+    particular attestation key if its private key is compromised.
+
+    [[UAFProtocol]] requires that at least 100,000 devices share the same attestation certificate in order to produce
+    sufficiently large groups. This may serve as guidance about suitable batch sizes.
 
 - A WebAuthn Authenticator may be capable of dynamically generating different attestation keys (and requesting related
     certificates) per [=origin=] (following the [=Privacy CA=] approach). For example, a WebAuthn Authenticator can ship with a
@@ -4637,6 +4668,13 @@ Boris Zbarsky.
     "title": "FIDO UAF Authenticator Commands",
     "href": "https://fidoalliance.org/specs/fido-uaf-v1.1-id-20170202/fido-uaf-authnr-cmds-v1.1-id-20170202.html",
     "status": "FIDO Alliance Implementation Draft"
+  },
+
+  "FIDO-Privacy-Principles": {
+    "authors": ["FIDO Alliance"],
+    "title": "FIDO Privacy Principles",
+    "href": "https://fidoalliance.org/wp-content/uploads/2014/12/FIDO_Alliance_Whitepaper_Privacy_Principles.pdf",
+    "status": "FIDO Alliance Whitepaper"
   },
 
   "CDDL": {
