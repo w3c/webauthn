@@ -949,18 +949,15 @@ When this method is invoked, the user agent MUST execute the following algorithm
             1.  Let |constructCredentialAlg| be an algorithm that takes a [=global object=]
                 |global|, and whose steps are:
 
-                1.  Let |attestationObject| be a new {{ArrayBuffer}}, created using |global|'s [=%ArrayBuffer%=], containing the
-                    bytes of <code>|credentialCreationData|.[=attestationObjectResult=]</code>'s value.
-
                 1.  If <code>|credentialCreationData|.[=attestationConveyancePreferenceOption=]</code>'s value is
                     <dl class="switch">
                         :   "none"
-                        ::  Replace potentially uniquely identifying information (such as [=AAGUID=] and
-                            [=attestation certificates=]) in the [=attested credential data=] and [=attestation statement=],
-                            respectively, with blinded versions of the same data.
-
-                        Issue(w3c/webauthn#694): need to define "blinding".  See also
-                            [#462](https://github.com/w3c/webauthn/issues/462).
+                        ::  Replace potentially uniquely identifying information with non-identifying versions of the
+                            same:
+                               1. If the [=AAGUID=] in the [=attested credential data=] is 16 zero bytes, <code>|credentialCreationData|.[=attestationObjectResult=].fmt</code> is "packed", and "x5c" & "ecdaaKeyId" are both absent from <code>|credentialCreationData|.[=attestationObjectResult=]</code>, then [=self attestation=] is being used and no further action is needed.
+                               1. Otherwise
+                                  1. Replace the [=AAGUID=] in the [=attested credential data=] with 16 zero bytes.
+                                  1. Set the value of <code>|credentialCreationData|.[=attestationObjectResult=].fmt</code> to "none", and set the value of <code>|credentialCreationData|.[=attestationObjectResult=].attStmt</code> to be an empty [=CBOR=] map. (See [[#none-attestation]] and [[#generating-an-attestation-object]]).
 
                         :   "indirect"
                         ::  The client MAY replace the [=AAGUID=] and [=attestation statement=] with a more privacy-friendly
@@ -973,6 +970,9 @@ When this method is invoked, the user agent MUST execute the following algorithm
                             If the [=authenticator=] violates the privacy requirements of the [=attestation type=] it is using, 
                             the client SHOULD terminate this algorithm with a "AttestationNotPrivateError".
                     </dl>
+
+                1.  Let |attestationObject| be a new {{ArrayBuffer}}, created using |global|'s [=%ArrayBuffer%=], containing the
+                    bytes of <code>|credentialCreationData|.[=attestationObjectResult=]</code>'s value.
 
                 1.  Let |id| be <code>|attestationObject|.authData.[=attestedCredentialData=].[=credentialId=]</code>.
 
@@ -1770,10 +1770,8 @@ during credential generation.
 
 <div dfn-type="enum-value" dfn-for="AttestationConveyancePreference">
     *   <dfn>none</dfn> - indicates that the [=[RP]=] is not interested in [=authenticator=] [=attestation=].
-        The client MAY replace the [=AAGUID=] and [=attestation statement=] generated
-        by the authenticator with meaningless client-generated values. For example, in order to avoid having to obtain
-        [=user consent=] to relay uniquely identifying information to the [=[RP]=], or to save a roundtrip to an
-        [=Attestation CA=].
+        For example, in order to potentially avoid having to obtain [=user consent=] to relay identifying information to
+        the [=[RP]=], or to save a roundtrip to an [=Attestation CA=].
 
         This is the default value.
 
@@ -2733,6 +2731,8 @@ WebAuthn supports multiple attestation types:
     bilinear pairings, called [=ECDAA=] (see [[FIDOEcdaaAlgorithm]]) in this specification. Consequently we denote the DAA-Issuer
     as ECDAA-Issuer (see [[FIDOEcdaaAlgorithm]]).
 
+: <dfn>No attestation statement</dfn> (<dfn>None</dfn>)
+:: In this case, no attestation information is available.
 
 <h4 id="generating-an-attestation-object" algorithm>Generating an Attestation Object</h4>
 
@@ -3428,6 +3428,33 @@ This attestation statement format is used with FIDO U2F authenticators using the
     1. Verify the |sig| using |verificationData| and |certificate public key| per [[!SEC1]].
     1. If successful, return attestation type Basic with the [=attestation trust path=] set to |x5c|.
 
+## None Attestation Statement Format ## {#none-attestation}
+
+The <dfn>none attestation statement format</dfn> is used to replace any [=authenticator=]-provided [=attestation statement=] when an [=[RP]=] indicates it does not wish to receive attestation information, see  [[#attestation-convey]].
+
+: Attestation statement format identifier
+:: none
+
+: Attestation types supported
+:: [=None=]
+
+: Syntax
+:: The syntax of a none attestation statement is defined as follows:
+
+    ```
+    $$attStmtType //= (
+                          fmt: "none",
+                          attStmt: emptyMap
+                      )
+
+    emptyMap = {}
+    ```
+
+: Signing procedure
+:: Return the fixed attestation statement defined above.
+
+: Verification procedure
+:: Return attestation type None with an empty trust path.
 
 # WebAuthn Extensions # {#extensions}
 
