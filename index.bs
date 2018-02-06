@@ -131,6 +131,7 @@ spec: FIDO-APPID; urlPrefix: https://fidoalliance.org/specs/fido-u2f-v1.2-ps-201
 <pre class="link-defaults">
 spec:credential-management; type:dfn; text:credentials
 spec:html; type:dfn; for:environment settings object; text:global object
+spec:infra; type:dfn; for:/; text:set
 spec:infra; type:dfn; text:list
 spec:infra; type:dfn; for:struct; text:item
 spec:url; type:dfn; text:domain
@@ -419,21 +420,34 @@ The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "S
     attestation=], the [=credential key pair=] is also used as the [=attestation key pair=], see [=self attestation=]
     for details.
 
-
 : <dfn>Human Palatability</dfn>
 :: An identifier that is [=human palatability|human-palatable=] is intended to be rememberable and reproducible by typical human
     users, in contrast to identifiers that are, for example, randomly generated sequences of bits [[EduPersonObjectClassSpec]].
 
-
 : <dfn>Public Key Credential Source</dfn>
-:: A [=credential source=] ([[CREDENTIAL-MANAGEMENT-1]]) used by an [=authenticator=] to generate [=authentication assertions=]. A public key credential source has:
+:: A [=credential source=] ([[CREDENTIAL-MANAGEMENT-1]]) used by an [=authenticator=] to generate [=authentication assertions=]. A [=public key credential source=] consists of a [=struct=] with the following [=struct/items=]:
 
-    * A [=Credential ID=].
-    * A [=credential private key=].
-    * The [=Relying Party Identifier=] for the [=[RP]=] that created this credential source.
-    * A [=user handle=] for the person who created this credential source.
-    * Optional other information used by the authenticator to inform its UI. For example, this might include the user's
-        {{displayName}}.
+    <dl dfn-for="public key credential source">
+        :   <dfn>type</dfn>
+        ::  whose value is of {{PublicKeyCredentialType}}, defaulting to {{public-key}}.
+
+        :   <dfn>id</dfn>
+        ::  A [=Credential ID=].
+
+        :   <dfn>privateKey</dfn>
+        ::  The [=credential private key=].
+
+        :   <dfn>rpId</dfn>
+        ::  The [=Relying Party Identifier=], for the [=[RP]=] this [=public key credential source=] is associated with.
+
+        :   <dfn>userHandle</dfn>
+        ::  The [=user handle=] associated when this [=public key credential source=] was created. This [=struct/item=] is
+            nullable.
+
+        :   <dfn>otherUI</dfn>
+        ::  Optional other information used by the [=authenticator=] to inform its UI. For example, this might include the user's
+            {{displayName}}.
+    </dl>
 
     The [=authenticatorMakeCredential=] operation creates a [=public key credential source=] bound to a <dfn for="public key
     credential source">managing authenticator</dfn> and returns the [=credential public key=] associated with its [=credential
@@ -441,7 +455,6 @@ The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "S
     this [=public key credential source=].
 
 : <dfn>Public Key Credential</dfn>
-
 :: Generically, a *credential* is data one entity presents to another in order to *authenticate* the former to the latter
     [[RFC4949]]. The term [=public key credential=] refers to one of: a [=public key credential source=], the
     possibly-[=attestation|attested=] [=credential public key=] corresponding to a [=public key credential source=], or an
@@ -1299,6 +1312,7 @@ When this method is invoked, the user agent MUST execute the following algorithm
                 1.  Let |pubKeyCred| be a new {{PublicKeyCredential}} object associated with |global| whose fields are:
 
                     :   {{PublicKeyCredential/[[identifier]]}}
+
                     ::  A new {{ArrayBuffer}}, created using |global|'s [=%ArrayBuffer%=], containing the bytes of
                         <code>|assertionCreationData|.[=credentialIdResult=]</code>.
 
@@ -2057,11 +2071,10 @@ operates at a higher security level than the rest of the authenticator. This is 
 are embedded in the WebAuthn client, as in those cases this cryptographic module (which may, for example, be a TPM) could be
 considered more trustworthy than the rest of the authenticator.
 
-Each authenticator stores some number of [=public key credentials=]. Each [=public key credential=] has an identifier which is
-unique (or extremely unlikely to be duplicated) among all [=public key credentials=]. Each credential is also associated with a
-[=[RP]=], whose identity is represented by a [=Relying Party Identifier=] ([=RP ID=]).
+Each authenticator stores a <dfn for=authenticator>credentials map</dfn>, a [=map=] from ([=rpId=], [[=userHandle=]]) to
+[=public key credential source=].
 
-Each authenticator has an AAGUID, which is a 128-bit identifier that indicates the type (e.g. make and model) of the
+Additionally, each authenticator has an AAGUID, which is a 128-bit identifier indicating the type (e.g. make and model) of the
 authenticator. The AAGUID MUST be chosen by the manufacturer to be identical across all substantially identical authenticators
 made by that manufacturer, and different (with probability 1-2<sup>-128</sup> or greater) from the AAGUIDs of all other types of
 authenticators. The RP MAY use the AAGUID to infer certain properties of the authenticator, such as certification level and
@@ -2105,7 +2118,6 @@ Authenticators produce cryptographic signatures for two distinct purposes:
     [Figure 2, below](#fig-signature).
 
 The formats of these signatures, as well as the procedures for generating them, are specified below.
-
 
 ## Authenticator data ## {#sec-authenticator-data}
 
@@ -2240,6 +2252,18 @@ session to exist at any particular time, or by providing more complicated sessio
 The following operations can be invoked by the client in an authenticator session.
 
 
+<h4 id="op-lookup-credsource-by-credid" algorithm>Lookup Credential Source by Credential ID algorithm</h4>
+
+The result of <dfn for="credential id">looking up</dfn> a [=credential id=] |credentialId| in an [=authenticator=]
+|authenticator| is the result of the following algorithm:
+1. If |authenticator| can decrypt |credentialId| into a [=public key credential source=] |credSource|:
+    1. Set |credSource|.[=public key credential source/id=] to |credentialId|.
+    1. Return |credSource|.
+1. [=map/For each=] [=public key credential source=] |credSource| of |authenticator|'s [=credentials map=]:
+    1. If |credSource|.[=public key credential source/id=] is |credentialId|, return |credSource|.
+1. Return `null`.
+
+
 <h4 id="op-make-cred" algorithm>The <dfn>authenticatorMakeCredential</dfn> operation</h4>
 
 It takes the following input parameters:
@@ -2280,11 +2304,15 @@ When this operation is invoked, the [=authenticator=] MUST perform the following
 1. Check if at least one of the specified combinations of {{PublicKeyCredentialType}} and cryptographic parameters in
     |credTypesAndPubKeyAlgs| is supported.
     If not, return an error code equivalent to "{{NotSupportedError}}" and terminate the operation.
-1. Check if any credential bound to this authenticator matches an [=list/item=] of |excludeCredentialDescriptorList|. A match 
-    occurs if a credential matches <code>|rpEntity|.{{PublicKeyCredentialRpEntity/id}}</code> and an |excludeCredentialDescriptorList| 
-    item's <code>|excludeCredentialDescriptorList|.{{PublicKeyCredentialDescriptor/id}}</code> and 
-    <code>|excludeCredentialDescriptorList|.{{PublicKeyCredentialDescriptor/type}}</code>.
-    If so, return an error code equivalent to "{{NotAllowedError}}" and terminate the operation.
+
+1. [=list/For each=] |descriptor| of |excludeCredentialDescriptorList|:
+
+    1.  If [=credential id/looking up=] <code>|descriptor|.{{PublicKeyCredentialDescriptor/id}}</code> in this authenticator
+        returns non-`null`, and the returned [=list/item=]'s [=RP ID=] and [=type=] match
+        <code>|rpEntity|.{{PublicKeyCredentialRpEntity/id}}</code> and
+        <code>|excludeCredentialDescriptorList|.{{PublicKeyCredentialDescriptor/type}}</code> respectively, then
+        return an error code equivalent to "{{NotAllowedError}}" and terminate the operation.
+
 1. If |requireResidentKey| is `true` and the authenticator cannot store a [=Client-side-resident Credential
     Private Key=], return an error code equivalent to "{{ConstraintError}}" and terminate the operation.
 1. If |requireUserVerification| is `true` and the authenticator cannot perform [=user verification=], return an error code
@@ -2306,13 +2334,28 @@ When this operation is invoked, the [=authenticator=] MUST perform the following
     1. Let (|publicKey|,|privateKey|) be a new pair of cryptographic keys using the combination of {{PublicKeyCredentialType}}
         and cryptographic parameters represented by the first [=list/item=] in |credTypesAndPubKeyAlgs| that is supported by
         this authenticator.
-    1. Let |credentialId| be a new identifier for this credential that is globally unique with high probability across all
-        credentials with the same type across all authenticators.
     1. Let |userHandle| be <code>|userEntity|.{{PublicKeyCredentialUserEntity/id}}</code>.
-    1. Associate the |credentialId| and |privateKey| with <code>|rpEntity|.{{PublicKeyCredentialRpEntity/id}}</code> and
-        |userHandle|. The authenticator MAY discard |userHandle| from this association if |privateKey| is not a
-        [=Client-side-resident Credential Private Key=].
-    1. Delete any older credentials with the same <code>|rpEntity|.{{PublicKeyCredentialRpEntity/id}}</code> and |userHandle| that are stored locally by the [=authenticator=].
+    1. Let |credentialSource| be a new [=public key credential source=] with the fields:
+        <dl link-for="public key credential source">
+            : [=type=]
+            :: {{PublicKeyCredentialType/public-key}}.
+            : [=privateKey=]
+            :: |privateKey|
+            : [=rpId=]
+            :: <code>|rpEntity|.{{PublicKeyCredentialRpEntity/id}}</code>
+            : [=userHandle=]
+            :: |userHandle|
+            : [=otherUI=]
+            :: Any other information the authenticator chooses to include.
+        </dl>
+    1. If |requireResidentKey| is true or the authenticator chooses to create a [=Client-side-resident Credential Private Key=]:
+        1. Let |credentialId| be a new [=credential id=].
+        1. Set |credentialSource|.[=public key credential source/id=] to |credentialId|.
+        1. Let |credentials| be this authenticator's [=credentials map=].
+        1. [=map/Set=] |credentials|[(<code>|rpEntity|.{{PublicKeyCredentialRpEntity/id}}</code>, |userHandle|)] to |credentialSource|.
+    1. Otherwise:
+        1. Let |credentialId| be the result of serializing and encrypting |credentialSource| so that only this authenticator can
+            decrypt it.
 1. If any error occurred while creating the new credential object, return an error code equivalent to "{{UnknownError}}" and
     terminate the operation.
 1. Let |processedExtensions| be the result of [=authenticator extension processing=] for each supported [=extension identifier=]/input
@@ -2364,41 +2407,30 @@ It takes the following input parameters:
 Note: Before performing this operation, all other operations in progress in the [=authenticator session=] must be aborted by running the [=authenticatorCancel=] operation.
 
 When this method is invoked, the [=authenticator=] MUST perform the following procedure:
+
 1. Check if all the supplied parameters are syntactically well-formed and of the correct length. If not, return an error code
     equivalent to "{{UnknownError}}" and terminate the operation.
-1. If |requireUserVerification| is `true` and the authenticator cannot perform [=user
-    verification=], return an error code equivalent to "{{ConstraintError}}" and terminate the operation.
-1. If |allowCredentialDescriptorList| was not supplied, set it to a [=list=] of all credentials stored for |rpId| (as determined
-    by an exact match of |rpId|).
-1. Remove any [=list/items=] from |allowCredentialDescriptorList| that do not match a credential bound to this authenticator. A
-    match occurs if a credential matches <code>|rpId|</code> and an |allowCredentialDescriptorList| [=list/item=]'s
-    {{PublicKeyCredentialDescriptor/id}} and {{PublicKeyCredentialDescriptor/type}} members.
-1. If |allowCredentialDescriptorList| is now [=list/empty=], return an error code equivalent to "{{NotAllowedError}}" and
-    terminate the operation.
+1. Let |credentialOptions| be a new empty [=set=] of [=public key credential sources=].
+1. If |allowCredentialDescriptorList| was supplied, then [=list/for each=] |descriptor| of |allowCredentialDescriptorList|:
+    1. Let |credSource| be the result of [=looking up=] <code>|descriptor|.{{PublicKeyCredentialDescriptor/id}}</code> in this
+        authenticator.
+    1. If |credSource| is not `null`, [=set/append=] it to |credentialOptions|.
+1. Otherwise (|allowCredentialDescriptorList| was not supplied), [=map/for each=] <var ignore>key</var> → |credSource| of this
+    authenticator's [=credentials map=], [=set/append=] |credSource| to |credentialOptions|.
+1. [=list/Remove=] any items from |credentialOptions| whose [=public key credential source/rpId=] is not equal to
+    |rpId|.
+1. If |credentialOptions| is now empty, return an error code equivalent to "{{NotAllowedError}}" and terminate the operation.
 
-1. Let |selectedCredential| be a [=public key credential|credential=] as follows. If the [=list/size=] of
-    |allowCredentialDescriptorList|
-
-    <dl class="switch">
-        :   is exactly 1
-        ::  Let |selectedCredential| be the [=public key credential|credential=] matching
-            <code>|allowCredentialDescriptorList|[0]</code>.
-
-        :   is greater than 1
-        ::  Prompt the user to select |selectedCredential| from the [=public key credential|credentials=] matching the
-            [=list/items=] in |allowCredentialDescriptorList|.
-    </dl>
-
-
-1. Obtain [=user consent=] for using |selectedCredential|. The prompt for obtaining this [=user consent|consent=] MAY be shown by
-    the [=authenticator=] if it has its own output capability, or by the user agent otherwise. The prompt SHOULD display the
-    |rpId| and any additional displayable data associated with |selectedCredential|, if possible.
+1. Prompt the user to select a [=public key credential source=] |selectedCredential| from |credentialOptions|.
+    Obtain [=user consent=] for using |selectedCredential|. The prompt for obtaining this [=user consent|consent=] may be shown
+    by the [=authenticator=] if it has its own output capability, or by the user agent otherwise.
 
     If |requireUserVerification| is `true`, the method of obtaining [=user consent=] MUST include [=user verification=].
 
-    If |requireUserPresence| is `true`, the method of obtaining [=user consent=] MUST include a [=test of user presence=].
+    If |requireUserPresence| is `true`, the method of obtaining [=user consent=] MUST include a 
+        [=test of user presence=].
 
-    If the user does not [=user consent|consent=] or if [=user verification=] fails, return an error code equivalent to
+    If the user does not [=user consent|consent=], return an error code equivalent to
     "{{NotAllowedError}}" and terminate the operation.
 
 1. Let |processedExtensions| be the result of [=authenticator extension processing=] for each supported [=extension
@@ -2409,7 +2441,7 @@ When this method is invoked, the [=authenticator=] MUST perform the following pr
 1. Let |authenticatorData| be the byte array specified in [[#sec-authenticator-data]] including |processedExtensions|, if any, as
     the <code>[=authDataExtensions|extensions=]</code> and excluding <code>[=attestedCredentialData=]</code>.
 1. Let |signature| be the [=assertion signature=] of the concatenation <code>|authenticatorData| || |hash|</code> using the
-    [=credential private key|private key=] of |selectedCredential| as shown in [Figure 2](#fig-signature), below. A simple,
+    [=public key credential source/privateKey=] of |selectedCredential| as shown in [Figure 2](#fig-signature), below. A simple,
     undelimited
     concatenation is safe to use here because the [=authenticator data=] describes its own length. The [=hash of the serialized
     client data=] (which potentially has a variable length) is always the last element.
@@ -2422,22 +2454,28 @@ When this method is invoked, the [=authenticator=] MUST perform the following pr
 1. If any error occurred while generating the [=assertion signature=], return an error code equivalent to "{{UnknownError}}" and
     terminate the operation.
 
+<!-- Note: this next step is actually a top-level step, but bikeshed wanted it indented this much in order to compile w/o errors and to render properly.
+-->
     <li id='authenticatorGetAssertion-return-values'>
-    Return to the user agent:
-        - |selectedCredential|'s [=credential ID=], if either a [=list=] of credentials of [=list/size=] 2 or greater was supplied
-            by the client, or no such [=list=] was supplied. Otherwise, return only the below values.
+        Return to the user agent:
+            - |selectedCredential|.[=public key credential source/id=], if either a list of credentials
+                (i.e., |allowCredentialDescriptorList|) of length 2 or greater was
+                supplied by the client, or no such list was supplied.
+    
+                    Note: If, within |allowCredentialDescriptorList|, the client supplied exactly one credential and it was successfully employed, then its
+                        [=credential ID=] is not returned since the client already knows it. This saves transmitting these bytes over
+                        what may be a constrained connection in what is likely a common case.
+    
+            - |authenticatorData|
+            - |signature|
+            - |selectedCredential|.[=public key credential source/userHandle=]
 
-            Note: If the client supplies a [=list=] of exactly one credential and it was successfully employed, then its
-                [=credential ID=] is not returned since the client already knows it. This saves transmitting these bytes over
-                what may be a constrained connection in what is likely a common case.
-
-        - |authenticatorData|
-        - |signature|
-        - The [=user handle=] associated with |selectedCredential|, if available.
+                    Note: the returned [=public key credential source/userHandle=] value may be `null`, see:
+                        [=assertionCreationData/userHandleResult=].
     </li>
 
-If the authenticator cannot find any credential corresponding to the specified [=[RP]=] that matches the specified criteria, it
-terminates the operation and returns an error.
+If the [=authenticator=] cannot find any [=public key credential|credential=] corresponding to the specified [=[RP]=] that
+matches the specified criteria, it terminates the operation and returns an error.
 
 
 ### The <dfn>authenticatorCancel</dfn> operation ### {#op-cancel}
