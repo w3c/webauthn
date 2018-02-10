@@ -2803,8 +2803,17 @@ structures.
 When registering a new credential, represented by a {{AuthenticatorAttestationResponse}} structure |response|, as part of a
 [=registration=] [=ceremony=], a [=[RP]=] MUST proceed as follows:
 
-1. Let |C|, the [=client data=] claimed as collected during the credential creation, be the result of [=parse JSON from
-    bytes|parsing JSON from the bytes=] in <code>|response|.{{AuthenticatorResponse/clientDataJSON}}</code>.
+1. Let |JSONtext| be the result of
+    running [=UTF-8 decode=] on the value of <code>|response|.{{AuthenticatorResponse/clientDataJSON}}</code>.
+
+    Note: Using any implementation of [=UTF-8 decode=] is acceptable as long as it yields the same result as that yielded by
+    the [=UTF-8 decode=] algorithm. In particular, any leading byte order mark (BOM) MUST be stripped.
+
+1. Let |C|, the [=client data=] claimed as collected during the credential creation, be the result of running an
+    implementation-specific JSON parser on |JSONtext|.
+
+    Note: |C| may be any implementation-specific data structure representation, as long as |C|'s components are referencable as
+    required by this algorithm.
 
 1. Verify that the value of <code>|C|.{{CollectedClientData/type}}</code> is `webauthn.create`.
 
@@ -2841,7 +2850,7 @@ When registering a new credential, represented by a {{AuthenticatorAttestationRe
 
 1. Verify that |attStmt| is a correct [=attestation statement=], conveying a valid [=attestation signature=], by using the
     [=attestation statement format=] |fmt|'s verification procedure given |attStmt|, |authData| and the [=hash of the serialized
-    client data=] computed in step 7.
+    client data=] computed in step 8.
 
     Note: Each [=attestation statement format=] specifies its own verification procedure. See [[#defined-attestation-formats]] for
     the initially-defined formats, and [[!WebAuthn-Registries]] for the up-to-date list.
@@ -2851,10 +2860,10 @@ When registering a new credential, represented by a {{AuthenticatorAttestationRe
     example, the FIDO Metadata Service [[FIDOMetadataService]] provides one way to obtain such information, using the
     <code>[=aaguid=]</code> in the <code>[=attestedCredentialData=]</code> in |authData|.
 
-1. Assess the attestation trustworthiness using the outputs of the verification procedure in step 13, as follows:
+1. Assess the attestation trustworthiness using the outputs of the verification procedure in step 12, as follows:
         - If [=self attestation=] was used, check if [=self attestation=] is acceptable under [=[RP]=] policy.
         - If [=ECDAA=] was used, verify that the [=identifier of the ECDAA-Issuer public key=] used is included in the set of
-            acceptable trust anchors obtained in step 14.
+            acceptable trust anchors obtained in step 13.
         - Otherwise, use the X.509 certificates returned by the verification procedure to verify that the attestation public key
             correctly chains up to an acceptable root certificate.
 
@@ -2869,7 +2878,7 @@ When registering a new credential, represented by a {{AuthenticatorAttestationRe
     <code>[=credentialPublicKey=]</code> in the <code>[=attestedCredentialData=]</code> in |authData|, as appropriate for the
     [=[RP]=]'s system.
 
-1. If the attestation statement |attStmt| successfully verified but is not trustworthy per step 15 above, the [=[RP]=] SHOULD fail
+1. If the attestation statement |attStmt| successfully verified but is not trustworthy per step 14 above, the [=[RP]=] SHOULD fail
     the registration ceremony.
 
     NOTE: However, if permitted by policy, the [=[RP]=] MAY register the [=credential ID=] and credential public key but treat the
@@ -2878,7 +2887,7 @@ When registering a new credential, represented by a {{AuthenticatorAttestationRe
         See [[FIDOSecRef]] and [[UAFProtocol]] for a more detailed discussion.
 
 Verification of [=attestation objects=] requires that the [=[RP]=] has a trusted method of determining acceptable trust anchors
-in step 14 above. Also, if certificates are being used, the [=[RP]=] MUST have access to certificate status information for the
+in step 13 above. Also, if certificates are being used, the [=[RP]=] MUST have access to certificate status information for the
 intermediate CA certificates. The [=[RP]=] MUST also be able to build the attestation certificate chain if the client did not
 provide this chain in the attestation information.
 
@@ -2903,8 +2912,16 @@ When verifying a given {{PublicKeyCredential}} structure (|credential|) as part 
     {{AuthenticatorResponse/clientDataJSON}}, {{AuthenticatorAssertionResponse/authenticatorData}}, and
     {{AuthenticatorAssertionResponse/signature}} respectively.
 
-1. Let |C|, the [=client data=] used for the signature, be the result of [=parse JSON from
-    bytes|parsing JSON from the bytes=] in |cData|.
+1. Let |JSONtext| be the result of running [=UTF-8 decode=] on the value of |cData|.
+
+    Note: Using any implementation of [=UTF-8 decode=] is acceptable as long as it yields the same result as that yielded by
+    the [=UTF-8 decode=] algorithm. In particular, any leading byte order mark (BOM) MUST be stripped.
+
+1. Let |C|, the [=client data=] claimed as used for the signature, be the result of running an implementation-specific
+    JSON parser on |JSONtext|.
+
+    Note: |C| may be any implementation-specific data structure representation, as long as |C|'s components are referencable as
+    required by this algorithm.
 
 1. Verify that the value of <code>|C|.{{CollectedClientData/type}}</code> is the string `webauthn.get`.
 
