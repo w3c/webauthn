@@ -4031,37 +4031,59 @@ WebAuthn [=[RP]=].
 
 : Client extension input
 :: The Boolean value `true` to indicate that this extension is requested by the [=[RP]=].
-    <xmp class="idl">
-    partial dictionary AuthenticationExtensionsClientInputs {
-      boolean loc;
-    };
-    </xmp>
 
 : Client extension processing
 :: None, except creating the authenticator extension input from the client extension input.
 
 : Client extension output
-:: Returns a JavaScript object that encodes the location information in the authenticator extension output as a {{Coordinates}} value,
-    as defined by [[Geolocation-API]].
-    <xmp class="idl">
-    partial dictionary AuthenticationExtensionsClientOutputs {
-      Coordinates loc;
-    };
-    </xmp>
+:: Returns a JSON object that encodes the location information in the authenticator extension output as a Coordinates value,
+    as defined by [The W3C Geolocation API Specification](https://dev.w3.org/geo/api/spec-source.html#coordinates_interface).
 
 : Authenticator extension input
 :: The Boolean value `true`, encoded in CBOR (major type 7, value 21).
 
 : Authenticator extension processing
-:: Determine the Geolocation value.
+:: If the [=authenticator=] does not support the extension, then the authenticator MUST ignore the extension request.
+    If the [=authenticator=] accepts the extension, then the authenticator SHOULD only add this extension data to a packed
+    attestation or assertion.
 
 : Authenticator extension output
-:: A 
-    [[Geolocation-API]]
-    {{Coordinates}} record encoded as a CBOR map.
-    Values represented by the "double" type in JavaScript are represented as 64-bit CBOR floating point numbers.
-    Per the Geolocation specification, the "latitude", "longitude", and "accuracy" values are required
-    and other values such as "altitude" are optional.
+:: If the [=authenticator=] accepts the extension request, then [=authenticator extension output=] SHOULD provide location data
+    in the form of a CBOR-encoded map, with the first value being the [=extension identifier=] and the second being an array of
+    returned values. The array elements SHOULD be derived from (key,value) pairings for each location attribute that the
+    [=authenticator=] supports. The following is an example of [=authenticator data=] where the returned array is comprised of a
+    {longitude, latitude, altitude} triplet, following the coordinate representation defined in [The W3C Geolocation API
+    Specification](https://dev.w3.org/geo/api/spec-source.html#coordinates_interface).
+
+    <pre>
+    CDDL:
+      {
+       loc: positionCoordinates,
+      }    
+      positionCoordinates = [
+         latitude: float64,
+         longitude: float64,
+         altitude: float64
+         ]
+     CBOR Example:
+        ...                                         -- [=RP ID=] hash (32 bytes)
+        81                                          -- UP and ED set
+        00 00 00 01                                 -- (initial) signature counter
+        ...                                         -- all public key alg etc.
+        A1                                          -- extension: CBOR map of one element
+            63                                      -- Value 1: CBOR text string of 3 bytes
+                6C 6F 63                            -- "loc" [=UTF-8 encoded=] string
+            86                                      -- Value 2: array of 6 elements
+                68                  -- Element 1:  CBOR text string of 8 bytes
+                   6C 61 74 69 74 75 64 65          -- “latitude” [=UTF-8 encoded=] string
+                FB ...                  -- Element 2:  Latitude as CBOR encoded double-precision float
+                69                  -- Element 3:  CBOR text string of 9 bytes
+                   6C 6F 6E 67 69 74 75 64 65       -- “longitude” [=UTF-8 encoded=] string
+                FB ...                  -- Element 4:  Longitude as CBOR encoded double-precision float
+                68                  -- Element 5:  CBOR text string of 8 bytes
+                  61 6C 74 69 74 75 64 65           -- “altitude” [=UTF-8 encoded=] string
+                FB ...                  -- Element 6:  Altitude as CBOR encoded double-precision float
+    </pre>
 
 ## User Verification Method Extension (uvm) ## {#sctn-uvm-extension}
 
