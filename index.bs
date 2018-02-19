@@ -933,7 +933,13 @@ When this method is invoked, the user agent MUST execute the following algorithm
                 Note: [=Authenticators=] may return an indication of "the user cancelled the entire operation".
                 How a user agent manifests this state to users is unspecified.
 
-        :   If any |authenticator| returns an error status,
+        :   If any |authenticator| returns an error status equivalent to "{{InvalidStateError}}",
+        ::  1. [=set/Remove=] |authenticator| from |issuedRequests|.
+            1. [=set/For each=] remaining |authenticator| in |issuedRequests| invoke the [=authenticatorCancel=] operation on
+                |authenticator| and [=set/remove=] it from |issuedRequests|.
+            1. Return a {{DOMException}} whose name is "{{InvalidStateError}}" and terminate this algorithm.
+
+        :   If any |authenticator| returns an error status not equivalent to "{{InvalidStateError}}",
         ::  [=set/Remove=] |authenticator| from |issuedRequests|.
 
         :   If any |authenticator| indicates success,
@@ -2337,8 +2343,16 @@ When this operation is invoked, the [=authenticator=] MUST perform the following
     1.  If [=credential id/looking up=] <code>|descriptor|.{{PublicKeyCredentialDescriptor/id}}</code> in this authenticator
         returns non-`null`, and the returned [=list/item=]'s [=RP ID=] and [=type=] match
         <code>|rpEntity|.{{PublicKeyCredentialRpEntity/id}}</code> and
-        <code>|excludeCredentialDescriptorList|.{{PublicKeyCredentialDescriptor/type}}</code> respectively, then
-        return an error code equivalent to "{{NotAllowedError}}" and terminate the operation.
+        <code>|excludeCredentialDescriptorList|.{{PublicKeyCredentialDescriptor/type}}</code> respectively, then obtain [=user
+        consent=] for creating a new credential. The method of obtaining [=user consent=] MUST include a [=test
+        of user presence=]. If the user
+        <dl class="switch">
+            :   confirms consent to create a new credential
+            ::  return an error code equivalent to "{{InvalidStateError}}" and terminate the operation.
+
+            :   does not consent to create a new credential
+            ::  return an error code equivalent to "{{NotAllowedError}}" and terminate the operation.
+        </dl>
 
 1. If |requireResidentKey| is `true` and the authenticator cannot store a [=Client-side-resident Credential
     Private Key=], return an error code equivalent to "{{ConstraintError}}" and terminate the operation.
