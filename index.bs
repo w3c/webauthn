@@ -939,8 +939,17 @@ When this method is invoked, the user agent MUST execute the following algorithm
                 |authenticator| and [=set/remove=] it from |issuedRequests|.
             1. Return a {{DOMException}} whose name is "{{InvalidStateError}}" and terminate this algorithm.
 
+            Note: This error status is handled separately because the |authenticator| returns it only if
+            |excludeCredentialDescriptorList| identifies a credential bound to the |authenticator| and the user has confirmed
+            [=user consent|consent=] for the operation. Because of this consent, it is acceptable for this case to be
+            distinguishable to the [=[RP]=].
+
         :   If any |authenticator| returns an error status not equivalent to "{{InvalidStateError}}",
         ::  [=set/Remove=] |authenticator| from |issuedRequests|.
+
+            Note: This case does not imply [=user consent=] for the operation, so details about the error must be hidden from the
+            [=[RP]=] in order to prevent leak of potentially identifying information. See [[#sec-make-credential-privacy]] for
+            details.
 
         :   If any |authenticator| indicates success,
         ::  1.  [=set/Remove=] |authenticator| from |issuedRequests|.
@@ -4740,24 +4749,45 @@ in several ways, including:
     signature using the [=ECDAA-Issuer public key=], but the attestation signature does not serve as a global correlation handle.
 
 
-## Registration and Authentication Ceremonies Privacy ## {#sec-assertion-privacy}
+## Registration Ceremony Privacy ## {#sec-make-credential-privacy}
 
 In order to protect users from being identified without [=user consent|consent=], implementations of the
-{{PublicKeyCredential/[[Create]](origin, options, sameOriginWithAncestors)}} and
-{{PublicKeyCredential/[[DiscoverFromExternalSource]](origin, options, sameOriginWithAncestors)}} methods need to take care to
-not leak information that could enable a malicious [=[RP]=] to distinguish between these cases, where "named" means that the
-[=public key credential|credential=] is listed by the [=[RP]=] in either {{MakePublicKeyCredentialOptions/excludeCredentials}}
-or {{PublicKeyCredentialRequestOptions/allowCredentials}}, as applicable:
+{{PublicKeyCredential/[[Create]](origin, options, sameOriginWithAncestors)}} method need to take care to not leak information that
+could enable a malicious [=[RP]=] to distinguish between these cases, where "excluded" means that at least one of the [=public key
+credential|credentials=] listed by the [=[RP]=] in {{MakePublicKeyCredentialOptions/excludeCredentials}} is bound to the
+[=authenticator=]:
+
+- No [=authenticators=] are present.
+- At least one [=authenticator=] is present, and at least one present [=authenticator=] is excluded.
+
+If the above cases are distinguishable, information is leaked by which a malicious [=[RP]=] could identify the user by probing for
+which [=public key credential|credentials=] are available. For example, one such information leak is if the client returns a
+failure response as soon as an excluded [=authenticator=] becomes available. In this case - especially if the excluded
+[=authenticator=] is a [=platform authenticator=] - the [=[RP]=] could detect that the [=ceremony=] was canceled before the
+timeout and before the user could feasibly have canceled it manually, and thus conclude that at least one of the [=public key
+credential|credentials=] listed in the {{MakePublicKeyCredentialOptions/excludeCredentials}} parameter is available to the user.
+
+The above is not a concern, however, if the user has confirmed [=user consent|consent=] to create a new credential before a
+distinguishable error is returned, because in this case the user has confirmed intent to share the information that would be
+leaked.
+
+
+## Authentication Ceremony Privacy ## {#sec-assertion-privacy}
+
+In order to protect users from being identified without [=user consent|consent=], implementations of the
+{{PublicKeyCredential/[[DiscoverFromExternalSource]](origin, options, sameOriginWithAncestors)}} method need to take care to not
+leak information that could enable a malicious [=[RP]=] to distinguish between these cases, where "named" means that the [=public
+key credential|credential=] is listed by the [=[RP]=] in {{PublicKeyCredentialRequestOptions/allowCredentials}}:
 
 - A named [=public key credential|credential=] is not available.
 - A named [=public key credential|credential=] is available, but the user does not [=user consent|consent=] to use it.
 
 If the above cases are distinguishable, information is leaked by which a malicious [=[RP]=] could identify the user by probing
 for which [=public key credential|credentials=] are available. For example, one such information leak is if the client returns a
-failure response as soon as the user denies [=user consent|consent=] to proceed with a [=registration=] or [=authentication=]
-[=ceremony=]. In this case the [=[RP]=] could detect that the [=ceremony=] was canceled by the user and not the timeout, and
-thus conclude that at least one of the [=public key credential|credentials=] listed in the
-{{PublicKeyCredentialRequestOptions/allowCredentials}} parameter is available to the user.
+failure response as soon as the user denies [=user consent|consent=] to proceed with an [=authentication=] [=ceremony=]. In this
+case the [=[RP]=] could detect that the [=ceremony=] was canceled by the user and not the timeout, and thus conclude that at least
+one of the [=public key credential|credentials=] listed in the {{PublicKeyCredentialRequestOptions/allowCredentials}} parameter is
+available to the user.
 
 
 # Acknowledgements # {#acknowledgements}
