@@ -620,7 +620,7 @@ that are returned to the caller when a new credential is created, or a new asser
     interface PublicKeyCredential : Credential {
         [SameObject] readonly attribute ArrayBuffer              rawId;
         [SameObject] readonly attribute AuthenticatorResponse    response;
-        [SameObject] readonly attribute AuthenticationExtensionsClientOutputs clientExtensionResults;
+        AuthenticationExtensionsClientOutputs getClientExtensionResults();
     };
 </xmp>
 <dl dfn-type="attribute" dfn-for="PublicKeyCredential">
@@ -639,11 +639,10 @@ that are returned to the caller when a new credential is created, or a new asser
         the {{PublicKeyCredential}} was created in response to {{CredentialsContainer/get()}}, and this attribute's value
         will be an {{AuthenticatorAssertionResponse}}.
 
-    :   <dfn>clientExtensionResults</dfn>
-    ::  This attribute contains a [=map=] of [=extension identifier=] → [=client extension output=] entries, produced by the
-        [=client extension processing=] of [=client extensions=] requested by the [=[RP]=] upon invocation of either
-        {{CredentialsContainer/create()|navigator.credentials.create()}} or
-        {{CredentialsContainer/get()|navigator.credentials.get()}}.
+    :   {{PublicKeyCredential/getClientExtensionResults()}}
+    ::  This operation returns the value of {{PublicKeyCredential/[[clientExtensionsResults]]}}, which is a [=map=] containing
+        [=extension identifier=] → [=client extension output=] entries produced by the extension's
+        [=client extension processing=].
 
     :   <dfn>\[[type]]</dfn>
     ::  The {{PublicKeyCredential}} [=interface object=]'s {{Credential/[[type]]}} [=internal slot=]'s value is the string
@@ -664,6 +663,11 @@ that are returned to the caller when a new credential is created, or a new asser
         the format or length of this identifier, except that it MUST be sufficient for the platform to uniquely select a key.
         For example, an authenticator without on-board storage may create identifiers containing a [=credential private key=]
         wrapped with a symmetric key that is burned into the authenticator.
+
+    :   <dfn>\[[clientExtensionsResults]]</dfn>
+    ::  This [=internal slot=] contains the results of processing client extensions requested by the [=[RP]=] upon the
+        [=[RP]=]'s invocation of either {{CredentialsContainer/create()|navigator.credentials.create()}} or
+        {{CredentialsContainer/get()|navigator.credentials.get()}}.
 </dl>
 
 {{PublicKeyCredential}}'s [=interface object=] inherits {{Credential}}'s implementation of
@@ -1010,8 +1014,9 @@ When this method is invoked, the user agent MUST execute the following algorithm
                         :   {{AuthenticatorAttestationResponse/attestationObject}}
                         ::  |attestationObject|
 
-                    :   {{PublicKeyCredential/clientExtensionResults}}
-                    ::  <code>|credentialCreationData|.[=credentialCreationData/clientExtensionResults=]</code>.
+                    :   {{PublicKeyCredential/[[clientExtensionsResults]]}}
+                    ::  A new {{ArrayBuffer}}, created using |global|'s [=%ArrayBuffer%=], containing the bytes of
+                        <code>|credentialCreationData|.[=credentialCreationData/clientExtensionResults=]</code>.
 
                 1.  Return |pubKeyCred|.
 
@@ -1354,8 +1359,9 @@ When this method is invoked, the user agent MUST execute the following algorithm
                             [=%ArrayBuffer%=], containing the bytes of
                             <code>|assertionCreationData|.[=assertionCreationData/userHandleResult=]</code>.
 
-                    :   {{PublicKeyCredential/clientExtensionResults}}
-                    ::  <code>|assertionCreationData|.[=assertionCreationData/clientExtensionResults=]</code>.
+                    :   {{PublicKeyCredential/[[clientExtensionsResults]]}}
+                    ::  A new {{ArrayBuffer}}, created using |global|'s [=%ArrayBuffer%=], containing the bytes of
+                        <code>|assertionCreationData|.[=assertionCreationData/clientExtensionResults=]</code>.
 
                 1.  Return |pubKeyCred|.
 
@@ -3019,7 +3025,7 @@ When verifying a given {{PublicKeyCredential}} structure (|credential|) and an {
               <dd>Update the stored [=signature counter=] value, associated with 
                   |credential|'s {{Credential/id}} attribute, to be the value of 
                   |adata|.<code>[=signCount=]</code>.</dd>
-	      <dt>less than or equal to the [=signature counter=] value stored in conjunction 
+              <dt>less than or equal to the [=signature counter=] value stored in conjunction
                   with |credential|'s {{Credential/id}} attribute.</dt>
               <dd>This is a signal that
                   the authenticator may be cloned, i.e. at least 
@@ -3132,7 +3138,7 @@ implementable by [=authenticators=] with limited resources (e.g., secure element
         1. If [=ECDAA=] is in use, the authenticator produces |sig| by concatenating |authenticatorData| and |clientDataHash|, and
             signing the result using ECDAA-Sign (see section 3.5 of [[!FIDOEcdaaAlgorithm]]) after selecting an
             [=ECDAA-Issuer public key=] related to the ECDAA signature private key through an 
-	        authenticator-specific mechanism (see [[!FIDOEcdaaAlgorithm]]). It sets |alg| to the algorithm of the selected
+            authenticator-specific mechanism (see [[!FIDOEcdaaAlgorithm]]). It sets |alg| to the algorithm of the selected
             [=ECDAA-Issuer public key=] and |ecdaaKeyId| to the [=identifier of the ECDAA-Issuer public key=] (see above).
 
         1. If [=self attestation=] is in use, the authenticator produces |sig| by concatenating |authenticatorData| and |clientDataHash|,
@@ -3742,7 +3748,7 @@ Supported [=client extensions=] are recorded as a dictionary in the [=client dat
 {{CollectedClientData/clientExtensions}}. For each such extension, the client adds an entry to this dictionary with the
 [=extension identifier=] as the key, and the extension's [=client extension input=] as the value.
 
-Likewise, the [=client extension outputs=] are represented as a dictionary in the {{PublicKeyCredential/clientExtensionResults}} value,
+Likewise, the [=client extension outputs=] are represented as a dictionary in the result of {{PublicKeyCredential/getClientExtensionResults()}}
 with [=extension identifiers=] as keys, and the <dfn>client extension output</dfn> value of each extension as the value.
 Like the [=client extension input=], the [=client extension output=] is a value that can be encoded in JSON.
 
