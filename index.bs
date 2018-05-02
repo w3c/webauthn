@@ -227,8 +227,9 @@ scenarios. Additional scenarios, including sample code, are given later in [[#sa
 ### Authentication ### {#usecase-authentication}
 
 - On a laptop or desktop:
-    * User navigates to example.com in a browser, sees an option to "Sign in with your phone."
-    * User chooses this option and gets a message from the browser, "Please complete this action on your phone."
+    * User pairs their phone with the laptop or desktop via Bluetooth.
+    * User navigates to example.com in a browser and initiates signing in.
+    * User gets a message from the browser, "Please complete this action on your phone."
 
 - Next, on their phone:
     * User sees a discrete prompt or notification, "Sign in to example.com."
@@ -335,7 +336,7 @@ below and in [[#index-defined-elsewhere]].
 : FIDO AppID
 :: The algorithms for [=determining the FacetID of a calling application=] and
     [=determining if a caller's FacetID is authorized for an AppID=] (used only in
-    the `appid` extension) are defined by [[!FIDO-APPID]].
+    the [=AppID|AppID extension=]) are defined by [[!FIDO-APPID]].
 
 The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "SHOULD NOT", "RECOMMENDED",  "MAY", and
 "OPTIONAL" in this document are to be interpreted as described in [[!RFC2119]].
@@ -410,11 +411,11 @@ The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "S
 
 : <dfn>Client-side-resident Credential Private Key</dfn>
 :: A [=Client-side-resident Credential Private Key=] is stored either on the client platform, or in some cases on the
-    authenticator itself, e.g., in the case of a discrete first-factor roaming authenticator. Such <dfn>client-side credential
+    authenticator itself, e.g., in the case of a discrete first-factor [=roaming authenticator=]. Such <dfn>client-side credential
     private key storage</dfn> has the property that the authenticator is able to select the [=credential private key=] given
     only an [=RP ID=], possibly with user assistance (e.g., by providing the user a pick list of credentials associated with the RP
-    ID). By definition, the private key is always exclusively controlled by the Authenticator. In the case of a
-    [=Client-side-resident Credential Private Key=], the Authenticator might offload storage of wrapped key material to the
+    ID). By definition, the private key is always exclusively controlled by the [=authenticator=]. In the case of a
+    [=Client-side-resident Credential Private Key=], the [=authenticator=] might offload storage of wrapped key material to the
     client platform, but the client platform is not expected to offload the key storage to remote entities (e.g. RP Server).
 
 : <dfn>Conforming User Agent</dfn>
@@ -1609,7 +1610,7 @@ optionally evidence of [=user consent=] to a specific transaction.
 
     :   <dfn>challenge</dfn>
     ::  This member contains a challenge intended to be used for generating the newly created credential's [=attestation
-        object=].
+        object=]. See the [[#cryptographic-challenges]] security consideration.
 
     :   <dfn>pubKeyCredParams</dfn>
     ::  This member contains information about the desired properties of the credential to be created. The sequence is ordered
@@ -1943,6 +1944,8 @@ follows.
 The <dfn>client data</dfn> represents the contextual bindings of both the [=[RP]=] and the client platform. It is a key-value
 mapping with string-valued keys. Values can be any type that has a valid encoding in JSON. Its structure is defined by the
 following Web IDL.
+
+Note: The {{CollectedClientData}} may be extended in the future. Therefore it's critical when parsing to be tolerant of unknown keys and of any reordering of the keys.
 
 <pre class="idl">
     dictionary CollectedClientData {
@@ -2352,7 +2355,7 @@ When this operation is invoked, the [=authenticator=] MUST perform the following
 1. [=list/For each=] |descriptor| of |excludeCredentialDescriptorList|:
 
     1.  If [=credential id/looking up=] <code>|descriptor|.{{PublicKeyCredentialDescriptor/id}}</code> in this authenticator
-        returns non-`null`, and the returned [=list/item=]'s [=RP ID=] and [=type=] match
+        returns non-null, and the returned [=list/item=]'s [=RP ID=] and [=type=] match
         <code>|rpEntity|.{{PublicKeyCredentialRpEntity/id}}</code> and
         <code>|excludeCredentialDescriptorList|.{{PublicKeyCredentialDescriptor/type}}</code> respectively, then obtain [=user
         consent=] for creating a new credential. The method of obtaining [=user consent=] MUST include a [=test
@@ -3468,7 +3471,8 @@ even if the SafetyNet API is also present.
 :: Let |authenticatorData| denote the [=authenticator data for the attestation=], and let |clientDataHash| denote the
     [=hash of the serialized client data=].
 
-    Concatenate |authenticatorData| and |clientDataHash| to form |attToBeSigned|.
+    Concatenate |authenticatorData| and |clientDataHash|, perform SHA-256 hash of the concatenated string, and
+    let the result of the hash form |attToBeSigned|.
 
     Request a SafetyNet attestation, providing |attToBeSigned| as the nonce value. Set |response| to the result, and |ver| to
     the version of Google Play Services running in the authenticator.
@@ -3479,7 +3483,7 @@ even if the SafetyNet API is also present.
     - Verify that |attStmt| is valid CBOR conforming to the syntax defined above and perform CBOR decoding on it to extract the
         contained fields.
     - Verify that |response| is a valid SafetyNet response of version |ver|.
-    - Verify that the nonce in the |response| is identical to the concatenation of |authenticatorData| and |clientDataHash|.
+    - Verify that the nonce in the |response| is identical to the SHA-256 hash of the concatenation of |authenticatorData| and |clientDataHash|.
     - Verify that the attestation certificate is issued to the hostname "attest.android.com" (see
         [SafetyNet online documentation](https://developer.android.com/training/safetynet/index.html#compat-check-response)).
     - Verify that the `ctsProfileMatch` attribute in the payload of |response| is true.
@@ -3790,7 +3794,7 @@ IANA "WebAuthn Extension Identifier" registry established by [[!WebAuthn-Registr
 These are RECOMMENDED for implementation by user agents targeting broad interoperability.
 
 
-## FIDO AppID Extension (appid) ## {#sctn-appid-extension}
+## FIDO <dfn>AppID</dfn> Extension (appid) ## {#sctn-appid-extension}
 
 This [=client extension=] allows [=[RPS]=] that have previously registered a
 credential using the legacy FIDO JavaScript APIs to request an [=assertion=]. The
@@ -4081,9 +4085,7 @@ This [=registration extension=] and [=authentication extension=] enables use of 
     whenever a factory reset is performed for the device, e.g. rawUVI = biometricReferenceData || OSLevelUserID ||
     FactoryResetCounter.
 
-    Servers supporting UVI extensions MUST support a length of up to 32 bytes for the UVI value.
-
-    Example for [=authenticator data=] containing one UVI extension
+    Example of [=authenticator data=] containing one UVI extension
     <pre>
         ...                                         -- [=RP ID=] hash (32 bytes)
         81                                          -- UP and ED set
@@ -4710,6 +4712,9 @@ response MUST match what was generated. This SHOULD be done in a fashion that do
 upon a client's behavior, e.g., the Relying Party SHOULD store the challenge temporarily
 until the operation is complete. Tolerating a mismatch will compromise the security
 of the protocol.
+
+In order to prevent replay attacks, the challenges MUST contain enough entropy to make guessing them infeasible. Challenges SHOULD
+therefore be at least 16 bytes long.
 
 ## Attestation Security Considerations ## {#sec-attestation-security-considerations}
 
