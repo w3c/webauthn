@@ -143,10 +143,15 @@ spec: FIDO-U2F-Message-Formats; urlPrefix: https://fidoalliance.org/specs/fido-u
         text: Section 4.3; url: registration-response-message-success
         text: Section 5.4; url: authentication-response-message-success
 
+spec: FIDO-Registry; urlPrefix: https://fidoalliance.org/specs/fido-v2.0-ps-20170927/fido-registry-v2.0-ps-20170927.html
+    type: dfn
+        text: Section 3.6.2; url: public-key-representation-formats
+
 spec: RFC4949; urlPrefix: https://tools.ietf.org/html/rfc4949
     type: dfn
         text: leap of faith; url: page-182
         text: man-in-the-middle attack; url: page-186
+
 
 </pre> <!-- class=anchors -->
 
@@ -727,9 +732,8 @@ To support obtaining assertions via {{CredentialsContainer/get()|navigator.crede
 ### Create a new credential - PublicKeyCredential's `[[Create]](origin, options, sameOriginWithAncestors)` method ### {#createCredential}
 
 <div link-for-hint="PublicKeyCredential/[[Create]](origin, options, sameOriginWithAncestors)">
-{{PublicKeyCredential}}'s [=interface object=]'s implementation of the
-
-<dfn for="PublicKeyCredential" method>\[[Create]](origin, options, sameOriginWithAncestors)</dfn> [=internal method=] [[CREDENTIAL-MANAGEMENT-1]] allows
+{{PublicKeyCredential}}'s [=interface object=]'s implementation of the <dfn for="PublicKeyCredential" method>\[[Create]](origin,
+options, sameOriginWithAncestors)</dfn> [=internal method=] [[CREDENTIAL-MANAGEMENT-1]] allows
 [=[RP]=] scripts to call {{CredentialsContainer/create()|navigator.credentials.create()}} to request the creation of a new
 [=public key credential source=], bound to an [=authenticator=]. This
 {{CredentialsContainer/create()|navigator.credentials.create()}} operation can be aborted by leveraging the {{AbortController}};
@@ -1950,7 +1954,7 @@ follows.
 ### Client data used in WebAuthn signatures (dictionary <dfn dictionary>CollectedClientData</dfn>) ### {#sec-client-data}
 
 The <dfn>client data</dfn> represents the contextual bindings of both the [=[RP]=] and the client platform. It is a key-value
-mapping with string-valued keys. Values can be any type that has a valid encoding in JSON. Its structure is defined by the
+mapping whose keys are strings. Values can be any type that has a valid encoding in JSON. Its structure is defined by the
 following Web IDL.
 
 Note: The {{CollectedClientData}} may be extended in the future. Therefore it's critical when parsing to be tolerant of unknown keys and of any reordering of the keys.
@@ -3007,7 +3011,7 @@ When verifying a given {{PublicKeyCredential}} structure (|credential|) and an {
 1. Using |credential|'s {{Credential/id}} attribute (or the corresponding {{PublicKeyCredential/rawId}}, if
     [=base64url encoding=] is inappropriate for your use case), look up the corresponding credential public key.
 
-1. Let |cData|, |aData| and |sig| denote the value of |credential|'s {{PublicKeyCredential/response}}'s
+1. Let |cData|, |authData| and |sig| denote the value of |credential|'s {{PublicKeyCredential/response}}'s
     {{AuthenticatorResponse/clientDataJSON}}, {{AuthenticatorAssertionResponse/authenticatorData}}, and
     {{AuthenticatorAssertionResponse/signature}} respectively.
 
@@ -3031,12 +3035,12 @@ When verifying a given {{PublicKeyCredential}} structure (|credential|) and an {
 
 1. Verify that the value of <code>|C|.{{CollectedClientData/tokenBinding}}.{{TokenBinding/status}}</code> matches the state of [=Token Binding=] for the TLS connection over which the attestation was obtained. If [=Token Binding=] was used on that TLS connection, also verify that <code>|C|.{{CollectedClientData/tokenBinding}}.{{TokenBinding/id}}</code> matches the [=base64url encoding=] of the [=Token Binding ID=] for the connection.
 
-1. Verify that the <code>[=rpIdHash=]</code> in |aData| is the SHA-256 hash of the [=RP ID=] expected by the [=[RP]=].
+1. Verify that the <code>[=rpIdHash=]</code> in |authData| is the SHA-256 hash of the [=RP ID=] expected by the [=[RP]=].
 
-1. Verify that the [=User Present=] bit of the <code>[=flags=]</code> in |aData| is set.
+1. Verify that the [=User Present=] bit of the <code>[=flags=]</code> in |authData| is set.
 
 1. If [=user verification=] is required for this assertion, verify that the [=User Verified=] bit of the <code>[=flags=]</code> in
-    |aData| is set.
+    |authData| is set.
 
 1. Verify that the values of the [=client extension outputs=] in |clientExtensionResults| and the [=authenticator extension
     outputs=] in the <code>[=authdataextensions|extensions=]</code> in |authData| are as expected, considering the [=client
@@ -3055,21 +3059,21 @@ When verifying a given {{PublicKeyCredential}} structure (|credential|) and an {
 1. Let |hash| be the result of computing a hash over the |cData| using SHA-256.
 
 1. Using the credential public key looked up in step 3, verify that |sig| is a valid signature over the binary concatenation of
-    |aData| and |hash|.
+    |authData| and |hash|.
 
     Note: This verification step is compatible with signatures generated by FIDO U2F authenticators. See
     [[#sctn-fido-u2f-sig-format-compat]].
 
-1. If the [=signature counter=] value |adata|.<code>[=signCount=]</code> is nonzero or the value stored
+1. If the [=signature counter=] value |authData|.<code>[=signCount=]</code> is nonzero or the value stored
     in conjunction with |credential|'s {{Credential/id}} attribute
     is nonzero, then run the following sub-step:
-      - If the [=signature counter=] value |adata|.<code>[=signCount=]</code> is
+      - If the [=signature counter=] value |authData|.<code>[=signCount=]</code> is
            <dl class="switch">
               <dt>greater than the [=signature counter=] value stored in conjunction 
                   with |credential|'s {{Credential/id}} attribute.</dt>
               <dd>Update the stored [=signature counter=] value, associated with 
                   |credential|'s {{Credential/id}} attribute, to be the value of 
-                  |adata|.<code>[=signCount=]</code>.</dd>
+                  |authData|.<code>[=signCount=]</code>.</dd>
               <dt>less than or equal to the [=signature counter=] value stored in conjunction
                   with |credential|'s {{Credential/id}} attribute.</dt>
               <dd>This is a signal that
@@ -3538,7 +3542,7 @@ This attestation statement format is used with FIDO U2F authenticators using the
                       )
 
     u2fStmtFormat = {
-                        x5c: [ attestnCert: bytes, * (caCert: bytes) ],
+                        x5c: [ attestnCert: bytes ],
                         sig: bytes
                     }
     ```
@@ -3546,8 +3550,7 @@ This attestation statement format is used with FIDO U2F authenticators using the
     The semantics of the above fields are as follows:
 
     : x5c
-    :: The elements of this array contain the attestation certificate and its certificate chain, each encoded in X.509 format.
-        The attestation certificate MUST be the first element in the array.
+    :: A single element array containing the attestation certificate in X.509 format.
 
     : sig
     :: The [=attestation signature=].  
@@ -3571,13 +3574,13 @@ This attestation statement format is used with FIDO U2F authenticators using the
     as follows:
     1. Verify that |attStmt| is valid CBOR conforming to the syntax defined above and perform CBOR decoding on it to extract the
         contained fields.
-    1. Let |attCert| be the value of the first element of |x5c|. Let |certificate public key| be the public key
+    1. Check that |x5c| has exactly one element and let |attCert| be that element. Let |certificate public key| be the public key
         conveyed by |attCert|. If |certificate public key| is not an Elliptic Curve (EC) public 
         key over the P-256 curve, terminate this algorithm and return an appropriate error. 
     1. Extract the claimed |rpIdHash| from |authenticatorData|, and the claimed |credentialId| and |credentialPublicKey| from
         |authenticatorData|.<code>[=attestedCredentialData=]</code>.
-    1. Convert the COSE_KEY formatted |credentialPublicKey| (see [=Section 7=] of [[!RFC8152]]) to CTAP1/U2F user public key
-        format (see [=Section 4.3=] of [[!FIDO-U2F-Message-Formats]]).
+    1. Convert the COSE_KEY formatted |credentialPublicKey| (see [=Section 7=] of [[!RFC8152]]) to Raw ANSI X9.62 public key
+        format (see ALG_KEY_ECC_X962_RAW in [=Section 3.6.2=] of [[!FIDO-Registry]]).
         - Let |x| be the value corresponding to the "-2" key (representing x coordinate) in |credentialPublicKey|, and confirm its
             size to be of 32 bytes.
             If size differs or "-2" key is not found, terminate this algorithm and return an appropriate error.
@@ -4383,28 +4386,13 @@ IANA "WebAuthn Extension Identifier" registry established by [[!WebAuthn-Registr
 
 ## COSE Algorithm Registrations ## {#sctn-cose-alg-reg}
 
-This section registers identifiers for RSASSA-PKCS1-v1_5 [[RFC8017]] algorithms using SHA-2 and SHA-1 hash functions in the
+This section registers identifiers for the following ECDAA algorithms in the
 IANA COSE Algorithms registry [[!IANA-COSE-ALGS-REG]].
-It also registers identifiers for ECDAA algorithms.
+Note that [[!WebAuthn-COSE-Algs]] also registers
+RSASSA-PKCS1-v1_5 [[RFC8017]] algorithms using SHA-2 and SHA-1 hash functions in the
+IANA COSE Algorithms registry [[!IANA-COSE-ALGS-REG]],
+such as registering -257 for "RS256".
 
-- Name: RS256
-- Value: TBD (requested assignment -257)
-- Description: RSASSA-PKCS1-v1_5 w/ SHA-256
-- Reference: Section 8.2 of [[RFC8017]]
-- Recommended: No
-    <br/><br/>
-- Name: RS384
-- Value: TBD (requested assignment -258)
-- Description: RSASSA-PKCS1-v1_5 w/ SHA-384
-- Reference: Section 8.2 of [[RFC8017]]
-- Recommended: No
-    <br/><br/>
-- Name: RS512
-- Value: TBD (requested assignment -259)
-- Description: RSASSA-PKCS1-v1_5 w/ SHA-512
-- Reference: Section 8.2 of [[RFC8017]]
-- Recommended: No
-    <br/><br/>
 - Name: ED256
 - Value: TBD (requested assignment -260)
 - Description: TPM_ECC_BN_P256 curve w/ SHA-256
@@ -4416,12 +4404,6 @@ It also registers identifiers for ECDAA algorithms.
 - Description: ECC_BN_ISOP512 curve w/ SHA-512
 - Reference: Section 4.2 of [[!FIDOEcdaaAlgorithm]]
 - Recommended: Yes
-    <br/><br/>
-- Name: RS1
-- Value: TBD (requested assignment -262)
-- Description: RSASSA-PKCS1-v1_5 w/ SHA-1
-- Reference: Section 8.2 of [[RFC8017]]
-- Recommended: No
 
 # Sample scenarios # {#sample-scenarios}
 
@@ -4966,12 +4948,24 @@ for their contributions as our W3C Team Contacts.
         "Giridhar Mandyam",
         "Michael B. Jones"
     ],
-    "date": "March 2017",
-    "href": "https://xml2rfc.tools.ietf.org/cgi-bin/xml2rfc.cgi?modeAsFormat=html/ascii&url=https://raw.githubusercontent.com/w3c/webauthn/master/draft-hodges-webauthn-registries.xml",
+    "date": "February 2018",
+    "href": "https://tools.ietf.org/html/draft-hodges-webauthn-registries",
     "publisher": "W3C WebAuthn Working Draft",
     "status": "Active Internet-Draft",
     "title": "Registries for Web Authentication (WebAuthn)",
     "id": "WebAuthn-Registries"
+  },
+
+  "WebAuthn-COSE-Algs": {
+    "authors": [
+        "Michael B. Jones"
+    ],
+    "date": "May 2018",
+    "href": "https://tools.ietf.org/html/draft-jones-webauthn-cose-algorithms",
+    "publisher": "W3C WebAuthn Working Draft",
+    "status": "Active Internet-Draft",
+    "title": "COSE Algorithms for Web Authentication (WebAuthn)",
+    "id": "WebAuthn-COSE-Algs"
   },
 
   "GeoJSON": {
@@ -5069,6 +5063,14 @@ for their contributions as our W3C Team Contacts.
     "title": "FIDO UAF Registry of Predefined Values",
     "href": "https://fidoalliance.org/specs/fido-uaf-v1.0-ps-20141208/fido-uaf-reg-v1.0-ps-20141208.html",
     "status": "FIDO Alliance Proposed Standard"
+  },
+
+  "FIDO-Registry": {
+    "authors": ["R. Lindemann"],
+    "title": "FIDO Registry of Predefined Values",
+    "href": "https://fidoalliance.org/specs/fido-v2.0-ps-20170927/fido-registry-v2.0-ps-20170927.html",
+    "status": "FIDO Alliance Proposed Standard",
+    "date": "27 September 2017"
   },
 
   "FIDO-APPID": {
