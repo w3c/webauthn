@@ -872,88 +872,93 @@ When this method is invoked, the user agent MUST execute the following algorithm
     [=AbortSignal/aborted flag=] is set to [TRUE], return a {{DOMException}} whose name is "{{AbortError}}"
     and terminate this algorithm.
 
-1. Start |lifetimeTimer|.
-
 1. Let |issuedRequests| be a new [=ordered set=].
 
-1. [=set/For each=] |authenticator| that becomes available on this platform during the lifetime of |lifetimeTimer|, do the
-    following:
+1. Let |authenticators| represent a [=set=] of platform-specific handles, where each value identifies an [=authenticator=]
+    presently available on this platform at a given instant.
 
-    Issue: The definitions of "lifetime of" and "becomes available" are intended to represent how
-    devices are hot-plugged into (USB) or discovered by (NFC) browsers, and are underspecified.
-    Resolving this with good definitions or some other means will be addressed by resolving
-    [Issue #613](https://github.com/w3c/webauthn/issues/613).
+    Note: What qualifies an [=authenticator=] as "available" is intentionally unspecified; this is meant to represent how
+    [=authenticators=] can be hot-plugged into (e.g., via USB) or discovered (e.g., via NFC or Bluetooth) by the [=client=] by
+    various mechanisms, or permanently built into the [=client=].
 
-    1. If <code>|options|.{{PublicKeyCredentialCreationOptions/authenticatorSelection}}</code> is [=present=]:
+1. Start |lifetimeTimer|.
 
-          1. If <code>|options|.{{PublicKeyCredentialCreationOptions/authenticatorSelection}}.{{authenticatorAttachment}}</code> is
-            [=present|present=] and its value is not equal to |authenticator|'s attachment modality, [=iteration/continue=].
-          1. If <code>|options|.{{PublicKeyCredentialCreationOptions/authenticatorSelection}}.{{requireResidentKey}}</code> is set to
-            [TRUE] and the |authenticator| is not capable of storing a [=Client-Side-Resident Credential Private Key=],
-            [=iteration/continue=].
-          1. If <code>|options|.{{PublicKeyCredentialCreationOptions/authenticatorSelection}}.{{AuthenticatorSelectionCriteria/userVerification}}</code> is
-            set to {{UserVerificationRequirement/required}} and the |authenticator| is not capable of performing [=user
-            verification=], [=iteration/continue=].
-
-    1. Let |userVerification| be the <dfn>effective user verification requirement for credential creation</dfn>, a Boolean value,
-        as follows. If
-        <code>|options|.{{PublicKeyCredentialCreationOptions/authenticatorSelection}}.{{AuthenticatorSelectionCriteria/userVerification}}</code>
-
-            <dl class="switch">
-
-                :   is set to {{UserVerificationRequirement/required}}
-                ::  Let |userVerification| be [TRUE].
-
-                :   is set to {{UserVerificationRequirement/preferred}}
-                ::  If the |authenticator|
-
-                    <dl class="switch">
-                        :   is capable of [=user verification=]
-                        ::  Let |userVerification| be [TRUE].
-
-                        :   is not capable of [=user verification=]
-                        ::  Let |userVerification| be [FALSE].
-                    </dl>
-
-                :   is set to {{UserVerificationRequirement/discouraged}}
-                ::  Let |userVerification| be [FALSE].
-
-            </dl>
-
-    1. Let |userPresence| be a Boolean value set to the inverse of |userVerification|.
-
-    1. Let |excludeCredentialDescriptorList| be a new [=list=].
-
-    1. [=list/For each=] credential descriptor |C| in <code>|options|.{{PublicKeyCredentialCreationOptions/excludeCredentials}}</code>:
-        1. If <code>|C|.{{transports}}</code> [=list/is not empty=], and |authenticator| is connected over a transport not
-            mentioned in <code>|C|.{{transports}}</code>, the client MAY [=continue=].
-        1. Otherwise, [=list/Append=] |C| to |excludeCredentialDescriptorList|.
-
-<!-- @@EDITOR-ANCHOR-01A: KEEP THIS LIST SYNC'D WITH THE LIST UP AT @@EDITOR-ANCHOR-01B -->
-    1. Invoke the [=authenticatorMakeCredential=] operation on |authenticator| with
-        |clientDataHash|,
-        <code>|options|.{{PublicKeyCredentialCreationOptions/rp}}</code>, <code>|options|.{{PublicKeyCredentialCreationOptions/user}}</code>,
-        <code>|options|.{{PublicKeyCredentialCreationOptions/authenticatorSelection}}.{{AuthenticatorSelectionCriteria/requireResidentKey}}</code>,
-        |userPresence|,
-        |userVerification|,
-        |credTypesAndPubKeyAlgs|,
-        |excludeCredentialDescriptorList|,
-        and |authenticatorExtensions| as parameters.
-
-    1. [=set/Append=] |authenticator| to |issuedRequests|.
-
-1. [=While=] |lifetimeTimer| has not expired, perform the following actions depending upon |lifetimeTimer| and responses from the
-    authenticators:
+1. [=While=] |lifetimeTimer| has not expired, perform the following actions depending upon |lifetimeTimer|,
+    and the state and response [=set/for each=] |authenticator| in |authenticators|:
     <dl class="switch">
         :   If |lifetimeTimer| expires,
         ::  [=set/For each=] |authenticator| in |issuedRequests| invoke the [=authenticatorCancel=] operation on |authenticator|
             and [=set/remove=] |authenticator| from |issuedRequests|.
 
-        :   If the <code>|options|.{{CredentialCreationOptions/signal}}</code> is [=present=] and its 
+        :   If the <code>|options|.{{CredentialCreationOptions/signal}}</code> is [=present=] and its
             [=AbortSignal/aborted flag=] is set to [TRUE],
         ::  [=set/For each=] |authenticator| in |issuedRequests| invoke the [=authenticatorCancel=]
-            operation on |authenticator| and [=set/remove=] |authenticator| from |issuedRequests|. Then return a {{DOMException}} 
+            operation on |authenticator| and [=set/remove=] |authenticator| from |issuedRequests|. Then return a {{DOMException}}
             whose name is "{{AbortError}}" and terminate this algorithm.
+
+        :   If an |authenticator| becomes available on this platform,
+        ::  Note: This includes if the |authenticator| was initially available when |lifetimeTimer| started.
+
+            1. If <code>|options|.{{PublicKeyCredentialCreationOptions/authenticatorSelection}}</code> is [=present=]:
+
+                  1. If <code>|options|.{{PublicKeyCredentialCreationOptions/authenticatorSelection}}.{{authenticatorAttachment}}</code> is
+                    [=present|present=] and its value is not equal to |authenticator|'s attachment modality, [=iteration/continue=].
+                  1. If <code>|options|.{{PublicKeyCredentialCreationOptions/authenticatorSelection}}.{{requireResidentKey}}</code> is set to
+                    [TRUE] and the |authenticator| is not capable of storing a [=Client-Side-Resident Credential Private Key=],
+                    [=iteration/continue=].
+                  1. If <code>|options|.{{PublicKeyCredentialCreationOptions/authenticatorSelection}}.{{AuthenticatorSelectionCriteria/userVerification}}</code> is
+                    set to {{UserVerificationRequirement/required}} and the |authenticator| is not capable of performing [=user
+                    verification=], [=iteration/continue=].
+
+            1. Let |userVerification| be the <dfn>effective user verification requirement for credential creation</dfn>, a Boolean value,
+                as follows. If
+                <code>|options|.{{PublicKeyCredentialCreationOptions/authenticatorSelection}}.{{AuthenticatorSelectionCriteria/userVerification}}</code>
+
+                    <dl class="switch">
+
+                        :   is set to {{UserVerificationRequirement/required}}
+                        ::  Let |userVerification| be [TRUE].
+
+                        :   is set to {{UserVerificationRequirement/preferred}}
+                        ::  If the |authenticator|
+
+                            <dl class="switch">
+                                :   is capable of [=user verification=]
+                                ::  Let |userVerification| be [TRUE].
+
+                                :   is not capable of [=user verification=]
+                                ::  Let |userVerification| be [FALSE].
+                            </dl>
+
+                        :   is set to {{UserVerificationRequirement/discouraged}}
+                        ::  Let |userVerification| be [FALSE].
+
+                    </dl>
+
+            1. Let |userPresence| be a Boolean value set to the inverse of |userVerification|.
+
+            1. Let |excludeCredentialDescriptorList| be a new [=list=].
+
+            1. [=list/For each=] credential descriptor |C| in <code>|options|.{{PublicKeyCredentialCreationOptions/excludeCredentials}}</code>:
+                1. If <code>|C|.{{transports}}</code> [=list/is not empty=], and |authenticator| is connected over a transport not
+                    mentioned in <code>|C|.{{transports}}</code>, the client MAY [=continue=].
+                1. Otherwise, [=list/Append=] |C| to |excludeCredentialDescriptorList|.
+
+            <!-- @@EDITOR-ANCHOR-01A: KEEP THIS LIST SYNC'D WITH THE LIST UP AT @@EDITOR-ANCHOR-01B -->
+            1. Invoke the [=authenticatorMakeCredential=] operation on |authenticator| with
+                |clientDataHash|,
+                <code>|options|.{{PublicKeyCredentialCreationOptions/rp}}</code>, <code>|options|.{{PublicKeyCredentialCreationOptions/user}}</code>,
+                <code>|options|.{{PublicKeyCredentialCreationOptions/authenticatorSelection}}.{{AuthenticatorSelectionCriteria/requireResidentKey}}</code>,
+                |userPresence|,
+                |userVerification|,
+                |credTypesAndPubKeyAlgs|,
+                |excludeCredentialDescriptorList|,
+                and |authenticatorExtensions| as parameters.
+
+            1. [=set/Append=] |authenticator| to |issuedRequests|.
+
+        :   If an |authenticator| ceases to be available on this platform,
+        ::  [=set/Remove=] |authenticator| from |issuedRequests|.
 
         :   If any |authenticator| returns a status indicating that the user cancelled the operation,
         ::  1. [=set/Remove=] |authenticator| from |issuedRequests|.
@@ -1198,112 +1203,19 @@ When this method is invoked, the user agent MUST execute the following algorithm
 
 1. Let |issuedRequests| be a new [=ordered set=].
 
-1. Let |authenticator| be a platform-specific handle whose value identifies an [=authenticator=].
+1. Let |savedCredentialIds| be a new [=map=].
+
+1. Let |authenticators| represent a [=set=] of platform-specific handles, where each value identifies an [=authenticator=]
+    presently available on this platform at a given instant.
+
+    Note: What qualifies an [=authenticator=] as "available" is intentionally unspecified; this is meant to represent how
+    [=authenticators=] can be hot-plugged into (e.g., via USB) or discovered (e.g., via NFC or Bluetooth) by the [=client=] by
+    various mechanisms, or permanently built into the [=client=].
 
 1. Start |lifetimeTimer|.
 
-1. [=set/For each=] |authenticator| that becomes available on this platform during the lifetime of
-    |lifetimeTimer|, perform the following steps:
-
-    Issue: The definitions of "lifetime of" and "becomes available" are intended to represent how
-    devices are hot-plugged into (USB) or discovered by (NFC) browsers, and are underspecified.
-    Resolving this with good definitions or some other means will be addressed by resolving
-    [Issue #613](https://github.com/w3c/webauthn/issues/613).
-
-    1. If <code>|options|.{{PublicKeyCredentialRequestOptions/userVerification}}</code> is set to
-        {{UserVerificationRequirement/required}} and the |authenticator| is not capable of performing [=user verification=],
-        [=iteration/continue=].
-
-    1. Let |userVerification| be the <dfn>effective user verification requirement for assertion</dfn>, a Boolean value, as
-        follows. If <code>|options|.{{PublicKeyCredentialRequestOptions/userVerification}}</code>
-
-            <dl class="switch">
-
-                :   is set to {{UserVerificationRequirement/required}}
-                ::  Let |userVerification| be [TRUE].
-
-                :   is set to {{UserVerificationRequirement/preferred}}
-                ::  If the |authenticator|
-
-                    <dl class="switch">
-                        :   is capable of [=user verification=]
-                        ::  Let |userVerification| be [TRUE].
-
-                        :   is not capable of [=user verification=]
-                        ::  Let |userVerification| be [FALSE].
-                    </dl>
-
-                :   is set to {{UserVerificationRequirement/discouraged}}
-                ::  Let |userVerification| be [FALSE].
-
-            </dl>
-
-    1. Let |userPresence| be a Boolean value set to the inverse of |userVerification|.
-
-    1. <span id="allowCredentialDescriptorListCreation"></span>
-        If <code>|options|.{{PublicKeyCredentialRequestOptions/allowCredentials}}</code>
-        <dl class="switch">
-            :   [=list/is not empty=]
-            ::  1. Let |allowCredentialDescriptorList| be a new [=list=].
-
-                1. Execute a platform-specific procedure to determine which, if any, [=public key credentials=] described by
-                    <code>|options|.{{PublicKeyCredentialRequestOptions/allowCredentials}}</code> are bound to this
-                    |authenticator|, by matching with |rpId|,
-                    <code>|options|.{{PublicKeyCredentialRequestOptions/allowCredentials}}.{{PublicKeyCredentialDescriptor/id}}</code>,
-                    and
-                    <code>|options|.{{PublicKeyCredentialRequestOptions/allowCredentials}}.{{PublicKeyCredentialDescriptor/type}}</code>.
-                    Set |allowCredentialDescriptorList| to this filtered list.
-
-                1. If |allowCredentialDescriptorList| [=list/is empty=], [=continue=].
-
-                1. Let |distinctTransports| be a new [=ordered set=].
-
-                1. If |allowCredentialDescriptorList| has exactly one value, let |savedCredentialId| be a new 
-                    {{PublicKeyCredentialDescriptor}}.{{PublicKeyCredentialDescriptor/id}} and set its value to <code>|allowCredentialDescriptorList|[0].id</code>'s
-                    value (see [here](#authenticatorGetAssertion-return-values) in [[#op-get-assertion]] for more information).
-
-                Issue: The foregoing step _may_ be incorrect, in that we are attempting to create |savedCredentialId|
-                    here and use it later below, and we do not have a global in which to allocate a place for it. Perhaps this
-                    is good enough?  addendum: [@jcjones feels the above step is likely good enough](https://github.com/w3c/webauthn/pull/665#discussion_r148130187).
-
-                1. [=list/For each=] credential descriptor |C| in |allowCredentialDescriptorList|,
-                    [=set/append=] each value, if any, of <code>|C|.{{transports}}</code> to |distinctTransports|.
-
-                    Note: This will aggregate only distinct values of {{transports}} (for this [=authenticator=]) in
-                        |distinctTransports| due to the properties of [=ordered sets=].
-
-                1. If |distinctTransports|
-                    <dl class="switch">
-                        :   [=list/is not empty=]
-                        ::  The client selects one |transport| value from |distinctTransports|, possibly incorporating local
-                            configuration knowledge of the appropriate transport to use with |authenticator| in making its
-                            selection.
-
-                            Then, using |transport|, invoke the [=authenticatorGetAssertion=] operation on
-                            |authenticator|, with |rpId|, |clientDataHash|, |allowCredentialDescriptorList|, |userPresence|,
-                            |userVerification|, and |authenticatorExtensions| as parameters.
-
-                        :   [=list/is empty=]
-                        ::  Using local configuration knowledge of the appropriate transport to use with |authenticator|,
-                            invoke the [=authenticatorGetAssertion=] operation on |authenticator| with |rpId|,
-                            |clientDataHash|, |allowCredentialDescriptorList|, |userPresence|, |userVerification|, and
-                            |clientExtensions| as parameters.
-                    </dl>
-
-            :   [=list/is empty=]
-            ::  Using local configuration knowledge of the appropriate transport to use with |authenticator|, invoke the
-                [=authenticatorGetAssertion=] operation on |authenticator| with |rpId|, |clientDataHash|, |userPresence|,
-                |userVerification| and |clientExtensions| as parameters.
-
-                Note: In this case, the [=[RP]=] did not supply a list of acceptable credential descriptors. Thus, the
-                    authenticator is being asked to exercise any credential it may possess that is bound to
-                    the [=[RP]=], as identified by |rpId|.
-        </dl>
-
-    1. [=set/Append=] |authenticator| to |issuedRequests|.
-
-1. [=While=] |lifetimeTimer| has not expired, perform the following actions depending upon |lifetimeTimer|
-    and responses from the authenticators:
+1. [=While=] |lifetimeTimer| has not expired, perform the following actions depending upon |lifetimeTimer|,
+    and the state and response [=set/for each=] |authenticator| in |authenticators|:
 
     <dl class="switch">
 
@@ -1311,11 +1223,105 @@ When this method is invoked, the user agent MUST execute the following algorithm
         ::  [=set/For each=] |authenticator| in |issuedRequests| invoke the [=authenticatorCancel=] operation on
             |authenticator| and [=set/remove=] |authenticator| from |issuedRequests|.
 
-        :   If the {{CredentialRequestOptions/signal}} member is [=present=] and the [=AbortSignal/aborted flag=] is set to 
+        :   If the {{CredentialRequestOptions/signal}} member is [=present=] and the [=AbortSignal/aborted flag=] is set to
             [TRUE],
         ::  [=set/For each=] |authenticator| in |issuedRequests| invoke the [=authenticatorCancel=] operation on |authenticator|
-            and [=set/remove=] |authenticator| from |issuedRequests|. Then 
+            and [=set/remove=] |authenticator| from |issuedRequests|. Then
             return a {{DOMException}} whose name is "{{AbortError}}" and terminate this algorithm.
+
+        :   If an |authenticator| becomes available on this platform,
+        ::  Note: This includes if the |authenticator| was initially available when |lifetimeTimer| started.
+
+            1. If <code>|options|.{{PublicKeyCredentialRequestOptions/userVerification}}</code> is set to
+                {{UserVerificationRequirement/required}} and the |authenticator| is not capable of performing [=user verification=],
+                [=iteration/continue=].
+
+            1. Let |userVerification| be the <dfn>effective user verification requirement for assertion</dfn>, a Boolean value, as
+                follows. If <code>|options|.{{PublicKeyCredentialRequestOptions/userVerification}}</code>
+
+                    <dl class="switch">
+
+                        :   is set to {{UserVerificationRequirement/required}}
+                        ::  Let |userVerification| be [TRUE].
+
+                        :   is set to {{UserVerificationRequirement/preferred}}
+                        ::  If the |authenticator|
+
+                            <dl class="switch">
+                                :   is capable of [=user verification=]
+                                ::  Let |userVerification| be [TRUE].
+
+                                :   is not capable of [=user verification=]
+                                ::  Let |userVerification| be [FALSE].
+                            </dl>
+
+                        :   is set to {{UserVerificationRequirement/discouraged}}
+                        ::  Let |userVerification| be [FALSE].
+
+                    </dl>
+
+            1. Let |userPresence| be a Boolean value set to the inverse of |userVerification|.
+
+            1. <span id="allowCredentialDescriptorListCreation"></span>
+                If <code>|options|.{{PublicKeyCredentialRequestOptions/allowCredentials}}</code>
+                <dl class="switch">
+                    :   [=list/is not empty=]
+                    ::  1. Let |allowCredentialDescriptorList| be a new [=list=].
+
+                        1. Execute a platform-specific procedure to determine which, if any, [=public key credentials=] described by
+                            <code>|options|.{{PublicKeyCredentialRequestOptions/allowCredentials}}</code> are bound to this
+                            |authenticator|, by matching with |rpId|,
+                            <code>|options|.{{PublicKeyCredentialRequestOptions/allowCredentials}}.{{PublicKeyCredentialDescriptor/id}}</code>,
+                            and
+                            <code>|options|.{{PublicKeyCredentialRequestOptions/allowCredentials}}.{{PublicKeyCredentialDescriptor/type}}</code>.
+                            Set |allowCredentialDescriptorList| to this filtered list.
+
+                        1. If |allowCredentialDescriptorList| [=list/is empty=], [=continue=].
+
+                        1. Let |distinctTransports| be a new [=ordered set=].
+
+                        1. If |allowCredentialDescriptorList| has exactly one value, set
+                            <code>|savedCredentialIds|[|authenticator|]</code> to <code>|allowCredentialDescriptorList|[0].id</code>'s
+                            value (see [here](#authenticatorGetAssertion-return-values) in [[#op-get-assertion]] for more information).
+
+                        1. [=list/For each=] credential descriptor |C| in |allowCredentialDescriptorList|,
+                            [=set/append=] each value, if any, of <code>|C|.{{transports}}</code> to |distinctTransports|.
+
+                            Note: This will aggregate only distinct values of {{transports}} (for this [=authenticator=]) in
+                                |distinctTransports| due to the properties of [=ordered sets=].
+
+                        1. If |distinctTransports|
+                            <dl class="switch">
+                                :   [=list/is not empty=]
+                                ::  The client selects one |transport| value from |distinctTransports|, possibly incorporating local
+                                    configuration knowledge of the appropriate transport to use with |authenticator| in making its
+                                    selection.
+
+                                    Then, using |transport|, invoke the [=authenticatorGetAssertion=] operation on
+                                    |authenticator|, with |rpId|, |clientDataHash|, |allowCredentialDescriptorList|, |userPresence|,
+                                    |userVerification|, and |authenticatorExtensions| as parameters.
+
+                                :   [=list/is empty=]
+                                ::  Using local configuration knowledge of the appropriate transport to use with |authenticator|,
+                                    invoke the [=authenticatorGetAssertion=] operation on |authenticator| with |rpId|,
+                                    |clientDataHash|, |allowCredentialDescriptorList|, |userPresence|, |userVerification|, and
+                                    |clientExtensions| as parameters.
+                            </dl>
+
+                    :   [=list/is empty=]
+                    ::  Using local configuration knowledge of the appropriate transport to use with |authenticator|, invoke the
+                        [=authenticatorGetAssertion=] operation on |authenticator| with |rpId|, |clientDataHash|, |userPresence|,
+                        |userVerification| and |clientExtensions| as parameters.
+
+                        Note: In this case, the [=[RP]=] did not supply a list of acceptable credential descriptors. Thus, the
+                            authenticator is being asked to exercise any credential it may possess that is bound to
+                            the [=[RP]=], as identified by |rpId|.
+                </dl>
+
+            1. [=set/Append=] |authenticator| to |issuedRequests|.
+
+        :   If an |authenticator| ceases to be available on this platform,
+        ::  [=set/Remove=] |authenticator| from |issuedRequests|.
 
         :   If any |authenticator| returns a status indicating that the user cancelled the operation,
         ::  1. [=set/Remove=] |authenticator| from |issuedRequests|.
@@ -1334,10 +1340,10 @@ When this method is invoked, the user agent MUST execute the following algorithm
             1.  Let <var ignore>assertionCreationData</var> be a [=struct=] whose [=items=] are:
 
                 :   <code><dfn for="assertionCreationData">credentialIdResult</code>
-                ::  If |savedCredentialId| exists, set the value of [=credentialIdResult=] to be the bytes of
-                    |savedCredentialId|. Otherwise, set the value of [=credentialIdResult=] to be the bytes of the
-                    [=credential ID=] returned from the successful [=authenticatorGetAssertion=] operation, as defined in
-                    [[#op-get-assertion]].
+                ::  If <code>|savedCredentialIds|[|authenticator|]</code> exists, set the value of [=credentialIdResult=] to be
+                    the bytes of <code>|savedCredentialIds|[|authenticator|]</code>. Otherwise, set the value of
+                    [=credentialIdResult=] to be the bytes of the [=credential ID=] returned from the successful
+                    [=authenticatorGetAssertion=] operation, as defined in [[#op-get-assertion]].
 
                 :   <code><dfn for="assertionCreationData">clientDataJSONResult</dfn></code>
                 ::  whose value is the bytes of |clientDataJSON|.
