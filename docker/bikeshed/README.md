@@ -4,7 +4,7 @@ Docker image with `bikeshed`
 Build the image:
 
     alice@work $ cd webauthn/docker/bikeshed
-    alice@work $ docker build -t bikeshed .
+    alice@work $ docker build -t bikeshed . --no-cache
     alice@work $ cd ../..
 
 Then run it as `bikeshed` or `bikeshed watch`:
