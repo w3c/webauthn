@@ -12,6 +12,7 @@ Then run it as `bikeshed` or `bikeshed watch`:
   ```
   alice@work $ docker run --name bikeshed-webauthn -it --volume $(pwd):/spec bikeshed
   alice@work $ docker start --attach bikeshed-webauthn
+  alice@work $ $BROWSER index.html
   ```
 
 - Or in continuous watch mode:
