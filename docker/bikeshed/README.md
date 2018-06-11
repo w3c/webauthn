@@ -1,6 +1,8 @@
 Docker image with `bikeshed`
 ===
 
+This requires having [Docker][docker] installed.
+
 Build the image:
 
     alice@work $ docker build -t bikeshed docker/bikeshed --no-cache
@@ -26,3 +28,6 @@ Then run it as `bikeshed` or `bikeshed watch`:
   ^C
   alice@work $ docker stop bikeshed-webauthn-watch
   ```
+
+
+[docker]: https://www.docker.com/community-edition
