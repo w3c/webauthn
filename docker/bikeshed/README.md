@@ -7,7 +7,9 @@ Build the image:
 
     alice@work $ docker build -t bikeshed docker/bikeshed --no-cache
 
-Then run it as `bikeshed` or `bikeshed watch`:
+Then run it as `bikeshed` or `bikeshed watch`. Use the `docker run` command the
+first time you run the image after building it, then the `docker start` command
+on subsequent uses.
 
 - Either in one-shot mode:
 
