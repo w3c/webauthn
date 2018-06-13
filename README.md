@@ -38,7 +38,7 @@ pip install --editable ./bikeshed
 cp -R .spec-data/* ./bikeshed/bikeshed/spec-data
 ```
 
-Alternatively, you can use the [Vagrant VM with `bikeshed` already installed](vagrant/bikeshed).
+Alternatively, you can use the [Vagrant VM with `bikeshed` already installed](vagrant/bikeshed), or the [Docker image](docker/bikeshed).
 
 
 # Continuous Integration & Branches
