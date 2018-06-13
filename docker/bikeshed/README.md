@@ -32,4 +32,23 @@ on subsequent uses.
   ```
 
 
+Rebuilding
+---
+
+To rebuild the image with the latest Bikeshed version, run `docker build` again:
+
+    alice@work $ docker build -t bikeshed docker/bikeshed --no-cache
+
+This will create a new image and overwrite the `bikeshed` tag, but any existing
+container(s) will still be of the previous version of the image (which now no
+longer has a tag).
+
+So delete the existing container(s):
+
+    alice@work $ docker rm -v bikeshed-webauthn
+    alice@work $ docker rm -v bikeshed-webauthn-watch
+
+...and then re-run the `docker run` command(s) in the previous section.
+
+
 [docker]: https://www.docker.com/community-edition
