@@ -45,7 +45,7 @@ Former Editor: Hubert Le Van Gong, w3cid 84817, PayPal, hlevangong@paypal.com
 !Contributors: <a href="mailto:jyasskin@google.com">Jeffrey Yasskin</a> (Google)
 group: webauthn
 Issue Tracking: GitHub https://github.com/w3c/webauthn/issues
-!Tests: <a href=https://github.com/w3c/web-platform-tests/tree/master/webauthn>web-platform-tests webauthn/</a> (<a href=https://github.com/w3c/web-platform-tests/labels/webauthn>ongoing work</a>)
+!Tests: <a href=https://github.com/web-platform-tests/wpt/tree/master/webauthn>web-platform-tests webauthn/</a> (<a href=https://github.com/web-platform-tests/wpt/labels/webauthn>ongoing work</a>)
 Text Macro: FALSE <code>false</code>
 Text Macro: RP Relying Party
 Text Macro: RPS Relying Parties
@@ -255,6 +255,46 @@ scenarios. Additional scenarios, including sample code, are given later in [[#sa
 
 - Now, back on the laptop:
     * Web page shows that the selected user is signed in, and navigates to the signed-in page.
+
+
+### New device registration ### {#usecase-new-device-registration}
+
+This use case scenario illustrates how a [=[RP]=] can leverage a combination of a [=roaming authenticator=] (e.g., a USB security
+key fob) and a [=platform authenticator=] (e.g., a built-in fingerprint sensor) such that the user has:
+
+  - a "primary" [=roaming authenticator=] that they use to authenticate on new-to-them devices (e.g., laptops, desktops) or on
+        such devices that lack a [=platform authenticator=], and
+  - a low-friction means to strongly re-authenticate on devices having [=platform authenticators=].
+
+Note: This approach of registering multiple [=authenticators=] for an account is also useful in account recovery use cases.
+
+- First, on a desktop computer (lacking a [=platform authenticator=]):
+    * User navigates to `example.com` in a browser and signs in to an existing account using whatever method they have been using
+        (possibly a legacy method such as a password), or creates a new account.
+    * User navigates to account security settings and selects "Register security key".
+    * Website prompts the user to plug in a USB security key fob; the user does.
+    * The USB security key blinks to indicate the user should press the button on it; the user does.
+    * Website shows message, "Registration complete."
+
+    Note: Since this computer lacks a [=platform authenticator=], the website may require the user to present their USB security
+    key from time to time or each time the user interacts with the website. This is at the website's discretion.
+
+- Later, on their laptop (which features a [=platform authenticator=]):
+    * User navigates to example.com in a browser and initiates signing in.
+    * Website prompts the user to plug in their USB security key.
+    * User plugs in the previously registered USB security key and presses the button.
+    * Website shows that the user is signed in, and navigates to the signed-in page.
+    * Website prompts, "Do you want to register this computer with example.com?"
+    * User agrees.
+    * Laptop prompts the user for a previously configured [=authorization gesture=] (PIN, biometric, etc.); the user provides this.
+    * Website shows message, "Registration complete."
+    * User signs out.
+
+- Later, again on their laptop:
+    * User navigates to example.com in a browser and initiates signing in.
+    * Website shows message, "Please follow your computer's prompts to complete sign in."
+    * Laptop prompts the user for an [=authorization gesture=] (PIN, biometric, etc.); the user provides this.
+    * Website shows that the user is signed in, and navigates to the signed-in page.
 
 
 ### Other use cases and configurations ### {#other-configurations}
@@ -716,22 +756,22 @@ implementation of {{PublicKeyCredential/[[Create]](origin, options, sameOriginWi
 To support registration via {{CredentialsContainer/create()|navigator.credentials.create()}}, this document extends
 the {{CredentialCreationOptions}} dictionary as follows:
 
-<pre class="idl">
+<xmp class="idl">
     partial dictionary CredentialCreationOptions {
         PublicKeyCredentialCreationOptions      publicKey;
     };
-</pre>
+</xmp>
 
 ### `CredentialRequestOptions` Dictionary Extension ### {#credentialrequestoptions-extension}
 
 To support obtaining assertions via {{CredentialsContainer/get()|navigator.credentials.get()}}, this document extends the
 {{CredentialRequestOptions}} dictionary as follows:
 
-<pre class="idl">
+<xmp class="idl">
     partial dictionary CredentialRequestOptions {
         PublicKeyCredentialRequestOptions      publicKey;
     };
-</pre>
+</xmp>
 
 
 ### Create a new credential - PublicKeyCredential's `[[Create]](origin, options, sameOriginWithAncestors)` method ### {#createCredential}
@@ -874,12 +914,12 @@ When this method is invoked, the user agent MUST execute the following algorithm
 
 1. Let |issuedRequests| be a new [=ordered set=].
 
-1. Let |authenticators| represent a [=set=] of platform-specific handles, where each value identifies an [=authenticator=]
-    presently available on this platform at a given instant.
+1. Let |authenticators| represent a value which at any given instant is a [=set=] of platform-specific handles, where each
+    [=set/item=] identifies an [=authenticator=] presently available on this platform at that instant.
 
     Note: What qualifies an [=authenticator=] as "available" is intentionally unspecified; this is meant to represent how
-    [=authenticators=] can be hot-plugged into (e.g., via USB) or discovered (e.g., via NFC or Bluetooth) by the [=client=] by
-    various mechanisms, or permanently built into the [=client=].
+    [=authenticators=] can be <a href="https://en.wikipedia.org/w/index.php?title=Hot_plug">hot-plugged</a> into (e.g., via USB)
+    or discovered (e.g., via NFC or Bluetooth) by the [=client=] by various mechanisms, or permanently built into the [=client=].
 
 1. Start |lifetimeTimer|.
 
@@ -897,7 +937,7 @@ When this method is invoked, the user agent MUST execute the following algorithm
             whose name is "{{AbortError}}" and terminate this algorithm.
 
         :   If an |authenticator| becomes available on this platform,
-        ::  Note: This includes if the |authenticator| was initially available when |lifetimeTimer| started.
+        ::  Note:  This includes the case where an |authenticator| was available upon |lifetimeTimer| initiation.
 
             1. If <code>|options|.{{PublicKeyCredentialCreationOptions/authenticatorSelection}}</code> is [=present=]:
 
@@ -1205,12 +1245,12 @@ When this method is invoked, the user agent MUST execute the following algorithm
 
 1. Let |savedCredentialIds| be a new [=map=].
 
-1. Let |authenticators| represent a [=set=] of platform-specific handles, where each value identifies an [=authenticator=]
-    presently available on this platform at a given instant.
+1. Let |authenticators| represent a value which at any given instant is a [=set=] of platform-specific handles, where each
+    [=set/item=] identifies an [=authenticator=] presently available on this platform at that instant.
 
     Note: What qualifies an [=authenticator=] as "available" is intentionally unspecified; this is meant to represent how
-    [=authenticators=] can be hot-plugged into (e.g., via USB) or discovered (e.g., via NFC or Bluetooth) by the [=client=] by
-    various mechanisms, or permanently built into the [=client=].
+    [=authenticators=] can be <a href="https://en.wikipedia.org/w/index.php?title=Hot_plug">hot-plugged</a> into (e.g., via USB)
+    or discovered (e.g., via NFC or Bluetooth) by the [=client=] by various mechanisms, or permanently built into the [=client=].
 
 1. Start |lifetimeTimer|.
 
@@ -1230,7 +1270,7 @@ When this method is invoked, the user agent MUST execute the following algorithm
             return a {{DOMException}} whose name is "{{AbortError}}" and terminate this algorithm.
 
         :   If an |authenticator| becomes available on this platform,
-        ::  Note: This includes if the |authenticator| was initially available when |lifetimeTimer| started.
+        ::  Note:  This includes the case where an |authenticator| was available upon |lifetimeTimer| initiation.
 
             1. If <code>|options|.{{PublicKeyCredentialRequestOptions/userVerification}}</code> is set to
                 {{UserVerificationRequirement/required}} and the |authenticator| is not capable of performing [=user verification=],
@@ -1484,11 +1524,11 @@ A timeout value on the order of 10 minutes is recommended;
 this is enough time for successful user interactions to be performed
 but short enough that the dangling promise will still be resolved in a reasonably timely fashion.
 
-<pre class="idl">
+<xmp class="idl">
     partial interface PublicKeyCredential {
-        static Promise < boolean > isUserVerifyingPlatformAuthenticatorAvailable();
+        static Promise<boolean> isUserVerifyingPlatformAuthenticatorAvailable();
     };
-</pre>
+</xmp>
 
 </div>
 
@@ -1497,12 +1537,12 @@ but short enough that the dangling promise will still be resolved in a reasonabl
 [=Authenticators=] respond to [=[RP]=] requests by returning an object derived from the
 {{AuthenticatorResponse}} interface:
 
-<pre class="idl">
+<xmp class="idl">
     [SecureContext, Exposed=Window]
     interface AuthenticatorResponse {
         [SameObject] readonly attribute ArrayBuffer      clientDataJSON;
     };
-</pre>
+</xmp>
 <div dfn-type="attribute" dfn-for="AuthenticatorResponse">
     :   <dfn>clientDataJSON</dfn>
     ::  This attribute contains a [=JSON-serialized client data|JSON serialization=] of the [=client data=] passed to the
@@ -1516,12 +1556,12 @@ for the creation of a new [=public key credential=]. It contains information abo
 identify it for later use, and metadata that can be used by the [=[RP]=] to assess the characteristics of the credential
 during registration.
 
-<pre class="idl">
+<xmp class="idl">
     [SecureContext, Exposed=Window]
     interface AuthenticatorAttestationResponse : AuthenticatorResponse {
         [SameObject] readonly attribute ArrayBuffer      attestationObject;
     };
-</pre>
+</xmp>
 <div dfn-type="attribute" dfn-for="AuthenticatorAttestationResponse">
     :   {{AuthenticatorResponse/clientDataJSON}}
     ::  This attribute, inherited from {{AuthenticatorResponse}}, contains the [=JSON-serialized client data=] (see
@@ -1547,14 +1587,14 @@ generation of a new [=authentication assertion=] given the [=[RP]=]'s challenge 
 aware of. This response contains a cryptographic signature proving possession of the [=credential private key=], and
 optionally evidence of [=user consent=] to a specific transaction.
 
-<pre class="idl">
+<xmp class="idl">
     [SecureContext, Exposed=Window]
     interface AuthenticatorAssertionResponse : AuthenticatorResponse {
         [SameObject] readonly attribute ArrayBuffer      authenticatorData;
         [SameObject] readonly attribute ArrayBuffer      signature;
         [SameObject] readonly attribute ArrayBuffer?     userHandle;
     };
-</pre>
+</xmp>
 <div dfn-type="attribute" dfn-for="AuthenticatorAssertionResponse">
     :   {{AuthenticatorResponse/clientDataJSON}}
     ::  This attribute, inherited from {{AuthenticatorResponse}}, contains the [=JSON-serialized client data=] (see
@@ -1575,12 +1615,12 @@ optionally evidence of [=user consent=] to a specific transaction.
 
 ## Parameters for Credential Generation (dictionary <dfn dictionary>PublicKeyCredentialParameters</dfn>) ## {#credential-params}
 
-<pre class="idl">
+<xmp class="idl">
     dictionary PublicKeyCredentialParameters {
         required PublicKeyCredentialType      type;
         required COSEAlgorithmIdentifier      alg;
     };
-</pre>
+</xmp>
 
 <div dfn-type="dict-member" dfn-for="PublicKeyCredentialParameters">
     This dictionary is used to supply additional parameters when creating a new credential.
@@ -1696,6 +1736,7 @@ associated.
         a user's avatar or a [=[RP]=]'s logo. This URL MUST be an [=a priori authenticated URL=]. [=Authenticators=] MUST
         accept and store a 128-byte minimum length for an icon member's value.
         Authenticators MAY ignore an icon member's value if its length is greater than 128 bytes.
+        The URL's scheme MAY be "data" to avoid fetches of the URL, at the cost of needing more storage.
 </div>
 
 
@@ -1703,11 +1744,11 @@ associated.
 
 The {{PublicKeyCredentialRpEntity}} dictionary is used to supply additional [=[RP]=] attributes when creating a new credential.
 
-<pre class="idl">
+<xmp class="idl">
     dictionary PublicKeyCredentialRpEntity : PublicKeyCredentialEntity {
         DOMString      id;
     };
-</pre>
+</xmp>
 
 <div dfn-type="dict-member" dfn-for="PublicKeyCredentialRpEntity">
     :   <dfn>id</dfn>
@@ -1720,12 +1761,12 @@ The {{PublicKeyCredentialRpEntity}} dictionary is used to supply additional [=[R
 The {{PublicKeyCredentialUserEntity}} dictionary is used to supply additional user account attributes when creating a new
 credential.
 
-<pre class="idl">
+<xmp class="idl">
     dictionary PublicKeyCredentialUserEntity : PublicKeyCredentialEntity {
         required BufferSource   id;
         required DOMString      displayName;
     };
-</pre>
+</xmp>
 
 <div dfn-type="dict-member" dfn-for="PublicKeyCredentialUserEntity">
     :   <dfn>id</dfn>
@@ -1773,12 +1814,12 @@ attributes.
 
 ### Authenticator Attachment enumeration (enum <dfn enum>AuthenticatorAttachment</dfn>) ### {#attachment}
 
-<pre class="idl">
+<xmp class="idl">
     enum AuthenticatorAttachment {
         "platform",
         "cross-platform"
     };
-</pre>
+</xmp>
 
 <div dfn-type="enum-value" dfn-for="AuthenticatorAttachment">
     :   <dfn>platform</dfn>
@@ -1826,13 +1867,13 @@ credential|credentials=]. The [=client=] and user will then use whichever is ava
 [=[RPS]=] may use {{AttestationConveyancePreference}} to specify their preference regarding [=attestation conveyance=]
 during credential generation.
 
-<pre class="idl">
+<xmp class="idl">
     enum AttestationConveyancePreference {
         "none",
         "indirect",
         "direct"
     };
-</pre>
+</xmp>
 
 <div dfn-type="enum-value" dfn-for="AttestationConveyancePreference">
     :   <dfn>none</dfn>
@@ -1933,7 +1974,7 @@ SHOULD be aborted.
     See [WHATWG HTML WG Issue #2711](https://github.com/whatwg/html/issues/2711) for more details. 
 
 
-## Authentication Extensions Client Inputs (typedef <dfn>AuthenticationExtensionsClientInputs</dfn>) ## {#iface-authentication-extensions-client-inputs}
+## Authentication Extensions Client Inputs (typedef {{AuthenticationExtensionsClientInputs}}) ## {#iface-authentication-extensions-client-inputs}
 
 <xmp class="idl">
     dictionary AuthenticationExtensionsClientInputs {
@@ -1943,7 +1984,7 @@ SHOULD be aborted.
 This is a dictionary containing the [=client extension input=] values for zero or more WebAuthn extensions, as defined in [[#extensions]].
 
 
-## Authentication Extensions Client Outputs (typedef <dfn>AuthenticationExtensionsClientOutputs</dfn>) ## {#iface-authentication-extensions-client-outputs}
+## Authentication Extensions Client Outputs (typedef {{AuthenticationExtensionsClientOutputs}}) ## {#iface-authentication-extensions-client-outputs}
 
 <xmp class="idl">
     dictionary AuthenticationExtensionsClientOutputs {
@@ -1953,7 +1994,7 @@ This is a dictionary containing the [=client extension input=] values for zero o
 This is a dictionary containing the [=client extension output=] values for zero or more WebAuthn extensions, as defined in [[#extensions]].
 
 
-## Authentication Extensions Authenticator Inputs (typedef <dfn>AuthenticationExtensionsAuthenticatorInputs</dfn>) ## {#iface-authentication-extensions-authenticator-inputs}
+## Authentication Extensions Authenticator Inputs (typedef {{AuthenticationExtensionsAuthenticatorInputs}}) ## {#iface-authentication-extensions-authenticator-inputs}
 
 <xmp class="idl">
     typedef record<DOMString, DOMString> AuthenticationExtensionsAuthenticatorInputs;
@@ -1976,7 +2017,7 @@ following Web IDL.
 
 Note: The {{CollectedClientData}} may be extended in the future. Therefore it's critical when parsing to be tolerant of unknown keys and of any reordering of the keys.
 
-<pre class="idl">
+<xmp class="idl">
     dictionary CollectedClientData {
         required DOMString           type;
         required DOMString           challenge;
@@ -1990,7 +2031,7 @@ Note: The {{CollectedClientData}} may be extended in the future. Therefore it's 
     };
 
     enum TokenBindingStatus { "present", "supported" };
-</pre>
+</xmp>
 
 <div dfn-type="dict-member" dfn-for="CollectedClientData">
     :   <dfn>type</dfn>
@@ -2041,11 +2082,11 @@ Note: The {{CollectedClientData}} may be extended in the future. Therefore it's 
 
 ### Credential Type enumeration (enum <dfn enum>PublicKeyCredentialType</dfn>) ### {#credentialType}
 
-<pre class="idl">
+<xmp class="idl">
     enum PublicKeyCredentialType {
         "public-key"
     };
-</pre>
+</xmp>
 
 <div dfn-type="enum-value" dfn-for="PublicKeyCredentialType">
     This enumeration defines the valid credential types. It is an extension point; values can be added to it in the future, as
@@ -2085,14 +2126,14 @@ parameter to the {{CredentialsContainer/create()}} or {{CredentialsContainer/get
 
 ### Authenticator Transport enumeration (enum <dfn enum>AuthenticatorTransport</dfn>) ### {#transport}
 
-<pre class="idl">
+<xmp class="idl">
     enum AuthenticatorTransport {
         "usb",
         "nfc",
         "ble",
         "internal"
     };
-</pre>
+</xmp>
 
 <div dfn-type="enum-value" dfn-for="AuthenticatorTransport">
     [=Authenticators=] may implement various [[#transport|transports]] for communicating with [=clients=]. This enumeration
@@ -2116,11 +2157,11 @@ parameter to the {{CredentialsContainer/create()}} or {{CredentialsContainer/get
 </div>
 
 
-### Cryptographic Algorithm Identifier (typedef <dfn>COSEAlgorithmIdentifier</dfn>) ### {#alg-identifier}
+### Cryptographic Algorithm Identifier (typedef {{COSEAlgorithmIdentifier}}) ### {#alg-identifier}
 
-<pre class="idl">
+<xmp class="idl">
     typedef long COSEAlgorithmIdentifier;
-</pre>
+</xmp>
 
 <div dfn-type="typedef" dfn-for="COSEAlgorithmIdentifier">
     A {{COSEAlgorithmIdentifier}}'s value is a number identifying a cryptographic algorithm.
@@ -2131,13 +2172,13 @@ parameter to the {{CredentialsContainer/create()}} or {{CredentialsContainer/get
 
 ### User Verification Requirement enumeration (enum <dfn enum>UserVerificationRequirement</dfn>) ### {#userVerificationRequirement}
 
-<pre class="idl">
+<xmp class="idl">
     enum UserVerificationRequirement {
         "required",
         "preferred",
         "discouraged"
     };
-</pre>
+</xmp>
 
 A [=[RP]=] may require [=user verification=] for some of its operations but not for others, and may use this type to express its
 needs.
@@ -2315,14 +2356,18 @@ validated by the authenticator during the [=authenticatorGetAssertion=] operatio
 with the requested credential exactly matches the [=RP ID=] supplied by the client, and that the [=RP ID=] [=is a registrable
 domain suffix of or is equal to=] the [=effective domain=] of the RP's [=origin=]'s [=effective domain=].
 
-The `UP` flag SHALL be set if and only if the authenticator detected a user through an authenticator specific gesture. The
-`RFU` bits SHALL be set to zero.
+[=Authenticators=] <dfn for="authenticator data">perform the following steps to generate an [=authenticator data=] structure</dfn>:
 
-For attestation signatures, the authenticator MUST set the AT flag and include the <code>[=attestedCredentialData=]</code>. For
-authentication signatures, the AT flag MUST NOT be set and the <code>[=attestedCredentialData=]</code> MUST NOT be included.
+- Hash [=RP ID=] using SHA-256 to generate the [=rpIdHash=].
 
-If the authenticator does not include any extension data, it MUST set the `ED` flag to zero, and to one if
-extension data is included.
+- The `UP` [=flag=] SHALL be set if and only if the authenticator detected a user through an authenticator specific gesture. The
+    `RFU` bits SHALL be set to zero.
+
+- For [=attestation signatures=], the authenticator MUST set the AT [=flag=] and include the <code>[=attestedCredentialData=]</code>. 
+    For [=assertion signature|authentication signatures=], the AT [=flag=] MUST NOT be set and the <code>[=attestedCredentialData=]</code> MUST NOT be included.
+
+- If the authenticator does not include any [=authDataExtensions|extension data=], it MUST set the `ED` [=flag=] to zero, and to one if
+    [=authDataExtensions|extension data=] is included.
 
 The [figure below](#fig-authData) shows a visual representation of the [=authenticator data=] structure.
 
@@ -2338,7 +2383,7 @@ follows.
 
 ### <dfn>Signature Counter</dfn> Considerations ### {#sign-counter}
 
-Authenticators MUST implement a [=signature counter=] feature. The [=signature counter=] is incremented for each successful
+Authenticators SHOULD implement a [=signature counter=] feature. The [=signature counter=] is incremented for each successful
 [=authenticatorGetAssertion=] operation by some positive value, and its value is returned to the [=[RP]=] within the
 [=authenticator data=]. The [=signature counter=]'s purpose is to aid [=[RPS]=] in detecting cloned authenticators. Clone
 detection is more important for authenticators with limited protection measures.
@@ -2350,12 +2395,12 @@ An [=[RP]=] stores the [=signature counter=] of the most recent [=authenticatorG
 Detecting a [=signature counter=]  mismatch does not indicate whether the current operation was performed by a cloned authenticator or the original authenticator.  [=[RPS]=] should address this situation appropriately relative to their individual situations, i.e., their risk tolerance. 
 
 Authenticators:
-- should implement per-[=RP ID=] [=signature counters=].  This prevents the 
+- SHOULD implement per credential [=signature counters=].  This prevents the 
     [=signature counter=] value from being shared between [=[RPS]=] and being possibly employed 
     as a correlation handle for the user. Authenticators may implement a global [=signature counter=], 
     i.e., on a per-authenticator basis, but this is less privacy-friendly for users. 
 
-- should ensure that the [=signature counter=] value does not 
+- SHOULD ensure that the [=signature counter=] value does not 
     accidentally decrease  (e.g., due to hardware failures).
 
 
@@ -2500,9 +2545,6 @@ When this operation is invoked, the [=authenticator=] MUST perform the following
     identifier=] → [=authenticator extension input=] in |extensions|.
 1. If the [=authenticator=] supports:
     <dl class="switch">
-        :   a per-[=RP ID=] [=signature counter=]
-        ::  allocate the counter, associate it with the 
-              [=RP ID=], and initialize the counter value as zero. 
         :  a global [=signature counter=]
         ::  Use the global [=signature counter=]'s actual value when generating 
               [=authenticator data=].
@@ -2511,7 +2553,7 @@ When this operation is invoked, the [=authenticator=] MUST perform the following
     </dl>
 
 1. Let |attestedCredentialData| be the [=attested credential data=] byte array including the |credentialId| and |publicKey|.
-1. Let |authenticatorData| be the byte array specified in [[#sec-authenticator-data]], including |attestedCredentialData| as the
+1. Let |authenticatorData| [=perform the following steps to generate an authenticator data structure|be the byte array=] specified in [[#sec-authenticator-data]], including |attestedCredentialData| as the
     <code>[=attestedCredentialData=]</code> and |processedExtensions|, if any, as the
     <code>[=authDataExtensions|extensions=]</code>.
 1. Return the [=attestation object=] for the new credential created by the procedure specified in
@@ -2573,10 +2615,11 @@ When this method is invoked, the [=authenticator=] MUST perform the following pr
 
 1. Let |processedExtensions| be the result of [=authenticator extension processing=] [=map/for each=] supported [=extension
     identifier=] → [=authenticator extension input=] in |extensions|.
-1. Increment the [=RP ID=]-associated
+1. Increment the credential associated
     [=signature counter=] or the global [=signature counter=] value, depending on 
     which approach is implemented by the [=authenticator=], by some positive value.
-1. Let |authenticatorData| be the byte array specified in [[#sec-authenticator-data]] including |processedExtensions|, if any, as
+1. Let |authenticatorData| [=perform the following steps to generate an authenticator data structure|be the byte array=]
+    specified in [[#sec-authenticator-data]] including |processedExtensions|, if any, as
     the <code>[=authDataExtensions|extensions=]</code> and excluding <code>[=attestedCredentialData=]</code>.
 1. Let |signature| be the [=assertion signature=] of the concatenation <code>|authenticatorData| || |hash|</code> using the
     [=public key credential source/privateKey=] of |selectedCredential| as shown in [Figure 2](#fig-signature), below. A simple,
@@ -2864,14 +2907,14 @@ WebAuthn supports multiple attestation types:
         is called "active".
 
 : <dfn>Elliptic Curve based Direct Anonymous Attestation</dfn> (<dfn>ECDAA</dfn>)
-:: In this case, the Authenticator receives direct anonymous attestation (<dfn>DAA</dfn>) credentials from a single DAA-Issuer.
+:: In this case, the Authenticator receives direct anonymous attestation (DAA) credentials from a single DAA-Issuer.
     These DAA credentials are used along with blinding to sign the [=attested credential data=]. The concept of blinding avoids
     the DAA credentials being misused as global correlation handle. WebAuthn supports DAA using elliptic curve cryptography and
     bilinear pairings, called [=ECDAA=] (see [[FIDOEcdaaAlgorithm]]) in this specification. Consequently we denote the DAA-Issuer
     as ECDAA-Issuer (see [[FIDOEcdaaAlgorithm]]).
 
-: <dfn>No attestation statement</dfn> (<dfn>None</dfn>)
-:: In this case, no attestation information is available.
+: No attestation statement (<dfn>None</dfn>)
+:: In this case, no attestation information is available. See also [[#none-attestation]].
 
 <h4 id="generating-an-attestation-object" algorithm>Generating an Attestation Object</h4>
 
@@ -3005,10 +3048,10 @@ When registering a new credential, represented by an {{AuthenticatorAttestationR
     is maintained in the in the IANA registry of the same name [[!WebAuthn-Registries]].
 
 1. Verify that |attStmt| is a correct [=attestation statement=], conveying a valid [=attestation signature=], by using the
-    [=attestation statement format=] |fmt|'s verification procedure given |attStmt|, |authData| and the [=hash of the serialized
+    [=attestation statement format=] |fmt|'s [=verification procedure=] given |attStmt|, |authData| and the [=hash of the serialized
     client data=] computed in step 7.
 
-    Note: Each [=attestation statement format=] specifies its own verification procedure. See [[#defined-attestation-formats]] for
+    Note: Each [=attestation statement format=] specifies its own [=verification procedure=]. See [[#defined-attestation-formats]] for
     the initially-defined formats, and [[!WebAuthn-Registries]] for the up-to-date list.
 
 1. If validation is successful, obtain a list of acceptable trust anchors (attestation root certificates or [=ECDAA-Issuer
@@ -3016,11 +3059,11 @@ When registering a new credential, represented by an {{AuthenticatorAttestationR
     example, the FIDO Metadata Service [[FIDOMetadataService]] provides one way to obtain such information, using the
     <code>[=aaguid=]</code> in the <code>[=attestedCredentialData=]</code> in |authData|.
 
-1. Assess the attestation trustworthiness using the outputs of the verification procedure in step 14, as follows:
+1. Assess the attestation trustworthiness using the outputs of the [=verification procedure=] in step 14, as follows:
         - If [=self attestation=] was used, check if [=self attestation=] is acceptable under [=[RP]=] policy.
         - If [=ECDAA=] was used, verify that the [=identifier of the ECDAA-Issuer public key=] used is included in the set of
             acceptable trust anchors obtained in step 15.
-        - Otherwise, use the X.509 certificates returned by the verification procedure to verify that the attestation public key
+        - Otherwise, use the X.509 certificates returned by the [=verification procedure=] to verify that the attestation public key
             correctly chains up to an acceptable root certificate.
 
 1. Check that the <code>[=credentialId=]</code> is not yet registered to any other user. If registration 
@@ -3248,7 +3291,7 @@ implementable by [=authenticators=] with limited resources (e.g., secure element
             omits the other fields.
 
 : Verification procedure
-:: Given the [=verification procedure inputs=] |attStmt|, |authenticatorData| and |clientDataHash|, the verification procedure is
+:: Given the [=verification procedure inputs=] |attStmt|, |authenticatorData| and |clientDataHash|, the [=verification procedure=] is
     as follows:
 
         1. Verify that |attStmt| is valid CBOR conforming to the syntax defined above and perform CBOR decoding on it to extract
@@ -3387,7 +3430,7 @@ engine.
     same name, and the |sig| field to the signature obtained from the above procedure.
 
 : Verification procedure
-:: Given the [=verification procedure inputs=] |attStmt|, |authenticatorData| and |clientDataHash|, the verification procedure is
+:: Given the [=verification procedure inputs=] |attStmt|, |authenticatorData| and |clientDataHash|, the [=verification procedure=] is
     as follows:
 
     Verify that |attStmt| is valid CBOR conforming to the syntax defined above and perform CBOR decoding on it to extract the
@@ -3493,7 +3536,7 @@ the attestation=] is consistent with the fields of the attestation certificate's
 
 
 : Verification procedure
-:: Given the [=verification procedure inputs=] |attStmt|, |authenticatorData| and |clientDataHash|, the verification procedure is
+:: Given the [=verification procedure inputs=] |attStmt|, |authenticatorData| and |clientDataHash|, the [=verification procedure=] is
     as follows:
     - Verify that |attStmt| is valid CBOR conforming to the syntax defined above and perform CBOR decoding on it to extract the
         contained fields.
@@ -3562,7 +3605,7 @@ even if the SafetyNet API is also present.
     the version of Google Play Services running in the authenticator.
 
 : Verification procedure
-:: Given the [=verification procedure inputs=] |attStmt|, |authenticatorData| and |clientDataHash|, the verification procedure is
+:: Given the [=verification procedure inputs=] |attStmt|, |authenticatorData| and |clientDataHash|, the [=verification procedure=] is
     as follows:
     - Verify that |attStmt| is valid CBOR conforming to the syntax defined above and perform CBOR decoding on it to extract the
         contained fields.
@@ -3623,7 +3666,7 @@ This attestation statement format is used with FIDO U2F authenticators using the
     the attestation public key as |x5c|.
 
 : Verification procedure
-:: Given the [=verification procedure inputs=] |attStmt|, |authenticatorData| and |clientDataHash|, the verification procedure is
+:: Given the [=verification procedure inputs=] |attStmt|, |authenticatorData| and |clientDataHash|, the [=verification procedure=] is
     as follows:
     1. Verify that |attStmt| is valid CBOR conforming to the syntax defined above and perform CBOR decoding on it to extract the
         contained fields.
@@ -3650,7 +3693,7 @@ This attestation statement format is used with FIDO U2F authenticators using the
 
 ## None Attestation Statement Format ## {#none-attestation}
 
-The <dfn>none attestation statement format</dfn> is used to replace any [=authenticator=]-provided [=attestation statement=] when a [=[RP]=] indicates it does not wish to receive attestation information, see  [[#attestation-convey]].
+The none attestation statement format is used to replace any [=authenticator=]-provided [=attestation statement=] when a [=[RP]=] indicates it does not wish to receive attestation information, see  [[#attestation-convey]].
 
 : Attestation statement format identifier
 :: none
@@ -4320,12 +4363,12 @@ as candidates to be employed in a [=registration=] ceremony.
 : Client extension input
 :: Biometric performance bounds:
 
-    <pre class="idl">
+    <xmp class="idl">
     dictionary authenticatorBiometricPerfBounds{
         float FAR;
         float FRR;
         };
-    </pre>
+    </xmp>
 
     The FAR is the maximum false acceptance rate for a biometric authenticator allowed by the [=[RP]=].
 
@@ -4837,7 +4880,7 @@ next section.
 ### Considerations for Self and None Attestation Types and Ignoring Attestation ### {#sctn-no-attestation-security-attestation}
 
 When [[#registering-a-new-credential|registering a new credential]], the [=[RP]=] MAY choose to accept an [=attestation
-statement=] of [[#sctn-attestation-types|type]] [=self attestation|Self=] or [=no attestation statement|None=], or to not verify
+statement=] of [[#sctn-attestation-types|type]] [=self attestation|Self=] or [=None=], or to not verify
 the [=attestation statement=]. In all of these cases the [=[RP]=] loses much of benefit (3) listed above, but retains the other
 benefits.
 
