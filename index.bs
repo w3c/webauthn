@@ -1529,28 +1529,11 @@ This [=internal method=] accepts no arguments.
 
 [=[RPS]=] use this method to determine whether they can create a new credential using a [=user verification|user-verifying=] [=platform authenticator=].
 Upon invocation, the [=client=] employs a platform-specific procedure to discover available [=user verification|user-verifying=] [=platform authenticators=].
-If successful, the [=client=] then assesses whether the user is willing to create a credential using one of the available [=user verification|user-verifying=] [=platform authenticators=].
-This assessment may include various factors, such as:
-    - Whether the user is running in private or incognito mode.
-    - Whether the user has configured the [=client=] to not create such credentials.
-    - Whether the user has previously expressed an unwillingness to create a new credential for this [=[RP]=],
-        either through configuration or by declining a user interface prompt.
-    - The user's explicitly stated intentions, determined through user interaction.
-If this assessment is affirmative, the promise is resolved with the value of [TRUE].
+If any are discovered, the promise is resolved with the value of [TRUE].
 Otherwise, the promise is resolved with the value of [FALSE].
 Based on the result, the [=[RP]=] can take further actions to guide the user to create a credential.
 
 This method has no arguments and returns a Boolean value.
-
-If the promise will return [FALSE],
-the [=client=] SHOULD wait a fixed period of time from the invocation of the method before returning [FALSE].
-This is done so that callers cannot distinguish between
-the case where the user was unwilling to create a credential using one of the available [=user verification|user-verifying=] [=platform authenticators=] and
-the case where no [=user verification|user-verifying=] [=platform authenticator=] exists.
-Trying to make these cases indistinguishable is done in an attempt to not provide additional information that could be used for fingerprinting.
-A timeout value on the order of 10 minutes is recommended;
-this is enough time for successful user interactions to be performed
-but short enough that the dangling promise will still be resolved in a reasonably timely fashion.
 
 <xmp class="idl">
     partial interface PublicKeyCredential {
@@ -2049,7 +2032,7 @@ Note: The {{CollectedClientData}} may be extended in the future. Therefore it's 
         DOMString id;
     };
 
-    enum TokenBindingStatus { "present", "supported", "not-supported" };
+    enum TokenBindingStatus { "present", "supported" };
 </xmp>
 
 <div dfn-type="dict-member" dfn-for="CollectedClientData">
@@ -2067,17 +2050,14 @@ Note: The {{CollectedClientData}} may be extended in the future. Therefore it's 
         the syntax defined by [[RFC6454]].
 
     :   <dfn>tokenBinding</dfn>
-    ::  This member contains information about the state of the [=Token Binding=] protocol used when communicating with the
-        [=[RP]=].
+    ::  This OPTIONAL member contains information about the state of the [=Token Binding=] protocol used when communicating
+        with the [=[RP]=]. Its absence indicates that the client doesn't support token binding.
 
         <div dfn-type="dict-member" dfn-for="TokenBinding">
             :   <dfn>status</dfn>
             ::  This member is one of the following:
 
                 <div dfn-type="enum-value" dfn-for="TokenBindingStatus">
-                    :   <dfn>not-supported</dfn>
-                    ::  Indicates the client does not support token binding.
-
                     :   <dfn>supported</dfn>
                     ::  Indicates the client supports token binding, but it was not negotiated when communicating with the [=[RP]=].
 
@@ -3381,8 +3361,11 @@ implementable by [=authenticators=] with limited resources (e.g., secure element
     :: A byte string containing the attestation signature.
 
     : x5c
-    :: The elements of this array contain the attestation certificate and its certificate chain, each encoded in X.509 format.
-        The attestation certificate MUST be the first element in the array.
+    :: The elements of this array contain |attestnCert| and its certificate chain, each encoded in X.509 format. The attestation
+        certificate |attestnCert| MUST be the first element in the array.
+
+    : attestnCert
+    :: The attestation certificate, encoded in X.509 format.
 
     : ecdaaKeyId
     :: The <dfn>identifier of the ECDAA-Issuer public key</dfn>.  This is the
@@ -3419,10 +3402,10 @@ implementable by [=authenticators=] with limited resources (e.g., secure element
 
         1. If |x5c| is present, this indicates that the attestation type is not [=ECDAA=]. In this case:
             - Verify that |sig| is a valid signature over the concatenation of |authenticatorData| and |clientDataHash| using the
-                attestation public key in |x5c| with the algorithm specified in |alg|.
-            - Verify that |x5c| meets the requirements in [[#packed-attestation-cert-requirements]].
-            - If |x5c| contains an extension with OID 1.3.6.1.4.1.45724.1.1.4 (`id-fido-gen-ce-aaguid`) verify that the value of this
-                extension matches the <code>[=aaguid=]</code> in |authenticatorData|.
+                attestation public key in |attestnCert| with the algorithm specified in |alg|.
+            - Verify that |attestnCert| meets the requirements in [[#packed-attestation-cert-requirements]].
+            - If |attestnCert| contains an extension with OID 1.3.6.1.4.1.45724.1.1.4 (`id-fido-gen-ce-aaguid`) verify that the
+                value of this extension matches the <code>[=aaguid=]</code> in |authenticatorData|.
             - If successful, return attestation type [=Basic=] and [=attestation trust path=] |x5c|.
 
         1. If |ecdaaKeyId| is present, then the attestation type is [=ECDAA=]. In this case:
@@ -3520,7 +3503,10 @@ engine.
     :: A {{COSEAlgorithmIdentifier}} containing the identifier of the algorithm used to generate the attestation signature.
 
     : x5c
-    :: The AIK certificate used for the attestation and its certificate chain, in X.509 encoding.
+    :: |aikCert| followed by its certificate chain, in X.509 encoding.
+
+    : aikCert
+    :: The AIK certificate used for the attestation, in X.509 encoding.
 
     : ecdaaKeyId
     :: The [=identifier of the ECDAA-Issuer public key=]. This is the
@@ -3574,10 +3560,10 @@ engine.
         These fields MAY be used as an input to risk engines.
 
     If |x5c| is present, this indicates that the attestation type is not [=ECDAA=]. In this case:
-    - Verify the |sig| is a valid signature over |certInfo| using the attestation public key in |x5c| with the
+    - Verify the |sig| is a valid signature over |certInfo| using the attestation public key in |aikCert| with the
         algorithm specified in |alg|.
-    - Verify that |x5c| meets the requirements in [[#tpm-cert-requirements]].
-    - If |x5c| contains an extension with OID `1 3 6 1 4 1 45724 1 1 4` (id-fido-gen-ce-aaguid) verify that the value of this
+    - Verify that |aikCert| meets the requirements in [[#tpm-cert-requirements]].
+    - If |aikCert| contains an extension with OID `1 3 6 1 4 1 45724 1 1 4` (id-fido-gen-ce-aaguid) verify that the value of this
         extension matches the <code>[=aaguid=]</code> in |authenticatorData|.
     - If successful, return attestation type [=AttCA=] and [=attestation trust path=] |x5c|.
 
@@ -4042,7 +4028,7 @@ These are RECOMMENDED for implementation by user agents targeting broad interope
 
 ## FIDO <dfn>AppID</dfn> Extension (appid) ## {#sctn-appid-extension}
 
-This [=client extension=] allows [=[RPS]=] that have previously registered a
+This extension allows [=[RPS]=] that have previously registered a
 credential using the legacy FIDO JavaScript APIs to request an [=assertion=]. The
 FIDO APIs use an alternative identifier for [=relying parties=] called an |AppID|
 [[FIDO-APPID]], and any credentials created using those APIs will be bound to
@@ -4055,6 +4041,9 @@ JavaScript APIs.
 
 : Extension identifier
 :: `appid`
+
+: Operation applicability
+:: [=authentication extension|Authentication=]
 
 : Client extension input
 :: A single USVString specifying a FIDO |AppID|.
@@ -4099,11 +4088,14 @@ JavaScript APIs.
 
 ## Simple Transaction Authorization Extension (txAuthSimple) ## {#sctn-simple-txauth-extension}
 
-This [=registration extension=] and [=authentication extension=] allows for a simple form of transaction authorization. A
+This extension allows for a simple form of transaction authorization. A
 [=[RP]=] can specify a prompt string, intended for display on a trusted device on the authenticator.
 
 : Extension identifier
 :: `txAuthSimple`
+
+: Operation applicability
+:: [=registration extension|Registration=] and [=authentication extension|Authentication=]
 
 : Client extension input
 :: A single USVString prompt.
@@ -4146,11 +4138,14 @@ txAuthSimpleOutput = (tstr)
 
 ## Generic Transaction Authorization Extension (txAuthGeneric) ## {#sctn-generic-txauth-extension}
 
-This [=registration extension=] and [=authentication extension=] allows images to be used as transaction authorization prompts
+This extension allows images to be used as transaction authorization prompts
 as well. This allows authenticators without a font rendering engine to be used and also supports a richer visual appearance.
 
 : Extension identifier
 :: `txAuthGeneric`
+
+: Operation applicability
+:: [=registration extension|Registration=] and [=authentication extension|Authentication=]
 
 : Client extension input
 :: A JavaScript object defined as follows:
@@ -4191,12 +4186,15 @@ as well. This allows authenticators without a font rendering engine to be used a
 
 ## Authenticator Selection Extension (authnSel) ## {#sctn-authenticator-selection-extension}
 
-This [=registration extension=] allows a [=[RP]=] to guide the selection of the authenticator that will be leveraged when
+This extension allows a [=[RP]=] to guide the selection of the authenticator that will be leveraged when
 creating the credential. It is intended primarily for [=[RPS]=] that wish to tightly control the experience around credential
 creation.
 
 : Extension identifier
 :: `authnSel`
+
+: Operation applicability
+:: [=registration extension|Registration=]
 
 : Client extension input
 :: A sequence of AAGUIDs:
@@ -4243,10 +4241,13 @@ creation.
 
 ## Supported Extensions Extension (exts) ## {#sctn-supported-extensions-extension}
 
-This [=registration extension=] enables the [=[RP]=] to determine which extensions the authenticator supports.
+This extension enables the [=[RP]=] to determine which extensions the authenticator supports.
 
 : Extension identifier
 :: `exts`
+
+: Operation applicability
+:: [=registration extension|Registration=]
 
 : Client extension input
 :: The Boolean value [TRUE] to indicate that this extension is requested by the [=[RP]=].
@@ -4282,10 +4283,13 @@ This [=registration extension=] enables the [=[RP]=] to determine which extensio
 
 ## User Verification Index Extension (uvi) ## {#sctn-uvi-extension}
 
-This [=registration extension=] and [=authentication extension=] enables use of a user verification index.
+This extension enables use of a user verification index.
 
 : Extension identifier
 :: `uvi`
+
+: Operation applicability
+:: [=registration extension|Registration=] and [=authentication extension|Authentication=]
 
 : Client extension input
 :: The Boolean value [TRUE] to indicate that this extension is requested by the [=[RP]=].
@@ -4345,11 +4349,13 @@ This [=registration extension=] and [=authentication extension=] enables use of 
 
 ## Location Extension (loc) ## {#sctn-location-extension}
 
-The location [=registration extension=] and [=authentication extension=] provides the authenticator's current location to the
-WebAuthn [=[RP]=].  
+This extension provides the [=authenticator=]'s current location to the WebAuthn [=[RP]=].
 
 : Extension identifier
 :: `loc`
+
+: Operation applicability
+:: [=registration extension|Registration=] and [=authentication extension|Authentication=]
 
 : Client extension input
 :: The Boolean value [TRUE] to indicate that this extension is requested by the [=[RP]=].
@@ -4387,10 +4393,13 @@ WebAuthn [=[RP]=].
 
 ## User Verification Method Extension (uvm) ## {#sctn-uvm-extension}
 
-This [=registration extension=] and [=authentication extension=] enables use of a user verification method.
+This extension enables use of a user verification method.
 
 : Extension identifier
 :: `uvm`
+
+: Operation applicability
+:: [=registration extension|Registration=] and [=authentication extension|Authentication=]
 
 : Client extension input
 :: The Boolean value [TRUE] to indicate that this extension is requested by the [=[RP]=].
@@ -4474,11 +4483,14 @@ This [=registration extension=] and [=authentication extension=] enables use of 
 
 ## Biometric Authenticator Performance Bounds Extension (biometricPerfBounds) ## {#sctn-authenticator-biometric-criteria-extension}
 
-This [=registration extension=] allows [=[RPS]=] to specify the desired performance bounds for selecting [=biometric authenticators=]
+This extension allows [=[RPS]=] to specify the desired performance bounds for selecting [=biometric authenticators=]
 as candidates to be employed in a [=registration ceremony=].
 
 : Extension identifier
 :: `biometricPerfBounds`
+
+: Operation applicability
+:: [=registration extension|Registration=]
 
 : Client extension input
 :: Biometric performance bounds:
@@ -5039,6 +5051,90 @@ which should make use of the existing browser permissions framework for the Geol
 # Privacy Considerations # {#sctn-privacy-considerations}
 
 The privacy principles in [[!FIDO-Privacy-Principles]] also apply to this specification.
+
+
+## De-anonymization prevention measures ## {#sctn-privacy-attacks}
+
+[INFORMATIVE]
+
+Many aspects of the design of the [=Web Authentication API=] are motivated by privacy concerns. The main concern considered in
+this specification is the protection of the user's personal identity, i.e., the identification of a human being or a correlation
+of separate identities as belonging to the same human being. Although the [=Web Authentication API=] does not use or provide any
+form of global identity, the following kinds of potentially correlatable identifiers are used:
+
+- The user's [=credential IDs=] and [=credential public keys=].
+
+    These are registered by the [=[RP]=] and subsequently used by the user to prove possession of the corresponding [=credential
+    private key=]. They are also visible to the [=client=] in the communication with the [=authenticator=].
+
+- The user's identities specific to each [=[RP]=], e.g., usernames and [=user handles=].
+
+    These identities are obviously used by each [=[RP]=] to identify a user in their system. They are also visible to the
+    [=client=] in the communication with the [=authenticator=].
+
+- The user's biometric characteristic(s), e.g., fingerprints or facial recognition data [[ISOBiometricVocabulary]].
+
+    This is optionally used by the [=authenticator=] to perform [=user verification=]. It is not revealed to the [=[RP]=], but in
+    the case of [=platform authenticators=], it might be visible to the [=client=] depending on the implementation.
+
+- The models of the user's [=authenticators=], e.g., product names.
+
+    This is exposed in the [=attestation statement=] provided to the [=[RP]=] during [=registration=]. It is also visible to the
+    [=client=] in the communication with the [=authenticator=].
+
+- The identities of the user's [=authenticators=], e.g., serial numbers.
+
+    This is possibly used by the [=client=] to enable communication with the [=authenticator=], but is not exposed to the
+    [=[RP]=].
+
+Some of the above information is necessarily shared with the [=[RP]=]. The following sections describe the measures taken to
+prevent malicious [=[RPS]=] from using it to discover a user's personal identity.
+
+
+## Anonymous, scoped, non-correlatable [=public key credentials=] ## {#sec-non-correlatable-credentials}
+
+[INFORMATIVE]
+
+Although [=Credential IDs=] and [=credential public keys=] are necessarily shared with the [=[RP]=] to enable strong
+authentication, they are designed to be minimally identifying and not shared between [=[RPS]=].
+
+- [=Credential IDs=] and [=credential public keys=] are meaningless in isolation, as they only identify [=credential key pairs=]
+    and not users directly.
+
+- Each [=public key credential=] is strictly bound to a specific [=[RP]=], and the [=client=] ensures that its existence is not
+    revealed to other [=[RPS]=]. A malicious [=[RP]=] thus cannot ask the [=client=] to reveal a user's other identities.
+
+- The [=client=] also ensures that the existence of a [=public key credential=] is not revealed to the [=[RP]=] without [=user
+    consent=]. This is detailed further in [[#sec-make-credential-privacy]] and [[#sec-assertion-privacy]]. A malicious [=[RP]=]
+    thus cannot silently identify a user, even if the user has a [=public key credential=] registered and available.
+
+- [=Authenticators=] ensure that the [=credential IDs=] and [=credential public keys=] of different [=public key credentials=] are
+    not correlatable as belonging to the same user. A pair of malicious [=[RPS]=] thus cannot correlate users between their
+    systems without additional information, e.g., a willfully reused username or e-mail address.
+
+- [=Authenticators=] ensure that their [=attestation certificates=] are not unique enough to identify a single [=authenticator=]
+    or a small group of [=authenticators=]. This is detailed further in [[#sec-attestation-privacy]]. A pair of malicious
+    [=[RPS]=] thus cannot correlate users between their systems by tracking individual [=authenticators=].
+
+Additionally, a [=public key credential=] with a [=Client-side-resident Credential Private Key=] can optionally include a [=user
+handle=] specified by the [=[RP]=]. The [=public key credential|credential=] can then be used to both identify and
+[=authentication|authenticate=] the user. This means that a privacy-conscious [=[RP]=] can allow the user to create an account
+without a traditional username, further improving non-correlatability between [=[RPS]=].
+
+
+## Authenticator-local [=biometric recognition=] ## {#sec-biometric-privacy}
+
+[=Biometric authenticators=] perform the [=biometric recognition=] internally in the [=authenticator=] - though for [=platform
+authenticators=] the biometric data might also be visible to the [=client=], depending on the implementation. Biometric data is
+not revealed to the [=[RP]=]; it is used only locally to perform [=user verification=] authorizing the creation and
+[=registration=] of, or [=authentication=] using, a [=public key credential=]. A malicious [=[RP]=] therefore cannot discover the
+user's personal identity via biometric data, and a security breach at a [=[RP]=] cannot expose biometric data for an attacker to
+use for forging logins at other [=[RPS]=].
+
+In the case where a [=[RP]=] requires [=biometric recognition=], this is performed locally by the [=biometric authenticator=]
+perfoming [=user verification=] and then signaling the result by setting the [=UV=] [=flag=] in the signed [=assertion=] response,
+instead of revealing the biometric data itself to the [=[RP]=].
+
 
 ## Attestation Privacy ## {#sec-attestation-privacy}
 
