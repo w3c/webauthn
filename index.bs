@@ -53,9 +53,9 @@ Text Macro: INFORMATIVE <em>This section is not normative.</em>
 Text Macro: TRUE <code>true</code>
 Text Macro: WAC WebAuthn Client
 Ignored Vars: op, alg, type, algorithm
-Abstract: This specification defines an API enabling the creation and use of strong, attested, scoped, public key-based
+Abstract: This specification defines an API enabling the creation and use of strong, attested, [=scoped=], public key-based
  credentials by web applications, for the purpose of strongly authenticating users. Conceptually, one or more [=public key
- credentials=], each scoped to a given [=Relying Party=], are created and stored on an [=authenticator=] by the user agent in
+ credentials=], each [=scoped=] to a given [=Relying Party=], are created and stored on an [=authenticator=] by the user agent in
  conjunction with the web application. The user agent mediates access to [=public key credentials=] in order to preserve user
  privacy. [=Authenticators=] are responsible for ensuring that no operation is performed without [=user consent=].
  [=Authenticators=] provide cryptographic proof of their properties to [=relying parties=] via [=attestation=]. This
@@ -82,13 +82,15 @@ spec: RFC8152; urlPrefix: https://tools.ietf.org/html/rfc8152
     type: dfn
         text: Section 7; url: section-7
 
-spec: HTML52; urlPrefix: https://w3c.github.io/html/
+spec: HTML53; urlPrefix: https://w3c.github.io/html/
     type: dfn
         urlPrefix: browsers.html
             text: origin; url: concept-cross-origin
             text: opaque origin; url: opaque-origin
             text: tuple origin
             text: document.domain; url:dom-document-domain
+            text: scheme; url: origin-scheme
+            text: port; url: origin-port
 
 spec: TokenBinding; urlPrefix: https://tools.ietf.org/html/draft-ietf-tokbind-protocol#
     type: dfn
@@ -196,13 +198,13 @@ spec:webidl; type:interface; text:Promise
 
 [INFORMATIVE]
 
-This specification defines an API enabling the creation and use of strong, attested, scoped, public key-based
+This specification defines an API enabling the creation and use of strong, attested, [=scoped=], public key-based
 credentials by web applications, for the purpose of strongly authenticating users. A [=public key credential=] is
 created and stored by an <em>[=authenticator=]</em> at the behest of a <em>[=[RP]=]</em>, subject to <em>[=user
 consent=]</em>. Subsequently, the [=public key credential=] can only be accessed by [=origins=] belonging to that [=[RP]=].
 This scoping is enforced jointly by <em>[=conforming User Agents=]</em> and <em>[=authenticators=]</em>.
 Additionally, privacy across [=[RPS]=] is maintained; [=[RPS]=] are not able to detect any properties, or even
-the existence, of credentials scoped to other [RPS].
+the existence, of credentials [=scoped=] to other [RPS].
 
 [=[RPS]=] employ the [=Web Authentication API=] during two distinct, but related, [=ceremonies=] involving a user. The first
 is [=Registration=], where a [=public key credential=] is created on an [=authenticator=], and associated by a [=[RP]=]
@@ -589,19 +591,22 @@ The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "S
 : <dfn>RP ID</dfn>
 :: A [=valid domain string=] that identifies the [=[RP]=] on whose behalf a given [=registration=] or
     [=authentication|authentication ceremony=] is being performed. A [=public key credential=] can only be used for
-    [=authentication=] with the same entity (as identified by [=RP ID=]) it was registered with. By default, the [=RP ID=] for a
+    [=authentication=] with the same entity (as identified by [=RP ID=]) it was registered with.
+
+    By default, the [=RP ID=] for a
     WebAuthn operation is set to the caller's [=environment settings object/origin=]'s [=effective domain=]. This default MAY be
     overridden by the caller, as long as the caller-specified [=RP ID=] value [=is a registrable domain suffix of or is equal
     to=] the caller's [=environment settings object/origin=]'s [=effective domain=]. See also [[#createCredential]] and
     [[#getAssertion]].
 
     <div class="note" id="note-pkcredscope">
-        Note: A [=Public key credential=]'s scope is for a [=[RP]=]'s [=origin=], with the following <em>restrictions</em> and
-            <em>relaxations</em>:
-            - The scheme is always `https` (i.e., <em>a restriction</em>), and,
-            - the host may be equal to the [=[RP]=]'s [=origin=]'s [=effective domain=], or it may be equal to a registrable
-                domain suffix of the [=[RP]=]'s [=origin=]'s [=effective domain=] (i.e., <em>an available relaxation</em>), and,
-            - all (TCP) ports on that host (i.e., <em>a relaxation</em>).
+        Note: An [=RP ID=] is based on a [=host=]'s [=domain=] name. It does not itself include a [=scheme=] or [=port=], as an [=origin=] does. The [=RP ID=] of a [=public key credential=] determines its <dfn>scope</dfn>. I.e., it <dfn>determines the set of origins on which the public key credential may be exercised</dfn>, as follows:
+
+            - The [=RP ID=] must be equal to the [=determines the set of origins on which the public key credential may be exercised|origin=]'s [=effective domain=], or a [=is a registrable domain suffix of or is equal to|registrable domain suffix=] of the [=determines the set of origins on which the public key credential may be exercised|origin=]'s [=effective domain=].
+            - The [=determines the set of origins on which the public key credential may be exercised|origin=]'s [=scheme=] must be `https`.
+            - The [=determines the set of origins on which the public key credential may be exercised|origin=]'s [=port=] is unrestricted.
+
+        For example, given a [=[RP]=] whose origin is `https://login.example.com:1337`, then the following [=RP ID=]s are valid: `login.example.com` (default) and `example.com`, but not `m.login.example.com` and not `com`.
 
         This is done in order to match the behavior of pervasively deployed ambient credentials (e.g., cookies, [[RFC6265]]).
         Please note that this is a greater relaxation of "same-origin" restrictions than what
@@ -666,7 +671,7 @@ deletion are considered to be the responsibility of such a user interface and ar
 scripts.
 
 The security properties of this API are provided by the client and the authenticator working together. The authenticator, which
-holds and manages credentials, ensures that all operations are scoped to a particular [=origin=], and cannot be replayed against
+holds and manages credentials, ensures that all operations are [=scoped=] to a particular [=origin=], and cannot be replayed against
 a different [=origin=], by incorporating the [=origin=] in its responses. Specifically, as defined in [[#authenticator-ops]],
 the full [=origin=] of the requester is included, and signed over, in the [=attestation object=] produced when a new credential
 is created as well as in all assertions produced by WebAuthn credentials.
