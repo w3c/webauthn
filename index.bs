@@ -52,13 +52,15 @@ Text Macro: RPS Relying Parties
 Text Macro: INFORMATIVE <em>This section is not normative.</em>
 Text Macro: TRUE <code>true</code>
 Text Macro: WAC WebAuthn Client
+Text Macro: WRP WebAuthn Relying Party
+Text Macro: WRPS WebAuthn Relying Parties
 Ignored Vars: op, alg, type, algorithm
-Abstract: This specification defines an API enabling the creation and use of strong, attested, scoped, public key-based
+Abstract: This specification defines an API enabling the creation and use of strong, attested, [=scoped=], public key-based
  credentials by web applications, for the purpose of strongly authenticating users. Conceptually, one or more [=public key
- credentials=], each scoped to a given [=Relying Party=], are created and stored on an [=authenticator=] by the user agent in
+ credentials=], each [=scoped=] to a given [=WebAuthn Relying Party=], are created and stored on an [=authenticator=] by the user agent in
  conjunction with the web application. The user agent mediates access to [=public key credentials=] in order to preserve user
  privacy. [=Authenticators=] are responsible for ensuring that no operation is performed without [=user consent=].
- [=Authenticators=] provide cryptographic proof of their properties to [=relying parties=] via [=attestation=]. This
+ [=Authenticators=] provide cryptographic proof of their properties to [=Relying Parties=] via [=attestation=]. This
  specification also describes the functional model for WebAuthn conformant [=authenticators=], including their signature and
  [=attestation=] functionality.
 Boilerplate: omit conformance, omit feedback-header, omit abstract-header
@@ -82,13 +84,15 @@ spec: RFC8152; urlPrefix: https://tools.ietf.org/html/rfc8152
     type: dfn
         text: Section 7; url: section-7
 
-spec: HTML52; urlPrefix: https://w3c.github.io/html/
+spec: HTML53; urlPrefix: https://w3c.github.io/html/
     type: dfn
         urlPrefix: browsers.html
             text: origin; url: concept-cross-origin
             text: opaque origin; url: opaque-origin
             text: tuple origin
             text: document.domain; url:dom-document-domain
+            text: scheme; url: origin-scheme
+            text: port; url: origin-port
 
 spec: TokenBinding; urlPrefix: https://tools.ietf.org/html/draft-ietf-tokbind-protocol#
     type: dfn
@@ -133,6 +137,7 @@ spec: WHATWG HTML; urlPrefix: https://html.spec.whatwg.org/
 spec: FIDO-CTAP; urlPrefix: https://fidoalliance.org/specs/fido-v2.0-id-20180227/fido-client-to-authenticator-protocol-v2.0-id-20180227.html
     type: dfn
         text: CTAP2 canonical CBOR encoding form; url: ctap2-canonical-cbor-encoding-form
+        text: §6.2. Responses; url: responses
 
 spec: FIDO-APPID; urlPrefix: https://fidoalliance.org/specs/fido-v2.0-id-20180227/fido-appid-and-facets-v2.0-id-20180227.html
     type: dfn
@@ -157,6 +162,12 @@ spec: RFC4949; urlPrefix: https://tools.ietf.org/html/rfc4949
         text: leap of faith; url: page-182
         text: man-in-the-middle attack; url: page-186
 
+spec: SP800-800-63r3; urlPrefix: https://pages.nist.gov/800-63-3/sp800-63-3.html
+    type: dfn
+        text: authentication factor; url: af
+        text: something you know; url: af
+        text: something you have; url: af
+        text: something you are; url: af
 
 </pre> <!-- class=anchors -->
 
@@ -196,13 +207,13 @@ spec:webidl; type:interface; text:Promise
 
 [INFORMATIVE]
 
-This specification defines an API enabling the creation and use of strong, attested, scoped, public key-based
+This specification defines an API enabling the creation and use of strong, attested, [=scoped=], public key-based
 credentials by web applications, for the purpose of strongly authenticating users. A [=public key credential=] is
-created and stored by an <em>[=authenticator=]</em> at the behest of a <em>[=[RP]=]</em>, subject to <em>[=user
+created and stored by an <em>[=authenticator=]</em> at the behest of a <em>[=[WRP]=]</em>, subject to <em>[=user
 consent=]</em>. Subsequently, the [=public key credential=] can only be accessed by [=origins=] belonging to that [=[RP]=].
 This scoping is enforced jointly by <em>[=conforming User Agents=]</em> and <em>[=authenticators=]</em>.
 Additionally, privacy across [=[RPS]=] is maintained; [=[RPS]=] are not able to detect any properties, or even
-the existence, of credentials scoped to other [RPS].
+the existence, of credentials [=scoped=] to other [RPS].
 
 [=[RPS]=] employ the [=Web Authentication API=] during two distinct, but related, [=ceremonies=] involving a user. The first
 is [=Registration=], where a [=public key credential=] is created on an [=authenticator=], and associated by a [=[RP]=]
@@ -215,11 +226,11 @@ infrastructure which allows those credentials to be used with {{CredentialsConta
 latter during [=Authentication=].
 
 Broadly, compliant [=authenticators=] protect [=public key credentials=], and interact with user agents to implement the
-[=Web Authentication API=]. Some authenticators MAY run on the same computing device (e.g., smart phone, tablet, desktop PC) as
+[=Web Authentication API=]. Some authenticators MAY run on the same [=client device=] (e.g., smart phone, tablet, desktop PC) as
 the user agent is running on. For instance, such an authenticator might consist of a Trusted Execution Environment (TEE) applet,
-a Trusted Platform Module (TPM), or a Secure Element (SE) integrated into the computing device in conjunction with some means
+a Trusted Platform Module (TPM), or a Secure Element (SE) integrated into the [=client device=] in conjunction with some means
 for [=user verification=], along with appropriate platform software to mediate access to these components' functionality. Other
-authenticators MAY operate autonomously from the computing device running the user agent, and be accessed over a transport such
+authenticators MAY operate autonomously from the [=client device=] running the user agent, and be accessed over a transport such
 as Universal Serial Bus (USB), Bluetooth Low Energy (BLE) or Near Field Communications (NFC).
 
 
@@ -262,9 +273,9 @@ scenarios. Additional scenarios, including sample code, are given later in [[#sa
 This use case scenario illustrates how a [=[RP]=] can leverage a combination of a [=roaming authenticator=] (e.g., a USB security
 key fob) and a [=platform authenticator=] (e.g., a built-in fingerprint sensor) such that the user has:
 
-  - a "primary" [=roaming authenticator=] that they use to authenticate on new-to-them devices (e.g., laptops, desktops) or on
-        such devices that lack a [=platform authenticator=], and
-  - a low-friction means to strongly re-authenticate on devices having [=platform authenticators=].
+  - a "primary" [=roaming authenticator=] that they use to authenticate on new-to-them [=client devices=] (e.g., laptops,
+    desktops) or on such [=client devices=] that lack a [=platform authenticator=], and
+  - a low-friction means to strongly re-authenticate on [=client devices=] having [=platform authenticators=].
 
 Note: This approach of registering multiple [=authenticators=] for an account is also useful in account recovery use cases.
 
@@ -338,9 +349,9 @@ external hardware, or a combination of both.
 [=Authenticators=] that only support the [[#fido-u2f-attestation]] have no mechanism to store a
 [=user handle=], so the returned {{AuthenticatorAssertionResponse/userHandle}} will always be null.
 
-## [RPS] ## {#conforming-relying-parties}
+## [WRPS] ## {#conforming-relying-parties}
 
-A [=[RP]=] MUST behave as described in [[#rp-operations]] to obtain all the security benefits offered by this specification. See
+A [=[WRP]=] MUST behave as described in [[#rp-operations]] to obtain all the security benefits offered by this specification. See
 [[#sctn-rp-benefits]] for further discussion of this.
 
 
@@ -423,7 +434,8 @@ The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "S
     attestation=] for details.
 
 : <dfn>Authentication</dfn>
-:: The [=ceremony=] where a user, and the user's computing device(s) (containing at least one [=authenticator=]) work in
+: <dfn>Authentication Ceremony</dfn>
+:: The [=ceremony=] where a user, and the user's [=client=] (containing at least one [=authenticator=]) work in
     concert to cryptographically prove to a [=[RP]=] that the user controls the [=credential private key=] associated with a
     previously-registered [=public key credential=] (see [=Registration=]). Note that this includes a [=test of user presence=] or
     [=user verification=].
@@ -439,7 +451,7 @@ The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "S
 :: A cryptographic entity used by a [=[WAC]=] to (i) generate a [=public key credential=] and register it with a [=[RP]=],
     and (ii) [=authentication|authenticate=] by potentially [=user verification|verifying the user=], and then 
     cryptographically signing and returning, in the form of an [=Authentication Assertion=], 
-    a challenge and other data presented by a [=[RP]=] (in concert with the [=[WAC]=]).
+    a challenge and other data presented by a [=[WRP]=] (in concert with the [=[WAC]=]).
 
 : <dfn>Authorization Gesture</dfn>
 :: An [=authorization gesture=] is a physical interaction performed by a user with an authenticator as part of a [=ceremony=],
@@ -461,20 +473,22 @@ The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "S
     those [=ceremonies=].
 
 : <dfn>Client</dfn>
-:: See [=WebAuthn Client=], [=Conforming User Agent=].
+:: See [=[WAC]=], [=Conforming User Agent=].
 
 : <dfn>Client-Side</dfn>
-:: This refers in general to the combination of the user's platform device, user agent, authenticators, and everything gluing
+:: This refers in general to the combination of the user's [=client device=], user agent, [=authenticators=], and everything gluing
     it all together.
 
-: <dfn>Client-side-resident Credential Private Key</dfn>
-:: A [=Client-side-resident Credential Private Key=] is stored either on the client platform, or in some cases on the
-    authenticator itself, e.g., in the case of a discrete first-factor [=roaming authenticator=]. Such <dfn>client-side credential
-    private key storage</dfn> has the property that the authenticator is able to select the [=credential private key=] given
-    only an [=RP ID=], possibly with user assistance (e.g., by providing the user a pick list of credentials associated with the RP
-    ID). By definition, the private key is always exclusively controlled by the [=authenticator=]. In the case of a
-    [=Client-side-resident Credential Private Key=], the [=authenticator=] might offload storage of wrapped key material to the
-    client platform, but the client platform is not expected to offload the key storage to remote entities (e.g. RP Server).
+: <dfn>Resident Credential</dfn>
+: <dfn>Client-side-resident Public Key Credential Source</dfn>
+:: A [=Client-side-resident Public Key Credential Source=], or [=Resident Credential=] for short, is a [=public key credential
+    source=] whose [=credential private key=] is stored in the [=authenticator=], [=client=] or [=client device=]. Such
+    [=client-side=] storage requires a [=local storage capable=] [=authenticator=] and has the property that the [=authenticator=]
+    is able to select the [=credential private key=] given
+    only an [=RP ID=], possibly with user assistance (e.g., by providing the user a pick list of [=public key credential|credentials=] associated with the [=RP ID=]).
+    By definition, the [=credential private key=] is always exclusively controlled by the [=authenticator=]. In the case of a
+    [=resident credential=], the [=authenticator=] might offload storage of wrapped key material to the
+    [=client device=], but the [=client device=] is not expected to offload the key storage to remote entities (e.g., [=[WRP]=] Server).
 
 : <dfn>Conforming User Agent</dfn>
 :: A user agent implementing, in conjunction with the underlying platform, the [=Web Authentication API=] and algorithms
@@ -529,7 +543,7 @@ The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "S
             nullable.
 
         :   <dfn>otherUI</dfn>
-        ::  Optional other information used by the [=authenticator=] to inform its UI. For example, this might include the user's
+        ::  OPTIONAL other information used by the [=authenticator=] to inform its UI. For example, this might include the user's
             {{displayName}}.
     </dl>
 
@@ -570,38 +584,38 @@ The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "S
 :: The process (also known as throttling) by which an authenticator implements controls against brute force attacks by limiting
     the number of consecutive failed authentication attempts within a given period of time. If the limit is reached, the
     authenticator should impose a delay that increases exponentially with each successive attempt, or disable the current
-    authentication modality and offer a different authentication factor if available. Rate limiting is often implemented as an
+    authentication modality and offer a different [=authentication factor=] if available. [=Rate limiting=] is often implemented as an
     aspect of [=user verification=].
 
 : <dfn>Registration</dfn>
-:: The [=ceremony=] where a user, a [=[RP]=], and the user's computing device(s) (containing at least one
+: <dfn>Registration Ceremony</dfn>
+:: The [=ceremony=] where a user, a [=[RP]=], and the user's [=client=] (containing at least one
     [=authenticator=]) work in concert to create a [=public key credential=] and associate it with the user's [=[RP]=] account.
     Note that this includes employing a [=test of user presence=] or [=user verification=].
 
 : <dfn>[RP]</dfn>
-:: The entity whose web application utilizes the [=Web Authentication API=] to register and authenticate users. See
-    [=Registration=] and [=Authentication=], respectively.
-
-        Note: While the term [=[RP]=] is used in other contexts (e.g., X.509 and OAuth), an entity acting as a [=[RP]=] in one
-        context is not necessarily a [=[RP]=] in other contexts.
+:: See [=[WRP]=].
 
 : <dfn>Relying Party Identifier</dfn>
 : <dfn>RP ID</dfn>
-:: A [=valid domain string=] that identifies the [=[RP]=] on whose behalf a given [=registration=] or
+:: A [=valid domain string=] that identifies the [=[WRP]=] on whose behalf a given [=registration=] or
     [=authentication|authentication ceremony=] is being performed. A [=public key credential=] can only be used for
-    [=authentication=] with the same entity (as identified by [=RP ID=]) it was registered with. By default, the [=RP ID=] for a
+    [=authentication=] with the same entity (as identified by [=RP ID=]) it was registered with.
+
+    By default, the [=RP ID=] for a
     WebAuthn operation is set to the caller's [=environment settings object/origin=]'s [=effective domain=]. This default MAY be
     overridden by the caller, as long as the caller-specified [=RP ID=] value [=is a registrable domain suffix of or is equal
     to=] the caller's [=environment settings object/origin=]'s [=effective domain=]. See also [[#createCredential]] and
     [[#getAssertion]].
 
     <div class="note" id="note-pkcredscope">
-        Note: A [=Public key credential=]'s scope is for a [=[RP]=]'s [=origin=], with the following <em>restrictions</em> and
-            <em>relaxations</em>:
-            - The scheme is always `https` (i.e., <em>a restriction</em>), and,
-            - the host may be equal to the [=[RP]=]'s [=origin=]'s [=effective domain=], or it may be equal to a registrable
-                domain suffix of the [=[RP]=]'s [=origin=]'s [=effective domain=] (i.e., <em>an available relaxation</em>), and,
-            - all (TCP) ports on that host (i.e., <em>a relaxation</em>).
+        Note: An [=RP ID=] is based on a [=host=]'s [=domain=] name. It does not itself include a [=scheme=] or [=port=], as an [=origin=] does. The [=RP ID=] of a [=public key credential=] determines its <dfn>scope</dfn>. I.e., it <dfn>determines the set of origins on which the public key credential may be exercised</dfn>, as follows:
+
+            - The [=RP ID=] must be equal to the [=determines the set of origins on which the public key credential may be exercised|origin=]'s [=effective domain=], or a [=is a registrable domain suffix of or is equal to|registrable domain suffix=] of the [=determines the set of origins on which the public key credential may be exercised|origin=]'s [=effective domain=].
+            - The [=determines the set of origins on which the public key credential may be exercised|origin=]'s [=scheme=] must be `https`.
+            - The [=determines the set of origins on which the public key credential may be exercised|origin=]'s [=port=] is unrestricted.
+
+        For example, given a [=[RP]=] whose origin is `https://login.example.com:1337`, then the following [=RP ID=]s are valid: `login.example.com` (default) and `example.com`, but not `m.login.example.com` and not `com`.
 
         This is done in order to match the behavior of pervasively deployed ambient credentials (e.g., cookies, [[RFC6265]]).
         Please note that this is a greater relaxation of "same-origin" restrictions than what
@@ -635,6 +649,8 @@ The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "S
     operations implies use of key material managed by the authenticator. Note that for security, [=user verification=] and use
     of [=credential private keys=] must occur within a single logical security boundary defining the [=authenticator=].
 
+    [=User verification=] procedures MAY implement [=rate limiting=] as a protection against brute force attacks.
+
 : <dfn id=concept-user-present>User Present</dfn>
 : <dfn>UP</dfn>
 :: Upon successful completion of a [=test of user presence|user presence test=], the user is said to be
@@ -647,11 +663,30 @@ The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "S
 : <dfn>[WAC]</dfn>
 :: Also referred to herein as simply a [=client=]. See also [=Conforming User Agent=]. A [=[WAC]=] is an intermediary entity typically implemented in the user agent (in whole, or in part). Conceptually, it underlies the [=Web Authentication API=] and embodies the implementation of the {{PublicKeyCredential/[[Create]](origin, options, sameOriginWithAncestors)}} and {{PublicKeyCredential/[[DiscoverFromExternalSource]](origin, options, sameOriginWithAncestors)}} [=internal methods=]. It is responsible for both marshalling the inputs for the underlying [=authenticator operations=], and for returning the results of the latter operations to the [=Web Authentication API=]'s callers.
 
+    The [=[WAC]=] runs on, and is distinct from, a [=[WAC] Device=].
+
+: <dfn>Client Device</dfn>
+: <dfn>[WAC] Device</dfn>
+:: The hardware device on which the [=[WAC]=] runs, for example a smartphone, a laptop computer or a desktop computer. Also
+    referred to herein as the "platform" or "client platform".
+
+    The distinction between this and the [=client=] is that multiple [=clients=], i.e., browser implementations, may run on the
+    same [=client device=] and have access to the same [=authenticators=] available on that [=client device=]; and that [=platform
+    authenticators=] are bound to a [=[WAC] Device=] rather than a [=[WAC]=].
+
+: <dfn>[WRP]</dfn>
+:: The entity whose web application utilizes the [=Web Authentication API=] to register and authenticate users. See
+    [=Registration=] and [=Authentication=], respectively.
+
+        Note: While the term [=[RP]=] is used in other contexts (e.g., X.509 and OAuth), an entity acting as a [=[RP]=] in one
+        context is not necessarily a [=[RP]=] in other contexts. In this specification, the term [=[WRP]=] is often shortened 
+        to be just [=[RP]=].
+
 
 # <dfn>Web Authentication API</dfn> # {#api}
 
 This section normatively specifies the API for creating and using [=public key credentials=]. The basic
-idea is that the credentials belong to the user and are managed by an authenticator, with which the [=[RP]=] interacts through the
+idea is that the credentials belong to the user and are managed by an authenticator, with which the [=[WRP]=] interacts through the
 client (consisting of the browser and underlying OS platform). Scripts can (with the [=user consent|user's consent=]) request the
 browser to create a new credential for future use by the [=[RP]=]. Scripts can also request the user’s permission to perform
 authentication operations with an existing credential. All such operations are performed in the authenticator and are mediated by
@@ -666,7 +701,7 @@ deletion are considered to be the responsibility of such a user interface and ar
 scripts.
 
 The security properties of this API are provided by the client and the authenticator working together. The authenticator, which
-holds and manages credentials, ensures that all operations are scoped to a particular [=origin=], and cannot be replayed against
+holds and manages credentials, ensures that all operations are [=scoped=] to a particular [=origin=], and cannot be replayed against
 a different [=origin=], by incorporating the [=origin=] in its responses. Specifically, as defined in [[#authenticator-ops]],
 the full [=origin=] of the requester is included, and signed over, in the [=attestation object=] produced when a new credential
 is created as well as in all assertions produced by WebAuthn credentials.
@@ -779,7 +814,7 @@ To support obtaining assertions via {{CredentialsContainer/get()|navigator.crede
 <div link-for-hint="PublicKeyCredential/[[Create]](origin, options, sameOriginWithAncestors)">
 {{PublicKeyCredential}}'s [=interface object=]'s implementation of the <dfn for="PublicKeyCredential" method>\[[Create]](origin,
 options, sameOriginWithAncestors)</dfn> [=internal method=] [[CREDENTIAL-MANAGEMENT-1]] allows
-[=[RP]=] scripts to call {{CredentialsContainer/create()|navigator.credentials.create()}} to request the creation of a new
+[=[WRP]=] scripts to call {{CredentialsContainer/create()|navigator.credentials.create()}} to request the creation of a new
 [=public key credential source=], bound to an [=authenticator=]. This
 {{CredentialsContainer/create()|navigator.credentials.create()}} operation can be aborted by leveraging the {{AbortController}};
 see [[dom#abortcontroller-api-integration]] for detailed instructions.
@@ -830,6 +865,10 @@ When this method is invoked, the user agent MUST execute the following algorithm
     |lifetimeTimer| to this adjusted value. If the {{PublicKeyCredentialCreationOptions/timeout}} member of |options| is [=present|not
     present=], then set |lifetimeTimer| to a platform-specific default.
 
+        Note: A suggested reasonable range for the {{PublicKeyCredentialCreationOptions/timeout}} member of |options| is
+        15 seconds to 120 seconds.
+
+
 1. Let |callerOrigin| be {{PublicKeyCredential/[[Create]](origin, options, sameOriginWithAncestors)/origin}}. If |callerOrigin| is an [=opaque origin=], return a {{DOMException}} whose name is
     "{{NotAllowedError}}", and terminate this algorithm.
 
@@ -839,9 +878,12 @@ When this method is invoked, the user agent MUST execute the following algorithm
 
     Note: An [=effective domain=] may resolve to a [=host=], which can be represented in various manners,
         such as [=domain=], [=ipv4 address=], [=ipv6 address=], [=opaque host=], or [=empty host=].
-        Only the [=domain=] format of [=host=] is allowed here.
+        Only the [=domain=] format of [=host=] is allowed here. This is for simplification and also
+        is in recognition of various issues with using direct IP address identification in concert
+        with PKI-based security.
 
-<!-- Note: this next step is actually a top-level step, but bikeshed wanted it indented this much in order to compile w/o errors
+<!-- Note: this next step is actually a top-level step, but bikeshed wanted it indented this much in order to render it as
+a numbered step. If outdented, it (today) is rendered as a bullet in the midst of a numbered list :-/
 -->
     <li id='CreateCred-DetermineRpId'>
 
@@ -942,9 +984,9 @@ When this method is invoked, the user agent MUST execute the following algorithm
             1. If <code>|options|.{{PublicKeyCredentialCreationOptions/authenticatorSelection}}</code> is [=present=]:
 
                   1. If <code>|options|.{{PublicKeyCredentialCreationOptions/authenticatorSelection}}.{{authenticatorAttachment}}</code> is
-                    [=present|present=] and its value is not equal to |authenticator|'s attachment modality, [=iteration/continue=].
+                    [=present|present=] and its value is not equal to |authenticator|'s [=authenticator attachment modality=], [=iteration/continue=].
                   1. If <code>|options|.{{PublicKeyCredentialCreationOptions/authenticatorSelection}}.{{requireResidentKey}}</code> is set to
-                    [TRUE] and the |authenticator| is not capable of storing a [=Client-Side-Resident Credential Private Key=],
+                    [TRUE] and the |authenticator| is not capable of storing a [=client-side-resident public key credential source=],
                     [=iteration/continue=].
                   1. If <code>|options|.{{PublicKeyCredentialCreationOptions/authenticatorSelection}}.{{AuthenticatorSelectionCriteria/userVerification}}</code> is
                     set to {{UserVerificationRequirement/required}} and the |authenticator| is not capable of performing [=user
@@ -1022,7 +1064,7 @@ When this method is invoked, the user agent MUST execute the following algorithm
         :   If any |authenticator| returns an error status not equivalent to "{{InvalidStateError}}",
         ::  [=set/Remove=] |authenticator| from |issuedRequests|.
 
-            Note: This case does not imply [=user consent=] for the operation, so details about the error must be hidden from the
+            Note: This case does not imply [=user consent=] for the operation, so details about the error are hidden from the
             [=[RP]=] in order to prevent leak of potentially identifying information. See [[#sec-make-credential-privacy]] for
             details.
 
@@ -1113,13 +1155,13 @@ authorizing an authenticator.
 
 ### Use an existing credential to make an assertion - PublicKeyCredential's `[[Get]](options)` method ### {#getAssertion}
 
-[=[RPS]=] call <code><a idl for="CredentialsContainer" lt="get()">navigator.credentials.get({publicKey:..., ...})</a></code> to
+[=[WRPS]=] call <code><a idl for="CredentialsContainer" lt="get()">navigator.credentials.get({publicKey:..., ...})</a></code> to
 discover and use an existing [=public key credential=], with the [=user consent|user's consent=]. [=[RP]=] script optionally specifies some criteria
 to indicate what [=credential sources=] are acceptable to it. The user agent and/or platform locates [=credential sources=]
 matching the specified criteria, and guides the user to pick one that the script will be allowed to use. The user may choose to
 decline the entire interaction even if a [=credential source=] is present, for example to maintain privacy. If the user picks a
 [=credential source=], the user agent then uses
-[[#op-get-assertion]] to sign a [RP]-provided challenge and other collected data into an assertion, which is used as a
+[[#op-get-assertion]] to sign a [=[RP]=]-provided challenge and other collected data into an assertion, which is used as a
 [=credential=].
 
 The {{CredentialsContainer/get()}} implementation [[CREDENTIAL-MANAGEMENT-1]] calls
@@ -1180,6 +1222,9 @@ When this method is invoked, the user agent MUST execute the following algorithm
     Set a timer |lifetimeTimer| to this adjusted value. If the {{PublicKeyCredentialRequestOptions/timeout}} member of
     |options| is [=present|not present=], then set |lifetimeTimer| to a platform-specific default.
 
+        Note: A suggested reasonable range for the {{PublicKeyCredentialCreationOptions/timeout}} member of |options| is
+        15 seconds to 120 seconds.
+
 1. Let |callerOrigin| be {{PublicKeyCredential/[[DiscoverFromExternalSource]](origin, options, sameOriginWithAncestors)/origin}}. If |callerOrigin| is 
     an [=opaque origin=], return a {{DOMException}} whose name is "{{NotAllowedError}}", and terminate this algorithm.
 
@@ -1189,7 +1234,9 @@ When this method is invoked, the user agent MUST execute the following algorithm
 
     Note: An [=effective domain=] may resolve to a [=host=], which can be represented in various manners,
         such as [=domain=], [=ipv4 address=], [=ipv6 address=], [=opaque host=], or [=empty host=].
-        Only the [=domain=] format of [=host=] is allowed here.
+        Only the [=domain=] format of [=host=] is allowed here. This is for simplification and also is
+        in recognition of various issues with using direct IP address identification in concert with
+        PKI-based security.
 
         <li id='GetAssn-DetermineRpId'>
             If |options|.{{PublicKeyCredentialRequestOptions/rpId}} is [=present|not present=], then set |rpId| to
@@ -1504,34 +1551,17 @@ This [=internal method=] accepts no arguments.
 
 </div>
 
-### Availability of User-Verifying Platform Authenticator - PublicKeyCredential's `isUserVerifyingPlatformAuthenticatorAvailable()` method ### {#isUserVerifyingPlatformAuthenticatorAvailable}
+### Availability of [=User-Verifying Platform Authenticator=] - PublicKeyCredential's `isUserVerifyingPlatformAuthenticatorAvailable()` method ### {#isUserVerifyingPlatformAuthenticatorAvailable}
 
 <div link-for-hint="WebAuthentication/isUserVerifyingPlatformAuthenticatorAvailable">
 
-[=[RPS]=] use this method to determine whether they can create a new credential using a [=user verification|user-verifying=] [=platform authenticator=].
-Upon invocation, the [=client=] employs a platform-specific procedure to discover available [=user verification|user-verifying=] [=platform authenticators=].
-If successful, the [=client=] then assesses whether the user is willing to create a credential using one of the available [=user verification|user-verifying=] [=platform authenticators=].
-This assessment may include various factors, such as:
-    - Whether the user is running in private or incognito mode.
-    - Whether the user has configured the [=client=] to not create such credentials.
-    - Whether the user has previously expressed an unwillingness to create a new credential for this [=[RP]=],
-        either through configuration or by declining a user interface prompt.
-    - The user's explicitly stated intentions, determined through user interaction.
-If this assessment is affirmative, the promise is resolved with the value of [TRUE].
+[=[WRPS]=] use this method to determine whether they can create a new credential using a [=user-verifying platform authenticator=].
+Upon invocation, the [=client=] employs a platform-specific procedure to discover available [=user-verifying platform authenticators=].
+If any are discovered, the promise is resolved with the value of [TRUE].
 Otherwise, the promise is resolved with the value of [FALSE].
 Based on the result, the [=[RP]=] can take further actions to guide the user to create a credential.
 
 This method has no arguments and returns a Boolean value.
-
-If the promise will return [FALSE],
-the [=client=] SHOULD wait a fixed period of time from the invocation of the method before returning [FALSE].
-This is done so that callers cannot distinguish between
-the case where the user was unwilling to create a credential using one of the available [=user verification|user-verifying=] [=platform authenticators=] and
-the case where no [=user verification|user-verifying=] [=platform authenticator=] exists.
-Trying to make these cases indistinguishable is done in an attempt to not provide additional information that could be used for fingerprinting.
-A timeout value on the order of 10 minutes is recommended;
-this is enough time for successful user interactions to be performed
-but short enough that the dangling promise will still be resolved in a reasonably timely fashion.
 
 <xmp class="idl">
     partial interface PublicKeyCredential {
@@ -1562,7 +1592,7 @@ but short enough that the dangling promise will still be resolved in a reasonabl
 
 The {{AuthenticatorAttestationResponse}} interface represents the [=authenticator=]'s response to a client's request
 for the creation of a new [=public key credential=]. It contains information about the new credential that can be used to
-identify it for later use, and metadata that can be used by the [=[RP]=] to assess the characteristics of the credential
+identify it for later use, and metadata that can be used by the [=[WRP]=] to assess the characteristics of the credential
 during registration.
 
 <xmp class="idl">
@@ -1575,7 +1605,7 @@ during registration.
     :   {{AuthenticatorResponse/clientDataJSON}}
     ::  This attribute, inherited from {{AuthenticatorResponse}}, contains the [=JSON-serialized client data=] (see
         [[#sctn-attestation]]) passed to the authenticator by the client in order to generate this credential. The
-        exact JSON serialization must be preserved, as the [=hash of the serialized client data=] has been computed
+        exact JSON serialization MUST be preserved, as the [=hash of the serialized client data=] has been computed
         over it.
 
     :   <dfn>attestationObject</dfn>
@@ -1592,7 +1622,7 @@ during registration.
 ### Web Authentication Assertion (interface <dfn interface>AuthenticatorAssertionResponse</dfn>) ### {#iface-authenticatorassertionresponse}
 
 The {{AuthenticatorAssertionResponse}} interface represents an [=authenticator=]'s response to a client's request for
-generation of a new [=authentication assertion=] given the [=[RP]=]'s challenge and optional list of credentials it is
+generation of a new [=authentication assertion=] given the [=[WRP]=]'s challenge and OPTIONAL list of credentials it is
 aware of. This response contains a cryptographic signature proving possession of the [=credential private key=], and
 optionally evidence of [=user consent=] to a specific transaction.
 
@@ -1666,17 +1696,20 @@ optionally evidence of [=user consent=] to a specific transaction.
     :   <dfn>rp</dfn>
     ::  This member contains data about the [=[RP]=] responsible for the request.
 
-        Its value's {{PublicKeyCredentialEntity/name}} member is required.
+        Its value's {{PublicKeyCredentialEntity/name}} member is REQUIRED. See [[#dictionary-pkcredentialentity]] for further
+        details.
 
-        Its value's {{PublicKeyCredentialRpEntity/id}} member specifies the [=relying party identifier=] with which the credential
+        Its value's {{PublicKeyCredentialRpEntity/id}} member specifies the [=RP ID=] with which the credential
         should be associated. If omitted, its value will be the {{CredentialsContainer}} object's [=relevant
-        settings object=]'s [=environment settings object/origin=]'s [=effective domain=].
+        settings object=]'s [=environment settings object/origin=]'s [=effective domain=]. See [[#sctn-rp-credential-params]]
+        for further details.
 
     :   <dfn>user</dfn>
     ::  This member contains data about the user account for which the [=[RP]=] is requesting attestation.
 
         Its value's {{PublicKeyCredentialEntity/name}}, {{PublicKeyCredentialUserEntity/displayName}} and
-        {{PublicKeyCredentialUserEntity/id}} members are required.
+        {{PublicKeyCredentialUserEntity/id}} members are REQUIRED. See [[#dictionary-pkcredentialentity]] and
+        [[#sctn-user-credential-params]] for further details.
 
     :   <dfn>challenge</dfn>
     ::  This member contains a challenge intended to be used for generating the newly created credential's [=attestation
@@ -1714,7 +1747,7 @@ optionally evidence of [=user consent=] to a specific transaction.
 
 ### Public Key Entity Description (dictionary <dfn dictionary>PublicKeyCredentialEntity</dfn>) ### {#dictionary-pkcredentialentity}
 
-The {{PublicKeyCredentialEntity}} dictionary describes a user account, or a [=[RP]=], with which a [=public key credential=] is
+The {{PublicKeyCredentialEntity}} dictionary describes a user account, or a [=[WRP]=], with which a [=public key credential=] is
 associated.
 
 <xmp class="idl">
@@ -1725,16 +1758,37 @@ associated.
 </xmp>
 <div dfn-type="dict-member" dfn-for="PublicKeyCredentialEntity">
     :   <dfn>name</dfn>
-    ::  A human-readable name for the entity. Its function depends on what the {{PublicKeyCredentialEntity}} represents:
+    ::  A [=human palatability|human-palatable=] name for the entity. Its function depends on what the {{PublicKeyCredentialEntity}} represents:
 
-          - When inherited by {{PublicKeyCredentialRpEntity}} it is a human-friendly identifier for the [=[RP]=], intended only
+          - When inherited by {{PublicKeyCredentialRpEntity}} it is a [=human palatability|human-palatable=] identifier for the [=[RP]=], intended only
             for display. For example, "ACME Corporation", "Wonderful Widgets, Inc." or "ОАО Примертех".
+
+              - [=[RPS]=] SHOULD perform enforcement, as prescribed in Section 2.3 of
+                [[!RFC8266]] for the Nickname Profile of the PRECIS FreeformClass [[!RFC8264]],
+                when setting {{PublicKeyCredentialEntity/name}}'s value, or displaying the value to the user.
+
+              - [=Clients=] SHOULD perform enforcement, as prescribed in Section 2.3 of
+                [[!RFC8266]] for the Nickname Profile of the PRECIS FreeformClass [[!RFC8264]],
+                on {{PublicKeyCredentialEntity/name}}'s value prior to displaying the value to the user or
+                including the value as a parameter of the [=authenticatorMakeCredential=] operation.
+
           - When inherited by {{PublicKeyCredentialUserEntity}}, it is a [=human palatability|human-palatable=] identifier for a
-            user account. It is intended only for display, and SHOULD allow the user to easily tell the difference between user
+            user account. It is intended only for display, i.e., aiding the user in determining the difference between user
             accounts with similar {{PublicKeyCredentialUserEntity/displayName}}s. For example, "alexm", "alex.p.mueller@example.com"
-            or "+14255551234". The [=[RP]=] MAY let the user choose this, and MAY restrict the choice as needed or appropriate.
-            For example, a [=[RP]=] might choose to map [=human palatability|human-palatable=] [=username=] account identifiers to
-            the {{PublicKeyCredentialEntity/name}} member of {{PublicKeyCredentialUserEntity}}.
+            or "+14255551234".
+
+              - The [=[RP]=] MAY let the user choose this value. The [=[RP]=] SHOULD perform enforcement,
+                as prescribed in Section 3.4.3 of [[!RFC8265]] for the UsernameCasePreserved Profile of the PRECIS
+                IdentifierClass [[!RFC8264]], when setting {{PublicKeyCredentialEntity/name}}'s value, or displaying the value
+                to the user.
+
+              - [=Clients=] SHOULD perform enforcement, as prescribed in Section 3.4.3 of [[!RFC8265]]
+                for the UsernameCasePreserved Profile of the PRECIS IdentifierClass [[!RFC8264]],
+                on {{PublicKeyCredentialEntity/name}}'s value prior to displaying the value to the user or
+                including the value as a parameter of the [=authenticatorMakeCredential=] operation.
+
+
+        When [=clients=], client platforms, or [=authenticators=] display a {{PublicKeyCredentialEntity/name}}'s value, they should always use UI elements to provide a clear boundary around the displayed value, and not allow overflow into other elements [[css-overflow-3]].
 
         [=Authenticators=] MUST accept and store a 64-byte minimum length for a {{PublicKeyCredentialEntity/name}} member's
         value. Authenticators MAY truncate a {{PublicKeyCredentialEntity/name}} member's value to a length equal to or greater
@@ -1749,7 +1803,7 @@ associated.
 </div>
 
 
-### RP Parameters for Credential Generation (dictionary <dfn dictionary>PublicKeyCredentialRpEntity</dfn>) ### {#sctn-rp-credential-params}
+### Relying Party Parameters for Credential Generation (dictionary <dfn dictionary>PublicKeyCredentialRpEntity</dfn>) ### {#sctn-rp-credential-params}
 
 The {{PublicKeyCredentialRpEntity}} dictionary is used to supply additional [=[RP]=] attributes when creating a new credential.
 
@@ -1779,11 +1833,24 @@ credential.
 
 <div dfn-type="dict-member" dfn-for="PublicKeyCredentialUserEntity">
     :   <dfn>id</dfn>
-    ::  The [=user handle=] of the user account entity.
+    ::  The [=user handle=] of the user account entity. To ensure secure operation, authentication and authorization
+        decisions MUST be made on the basis of this {{PublicKeyCredentialUserEntity/id}} member,  not the
+        {{PublicKeyCredentialUserEntity/displayName}} nor {{PublicKeyCredentialEntity/name}} members. See Section 6.1 of [[!RFC8266]].
 
     :   <dfn>displayName</dfn>
-    ::  A human-friendly name for the user account, intended only for display. For example, "Alex P. Müller" or "田中 倫". The
+    ::  A [=human palatability|human-palatable=] name for the user account, intended only for display. For example, "Alex P. Müller" or "田中 倫". The
         [=[RP]=] SHOULD let the user choose this, and SHOULD NOT restrict the choice more than necessary.
+
+        - [=[RPS]=] SHOULD perform enforcement, as prescribed in Section 2.3 of
+            [[!RFC8266]] for the Nickname Profile of the PRECIS FreeformClass [[!RFC8264]],
+            when setting {{PublicKeyCredentialUserEntity/displayName}}'s value, or displaying the value to the user.
+
+        - [=Clients=] SHOULD perform enforcement, as prescribed in Section 2.3 of
+            [[!RFC8266]] for the Nickname Profile of the PRECIS FreeformClass [[!RFC8264]],
+            on {{PublicKeyCredentialUserEntity/displayName}}'s value prior to displaying the value to the user or
+            including the value as a parameter of the [=authenticatorMakeCredential=] operation.
+
+        When [=clients=], client platforms, or [=authenticators=] display a {{PublicKeyCredentialUserEntity/displayName}}'s value, they should always use UI elements to provide a clear boundary around the displayed value, and not allow overflow into other elements [[css-overflow-3]].
 
         [=Authenticators=] MUST accept and store a 64-byte minimum length for a {{PublicKeyCredentialUserEntity/displayName}}
         member's value. Authenticators MAY truncate a {{PublicKeyCredentialUserEntity/displayName}} member's value to a length
@@ -1793,7 +1860,7 @@ credential.
 
 ### Authenticator Selection Criteria (dictionary <dfn dictionary>AuthenticatorSelectionCriteria</dfn>) ### {#authenticatorSelection}
 
-[=[RPS]=] may use the {{AuthenticatorSelectionCriteria}} dictionary to specify their requirements regarding authenticator
+[=[WRPS]=] may use the {{AuthenticatorSelectionCriteria}} dictionary to specify their requirements regarding authenticator
 attributes.
 
 <xmp class="idl">
@@ -1810,9 +1877,9 @@ attributes.
         specified [[#attachment]].
 
     :   <dfn>requireResidentKey</dfn>
-    ::  This member describes the [=[RPS]=]' requirements regarding availability of the [=Client-side-resident Credential
-        Private Key=]. If the parameter is set to [TRUE], the authenticator MUST create a
-        [=Client-side-resident Credential Private Key=] when creating a [=public key credential=].
+    ::  This member describes the [=[RPS]=]' requirements regarding [=resident credentials=].
+        If the parameter is set to [TRUE], the authenticator MUST create a
+        [=client-side-resident public key credential source=] when creating a [=public key credential=].
 
     :   <dfn>userVerification</dfn>
     ::  This member describes the [=[RP]=]'s requirements regarding [=user verification=] for the
@@ -1830,6 +1897,21 @@ attributes.
     };
 </xmp>
 
+This enumeration's values describe [=authenticators=]' [=authenticator attachment modality|attachment modalities=]. [=[RPS]=] use this for two purposes:
+
+- to express a preferred [=authenticator attachment modality=] when calling
+    {{CredentialsContainer/create()|navigator.credentials.create()}} to [[#createCredential|create a credential]], and
+
+- to inform the [=client=] of the [=[RP]=]'s best belief about how to locate the [=managing authenticators=] of the
+    [=credentials=] listed in {{PublicKeyCredentialRequestOptions/allowCredentials}} when calling
+    {{CredentialsContainer/get()|navigator.credentials.get()}}.
+
+<!-- The following text would be added by PR #882 https://github.com/w3c/webauthn/pull/882
+
+[=Clients=] use it to report an employed [=authenticator=]'s [=authenticator attachment modality|attachment modality=] after [[#createCredential|creating a
+credential]] as a result of the [=[RP]=] calling {{CredentialsContainer/create()|navigator.credentials.create()}}.
+-->
+
 <div dfn-type="enum-value" dfn-for="AuthenticatorAttachment">
     :   <dfn>platform</dfn>
     ::  This value indicates [=platform attachment=].
@@ -1838,42 +1920,17 @@ attributes.
     ::  This value indicates [=cross-platform attachment=].
 </div>
 
-Clients can communicate with authenticators using a variety of mechanisms. For example, a client MAY use a platform-specific
-API to communicate with an authenticator which is physically bound to a platform. On the other hand, a client can use a
-variety of standardized cross-platform transport protocols such as Bluetooth (see [[#transport]]) to discover and
-communicate with [=cross-platform attachment|cross-platform attached=] authenticators. Therefore, we use
-{{AuthenticatorAttachment}} to describe an [=authenticator=]'s <dfn>attachment modality</dfn>. We define authenticators that are
-part of the client's platform as having a [=platform attachment=], and refer to them as <dfn>platform authenticators</dfn>. While
-those that are reachable via cross-platform transport protocols are defined as having [=cross-platform attachment=], and refer to
-them as <dfn>roaming authenticators</dfn>.
-
-
-- An [=authenticator=] with <dfn>platform attachment</dfn> is attached using a platform-specific transport. Usually,
-    authenticators of this class are non-removable from the platform. A [=public key credential=] bound to a [=platform
-    authenticator=] is called a <dfn>platform credential</dfn>.
-
-- An [=authenticator=] with <dfn>cross-platform attachment</dfn> is attached using a cross-platform transport. Authenticators of
-    this class are removable from, and can "roam" among, client platforms. A [=public key credential=] bound to a [=roaming
-    authenticator=] is called a <dfn>roaming credential</dfn>.
-
-This distinction is important because there are use-cases where only [=platform authenticators=] are acceptable to a [=[RP]=], and
-conversely ones where only [=roaming authenticators=] are employed. As a concrete example of the former, a [=platform credential=]
-may be used by [=[RPS]=] to quickly and conveniently reauthenticate the user with a minimum of friction, e.g., the user will not
-have to dig around in their pocket for their key fob or phone. As a concrete example of the latter, when the user is accessing the
-[=[RP]=] from a given client for the first time, they may be asked to use a [=roaming credential=] which was originally
-registered with the [=[RP]=] using a different client.
-
-Note: An [=attachment modality=] selection option is available only in the {{PublicKeyCredential/[[Create]](origin, options,
+Note: An [=authenticator attachment modality=] selection option is available only in the {{PublicKeyCredential/[[Create]](origin, options,
 sameOriginWithAncestors)}} operation. The [=[RP]=] may use it to, for example, ensure the user has a [=roaming credential=] for
-authenticating using other [=clients=]; or to specifically register a [=platform credential=] for easier reauthentication using a
-particular [=client=]. The {{PublicKeyCredential/[[DiscoverFromExternalSource]](origin, options, sameOriginWithAncestors)}}
-operation has no [=attachment modality=] selection option, so the [=[RP]=] should accept any of the user's registered [=public key
+authenticating on another [=client device=]; or to specifically register a [=platform credential=] for easier reauthentication using a
+particular [=client device=]. The {{PublicKeyCredential/[[DiscoverFromExternalSource]](origin, options, sameOriginWithAncestors)}}
+operation has no [=authenticator attachment modality=] selection option, so the [=[RP]=] SHOULD accept any of the user's registered [=public key
 credential|credentials=]. The [=client=] and user will then use whichever is available and convenient at the time.
 
 
 ### <dfn>Attestation Conveyance</dfn> Preference enumeration (enum <dfn enum>AttestationConveyancePreference</dfn>) ### {#attestation-convey}
 
-[=[RPS]=] may use {{AttestationConveyancePreference}} to specify their preference regarding [=attestation conveyance=]
+[=[WRPS]=] may use {{AttestationConveyancePreference}} to specify their preference regarding [=attestation conveyance=]
 during credential generation.
 
 <xmp class="idl">
@@ -1934,12 +1991,12 @@ an assertion. Its {{PublicKeyCredentialRequestOptions/challenge}} member MUST be
         The value is treated as a hint, and MAY be overridden by the platform.
 
     :   <dfn>rpId</dfn>
-    ::  This optional member specifies the [=relying party identifier=] claimed by the caller. If omitted, its value will
+    ::  This OPTIONAL member specifies the [=relying party identifier=] claimed by the caller. If omitted, its value will
         be the {{CredentialsContainer}} object's [=relevant settings object=]'s [=environment settings object/origin=]'s
         [=effective domain=].
 
     :   <dfn>allowCredentials</dfn>
-    ::  This optional member contains a list of {{PublicKeyCredentialDescriptor}} objects representing [=public key credentials=]
+    ::  This OPTIONAL member contains a list of {{PublicKeyCredentialDescriptor}} objects representing [=public key credentials=]
         acceptable to the caller, in descending order of the caller's preference (the first item in the list is the most
         preferred credential, and so on down the list).
 
@@ -2020,7 +2077,7 @@ follows.
 
 ### Client data used in WebAuthn signatures (dictionary <dfn dictionary>CollectedClientData</dfn>) ### {#sec-client-data}
 
-The <dfn>client data</dfn> represents the contextual bindings of both the [=[RP]=] and the client platform. It is a key-value
+The <dfn>client data</dfn> represents the contextual bindings of both the [=[WRP]=] and the client platform. It is a key-value
 mapping whose keys are strings. Values can be any type that has a valid encoding in JSON. Its structure is defined by the
 following Web IDL.
 
@@ -2039,7 +2096,7 @@ Note: The {{CollectedClientData}} may be extended in the future. Therefore it's 
         DOMString id;
     };
 
-    enum TokenBindingStatus { "present", "supported", "not-supported" };
+    enum TokenBindingStatus { "present", "supported" };
 </xmp>
 
 <div dfn-type="dict-member" dfn-for="CollectedClientData">
@@ -2057,17 +2114,14 @@ Note: The {{CollectedClientData}} may be extended in the future. Therefore it's 
         the syntax defined by [[RFC6454]].
 
     :   <dfn>tokenBinding</dfn>
-    ::  This member contains information about the state of the [=Token Binding=] protocol used when communicating with the
-        [=[RP]=].
+    ::  This OPTIONAL member contains information about the state of the [=Token Binding=] protocol used when communicating
+        with the [=[RP]=]. Its absence indicates that the client doesn't support token binding.
 
         <div dfn-type="dict-member" dfn-for="TokenBinding">
             :   <dfn>status</dfn>
             ::  This member is one of the following:
 
                 <div dfn-type="enum-value" dfn-for="TokenBindingStatus">
-                    :   <dfn>not-supported</dfn>
-                    ::  Indicates the client does not support token binding.
-
                     :   <dfn>supported</dfn>
                     ::  Indicates the client supports token binding, but it was not negotiated when communicating with the [=[RP]=].
 
@@ -2150,7 +2204,7 @@ parameter to the {{CredentialsContainer/create()}} or {{CredentialsContainer/get
 <div dfn-type="enum-value" dfn-for="AuthenticatorTransport">
     [=Authenticators=] may implement various [[#transport|transports]] for communicating with [=clients=]. This enumeration
     defines hints as to how clients might communicate with a particular authenticator in order to obtain an assertion for a
-    specific credential. Note that these hints represent the [=[RP]=]'s best belief as to how an authenticator may be reached. A
+    specific credential. Note that these hints represent the [=[WRP]=]'s best belief as to how an authenticator may be reached. A
     [=[RP]=] may obtain a list of transports hints from some [=attestation statement formats=] or via some out-of-band mechanism;
     it is outside the scope of this specification to define that mechanism.
 
@@ -2192,7 +2246,7 @@ parameter to the {{CredentialsContainer/create()}} or {{CredentialsContainer/get
     };
 </xmp>
 
-A [=[RP]=] may require [=user verification=] for some of its operations but not for others, and may use this type to express its
+A [=[WRP]=] may require [=user verification=] for some of its operations but not for others, and may use this type to express its
 needs.
 
 <div dfn-type="enum-value" dfn-for="UserVerificationRequirement">
@@ -2219,12 +2273,14 @@ Client platforms MAY implement and expose this abstract model in any way desired
 Authentication API implementation, when operating on the authenticators supported by that platform, MUST be indistinguishable
 from the behavior specified in [[#api]].
 
+Note: [[FIDO-CTAP]] is an example of a concrete instantiation of this model, but it is one in which there are differences in the data it returns and those expected by the [[#api|WebAuthn API]]'s algorithms. The CTAP2 response messages are CBOR maps constructed using integer keys rather than the string keys defined in this specification for the same objects. The [=client=] is expected to perform any needed transformations on such data. The [[FIDO-CTAP]] specification details the mapping between CTAP2 integer keys and WebAuthn string keys, in section [=§6.2. Responses=].
+
 For authenticators, this model defines the logical operations that they MUST support, and the data formats that they expose to
-the client and the [=[RP]=]. However, it does not define the details of how authenticators communicate with the client platform,
+the client and the [=[WRP]=]. However, it does not define the details of how authenticators communicate with the client platform,
 unless they are necessary for interoperability with [=[RPS]=]. For instance, this abstract model does not define protocols for
 connecting authenticators to clients over transports such as USB or NFC. Similarly, this abstract model does not define specific
 error codes or methods of returning them; however, it does define error behavior in terms of the needs of the client. Therefore,
-specific error codes are mentioned as a means of showing which error conditions must be distinguishable (or not) from each other
+specific error codes are mentioned as a means of showing which error conditions MUST be distinguishable (or not) from each other
 in order to enable a compliant and secure client implementation.
 
 [=[RPS]=] may influence authenticator selection, if they deem necessary, by stipulating various authenticator characteristics
@@ -2245,13 +2301,13 @@ Each authenticator stores a <dfn for=authenticator>credentials map</dfn>, a [=ma
 Additionally, each authenticator has an AAGUID, which is a 128-bit identifier indicating the type (e.g. make and model) of the
 authenticator. The AAGUID MUST be chosen by the manufacturer to be identical across all substantially identical authenticators
 made by that manufacturer, and different (with high probability) from the AAGUIDs of all other types of authenticators.
-The AAGUID for a given type of authenticator SHOULD be randomly generated to ensure this. The RP MAY use the AAGUID to infer certain
+The AAGUID for a given type of authenticator SHOULD be randomly generated to ensure this. The [=[RP]=] MAY use the AAGUID to infer certain
 properties of the authenticator, such as certification level and strength of key protection, using information from other sources.
 
 The primary function of the authenticator is to provide WebAuthn signatures, which are bound to various contextual data. These
 data are observed and added at different levels of the stack as a signature request passes from the server to the
 authenticator. In verifying a signature, the server checks these bindings against expected values. These contextual bindings
-are divided in two: Those added by the RP or the client, referred to as [=client data=]; and those added by the authenticator,
+are divided in two: Those added by the [=[RP]=] or the client, referred to as [=client data=]; and those added by the authenticator,
 referred to as the [=authenticator data=]. The authenticator signs over the [=client data=], but is otherwise not interested in
 its contents. To save bandwidth and processing requirements on the authenticator, the client hashes the [=client data=] and
 sends only the result to the authenticator. The authenticator signs over the combination of the
@@ -2290,7 +2346,7 @@ The formats of these signatures, as well as the procedures for generating them, 
 ## Authenticator data ## {#sec-authenticator-data}
 
 The <dfn>authenticator data</dfn> structure encodes contextual bindings made by the [=authenticator=]. These bindings are
-controlled by the authenticator itself, and derive their trust from the [=[RP]=]'s assessment of the security properties of the
+controlled by the authenticator itself, and derive their trust from the [=[WRP]=]'s assessment of the security properties of the
 authenticator. In one extreme case, the authenticator may be embedded in the client, and its bindings may be no more trustworthy
 than the [=client data=]. At the other extreme, the authenticator may be a discrete entity with high-security hardware and
 software, connected to the client over a secure channel. In both cases, the [=[RP]=] receives the [=authenticator data=] in the same
@@ -2396,7 +2452,7 @@ follows.
 ### <dfn>Signature Counter</dfn> Considerations ### {#sign-counter}
 
 Authenticators SHOULD implement a [=signature counter=] feature. The [=signature counter=] is incremented for each successful
-[=authenticatorGetAssertion=] operation by some positive value, and its value is returned to the [=[RP]=] within the
+[=authenticatorGetAssertion=] operation by some positive value, and its value is returned to the [=[WRP]=] within the
 [=authenticator data=]. The [=signature counter=]'s purpose is to aid [=[RPS]=] in detecting cloned authenticators. Clone
 detection is more important for authenticators with limited protection measures.
 
@@ -2428,6 +2484,149 @@ This is because the first 37 bytes of the signed data in a FIDO U2F authenticati
 <code>[=flags=]</code> except <code>[=UP=]</code> are always zero, and the <code>[=attestedCredentialData=]</code> and
 <code>[=authDataExtensions|extensions=]</code> are never present. FIDO U2F authentication signatures can therefore be verified by
 the same procedure as other [=assertion signatures=] generated by the [=authenticatorMakeCredential=] operation.
+
+
+## Authenticator taxonomy ## {#sctn-authenticator-taxonomy}
+
+[=Authenticator=] types vary along several different dimensions: [=authenticator attachment modality=], employed [[#transport|transport(s)]],
+[=credential storage modality=], and [=authentication factor capability=]. The combination of these dimensions defines an
+[=authenticator=]'s <dfn>authenticator type</dfn>, which in turn determines the broad use cases the [=authenticator=] supports.
+The following defines names for some [=authenticator types=]:
+
+<table class="data">
+    <thead>
+        <tr>
+            <th> [=Authenticator Type=] </th>
+            <th> [=Authenticator Attachment Modality=] </th>
+            <th> [=Credential Storage Modality=] </th>
+            <th> [=Authentication Factor Capability=] </th>
+        </tr>
+    </thead>
+    <tbody>
+        <tr>
+            <th> <dfn>Second-factor platform authenticator</dfn> </th>
+            <td> [=platform attachment|platform=] </td>
+            <td> [=remote credential storage modality|Remote=] </td>
+            <td> [=single-factor capable|Single-factor=] </td>
+        </tr>
+        <tr>
+            <th> <dfn>User-verifying platform authenticator</dfn> </th>
+            <td> [=platform attachment|platform=] </td>
+            <td> [=remote credential storage modality|Remote=] </td>
+            <td> [=multi-factor capable|Multi-factor=] </td>
+        </tr>
+        <tr>
+            <th> <dfn>First-factor platform authenticator</dfn> </th>
+            <td> [=platform attachment|platform=] </td>
+            <td> [=local credential storage modality|Local=] </td>
+            <td> [=multi-factor capable|Multi-factor=] </td>
+        </tr>
+        <tr>
+            <th> <dfn>Second-factor roaming authenticator</dfn> </th>
+            <td> [=cross-platform attachment|cross-platform=] </td>
+            <td> [=remote credential storage modality|Remote=] </td>
+            <td> [=single-factor capable|Single-factor=] </td>
+        </tr>
+        <tr>
+            <th> <dfn>User-verifying roaming authenticator</dfn> </th>
+            <td> [=cross-platform attachment|cross-platform=] </td>
+            <td> [=remote credential storage modality|Remote=] </td>
+            <td> [=multi-factor capable|Multi-factor=] </td>
+        </tr>
+        <tr>
+            <th> <dfn>First-factor roaming authenticator</dfn> </th>
+            <td> [=cross-platform attachment|cross-platform=] </td>
+            <td> [=local credential storage modality|Local=] </td>
+            <td> [=multi-factor capable|Multi-factor=] </td>
+        </tr>
+    </tbody>
+</table>
+
+These types can be further broken down into subtypes, such as which [[#transport|transport(s)]] a [=roaming authenticator=]
+supports. The following sections define the terms [=authenticator attachment modality=], [=credential storage modality=] and
+[=authentication factor capability=].
+
+
+### <dfn>Authenticator Attachment Modality</dfn> ### {#sctn-authenticator-attachment-modality}
+
+[=Clients=] can communicate with [=authenticators=] using a variety of mechanisms. For example, a [=client=] MAY use a
+platform-specific API to communicate with an [=authenticator=] which is physically bound to a [=client device=]. On the other hand, a
+[=client=] can use a variety of standardized cross-platform transport protocols such as Bluetooth (see [[#transport]]) to discover
+and communicate with [=cross-platform attachment|cross-platform attached=] [=authenticators=]. We refer to [=authenticators=] that
+are part of the [=client device=] as <dfn>platform authenticators</dfn>, while those that are reachable via cross-platform
+transport protocols are referred to as <dfn>roaming authenticators</dfn>.
+
+- A [=platform authenticator=] is attached using a platform-specific transport, called <dfn>platform attachment</dfn>, and is usually not removable from the [=client
+    device=]. A [=public key credential=] bound to a [=platform authenticator=] is called a <dfn>platform credential</dfn>.
+
+- A [=roaming authenticator=] is attached using cross-platform transports, called <dfn>cross-platform attachment</dfn>. Authenticators of this class are removable from, and
+    can "roam" among, [=client devices=]. A [=public key credential=] bound to a [=roaming authenticator=] is called a <dfn>roaming
+    credential</dfn>.
+
+Some [=platform authenticators=] could possibly also act as [=roaming authenticators=] depending on context. For example, a
+[=platform authenticator=] integrated into a mobile device could make itself available as a [=roaming authenticator=] via
+Bluetooth. In this case the [=client=] would recognize it only as a [=roaming authenticator=], and not as a [=platform
+authenticator=].
+
+A primary use case for [=platform authenticators=] is to register a particular [=client device=] as a "trusted device" available
+as a [=something you have=] [=authentication factor=] for future [=authentication=]. This gives the user the convenience benefit
+of not needing a [=roaming authenticator=] for future [=authentication ceremonies=], e.g., the user will not have to dig around in
+their pocket for their key fob or phone.
+
+A primary use case for [=roaming authenticators=] is for initial [=authentication=] on a new [=client device=], or on [=client
+devices=] that are rarely used or do not include a [=platform authenticator=]; or when policy or preference dictates that the
+[=authenticator=] be kept separate from the [=clients=] it is used with. A [=roaming authenticator=] can also be used to hold
+backup [=public key credential|credentials=] in case another [=authenticator=] is lost.
+
+
+### Credential Storage Modality ### {#sctn-credential-storage-modality}
+
+An [=authenticator=] can store a [=public key credential source=] in one of two ways:
+
+ 1. In persistent storage embedded in the [=authenticator=], [=client=] or [=client device=], e.g., in a secure element. A
+    [=public key credential source=] stored in this way is a [=resident credential=].
+
+ 1. By encrypting (i.e., wrapping) the [=credential private key=] such that only this [=authenticator=] can decrypt (i.e., unwrap) it and letting the resulting
+    ciphertext be the [=credential ID=] for the [=public key credential source=]. The [=credential ID=] is stored by the [=[RP]=]
+    and returned to the [=authenticator=] via the {{PublicKeyCredentialRequestOptions/allowCredentials}} option of
+    {{CredentialsContainer/get()}}, which allows the [=authenticator=] to decrypt and use the [=credential private key=].
+
+    This enables the [=authenticator=] to have unlimited storage capacity for [=credential private keys=], since the encrypted
+    [=credential private keys=] are stored by the [=[RP]=] instead of by the [=authenticator=] - but it means that a
+    [=credential=] stored in this way must be retrieved from the [=[RP]=] before the [=authenticator=] can use it.
+
+Which of these storage strategies an [=authenticator=] supports defines the [=authenticator=]'s <dfn>credential storage
+modality</dfn> as follows:
+
+- An [=authenticator=] has the <dfn>local credential storage modality</dfn> if it supports [=resident credentials=]. An
+    [=authenticator=] with [=local credential storage modality=] is also called <dfn>local storage capable</dfn>.
+
+- An [=authenticator=] has the <dfn>remote credential storage modality</dfn> if it does not have the [=local credential storage
+    modality=], i.e., it only supports storing [=credential private keys=] as a ciphertext in the [=credential ID=].
+
+Note that a [=local storage capable=] [=authenticator=] MAY support both storage strategies. In this case, the [=authenticator=] MAY
+at its discretion use different storage strategies for different [=public key credential|credentials=], though subject to the
+{{AuthenticatorSelectionCriteria/requireResidentKey}} option of {{CredentialsContainer/create()}}.
+
+
+### <dfn>Authentication Factor Capability</dfn> ### {#sctn-authentication-factor-capability}
+
+There are three broad classes of [=authentication factors=] that can be used to prove an identity during an [=authentication
+ceremony=]: [=something you have=], [=something you know=] and [=something you are=]. Examples include a physical key, a password,
+and a fingerprint, respectively.
+
+All WebAuthn [=authenticators=] belong to the [=something you have=] class, but an [=authenticator=] that supports [=user
+verification=] can also act as one or two additional kinds of [=authentication factor=]. For example, if the [=authenticator=] can
+verify a PIN, the PIN is [=something you know=], and a [=biometric authenticator=] can verify [=something you are=]. Therefore, an
+[=authenticator=] that supports [=user verification=] is <dfn>multi-factor capable</dfn>. Conversely, an [=authenticator=] that is
+not [=multi-factor capable=] is <dfn>single-factor capable</dfn>. Note that a single [=multi-factor capable=] [=authenticator=]
+could support several modes of [=user verification=], meaning it could act as all three kinds of [=authentication factor=].
+
+Although [=user verification=] is performed locally on the [=authenticator=] and not by the [=[RP]=], the [=authenticator=]
+indicates if [=user verification=] was performed by setting the [=UV=] [=flag=] in the signed response returned to the [=[RP]=].
+The [=[RP]=] can therefore use the [=UV=] flag to verify that additional [=authentication factors=] were used in a
+[=registration=] or [=authentication ceremony=]. The authenticity of the [=UV=] [=flag=] can in turn be assessed by inspecting the
+[=authenticator=]'s [=attestation statement=].
 
 
 ## <dfn>Authenticator operations</dfn> ## {#authenticator-ops}
@@ -2475,8 +2674,8 @@ It takes the following input parameters:
     [=[RP]=]. This sequence is ordered from most preferred to least preferred. The platform makes a best-effort to create the most
     preferred credential that it can.
 : |excludeCredentialDescriptorList|
-:: An optional list of {{PublicKeyCredentialDescriptor}} objects provided by the [=[RP]=] with the intention that, if any of
-    these are known to the authenticator, it should not create a new credential. |excludeCredentialDescriptorList| contains a 
+:: An OPTIONAL list of {{PublicKeyCredentialDescriptor}} objects provided by the [=[RP]=] with the intention that, if any of
+    these are known to the authenticator, it SHOULD NOT create a new credential. |excludeCredentialDescriptorList| contains a 
     list of known credentials.
 : |extensions|
 :: A [=CBOR=] [=map=] from [=extension identifiers=] to their [=authenticator extension inputs=], created by the client based on
@@ -2508,22 +2707,28 @@ When this operation is invoked, the [=authenticator=] MUST perform the following
             ::  return an error code equivalent to "{{NotAllowedError}}" and terminate the operation.
         </dl>
 
-1. If |requireResidentKey| is [TRUE] and the authenticator cannot store a [=Client-side-resident Credential
-    Private Key=], return an error code equivalent to "{{ConstraintError}}" and terminate the operation.
+1. If |requireResidentKey| is [TRUE] and the authenticator cannot store a [=client-side-resident public key credential source=],
+    return an error code equivalent to "{{ConstraintError}}" and terminate the operation.
 1. If |requireUserVerification| is [TRUE] and the authenticator cannot perform [=user verification=], return an error code
     equivalent to "{{ConstraintError}}" and terminate the operation.
-1. Obtain [=user consent=] for creating a new credential. The prompt for obtaining this [=user consent|consent=] is shown by the
-    authenticator if it has its own output capability, or by the user agent otherwise. The prompt SHOULD display
-    <code>|rpEntity|.{{PublicKeyCredentialRpEntity/id}}</code>, <code>|rpEntity|.{{PublicKeyCredentialEntity/name}}</code>,
-    <code>|userEntity|.{{PublicKeyCredentialEntity/name}}</code> and
-    <code>|userEntity|.{{PublicKeyCredentialUserEntity/displayName}}</code>, if possible.
 
-    If |requireUserVerification| is [TRUE], the method of obtaining [=user consent=] MUST include [=user verification=].
+<!-- Note: this next step is actually a top-level step, but bikeshed wanted it indented this much in order to render it as
+a numbered step. If outdented, it (today) is rendered as a bullet in the midst of a numbered list :-/
+-->
+    <li id='op-makecred-step-user-consent'>
+        Obtain [=user consent=] for creating a new credential. The prompt for obtaining this [=user consent|consent=] is shown by the
+        authenticator if it has its own output capability, or by the user agent otherwise. The prompt SHOULD display
+        <code>|rpEntity|.{{PublicKeyCredentialRpEntity/id}}</code>, <code>|rpEntity|.{{PublicKeyCredentialEntity/name}}</code>,
+        <code>|userEntity|.{{PublicKeyCredentialEntity/name}}</code> and
+        <code>|userEntity|.{{PublicKeyCredentialUserEntity/displayName}}</code>, if possible.
 
-    If |requireUserPresence| is [TRUE], the method of obtaining [=user consent=] MUST include a [=test of user presence=].
+        If |requireUserVerification| is [TRUE], the method of obtaining [=user consent=] MUST include [=user verification=].
 
-    If the user does not [=user consent|consent=] or if [=user verification=] fails, return an error code equivalent to
-    "{{NotAllowedError}}" and terminate the operation.
+        If |requireUserPresence| is [TRUE], the method of obtaining [=user consent=] MUST include a [=test of user presence=].
+
+        If the user does not [=user consent|consent=] or if [=user verification=] fails, return an error code equivalent to
+        "{{NotAllowedError}}" and terminate the operation.
+    </li>
 
 1. Once [=user consent=] has been obtained, generate a new credential object:
     1. Let (|publicKey|, |privateKey|) be a new pair of cryptographic keys using the combination of {{PublicKeyCredentialType}}
@@ -2543,7 +2748,7 @@ When this operation is invoked, the [=authenticator=] MUST perform the following
             : [=otherUI=]
             :: Any other information the authenticator chooses to include.
         </dl>
-    1. If |requireResidentKey| is [TRUE] or the authenticator chooses to create a [=Client-side-resident Credential Private Key=]:
+    1. If |requireResidentKey| is [TRUE] or the authenticator chooses to create a [=client-side-resident public key credential source=]:
         1. Let |credentialId| be a new [=credential id=].
         1. Set |credentialSource|.[=public key credential source/id=] to |credentialId|.
         1. Let |credentials| be this authenticator's [=credentials map=].
@@ -2584,7 +2789,7 @@ It takes the following input parameters:
 : |hash|
 :: The [=hash of the serialized client data=], provided by the client.
 : |allowCredentialDescriptorList|
-:: An optional [=list=] of {{PublicKeyCredentialDescriptor}}s describing credentials acceptable to the [=[RP]=] (possibly filtered
+:: An OPTIONAL [=list=] of {{PublicKeyCredentialDescriptor}}s describing credentials acceptable to the [=[RP]=] (possibly filtered
     by the client), if any.
 : |requireUserPresence|
 :: A Boolean value provided by the client, which in invocations from a [=[WAC]=]'s
@@ -2596,7 +2801,7 @@ It takes the following input parameters:
 :: A [=CBOR=] [=map=] from [=extension identifiers=] to their [=authenticator extension inputs=], created by the client based on
     the extensions requested by the [=[RP]=], if any.
 
-Note: Before performing this operation, all other operations in progress in the [=authenticator session=] must be aborted by running the [=authenticatorCancel=] operation.
+Note: Before performing this operation, all other operations in progress in the [=authenticator session=] MUST be aborted by running the [=authenticatorCancel=] operation.
 
 When this method is invoked, the [=authenticator=] MUST perform the following procedure:
 
@@ -2618,6 +2823,10 @@ When this method is invoked, the [=authenticator=] MUST perform the following pr
     by the [=authenticator=] if it has its own output capability, or by the user agent otherwise.
 
     If |requireUserVerification| is [TRUE], the method of obtaining [=user consent=] MUST include [=user verification=].
+
+        Note: For the overall WebAuthn security properties to hold, the user verified here must be the same user that was
+        verified when this [=authenticator=] created this [=public key credential=] in
+        <a href='#op-makecred-step-user-consent'>Step 6</a> of [[#op-make-cred]].
 
     If |requireUserPresence| is [TRUE], the method of obtaining [=user consent=] MUST include a
         [=test of user presence=].
@@ -2647,7 +2856,8 @@ When this method is invoked, the [=authenticator=] MUST perform the following pr
 1. If any error occurred while generating the [=assertion signature=], return an error code equivalent to "{{UnknownError}}" and
     terminate the operation.
 
-<!-- Note: this next step is actually a top-level step, but bikeshed wanted it indented this much in order to compile w/o errors and to render properly.
+<!-- Note: this next step is actually a top-level step, but bikeshed wanted it indented this much in order to render it as
+a numbered step. If outdented, it (today) is rendered as a bullet in the midst of a numbered list :-/
 -->
     <li id='authenticatorGetAssertion-return-values'>
         Return to the user agent:
@@ -2687,7 +2897,7 @@ or [=authenticatorGetAssertion=] operation currently in progress.
 ## Attestation ## {#sctn-attestation}
 
 [=Authenticators=] MUST also provide some form of [=attestation=]. The basic requirement is that the [=authenticator=] can
-produce, for each [=credential public key=], an [=attestation statement=] verifiable by the [=[RP]=]. Typically, this
+produce, for each [=credential public key=], an [=attestation statement=] verifiable by the [=[WRP]=]. Typically, this
 [=attestation statement=] contains a signature by an [=attestation private key=] over the attested [=credential public key=] and
 a challenge, as well as a certificate or similar data providing provenance information for the [=attestation public key=],
 enabling the [=[RP]=] to make a trust decision. However, if an [=attestation key pair=] is not available, then the authenticator
@@ -2772,10 +2982,10 @@ object=] for a given credential. It has the following format:
         <td>
             The [=credential public key=] encoded in COSE_Key format,
             as defined in [=Section 7=] of [[RFC8152]], using the [=CTAP2 canonical CBOR encoding form=].
-            The COSE_Key-encoded [=credential public key=] MUST contain the optional "alg" parameter and MUST NOT
-            contain any other optional parameters. The "alg" parameter MUST contain a {{COSEAlgorithmIdentifier}} value.
-            The encoded [=credential public key=] MUST also contain any additional required parameters stipulated by the
-            relevant key type specification, i.e., required for the key type "kty" and algorithm "alg" (see Section 8 of
+            The COSE_Key-encoded [=credential public key=] MUST contain the "alg" parameter and MUST NOT
+            contain any other OPTIONAL parameters. The "alg" parameter MUST contain a {{COSEAlgorithmIdentifier}} value.
+            The encoded [=credential public key=] MUST also contain any additional REQUIRED parameters stipulated by the
+            relevant key type specification, i.e., REQUIRED for the key type "kty" and algorithm "alg" (see Section 8 of
             [[RFC8152]]).
         </td>
     </tr>
@@ -2991,9 +3201,9 @@ the [=authenticator=] MUST:
         RSASSA-PSS signature scheme defined in section 8.1.1 in [[RFC8017]] with SHA-256 as the hash function.
         The signature is not ASN.1 wrapped.
 
-# [=[RP]=] Operations # {#rp-operations}
+# [=[WRP]=] Operations # {#rp-operations}
 
-Upon successful execution of {{CredentialsContainer/create()}} or {{CredentialsContainer/get()}}, the [=[RP]=]'s script receives
+Upon successful execution of {{CredentialsContainer/create()}} or {{CredentialsContainer/get()}}, the [=[WRP]=]'s script receives
 a {{PublicKeyCredential}} containing an {{AuthenticatorAttestationResponse}} or {{AuthenticatorAssertionResponse}} structure,
 respectively, from the client. It must then deliver the contents of this structure to the [=[RP]=] server, using methods outside
 the scope of this specification. This section describes the operations that the [=[RP]=] must perform upon receipt of these
@@ -3003,7 +3213,7 @@ structures.
 ## Registering a new credential ## {#registering-a-new-credential}
 
 When registering a new credential, represented by an {{AuthenticatorAttestationResponse}} structure |response| and an
-{{AuthenticationExtensionsClientOutputs}} structure |clientExtensionResults|, as part of a [=registration=] [=ceremony=], a
+{{AuthenticationExtensionsClientOutputs}} structure |clientExtensionResults|, as part of a [=registration ceremony=], a
 [=[RP]=] MUST proceed as follows:
 
 1. Let |JSONtext| be the result of
@@ -3080,7 +3290,7 @@ When registering a new credential, represented by an {{AuthenticatorAttestationR
 
 1. Check that the <code>[=credentialId=]</code> is not yet registered to any other user. If registration 
     is requested for a credential that is already registered to a different user, the [=[RP]=] SHOULD 
-    fail this [=registration=] ceremony, or it MAY decide to accept the registration, e.g. while deleting the older registration.
+    fail this [=registration ceremony=], or it MAY decide to accept the registration, e.g. while deleting the older registration.
 
 1. If the attestation statement |attStmt| verified successfully and is found to be trustworthy, then register the new
     credential with the account that was denoted in the
@@ -3090,7 +3300,7 @@ When registering a new credential, represented by an {{AuthenticatorAttestationR
     [=[RP]=]'s system.
 
 1. If the attestation statement |attStmt| successfully verified but is not trustworthy per step 16 above, the [=[RP]=] SHOULD fail
-    the [=registration=] [=ceremony=].
+    the [=registration ceremony=].
 
     NOTE: However, if permitted by policy, the [=[RP]=] MAY register the [=credential ID=] and credential public key but treat the
         credential as one with [=self attestation=] (see [[#sctn-attestation-types]]). If doing so, the [=[RP]=] is asserting there
@@ -3106,9 +3316,9 @@ provide this chain in the attestation information.
 ## Verifying an authentication assertion ## {#verifying-assertion}
 
 When verifying a given {{PublicKeyCredential}} structure (|credential|) and an {{AuthenticationExtensionsClientOutputs}} structure
-|clientExtensionResults|, as part of an [=authentication=] [=ceremony=], the [=[RP]=] MUST proceed as follows:
+|clientExtensionResults|, as part of an [=authentication ceremony=], the [=[RP]=] MUST proceed as follows:
 
-1. If the {{PublicKeyCredentialRequestOptions/allowCredentials}} option was given when this [=authentication=] [=ceremony=] was
+1. If the {{PublicKeyCredentialRequestOptions/allowCredentials}} option was given when this [=authentication ceremony=] was
     initiated, verify that <code>|credential|.{{Credential/id}}</code> identifies one of the [=public key credentials=] that were
     listed in {{PublicKeyCredentialRequestOptions/allowCredentials}}.
 
@@ -3190,12 +3400,12 @@ When verifying a given {{PublicKeyCredential}} structure (|credential|) and an {
                   being used in parallel. [=[RPS]=] should incorporate this information  
                   into their risk scoring.  Whether the [=[RP]=] updates the 
                   stored [=signature counter=] value in this case, or not, or fails the 
-                  [=authentication|authentication ceremony=] or not, is 
+                  [=authentication ceremony=] or not, is
                   [=[RP]=]-specific. </dd>
            </dl>
 
-1. If all the above steps are successful, continue with the authentication ceremony as appropriate. Otherwise, fail the
-    [=authentication|authentication ceremony=].
+1. If all the above steps are successful, continue with the [=authentication ceremony=] as appropriate. Otherwise, fail the
+    [=authentication ceremony=].
 
 
 # Defined Attestation Statement Formats # {#defined-attestation-formats}
@@ -3273,8 +3483,11 @@ implementable by [=authenticators=] with limited resources (e.g., secure element
     :: A byte string containing the attestation signature.
 
     : x5c
-    :: The elements of this array contain the attestation certificate and its certificate chain, each encoded in X.509 format.
-        The attestation certificate MUST be the first element in the array.
+    :: The elements of this array contain |attestnCert| and its certificate chain, each encoded in X.509 format. The attestation
+        certificate |attestnCert| MUST be the first element in the array.
+
+    : attestnCert
+    :: The attestation certificate, encoded in X.509 format.
 
     : ecdaaKeyId
     :: The <dfn>identifier of the ECDAA-Issuer public key</dfn>.  This is the
@@ -3311,10 +3524,10 @@ implementable by [=authenticators=] with limited resources (e.g., secure element
 
         1. If |x5c| is present, this indicates that the attestation type is not [=ECDAA=]. In this case:
             - Verify that |sig| is a valid signature over the concatenation of |authenticatorData| and |clientDataHash| using the
-                attestation public key in |x5c| with the algorithm specified in |alg|.
-            - Verify that |x5c| meets the requirements in [[#packed-attestation-cert-requirements]].
-            - If |x5c| contains an extension with OID 1.3.6.1.4.1.45724.1.1.4 (`id-fido-gen-ce-aaguid`) verify that the value of this
-                extension matches the <code>[=aaguid=]</code> in |authenticatorData|.
+                attestation public key in |attestnCert| with the algorithm specified in |alg|.
+            - Verify that |attestnCert| meets the requirements in [[#packed-attestation-cert-requirements]].
+            - If |attestnCert| contains an extension with OID 1.3.6.1.4.1.45724.1.1.4 (`id-fido-gen-ce-aaguid`) verify that the
+                value of this extension matches the <code>[=aaguid=]</code> in |authenticatorData|.
             - If successful, return attestation type [=Basic=] and [=attestation trust path=] |x5c|.
 
         1. If |ecdaaKeyId| is present, then the attestation type is [=ECDAA=]. In this case:
@@ -3349,7 +3562,7 @@ The attestation certificate MUST have the following fields/extensions:
     The extension MUST NOT be marked as critical.
 
     Note that an X.509 Extension encodes the DER-encoding of the value in an OCTET STRING.
-    Thus, the AAGUID must be wrapped in <i>two</i> OCTET STRINGS to be valid. Here is a sample, encoded Extension structure:
+    Thus, the AAGUID MUST be wrapped in <i>two</i> OCTET STRINGS to be valid. Here is a sample, encoded Extension structure:
 
     <pre>
   30 21                                     -- SEQUENCE
@@ -3412,7 +3625,10 @@ engine.
     :: A {{COSEAlgorithmIdentifier}} containing the identifier of the algorithm used to generate the attestation signature.
 
     : x5c
-    :: The AIK certificate used for the attestation and its certificate chain, in X.509 encoding.
+    :: |aikCert| followed by its certificate chain, in X.509 encoding.
+
+    : aikCert
+    :: The AIK certificate used for the attestation, in X.509 encoding.
 
     : ecdaaKeyId
     :: The [=identifier of the ECDAA-Issuer public key=]. This is the
@@ -3466,10 +3682,10 @@ engine.
         These fields MAY be used as an input to risk engines.
 
     If |x5c| is present, this indicates that the attestation type is not [=ECDAA=]. In this case:
-    - Verify the |sig| is a valid signature over |certInfo| using the attestation public key in |x5c| with the
+    - Verify the |sig| is a valid signature over |certInfo| using the attestation public key in |aikCert| with the
         algorithm specified in |alg|.
-    - Verify that |x5c| meets the requirements in [[#tpm-cert-requirements]].
-    - If |x5c| contains an extension with OID `1 3 6 1 4 1 45724 1 1 4` (id-fido-gen-ce-aaguid) verify that the value of this
+    - Verify that |aikCert| meets the requirements in [[#tpm-cert-requirements]].
+    - If |aikCert| contains an extension with OID `1 3 6 1 4 1 45724 1 1 4` (id-fido-gen-ce-aaguid) verify that the value of this
         extension matches the <code>[=aaguid=]</code> in |authenticatorData|.
     - If successful, return attestation type [=AttCA=] and [=attestation trust path=] |x5c|.
 
@@ -3504,7 +3720,7 @@ When the [=authenticator=] in question is a platform-provided Authenticator on t
 attestation statement is based on the [Android key
 attestation](https://developer.android.com/preview/api-overview.html#key_attestation). In these cases, the attestation statement
 is produced by a component running in a secure operating environment, but the [=authenticator data for the attestation=] is
-produced outside this environment. The [=[RP]=] is expected to check that the [=authenticator data claimed to have been used for
+produced outside this environment. The [=[WRP]=] is expected to check that the [=authenticator data claimed to have been used for
 the attestation=] is consistent with the fields of the attestation certificate's extension data.
 
 
@@ -3558,7 +3774,7 @@ the attestation=] is consistent with the fields of the attestation certificate's
         <code>[=credentialPublicKey=]</code> in the <code>[=attestedCredentialData=]</code> in |authenticatorData|.
     - Verify that in the attestation certificate extension data:
         - The value of the `attestationChallenge` field is identical to |clientDataHash|.
-        - The `AuthorizationList.allApplications` field is <em>not</em> present, since PublicKeyCredential must be bound to the
+        - The `AuthorizationList.allApplications` field is <em>not</em> present, since PublicKeyCredential MUST be bound to the
             [=RP ID=].
         - The value in the `AuthorizationList.origin` field is equal to `KM_TAG_GENERATED`.
         - The value in the `AuthorizationList.purpose` field is equal to `KM_PURPOSE_SIGN`.
@@ -3572,7 +3788,7 @@ statement is based on the [SafetyNet API](https://developer.android.com/training
 this case the [=authenticator data=] is completely controlled by the caller of the SafetyNet API (typically an application
 running on the Android platform) and the attestation statement only provides some statements about the health of the platform
 and the identity of the calling application.  This attestation does not provide information regarding provenance of the authenticator
-and its associated data.  Therefore platform-provided authenticators should make use of the Android Key Attestation when available,
+and its associated data.  Therefore platform-provided authenticators SHOULD make use of the Android Key Attestation when available,
 even if the SafetyNet API is also present.
 
 : Attestation statement format identifier
@@ -3705,7 +3921,7 @@ This attestation statement format is used with FIDO U2F authenticators using the
 
 ## None Attestation Statement Format ## {#none-attestation}
 
-The none attestation statement format is used to replace any [=authenticator=]-provided [=attestation statement=] when a [=[RP]=] indicates it does not wish to receive attestation information, see  [[#attestation-convey]].
+The none attestation statement format is used to replace any [=authenticator=]-provided [=attestation statement=] when a [=[WRP]=] indicates it does not wish to receive attestation information, see  [[#attestation-convey]].
 
 : Attestation statement format identifier
 :: none
@@ -3747,7 +3963,7 @@ client.
 
 - [=Client extension processing=] for [=registration extensions=] and [=authentication extensions=].
 
-When creating a [=public key credential=] or requesting an [=authentication assertion=], a [=[RP]=] can request the use of a set
+When creating a [=public key credential=] or requesting an [=authentication assertion=], a [=[WRP]=] can request the use of a set
 of extensions. These extensions will be invoked during the requested operation if they are supported by the client and/or the
 authenticator. The [=[RP]=] sends the [=client extension input=] for each extension in the {{CredentialsContainer/get()}} call
 (for [=authentication extensions=]) or {{CredentialsContainer/create()}} call (for [=registration extensions=]) to the client
@@ -3849,7 +4065,7 @@ it MUST also specify the [=CBOR=] [=authenticator extension input=] argument
 sent via the [=authenticatorGetAssertion=] or [=authenticatorMakeCredential=] call,
 the [=authenticator extension processing=] rules, and the [=CBOR=] [=authenticator extension output=] value.
 
-Any [=client extension=] that is processed by the client MUST return a [=client extension output=] value so that the [=[RP]=]
+Any [=client extension=] that is processed by the client MUST return a [=client extension output=] value so that the [=[WRP]=]
 knows that the extension was honored by the client. Similarly, any extension that requires authenticator processing MUST return
 an [=authenticator extension output=] to let the [=[RP]=] know that the extension was honored by the authenticator. If an
 extension does not otherwise require any result values, it SHOULD be defined as returning a JSON Boolean [=client extension
@@ -3857,10 +4073,11 @@ output=] result, set to [TRUE] to signify that the extension was understood and 
 extension=] that does not otherwise require any result values MUST return a value and SHOULD return a CBOR Boolean
 [=authenticator extension output=] result, set to [TRUE] to signify that the extension was understood and processed.
 
+
 ## Extending request parameters ## {#sctn-extension-request-parameters}
 
 An extension defines one or two request arguments. The <dfn>client extension input</dfn>,
-which is a value that can be encoded in JSON, is passed from the [=[RP]=] to the client
+which is a value that can be encoded in JSON, is passed from the [=[WRP]=] to the client
 in the {{CredentialsContainer/get()}} or {{CredentialsContainer/create()}} call,
 while the [=CBOR=] <dfn>authenticator extension input</dfn> is
 passed from the client to the authenticator for [=authenticator extensions=] during the processing of these calls.
@@ -3872,7 +4089,7 @@ The entry key is the [=extension identifier=] and the value is the [=client exte
 <pre class="example" highlight="js">
     var assertionPromise = navigator.credentials.get({
         publicKey: {
-            // The challenge must be produced by the server; see the Security Considerations
+            // The challenge is produced by the server; see the Security Considerations
             challenge: new Uint8Array([4,99,22 /* 29 more random bytes generated by the server */]),
             extensions: {
                 "webauthnExample_foobar": 42
@@ -3905,6 +4122,7 @@ For each supported [=client extension=], the client adds an entry to the |client
 Likewise, the [=client extension outputs=] are represented as a dictionary in the result of {{PublicKeyCredential/getClientExtensionResults()}}
 with [=extension identifiers=] as keys, and the <dfn>client extension output</dfn> value of each extension as the value.
 Like the [=client extension input=], the [=client extension output=] is a value that can be encoded in JSON.
+There MUST NOT be any values returned for ignored extensions.
 
 Extensions that require authenticator processing MUST define
 the process by which the [=client extension input=] can be used to determine the [=CBOR=] [=authenticator extension input=] and
@@ -3923,6 +4141,7 @@ and the corresponding value is the <dfn>authenticator extension output</dfn> for
 
 For each supported extension, the [=authenticator extension processing=] rule for that extension is used create the
 [=authenticator extension output=] from the [=authenticator extension input=] and possibly also other inputs.
+There MUST NOT be any values returned for ignored extensions.
 
 
 # Defined Extensions # {#sctn-defined-extensions}
@@ -3934,9 +4153,9 @@ These are RECOMMENDED for implementation by user agents targeting broad interope
 
 ## FIDO <dfn>AppID</dfn> Extension (appid) ## {#sctn-appid-extension}
 
-This [=client extension=] allows [=[RPS]=] that have previously registered a
+This extension allows [=[WRPS]=] that have previously registered a
 credential using the legacy FIDO JavaScript APIs to request an [=assertion=]. The
-FIDO APIs use an alternative identifier for [=relying parties=] called an |AppID|
+FIDO APIs use an alternative identifier for [=[RPS]=] called an |AppID|
 [[FIDO-APPID]], and any credentials created using those APIs will be bound to
 that identifier. Without this extension, they would need to be re-registered in
 order to be bound to an [=RP ID=].
@@ -3947,6 +4166,9 @@ JavaScript APIs.
 
 : Extension identifier
 :: `appid`
+
+: Operation applicability
+:: [=authentication extension|Authentication=]
 
 : Client extension input
 :: A single USVString specifying a FIDO |AppID|.
@@ -3960,6 +4182,7 @@ JavaScript APIs.
 ::  1. Let |facetId| be the result of passing the caller's [=origin=] to the
         FIDO algorithm for [=determining the FacetID of a calling application=].
     1. Let |appId| be the extension input.
+    1. Let |output| be the Boolean value [FALSE].
     1. Pass |facetId| and |appId| to the FIDO algorithm for [=determining if a
         caller's FacetID is authorized for an AppID=]. If that algorithm rejects
         |appId| then return a "{{SecurityError}}" {{DOMException}}.
@@ -3968,11 +4191,12 @@ JavaScript APIs.
         returning `SW_WRONG_DATA`) then the client MUST retry with the U2F application
         parameter set to the SHA-256 hash of |appId|. If this results in an applicable
         credential, the client MUST include the credential in
-        <var ignore>allowCredentialDescriptorList</var>. The value of |appId| then replaces the `rpId`
+        <var ignore>allowCredentialDescriptorList</var> and set |output| to [TRUE]. The value of |appId| then replaces the `rpId`
         parameter of [=authenticatorGetAssertion=].
 
 : Client extension output
-:: Returns the value [TRUE] to indicate to the RP that the extension was acted upon.
+:: Returns the value of |output|.
+
     <xmp class="idl">
     partial dictionary AuthenticationExtensionsClientOutputs {
       boolean appid;
@@ -3991,11 +4215,14 @@ JavaScript APIs.
 
 ## Simple Transaction Authorization Extension (txAuthSimple) ## {#sctn-simple-txauth-extension}
 
-This [=registration extension=] and [=authentication extension=] allows for a simple form of transaction authorization. A
+This extension allows for a simple form of transaction authorization. A
 [=[RP]=] can specify a prompt string, intended for display on a trusted device on the authenticator.
 
 : Extension identifier
 :: `txAuthSimple`
+
+: Operation applicability
+:: [=registration extension|Registration=] and [=authentication extension|Authentication=]
 
 : Client extension input
 :: A single USVString prompt.
@@ -4038,11 +4265,14 @@ txAuthSimpleOutput = (tstr)
 
 ## Generic Transaction Authorization Extension (txAuthGeneric) ## {#sctn-generic-txauth-extension}
 
-This [=registration extension=] and [=authentication extension=] allows images to be used as transaction authorization prompts
+This extension allows images to be used as transaction authorization prompts
 as well. This allows authenticators without a font rendering engine to be used and also supports a richer visual appearance.
 
 : Extension identifier
 :: `txAuthGeneric`
+
+: Operation applicability
+:: [=registration extension|Registration=] and [=authentication extension|Authentication=]
 
 : Client extension input
 :: A JavaScript object defined as follows:
@@ -4083,12 +4313,15 @@ as well. This allows authenticators without a font rendering engine to be used a
 
 ## Authenticator Selection Extension (authnSel) ## {#sctn-authenticator-selection-extension}
 
-This [=registration extension=] allows a [=[RP]=] to guide the selection of the authenticator that will be leveraged when
+This extension allows a [=[WRP]=] to guide the selection of the authenticator that will be leveraged when
 creating the credential. It is intended primarily for [=[RPS]=] that wish to tightly control the experience around credential
 creation.
 
 : Extension identifier
 :: `authnSel`
+
+: Operation applicability
+:: [=registration extension|Registration=]
 
 : Client extension input
 :: A sequence of AAGUIDs:
@@ -4117,7 +4350,7 @@ creation.
     MUST select an authenticator from among the available authenticators to generate the credential.
 
 : Client extension output
-:: Returns the value [TRUE] to indicate to the RP that the extension was acted upon.
+:: Returns the value [TRUE] to indicate to the [=[RP]=] that the extension was acted upon.
     <xmp class="idl">
     partial dictionary AuthenticationExtensionsClientOutputs {
       boolean authnSel;
@@ -4135,10 +4368,13 @@ creation.
 
 ## Supported Extensions Extension (exts) ## {#sctn-supported-extensions-extension}
 
-This [=registration extension=] enables the [=[RP]=] to determine which extensions the authenticator supports.
+This extension enables the [=[WRP]=] to determine which extensions the authenticator supports.
 
 : Extension identifier
 :: `exts`
+
+: Operation applicability
+:: [=registration extension|Registration=]
 
 : Client extension input
 :: The Boolean value [TRUE] to indicate that this extension is requested by the [=[RP]=].
@@ -4174,10 +4410,13 @@ This [=registration extension=] enables the [=[RP]=] to determine which extensio
 
 ## User Verification Index Extension (uvi) ## {#sctn-uvi-extension}
 
-This [=registration extension=] and [=authentication extension=] enables use of a user verification index.
+This extension enables use of a user verification index.
 
 : Extension identifier
 :: `uvi`
+
+: Operation applicability
+:: [=registration extension|Registration=] and [=authentication extension|Authentication=]
 
 : Client extension input
 :: The Boolean value [TRUE] to indicate that this extension is requested by the [=[RP]=].
@@ -4237,11 +4476,13 @@ This [=registration extension=] and [=authentication extension=] enables use of 
 
 ## Location Extension (loc) ## {#sctn-location-extension}
 
-The location [=registration extension=] and [=authentication extension=] provides the authenticator's current location to the
-WebAuthn [=[RP]=].  
+This extension provides the [=authenticator=]'s current location to the WebAuthn [=[WRP]=].
 
 : Extension identifier
 :: `loc`
+
+: Operation applicability
+:: [=registration extension|Registration=] and [=authentication extension|Authentication=]
 
 : Client extension input
 :: The Boolean value [TRUE] to indicate that this extension is requested by the [=[RP]=].
@@ -4274,15 +4515,18 @@ WebAuthn [=[RP]=].
     [[Geolocation-API]]
     {{Coordinates}} record encoded as a CBOR map.
     Values represented by the "double" type in JavaScript are represented as 64-bit CBOR floating point numbers.
-    Per the Geolocation specification, the "latitude", "longitude", and "accuracy" values are required
-    and other values such as "altitude" are optional.
+    Per the Geolocation specification, the "latitude", "longitude", and "accuracy" values are REQUIRED
+    and other values such as "altitude" are OPTIONAL.
 
 ## User Verification Method Extension (uvm) ## {#sctn-uvm-extension}
 
-This [=registration extension=] and [=authentication extension=] enables use of a user verification method.
+This extension enables use of a user verification method.
 
 : Extension identifier
 :: `uvm`
+
+: Operation applicability
+:: [=registration extension|Registration=] and [=authentication extension|Authentication=]
 
 : Client extension input
 :: The Boolean value [TRUE] to indicate that this extension is requested by the [=[RP]=].
@@ -4366,11 +4610,14 @@ This [=registration extension=] and [=authentication extension=] enables use of 
 
 ## Biometric Authenticator Performance Bounds Extension (biometricPerfBounds) ## {#sctn-authenticator-biometric-criteria-extension}
 
-This [=registration extension=] allows [=[RPS]=] to specify the desired performance bounds for selecting [=biometric authenticators=]
-as candidates to be employed in a [=registration=] ceremony. 
+This extension allows [=[WRPS]=] to specify the desired performance bounds for selecting [=biometric authenticators=]
+as candidates to be employed in a [=registration ceremony=].
 
 : Extension identifier
 :: `biometricPerfBounds`
+
+: Operation applicability
+:: [=registration extension|Registration=]
 
 : Client extension input
 :: Biometric performance bounds:
@@ -4392,7 +4639,7 @@ as candidates to be employed in a [=registration=] ceremony.
     sources such as the FIDO Metadata Service [[FIDOMetadataService]] (see Sec. 3.2 of [[FIDOUAFAuthenticatorMetadataStatements]]).
 
 : Client extension output
-:: Returns the JSON value [TRUE] to indicate to the RP that the extension was acted upon
+:: Returns the JSON value [TRUE] to indicate to the [=[RP]=] that the extension was acted upon
 
 : Authenticator extension input
 :: None.
@@ -4441,7 +4688,7 @@ This section registers the [=extension identifier=] values defined in Section [[
 IANA "WebAuthn Extension Identifier" registry established by [[!WebAuthn-Registries]].
 
 - WebAuthn Extension Identifier: appid
-- Description: This [=authentication extension=] allows [=[RPS]=] that have previously registered a credential using the legacy
+- Description: This [=authentication extension=] allows [=[WRPS]=] that have previously registered a credential using the legacy
     FIDO JavaScript APIs to request an assertion.
 - Specification Document: Section [[#sctn-appid-extension]] of this specification
     <br/><br/>
@@ -4459,12 +4706,12 @@ IANA "WebAuthn Extension Identifier" registry established by [[!WebAuthn-Registr
     <br/><br/>
 - WebAuthn Extension Identifier: authnSel
 - Description: This [=registration extension=] allows a WebAuthn Relying Party to guide the selection of the authenticator that
-    will be leveraged when creating the credential. It is intended primarily for WebAuthn Relying Parties that wish to tightly
+    will be leveraged when creating the credential. It is intended primarily for [=[WRPS]=] that wish to tightly
     control the experience around credential creation.
 - Specification Document: Section [[#sctn-authenticator-selection-extension]] of this specification
     <br/><br/>
 - WebAuthn Extension Identifier: exts
-- Description: This [=registration extension=] enables the [=[RP]=] to determine which extensions the authenticator supports. The
+- Description: This [=registration extension=] enables the [=[WRP]=] to determine which extensions the authenticator supports. The
     extension data is a list (CBOR array) of extension identifiers encoded as UTF-8 Strings. This extension is added
     automatically by the authenticator. This extension can be added to attestation statements.
 - Specification Document: Section [[#sctn-supported-extensions-extension]] of this specification
@@ -4478,12 +4725,12 @@ IANA "WebAuthn Extension Identifier" registry established by [[!WebAuthn-Registr
     <br/><br/>
 - WebAuthn Extension Identifier: loc
 - Description: The location [=registration extension=] and [=authentication extension=] provides the client device's current
-    location to the WebAuthn relying party, if supported by the client device and subject to [=user consent=].
+    location to the [=[WRP]=], if supported by the client device and subject to [=user consent=].
 - Specification Document: Section [[#sctn-location-extension]] of this specification
     <br/><br/>
 - WebAuthn Extension Identifier: uvm
 - Description: This [=registration extension=] and [=authentication extension=] enables use of a user verification method.
-    The user verification method extension returns to the Webauthn relying party which user verification methods (factors) were
+    The user verification method extension returns to the [=[WRP]=] which user verification methods (factors) were
     used for the WebAuthn operation.
 - Specification Document: Section [[#sctn-uvm-extension]] of this specification
 
@@ -4515,7 +4762,7 @@ such as registering -257 for "RS256".
 In this section, we walk through some events in the lifecycle of a [=public key credential=], along with the corresponding
 sample code for using this API. Note that this is an example flow and does not limit the scope of how the API can be used.
 
-As was the case in earlier sections, this flow focuses on a use case involving an external first-factor [=authenticator=]
+As was the case in earlier sections, this flow focuses on a use case involving a [=first-factor roaming authenticator=]
 with its own display. One example of such an authenticator would be a smart phone. Other authenticator types are also supported
 by this API, subject to implementation by the platform. For instance, this flow also works without modification for the case of
 an authenticator that is embedded in the client platform. The flow also works for the case of an authenticator without
@@ -4527,7 +4774,7 @@ platform to enumerate all the authenticator's credentials so that the client can
 ## Registration ## {#sample-registration}
 
 This is the first-time flow, in which a new credential is created and registered with the server.
-In this flow, the [=[RP]=] does not have a preference for [=platform authenticator=] or [=roaming authenticators=].
+In this flow, the [=[WRP]=] does not have a preference for [=platform authenticator=] or [=roaming authenticators=].
 
 1. The user visits example.com, which serves up a script. At this point, the user may already be logged in using a legacy
     username and password, or additional authenticator, or other means acceptable to the [=[RP]=].
@@ -4559,7 +4806,7 @@ The sample code for generating and registering a new key follows:
     if (!window.PublicKeyCredential) { /* Platform not capable. Handle error. */ }
 
     var publicKey = {
-      // The challenge must be produced by the server; see the Security Considerations
+      // The challenge is produced by the server; see the Security Considerations
       challenge: new Uint8Array([21,31,105 /* 29 more random bytes generated by the server */]),
 
       // Relying Party:
@@ -4603,10 +4850,10 @@ The sample code for generating and registering a new key follows:
       });
 </pre>
 
-## Registration Specifically with User Verifying Platform Authenticator ## {#sample-registration-with-platform-authenticator}
+## Registration Specifically with User-Verifying Platform Authenticator ## {#sample-registration-with-platform-authenticator}
 
-This is flow for when the [=[RP]=] is specifically interested in creating a public key credential with
-a [=user verification|user-verifying=] [=platform authenticator=].
+This is flow for when the [=[WRP]=] is specifically interested in creating a [=public key credential=] with
+a [=user-verifying platform authenticator=].
 
 1. The user visits example.com and clicks on the login button, which redirects the user to login.example.com.
 
@@ -4619,7 +4866,7 @@ a [=user verification|user-verifying=] [=platform authenticator=].
 1. If the user is not willing, terminate this flow.
 
 1. The user is shown appropriate UI and guided in creating a credential using one of the available platform authenticators.
-    Upon successful credential creation, the RP script conveys the new credential to the server.
+    Upon successful credential creation, the [=[RP]=] script conveys the new credential to the server.
 
 <pre class="example" highlight="js">
     if (!window.PublicKeyCredential) { /* Platform not capable of the API. Handle error. */ }
@@ -4627,7 +4874,8 @@ a [=user verification|user-verifying=] [=platform authenticator=].
     PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable()
         .then(function (userIntent) {
 
-            // If the user has affirmed willingness to register with RP using an available platform authenticator
+            // If the user has affirmed willingness to register with the 
+            // relying party using an available platform authenticator
             if (userIntent) {
                 var publicKeyOptions = { /* Public key credential creation options. */};
 
@@ -4689,10 +4937,10 @@ credentials, then the sample code for performing such an authentication might lo
 <pre class="example" highlight="js">
     if (!window.PublicKeyCredential) { /* Platform not capable. Handle error. */ }
 
-    // credentialId is generated by the authenticator and should be an opaque random byte array
+    // credentialId is generated by the authenticator and is an opaque random byte array
     var credentialId = new Uint8Array([183, 148, 245 /* more random bytes previously generated by the authenticator */]);
     var options = {
-      // The challenge must be produced by the server; see the Security Considerations
+      // The challenge is produced by the server; see the Security Considerations
       challenge: new Uint8Array([4,101,15 /* 29 more random bytes generated by the server */]),
       timeout: 60000,  // 1 minute
       allowCredentials: [{ type: "public-key", id: credentialId }]
@@ -4724,7 +4972,7 @@ extension for transaction authorization.
     };
 
     var options = {
-      // The challenge must be produced by the server; see the Security Considerations
+      // The challenge is produced by the server; see the Security Considerations
       challenge: new Uint8Array([8,18,33 /* 29 more random bytes generated by the server */]),
       timeout: 60000,  // 1 minute
       allowCredentials: [acceptableCredential1, acceptableCredential2],
@@ -4804,7 +5052,7 @@ handled on the server side and do not need support from the API specified here.
 This specification defines a Web API and a cryptographic peer-entity authentication protocol.
 The [=Web Authentication API=] allows Web developers (i.e., "authors") to utilize the Web Authentication protocol in their
 [=registration=] and [=authentication=] [=ceremonies=].
-The entities comprising the Web Authentication protocol endpoints are user-controlled [=authenticators=] and a [=[RP]=]'s
+The entities comprising the Web Authentication protocol endpoints are user-controlled [=authenticators=] and a [=[WRP]=]'s
 computing environment hosting the [=[RP]=]'s web application.
 In this model, the user agent, together with the [=[WAC]=], comprise an intermediary between [=authenticators=] and [=[RPS]=].
 Additionally, [=authenticators=] can [=attestation|attest=] to [=[RPS]=] as to their provenance.
@@ -4818,10 +5066,9 @@ The below subsections comprise the current Web Authentication-specific security 
 ## Cryptographic Challenges ## {#cryptographic-challenges}
 
 As a cryptographic protocol, Web Authentication is dependent upon randomized challenges
-to avoid replay attacks. Therefore, both {{PublicKeyCredentialCreationOptions/challenge}}'s
-and {{PublicKeyCredentialRequestOptions/challenge}}'s value MUST be randomly generated
+to avoid replay attacks. Therefore, the values of both {{PublicKeyCredentialCreationOptions}}.{{PublicKeyCredentialCreationOptions/challenge}} and {{PublicKeyCredentialRequestOptions}}.{{PublicKeyCredentialRequestOptions/challenge}} MUST be randomly generated
 by [=[RPS]=] in an environment they trust (e.g., on the server-side), and the
-returned challenge value in the client's
+returned {{CollectedClientData/challenge}} value in the client's
 response MUST match what was generated. This SHOULD be done in a fashion that does not rely
 upon a client's behavior, e.g., the Relying Party SHOULD store the challenge temporarily
 until the operation is complete. Tolerating a mismatch will compromise the security
@@ -4847,7 +5094,7 @@ SHOULD be specified in the attestation certificate itself, so that it can be ver
 When an intermediate CA or a root CA used for issuing attestation certificates is compromised, WebAuthn [=authenticator=]
 attestation keys are still safe although their certificates can no longer be trusted. A WebAuthn Authenticator manufacturer that
 has recorded the public attestation keys for their devices can issue new attestation certificates for these keys from a new
-intermediate CA or from a new root CA. If the root CA changes, the [=[RPS]=]  MUST update their trusted root certificates
+intermediate CA or from a new root CA. If the root CA changes, the [=[WRPS]=]  MUST update their trusted root certificates
 accordingly.
 
 A WebAuthn Authenticator attestation certificate MUST be revoked by the issuing CA if its key has been compromised. A WebAuthn
@@ -4869,9 +5116,9 @@ RogueList when performing ECDAA-Verify (see section 3.6 in [[!FIDOEcdaaAlgorithm
 [[FIDOMetadataService]] provides one way to access such information.
 
 
-## Security Benefits for [RPS] ## {#sctn-rp-benefits}
+## Security Benefits for [WRPS] ## {#sctn-rp-benefits}
 
-The main benefits offered to [=[RPS]=] by this specification include:
+The main benefits offered to [=[WRPS]=] by this specification include:
 
 1. Users and accounts can be secured using widely compatible, easy-to-use multi-factor authentication.
 1. The [=[RP]=] does not need to provision [=authenticator=] hardware to its users. Instead, each user can independently obtain
@@ -4891,7 +5138,7 @@ next section.
 
 ### Considerations for Self and None Attestation Types and Ignoring Attestation ### {#sctn-no-attestation-security-attestation}
 
-When [[#registering-a-new-credential|registering a new credential]], the [=[RP]=] MAY choose to accept an [=attestation
+When [[#registering-a-new-credential|registering a new credential]], the [=[WRP]=] MAY choose to accept an [=attestation
 statement=] of [[#sctn-attestation-types|type]] [=self attestation|Self=] or [=None=], or to not verify
 the [=attestation statement=]. In all of these cases the [=[RP]=] loses much of benefit (3) listed above, but retains the other
 benefits.
@@ -4916,21 +5163,105 @@ concern in most [=[RPS]=]' threat models. For example, the [=man-in-the-middle a
 
 The [=credential ID=] is not signed.
 This is not a problem because all that would happen if an [=authenticator=] returns
-the wrong [=credential ID=], or if an attacker intercepts and manipulates the [=credential ID=], is that the [=[RP]=] would not look up the correct
+the wrong [=credential ID=], or if an attacker intercepts and manipulates the [=credential ID=], is that the [=[WRP]=] would not look up the correct
 [=credential public key=] with which to verify the returned signed [=authenticator data=]
 (a.k.a., [=assertion=]), and thus the interaction would end in an error.
 
 
 ## Browser Permissions Framework and Extensions ## {#browser-permissions-framework-extensions}
 
-Web Authentication API implementations should leverage the browser permissions framework as much as possible when obtaining user
+Web Authentication API implementations SHOULD leverage the browser permissions framework as much as possible when obtaining user
 permissions for certain extensions. An example is the location extension (see [[#sctn-location-extension]]), implementations of
-which should make use of the existing browser permissions framework for the Geolocation API.
+which SHOULD make use of the existing browser permissions framework for the Geolocation API.
 
 
 # Privacy Considerations # {#sctn-privacy-considerations}
 
 The privacy principles in [[!FIDO-Privacy-Principles]] also apply to this specification.
+
+
+## De-anonymization prevention measures ## {#sctn-privacy-attacks}
+
+[INFORMATIVE]
+
+Many aspects of the design of the [=Web Authentication API=] are motivated by privacy concerns. The main concern considered in
+this specification is the protection of the user's personal identity, i.e., the identification of a human being or a correlation
+of separate identities as belonging to the same human being. Although the [=Web Authentication API=] does not use or provide any
+form of global identity, the following kinds of potentially correlatable identifiers are used:
+
+- The user's [=credential IDs=] and [=credential public keys=].
+
+    These are registered by the [=[WRP]=] and subsequently used by the user to prove possession of the corresponding [=credential
+    private key=]. They are also visible to the [=client=] in the communication with the [=authenticator=].
+
+- The user's identities specific to each [=[RP]=], e.g., usernames and [=user handles=].
+
+    These identities are obviously used by each [=[RP]=] to identify a user in their system. They are also visible to the
+    [=client=] in the communication with the [=authenticator=].
+
+- The user's biometric characteristic(s), e.g., fingerprints or facial recognition data [[ISOBiometricVocabulary]].
+
+    This is optionally used by the [=authenticator=] to perform [=user verification=]. It is not revealed to the [=[RP]=], but in
+    the case of [=platform authenticators=], it might be visible to the [=client=] depending on the implementation.
+
+- The models of the user's [=authenticators=], e.g., product names.
+
+    This is exposed in the [=attestation statement=] provided to the [=[RP]=] during [=registration=]. It is also visible to the
+    [=client=] in the communication with the [=authenticator=].
+
+- The identities of the user's [=authenticators=], e.g., serial numbers.
+
+    This is possibly used by the [=client=] to enable communication with the [=authenticator=], but is not exposed to the
+    [=[RP]=].
+
+Some of the above information is necessarily shared with the [=[RP]=]. The following sections describe the measures taken to
+prevent malicious [=[RPS]=] from using it to discover a user's personal identity.
+
+
+## Anonymous, scoped, non-correlatable [=public key credentials=] ## {#sec-non-correlatable-credentials}
+
+[INFORMATIVE]
+
+Although [=Credential IDs=] and [=credential public keys=] are necessarily shared with the [=[WRP]=] to enable strong
+authentication, they are designed to be minimally identifying and not shared between [=[RPS]=].
+
+- [=Credential IDs=] and [=credential public keys=] are meaningless in isolation, as they only identify [=credential key pairs=]
+    and not users directly.
+
+- Each [=public key credential=] is strictly bound to a specific [=[RP]=], and the [=client=] ensures that its existence is not
+    revealed to other [=[RPS]=]. A malicious [=[RP]=] thus cannot ask the [=client=] to reveal a user's other identities.
+
+- The [=client=] also ensures that the existence of a [=public key credential=] is not revealed to the [=[RP]=] without [=user
+    consent=]. This is detailed further in [[#sec-make-credential-privacy]] and [[#sec-assertion-privacy]]. A malicious [=[RP]=]
+    thus cannot silently identify a user, even if the user has a [=public key credential=] registered and available.
+
+- [=Authenticators=] ensure that the [=credential IDs=] and [=credential public keys=] of different [=public key credentials=] are
+    not correlatable as belonging to the same user. A pair of malicious [=[RPS]=] thus cannot correlate users between their
+    systems without additional information, e.g., a willfully reused username or e-mail address.
+
+- [=Authenticators=] ensure that their [=attestation certificates=] are not unique enough to identify a single [=authenticator=]
+    or a small group of [=authenticators=]. This is detailed further in [[#sec-attestation-privacy]]. A pair of malicious
+    [=[RPS]=] thus cannot correlate users between their systems by tracking individual [=authenticators=].
+
+Additionally, a [=client-side-resident public key credential source=] can optionally include a [=user
+handle=] specified by the [=[RP]=]. The [=public key credential|credential=] can then be used to both identify and
+[=authentication|authenticate=] the user. This means that a privacy-conscious [=[RP]=] can allow the user to create an account
+without a traditional username, further improving non-correlatability between [=[RPS]=].
+
+
+## Authenticator-local [=biometric recognition=] ## {#sec-biometric-privacy}
+
+[=Biometric authenticators=] perform the [=biometric recognition=] internally in the [=authenticator=] - though for [=platform
+authenticators=] the biometric data might also be visible to the [=client=], depending on the implementation. Biometric data is
+not revealed to the [=[WRP]=]; it is used only locally to perform [=user verification=] authorizing the creation and
+[=registration=] of, or [=authentication=] using, a [=public key credential=]. A malicious [=[RP]=] therefore cannot discover the
+user's personal identity via biometric data, and a security breach at a [=[RP]=] cannot expose biometric data for an attacker to
+use for forging logins at other [=[RPS]=].
+
+In the case where a [=[RP]=] requires [=biometric recognition=], this is performed locally by the [=biometric authenticator=]
+perfoming [=user verification=] and then signaling the result by setting the [=UV=] [=flag=] in the signed [=assertion=] response,
+instead of revealing the biometric data itself to the [=[RP]=].
+
 
 ## Attestation Privacy ## {#sec-attestation-privacy}
 
@@ -4955,7 +5286,7 @@ in several ways, including:
         confusion in the specific context of this specification.
 
 - A WebAuthn Authenticator can implement [=Elliptic Curve based direct anonymous attestation=] (see [[FIDOEcdaaAlgorithm]]).
-    Using this scheme, the authenticator generates a blinded attestation signature. This allows the [=[RP]=] to verify the
+    Using this scheme, the authenticator generates a blinded attestation signature. This allows the [=[WRP]=] to verify the
     signature using the [=ECDAA-Issuer public key=], but the attestation signature does not serve as a global correlation handle.
 
 
@@ -4963,7 +5294,7 @@ in several ways, including:
 
 In order to protect users from being identified without [=user consent|consent=], implementations of the
 {{PublicKeyCredential/[[Create]](origin, options, sameOriginWithAncestors)}} method need to take care to not leak information that
-could enable a malicious [=[RP]=] to distinguish between these cases, where "excluded" means that at least one of the [=public key
+could enable a malicious [=[WRP]=] to distinguish between these cases, where "excluded" means that at least one of the [=public key
 credential|credentials=] listed by the [=[RP]=] in {{PublicKeyCredentialCreationOptions/excludeCredentials}} is bound to the
 [=authenticator=]:
 
@@ -4986,7 +5317,7 @@ leaked.
 
 In order to protect users from being identified without [=user consent|consent=], implementations of the
 {{PublicKeyCredential/[[DiscoverFromExternalSource]](origin, options, sameOriginWithAncestors)}} method need to take care to not
-leak information that could enable a malicious [=[RP]=] to distinguish between these cases, where "named" means that the [=public
+leak information that could enable a malicious [=[WRP]=] to distinguish between these cases, where "named" means that the [=public
 key credential|credential=] is listed by the [=[RP]=] in {{PublicKeyCredentialRequestOptions/allowCredentials}}:
 
 - A named [=public key credential|credential=] is not available.
@@ -4994,10 +5325,17 @@ key credential|credential=] is listed by the [=[RP]=] in {{PublicKeyCredentialRe
 
 If the above cases are distinguishable, information is leaked by which a malicious [=[RP]=] could identify the user by probing
 for which [=public key credential|credentials=] are available. For example, one such information leak is if the client returns a
-failure response as soon as the user denies [=user consent|consent=] to proceed with an [=authentication=] [=ceremony=]. In this
+failure response as soon as the user denies [=user consent|consent=] to proceed with an [=authentication ceremony=]. In this
 case the [=[RP]=] could detect that the [=ceremony=] was canceled by the user and not the timeout, and thus conclude that at least
 one of the [=public key credential|credentials=] listed in the {{PublicKeyCredentialRequestOptions/allowCredentials}} parameter is
 available to the user.
+
+
+## Privacy between operating system accounts ## {#sctn-os-account-privacy}
+
+If a [=platform authenticator=] is included in a [=client device=] with a multi-user operating system, the [=platform
+authenticator=] and [=client device=] SHOULD work together to ensure that the existence of any [=platform credential=] is revealed
+only to the operating system user that created that [=platform credential=].
 
 
 # Acknowledgements # {#acknowledgements}
@@ -5083,6 +5421,13 @@ for their contributions as our W3C Team Contacts.
     "href": "http://csrc.nist.gov/publications/nistpubs/800-107-rev1/sp800-107-rev1.pdf",
     "authors": ["Quynh Dang"],
     "date": "August 2012"
+  },
+
+  "SP800-800-63r3": {
+    "title": "NIST Special Publication 800-63: Digital Identity Guidelines",
+    "href": "https://pages.nist.gov/800-63-3/sp800-63-3.html",
+    "authors": ["Paul A. Grassi", "Michael E. Garcia", "James L. Fenton"],
+    "date": "June 2017"
   },
 
   "OSCCA-SM3": {
