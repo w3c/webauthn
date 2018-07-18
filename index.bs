@@ -1313,11 +1313,20 @@ When this method is invoked, the user agent MUST execute the following algorithm
         ::  [=set/For each=] |authenticator| in |issuedRequests| invoke the [=authenticatorCancel=] operation on
             |authenticator| and [=set/remove=] |authenticator| from |issuedRequests|.
 
+        :   If the user exercises a user-interface option to cancel the process,
+        ::  [=set/For each=] |authenticator| in |issuedRequests| invoke the [=authenticatorCancel=] operation on |authenticator|
+            and [=set/remove=] |authenticator| from |issuedRequests|. Return a {{DOMException}} whose name is "{{NotAllowedError}}".
+
         :   If the {{CredentialRequestOptions/signal}} member is [=present=] and the [=AbortSignal/aborted flag=] is set to
             [TRUE],
         ::  [=set/For each=] |authenticator| in |issuedRequests| invoke the [=authenticatorCancel=] operation on |authenticator|
             and [=set/remove=] |authenticator| from |issuedRequests|. Then
             return a {{DOMException}} whose name is "{{AbortError}}" and terminate this algorithm.
+
+        :   If |issuedRequests| is empty, <code>|options|.{{PublicKeyCredentialRequestOptions/allowCredentials}}</code> is not empty, and no |authenticator| will become available for any [=public key credentials=] therein,
+        ::  Indicate to the user that no eligible credential could be found. When the user acknowledges the dialog, return a {{DOMException}} whose name is "{{NotAllowedError}}".
+
+            Note: One way a [=client platform=] can determine that no |authenticator| will become available is by examining the <code>{{transports}}</code> members of the present <code>{{PublicKeyCredentialDescriptor}}</code> [=list/items=] of <code>|options|.{{PublicKeyCredentialRequestOptions/allowCredentials}}</code>, if any. For example, if all <code>{{PublicKeyCredentialDescriptor}}</code> [=list/items=] list only <code>{{AuthenticatorTransport/internal}}</code>, but all internal |authenticator|s have been tried, then there is no possibility of satisfying the request. Alternatively, all <code>{{PublicKeyCredentialDescriptor}}</code> [=list/items=] may list <code>{{transports}}</code> that the [=client platform=] does not support.
 
         :   If an |authenticator| becomes available on this [=client device=],
         ::  Note:  This includes the case where an |authenticator| was available upon |lifetimeTimer| initiation.
@@ -1690,17 +1699,20 @@ optionally evidence of [=user consent=] to a specific transaction.
     :   <dfn>rp</dfn>
     ::  This member contains data about the [=[RP]=] responsible for the request.
 
-        Its value's {{PublicKeyCredentialEntity/name}} member is REQUIRED.
+        Its value's {{PublicKeyCredentialEntity/name}} member is REQUIRED. See [[#dictionary-pkcredentialentity]] for further
+        details.
 
-        Its value's {{PublicKeyCredentialRpEntity/id}} member specifies the [=relying party identifier=] with which the credential
+        Its value's {{PublicKeyCredentialRpEntity/id}} member specifies the [=RP ID=] with which the credential
         should be associated. If omitted, its value will be the {{CredentialsContainer}} object's [=relevant
-        settings object=]'s [=environment settings object/origin=]'s [=effective domain=].
+        settings object=]'s [=environment settings object/origin=]'s [=effective domain=]. See [[#sctn-rp-credential-params]]
+        for further details.
 
     :   <dfn>user</dfn>
     ::  This member contains data about the user account for which the [=[RP]=] is requesting attestation.
 
         Its value's {{PublicKeyCredentialEntity/name}}, {{PublicKeyCredentialUserEntity/displayName}} and
-        {{PublicKeyCredentialUserEntity/id}} members are REQUIRED.
+        {{PublicKeyCredentialUserEntity/id}} members are REQUIRED. See [[#dictionary-pkcredentialentity]] and
+        [[#sctn-user-credential-params]] for further details.
 
     :   <dfn>challenge</dfn>
     ::  This member contains a challenge intended to be used for generating the newly created credential's [=attestation
@@ -1749,16 +1761,37 @@ associated.
 </xmp>
 <div dfn-type="dict-member" dfn-for="PublicKeyCredentialEntity">
     :   <dfn>name</dfn>
-    ::  A human-readable name for the entity. Its function depends on what the {{PublicKeyCredentialEntity}} represents:
+    ::  A [=human palatability|human-palatable=] name for the entity. Its function depends on what the {{PublicKeyCredentialEntity}} represents:
 
-          - When inherited by {{PublicKeyCredentialRpEntity}} it is a human-friendly identifier for the [=[RP]=], intended only
+          - When inherited by {{PublicKeyCredentialRpEntity}} it is a [=human palatability|human-palatable=] identifier for the [=[RP]=], intended only
             for display. For example, "ACME Corporation", "Wonderful Widgets, Inc." or "ОАО Примертех".
+
+              - [=[RPS]=] SHOULD perform enforcement, as prescribed in Section 2.3 of
+                [[!RFC8266]] for the Nickname Profile of the PRECIS FreeformClass [[!RFC8264]],
+                when setting {{PublicKeyCredentialEntity/name}}'s value, or displaying the value to the user.
+
+              - [=Clients=] SHOULD perform enforcement, as prescribed in Section 2.3 of
+                [[!RFC8266]] for the Nickname Profile of the PRECIS FreeformClass [[!RFC8264]],
+                on {{PublicKeyCredentialEntity/name}}'s value prior to displaying the value to the user or
+                including the value as a parameter of the [=authenticatorMakeCredential=] operation.
+
           - When inherited by {{PublicKeyCredentialUserEntity}}, it is a [=human palatability|human-palatable=] identifier for a
-            user account. It is intended only for display, and SHOULD allow the user to easily tell the difference between user
+            user account. It is intended only for display, i.e., aiding the user in determining the difference between user
             accounts with similar {{PublicKeyCredentialUserEntity/displayName}}s. For example, "alexm", "alex.p.mueller@example.com"
-            or "+14255551234". The [=[RP]=] MAY let the user choose this, and MAY restrict the choice as needed or appropriate.
-            For example, a [=[RP]=] might choose to map [=human palatability|human-palatable=] [=username=] account identifiers to
-            the {{PublicKeyCredentialEntity/name}} member of {{PublicKeyCredentialUserEntity}}.
+            or "+14255551234".
+
+              - The [=[RP]=] MAY let the user choose this value. The [=[RP]=] SHOULD perform enforcement,
+                as prescribed in Section 3.4.3 of [[!RFC8265]] for the UsernameCasePreserved Profile of the PRECIS
+                IdentifierClass [[!RFC8264]], when setting {{PublicKeyCredentialEntity/name}}'s value, or displaying the value
+                to the user.
+
+              - [=Clients=] SHOULD perform enforcement, as prescribed in Section 3.4.3 of [[!RFC8265]]
+                for the UsernameCasePreserved Profile of the PRECIS IdentifierClass [[!RFC8264]],
+                on {{PublicKeyCredentialEntity/name}}'s value prior to displaying the value to the user or
+                including the value as a parameter of the [=authenticatorMakeCredential=] operation.
+
+
+        When [=clients=], [=client platforms=], or [=authenticators=] display a {{PublicKeyCredentialEntity/name}}'s value, they should always use UI elements to provide a clear boundary around the displayed value, and not allow overflow into other elements [[css-overflow-3]].
 
         [=Authenticators=] MUST accept and store a 64-byte minimum length for a {{PublicKeyCredentialEntity/name}} member's
         value. Authenticators MAY truncate a {{PublicKeyCredentialEntity/name}} member's value to a length equal to or greater
@@ -1803,11 +1836,24 @@ credential.
 
 <div dfn-type="dict-member" dfn-for="PublicKeyCredentialUserEntity">
     :   <dfn>id</dfn>
-    ::  The [=user handle=] of the user account entity.
+    ::  The [=user handle=] of the user account entity. To ensure secure operation, authentication and authorization
+        decisions MUST be made on the basis of this {{PublicKeyCredentialUserEntity/id}} member,  not the
+        {{PublicKeyCredentialUserEntity/displayName}} nor {{PublicKeyCredentialEntity/name}} members. See Section 6.1 of [[!RFC8266]].
 
     :   <dfn>displayName</dfn>
-    ::  A human-friendly name for the user account, intended only for display. For example, "Alex P. Müller" or "田中 倫". The
+    ::  A [=human palatability|human-palatable=] name for the user account, intended only for display. For example, "Alex P. Müller" or "田中 倫". The
         [=[RP]=] SHOULD let the user choose this, and SHOULD NOT restrict the choice more than necessary.
+
+        - [=[RPS]=] SHOULD perform enforcement, as prescribed in Section 2.3 of
+            [[!RFC8266]] for the Nickname Profile of the PRECIS FreeformClass [[!RFC8264]],
+            when setting {{PublicKeyCredentialUserEntity/displayName}}'s value, or displaying the value to the user.
+
+        - [=Clients=] SHOULD perform enforcement, as prescribed in Section 2.3 of
+            [[!RFC8266]] for the Nickname Profile of the PRECIS FreeformClass [[!RFC8264]],
+            on {{PublicKeyCredentialUserEntity/displayName}}'s value prior to displaying the value to the user or
+            including the value as a parameter of the [=authenticatorMakeCredential=] operation.
+
+        When [=clients=], [=client platforms=], or [=authenticators=] display a {{PublicKeyCredentialUserEntity/displayName}}'s value, they should always use UI elements to provide a clear boundary around the displayed value, and not allow overflow into other elements [[css-overflow-3]].
 
         [=Authenticators=] MUST accept and store a 64-byte minimum length for a {{PublicKeyCredentialUserEntity/displayName}}
         member's value. Authenticators MAY truncate a {{PublicKeyCredentialUserEntity/displayName}} member's value to a length
