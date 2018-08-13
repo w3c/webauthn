@@ -3266,7 +3266,13 @@ the [=authenticator=] MUST:
 
 # [=[WRP]=] Operations # {#rp-operations}
 
-Upon successful execution of {{CredentialsContainer/create()}} or {{CredentialsContainer/get()}}, the [=[WRP]=]'s script receives
+A [=registration=] or [=authentication=] [=ceremony=] begins with the [=[WRP]=] creating a {{PublicKeyCredentialCreationOptions}}
+or {{PublicKeyCredentialRequestOptions}} object |request|, respectively, which encodes the parameters for the [=ceremony=]. Most
+importantly, |request| contains a random challenge and optionally a list of [=credential IDs=] eligible for the [=ceremony=]. The
+[=[RP]=] SHOULD take care to not leak sensitive information while generating |request|; see [[#sctn-username-enumeration]] for
+details.
+
+Upon successful execution of {{CredentialsContainer/create()}} or {{CredentialsContainer/get()}}, the [=[RP]=]'s script receives
 a {{PublicKeyCredential}} containing an {{AuthenticatorAttestationResponse}} or {{AuthenticatorAssertionResponse}} structure,
 respectively, from the client. It must then deliver the contents of this structure to the [=[RP]=] server, using methods outside
 the scope of this specification. This section describes the operations that the [=[RP]=] must perform upon receipt of these
@@ -5399,6 +5405,41 @@ available to the user.
 If a [=platform authenticator=] is included in a [=client device=] with a multi-user operating system, the [=platform
 authenticator=] and [=client device=] SHOULD work together to ensure that the existence of any [=platform credential=] is revealed
 only to the operating system user that created that [=platform credential=].
+
+
+## Username Enumeration ## {#sctn-username-enumeration}
+
+While initiating a [=registration=] or [=authentication=] [=ceremony=], there is a risk that the [=[WRP]=] might leak sensitive
+information about its registered users. For example, if a [=[RP]=] uses e-mail addresses as usernames and a user attempts to
+initiate an [=authentication=] [=ceremony=] for "alex.p.mueller@example.com" and the [=[RP]=] responds with a failure, but then
+successfully initiates an [=authentication ceremony=] for "j.doe@example.com", then the user can conclude that "j.doe@example.com"
+is registered and "alex.p.mueller@example.com" is not. The [=[RP]=] has thus leaked the possibly sensitive information that
+"j.doe@example.com" has an account at this [=[RP]=].
+
+The following is a non-normative, non-exhaustive list of measures the [=[RP]=] MAY implement to mitigate or prevent information
+leak due to such an attack:
+
+- When initiating an [=authentication ceremony=], generate and return a valid {{PublicKeyCredentialRequestOptions}} object
+    even if the supplied username is not registered. The {{PublicKeyCredentialRequestOptions/allowCredentials}} member may be
+    populated with random values.
+
+- When verifying an {{AuthenticatorAssertionResponse}} response from the [=authenticator=], make it indistinguishable whether
+    verification failed because the signature is invalid or because no such user or credential is registered.
+
+- If the [=[RP]=] uses [=[RP]=]-specific usernames as user identifiers:
+
+    - When initiating a [=registration ceremony=], disallow registration of usernames that are valid e-mail addresses.
+
+- If the [=[RP]=] uses e-mail addresses as user identifiers:
+
+    - When initiating a [=registration ceremony=], interrupt the user interaction after receiving the e-mail address to register
+        and send a message to this address, containing an unpredictable one-time code and instructions for how to use it to
+        proceed with the ceremony.  Display the same message to the user in the web interface regardless of the contents of the
+        sent e-mail and whether or not this e-mail was already registered.
+
+- The preceding suggestion can be similarly adapted for other externally meaningful identifiers &mdash; for example, national ID
+    numbers or credit card numbers &mdash; if they provide similar out-of-band contact information &mdash; for example,
+    conventional postal address.
 
 
 # Acknowledgements # {#acknowledgements}
