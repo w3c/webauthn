@@ -155,6 +155,10 @@ spec: WHATWG HTML; urlPrefix: https://html.spec.whatwg.org/
         text: focus
         text: username; url: attr-fe-autocomplete-username
 
+spec: WHATWG URL; urlPrefix: https://url.spec.whatwg.org/
+    type: dfn
+        text: same site; url: host-same-site
+
 spec: FIDO-CTAP; urlPrefix: https://fidoalliance.org/specs/fido-v2.0-id-20180227/fido-client-to-authenticator-protocol-v2.0-id-20180227.html
     type: dfn
         text: CTAP2 canonical CBOR encoding form; url: ctap2-canonical-cbor-encoding-form
@@ -236,7 +240,7 @@ created and stored by an <em>[=authenticator=]</em> at the behest of a <em>[=[WR
 consent=]</em>. Subsequently, the [=public key credential=] can only be accessed by [=origins=] belonging to that [=[RP]=].
 This scoping is enforced jointly by <em>[=conforming User Agents=]</em> and <em>[=authenticators=]</em>.
 Additionally, privacy across [=[RPS]=] is maintained; [=[RPS]=] are not able to detect any properties, or even
-the existence, of credentials [=scoped=] to other [RPS].
+the existence, of credentials [=scoped=] to other [=[RPS]=].
 
 [=[RPS]=] employ the [=Web Authentication API=] during two distinct, but related, [=ceremonies=] involving a user. The first
 is [=Registration=], where a [=public key credential=] is created on an [=authenticator=], and associated by a [=[RP]=]
@@ -419,6 +423,9 @@ below and in [[#index-defined-elsewhere]].
 : HTML
 :: The concepts of [=relevant settings object=], [=origin=],
     [=opaque origin=], and [=is a registrable domain suffix of or is equal to=] are defined in [[!HTML52]].
+
+: URL
+:: The concept of [=same site=] is defined in [[!URL]].
 
 : Web IDL
 :: Many of the interface definitions and all of the IDL in this specification depend on [[!WebIDL-1]]. This updated version of
@@ -1158,7 +1165,7 @@ a numbered step. If outdented, it (today) is rendered as a bullet in the midst o
                             and/or more easily verifiable version of the same data (for example, by employing an [=Anonymization CA=]).
 
                         :   "direct"
-                        ::  Convey the [=authenticator=]'s [=AAGUID=] and [=attestation statement=], unaltered, to the RP.
+                        ::  Convey the [=authenticator=]'s [=AAGUID=] and [=attestation statement=], unaltered, to the [=[RP]=].
                     </dl>
 
                 1.  Let |attestationObject| be a new {{ArrayBuffer}}, created using |global|'s [=%ArrayBuffer%=], containing the
@@ -2160,7 +2167,7 @@ Note: The {{CollectedClientData}} may be extended in the future. Therefore it's 
         attacks (where an attacker substitutes one legitimate signature for another).
 
     :   <dfn>challenge</dfn>
-    ::  This member contains the base64url encoding of the challenge provided by the RP. See the [[#cryptographic-challenges]]
+    ::  This member contains the base64url encoding of the challenge provided by the [=[RP]=]. See the [[#cryptographic-challenges]]
         security consideration.
 
     :   <dfn>origin</dfn>
@@ -2499,10 +2506,13 @@ The [figure below](#fig-authData) shows a visual representation of the [=authent
     <figcaption>[=Authenticator data=] layout.</figcaption>
 </figure>
 
-Note that the [=authenticator data=] describes its own length: If the AT and ED [=flags=] are not set, it is always 37 bytes long.
-The [=attested credential data=] (which is only present if the AT flag is set) describes its own length. If the ED flag is set,
-then the total length is 37 bytes plus the length of the [=attested credential data=], plus the length of the [=CBOR=] map that
-follows.
+<div class="note">
+    Note: [=authenticator data=] describes its own length: If the AT and ED [=flags=] are not set, it is always 37 bytes long.
+    The [=attested credential data=] (which is only present if the AT [=flag=] is set) describes its own length. If the ED [=flag=] is set, then the total length is 37 bytes plus the length of the [=attested credential data=] (if the AT [=flag=] is set), plus the length of the [=authDataExtensions|extensions=] output (a [=CBOR=] map) that
+    follows.
+
+    Determining [=attested credential data=]'s length, which is variable, involves determining <code>[=credentialPublicKey=]</code>'s beginning location given the preceding <code>[=credentialid|credentialId=]</code>'s [=credentialidlength|length=], and then determining the <code>[=credentialPublicKey=]</code>'s length (see also [=Section 7=] of [[RFC8152]]).
+</div>
 
 ### <dfn>Signature Counter</dfn> Considerations ### {#sign-counter}
 
@@ -2511,7 +2521,7 @@ Authenticators SHOULD implement a [=signature counter=] feature. The [=signature
 [=authenticator data=]. The [=signature counter=]'s purpose is to aid [=[RPS]=] in detecting cloned authenticators. Clone
 detection is more important for authenticators with limited protection measures.
 
-An [=[RP]=] stores the [=signature counter=] of the most recent [=authenticatorGetAssertion=] operation. Upon a new
+A [=[RP]=] stores the [=signature counter=] of the most recent [=authenticatorGetAssertion=] operation. Upon a new
 [=authenticatorGetAssertion=] operation, the [=[RP]=] compares the stored [=signature counter=] value with the new
 <code>[=signCount=]</code> value returned in the assertion's [=authenticator data=].  If this new <code>[=signCount=]</code> value is less than or equal to the stored value, a cloned authenticator may exist, or the authenticator may be malfunctioning.
 
@@ -3312,7 +3322,7 @@ When registering a new credential, represented by an {{AuthenticatorAttestationR
     {{AuthenticatorAttestationResponse}} structure to obtain the attestation statement format |fmt|, the [=authenticator data=]
     |authData|, and the attestation statement |attStmt|.
 
-1. Verify that the [=RP ID=] hash in |authData| is indeed the SHA-256 hash of the [=RP ID=] expected by the RP.
+1. Verify that the [=RP ID=] hash in |authData| is indeed the SHA-256 hash of the [=RP ID=] expected by the [=[RP]=].
 
 1. Verify that the [=User Present=] bit of the <code>[=flags=]</code> in |authData| is set.
 
@@ -3839,7 +3849,7 @@ the attestation=] is consistent with the fields of the attestation certificate's
         contained fields.
     - Verify that |sig| is a valid signature over the concatenation of |authenticatorData| and |clientDataHash| using the
         public key in the first certificate in |x5c| with the algorithm specified in |alg|.
-    - Verify that the public key in the first certificate in in |x5c| matches the
+    - Verify that the public key in the first certificate in |x5c| matches the
         <code>[=credentialPublicKey=]</code> in the <code>[=attestedCredentialData=]</code> in |authenticatorData|.
     - Verify that in the attestation certificate extension data:
         - The value of the `attestationChallenge` field is identical to |clientDataHash|.
@@ -4263,8 +4273,13 @@ JavaScript APIs.
         <var ignore>allowCredentialDescriptorList</var> and set |output| to [TRUE]. The value of |appId| then replaces the `rpId`
         parameter of [=authenticatorGetAssertion=].
 
+Note: In practice, several implementations do not implement steps four and onward of the
+algorithm for [=determining if a caller's FacetID is authorized for an AppID=].
+Instead, in step three, the comparison on the host is relaxed to accept hosts on the
+[=same site=].
+
 : Client extension output
-:: Returns the value of |output|.
+:: Returns the value of |output|. If true, the |AppID| was used and thus, when [verifying an assertion](#verifying-assertion), the [=[RP]=] MUST expect the <code>[=rpIdHash=]</code> to be the hash of the |AppID|, not the [=RP ID=].
 
     <xmp class="idl">
     partial dictionary AuthenticationExtensionsClientOutputs {
@@ -4529,7 +4544,7 @@ This extension enables use of a user verification index.
 
     Example of [=authenticator data=] containing one UVI extension
     <pre>
-        ...                                         -- [=RP ID=] hash (32 bytes)
+        ...                                         -- RP ID hash (32 bytes)
         81                                          -- UP and ED set
         00 00 00 01                                 -- (initial) signature counter
         ...                                         -- all public key alg etc.
@@ -4658,7 +4673,7 @@ This extension enables use of a user verification method.
     Example for [=authenticator data=] containing one UVM extension for a multi-factor authentication instance where 2 factors
     were used:
     <pre>
-        ...                    -- [=RP ID=] hash (32 bytes)
+        ...                    -- RP ID hash (32 bytes)
         81                     -- UP and ED set
         00 00 00 01            -- (initial) signature counter
         ...                    -- all public key alg etc.
