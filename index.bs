@@ -3288,7 +3288,11 @@ the [=authenticator=] MUST:
 
 # [=[WRP]=] Operations # {#rp-operations}
 
-Upon successful execution of {{CredentialsContainer/create()}} or {{CredentialsContainer/get()}}, the [=[WRP]=]'s script receives
+A [=registration ceremony|registration=] or [=authentication ceremony=] begins with the [=[WRP]=] creating a {{PublicKeyCredentialCreationOptions}}
+or {{PublicKeyCredentialRequestOptions}} object, respectively, which encodes the parameters for the [=ceremony=]. The [=[RP]=]
+SHOULD take care to not leak sensitive information during this stage; see [[#sctn-username-enumeration]] for details.
+
+Upon successful execution of {{CredentialsContainer/create()}} or {{CredentialsContainer/get()}}, the [=[RP]=]'s script receives
 a {{PublicKeyCredential}} containing an {{AuthenticatorAttestationResponse}} or {{AuthenticatorAssertionResponse}} structure,
 respectively, from the client. It must then deliver the contents of this structure to the [=[RP]=] server, using methods outside
 the scope of this specification. This section describes the operations that the [=[RP]=] must perform upon receipt of these
@@ -5450,6 +5454,59 @@ Since the [=user handle=] is not considered [PII] in [[#sctn-pii-privacy]], the 
 addresses or usernames, in the [=user handle=]. This includes hash values of [PII], unless the hash
 function is [=salted=] with [=salt=] values private to the [=[RP]=], since hashing does not prevent probing for guessable input
 values. It is RECOMMENDED to let the [=user handle=] be 64 random bytes, and store this value in the user's account.
+
+
+## Username Enumeration ## {#sctn-username-enumeration}
+
+While initiating a [=registration ceremony|registration=] or [=authentication ceremony=], there is a risk that the [=[WRP]=] might leak sensitive
+information about its registered users. For example, if a [=[RP]=] uses e-mail addresses as usernames and an attacker attempts to
+initiate an [=authentication=] [=ceremony=] for "alex.p.mueller@example.com" and the [=[RP]=] responds with a failure, but then
+successfully initiates an [=authentication ceremony=] for "j.doe@example.com", then the attacker can conclude that "j.doe@example.com"
+is registered and "alex.p.mueller@example.com" is not. The [=[RP]=] has thus leaked the possibly sensitive information that
+"j.doe@example.com" has an account at this [=[RP]=].
+
+The following is a non-normative, non-exhaustive list of measures the [=[RP]=] may implement to mitigate or prevent information
+leakage due to such an attack:
+
+- For [=registration ceremonies=]:
+
+    - If the [=[RP]=] uses [=[RP]=]-specific usernames to identify users:
+
+        - When initiating a [=registration ceremony=], disallow registration of usernames that are syntactically valid e-mail
+            addresses.
+
+            Note: The motivation for this suggestion is that in this case the [=[RP]=] probably has no choice but to fail the
+            [=registration ceremony=] if the user attempts to register a username that is already registered, and an information
+            leak might therefore be unavoidable. By disallowing e-mail addresses as usernames, the impact of the leakage can be
+            mitigated since it will be less likely that a user has the same username at this [=[RP]=] as at other [=[RPS]=].
+
+    - If the [=[RP]=] uses e-mail addresses to identify users:
+
+        - When initiating a [=registration ceremony=], interrupt the user interaction after the e-mail address is supplied and
+            send a message to this address, containing an unpredictable one-time code and instructions for how to use it to
+            proceed with the ceremony. Display the same message to the user in the web interface regardless of the contents of the
+            sent e-mail and whether or not this e-mail address was already registered.
+
+            Note: This suggestion can be similarly adapted for other externally meaningful identifiers, for example, national ID
+            numbers or credit card numbers &mdash; if they provide similar out-of-band contact information, for example,
+            conventional postal address.
+
+- For [=authentication ceremonies=]:
+
+    - If, when initiating an [=authentication ceremony=], there is no account matching the provided username, continue the
+        ceremony by invoking {{CredentialsContainer/get()|navigator.credentials.get()}} using a syntactically valid
+        {{PublicKeyCredentialRequestOptions}} object that is populated with plausible imaginary values.
+
+        Note: The username may be "provided" in various [=[RP]=]-specific fashions: login form, session cookie, etc.
+
+        Note: If returned imaginary values noticeably differ from actual ones, clever attackers may be able to discern them and
+            thus be able to test for existence of actual accounts. Examples of noticeably different values include if the values
+            are always the same for all username inputs, or are different in repeated attempts with the same username input. The
+            {{PublicKeyCredentialRequestOptions/allowCredentials}} member could therefore be populated with pseudo-random values
+            derived deterministically from the username, for example.
+
+    - When verifying an {{AuthenticatorAssertionResponse}} response from the [=authenticator=], make it indistinguishable whether
+          verification failed because the signature is invalid or because no such user or credential is registered.
 
 
 # Acknowledgements # {#acknowledgements}
