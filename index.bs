@@ -3235,7 +3235,7 @@ template:
 
     The procedure returns either:
     - An error indicating that the attestation is invalid, or
-    - The [=attestation type=], and the [=attestation trust path|trust path=]. This <dfn>attestation trust path</dfn> is either
+    - An implementation-specific value representing the [=attestation type=], and the [=attestation trust path|trust path=]. This <dfn>attestation trust path</dfn> is either
         empty (in case of [=self attestation=]), an identifier of an [=ECDAA-Issuer public key=] (in the case of [=ECDAA=]), or a
         set of X.509 certificates.
 
@@ -3246,7 +3246,15 @@ The initial list of specified [=attestation statement formats=] is in [[#defined
      different things having the same nominal name, eg attestation-types-the-section, and attestation-types-the-definition -->
 ### Attestation Types ### {#sctn-attestation-types}
 
-WebAuthn supports multiple attestation types:
+WebAuthn supports several [=attestation types=], defining the semantics of [=attestation statements=] and their underlying trust
+models:
+
+Note: This specification does not define any data structures explicitly expressing the [=attestation types=] employed by
+[=authenticators=]. [=[RPS]=] engaging in [=attestation statement=] [=verification procedure|verification=] &mdash; i.e., when
+calling {{CredentialsContainer/create()|navigator.credentials.create()}} they select an [=attestation conveyance=] other than
+{{AttestationConveyancePreference/none}} and verify the received [=attestation statement=] &mdash; will determine the employed
+[=attestation type=] as a part of [=verification procedure|verification=]. See the "Verification procedure" subsections of
+[[#defined-attestation-formats]]. See also [[#sec-attestation-privacy]].
 
 : <dfn>Basic Attestation</dfn> (<dfn>Basic</dfn>)
 :: In the case of basic attestation [[UAFProtocol]], the authenticator's [=attestation key pair=] is specific to an
@@ -3269,6 +3277,11 @@ WebAuthn supports multiple attestation types:
 
     Note: This concept typically leads to multiple attestation certificates. The attestation certificate requested most recently
         is called "active".
+
+    Note: [=Attestation statements=] conveying [=attestations=] of [=attestation type|type=] [=AttCA=] use the same data structure
+    as [=attestation statements=] conveying [=attestations=] of [=attestation type|type=] [=Basic=], so the two attestation types
+    are, in general, distinguishable only with externally provided knowledge regarding the contents of the [=attestation
+    certificates=] conveyed in the [=attestation statement=].
 
 : <dfn>Elliptic Curve based Direct Anonymous Attestation</dfn> (<dfn>ECDAA</dfn>)
 :: In this case, the Authenticator receives direct anonymous attestation (DAA) credentials from a single DAA-Issuer.
@@ -3674,18 +3687,23 @@ implementable by [=authenticators=] with limited resources (e.g., secure element
             - Verify that |attestnCert| meets the requirements in [[#packed-attestation-cert-requirements]].
             - If |attestnCert| contains an extension with OID 1.3.6.1.4.1.45724.1.1.4 (`id-fido-gen-ce-aaguid`) verify that the
                 value of this extension matches the <code>[=aaguid=]</code> in |authenticatorData|.
-            - If successful, return attestation type [=Basic=] and [=attestation trust path=] |x5c|.
+            - Optionally, inspect |x5c| and consult externally provided knowledge to determine whether |attStmt| conveys a
+                [=Basic=] or [=AttCA=] attestation.
+            - If successful, return implementation-specific values representing [=attestation type=] [=Basic=], [=AttCA=] or
+                uncertainty, and [=attestation trust path=] |x5c|.
 
         1. If |ecdaaKeyId| is present, then the attestation type is [=ECDAA=]. In this case:
             - Verify that |sig| is a valid signature over the concatenation of |authenticatorData| and |clientDataHash| using
                 ECDAA-Verify with [=ECDAA-Issuer public key=] identified by |ecdaaKeyId| (see [[!FIDOEcdaaAlgorithm]]).
-            - If successful, return attestation type [=ECDAA=] and [=attestation trust path=] |ecdaaKeyId|.
+            - If successful, return implementation-specific values representing [=attestation type=] [=ECDAA=] and [=attestation
+                trust path=] |ecdaaKeyId|.
 
         1. If neither |x5c| nor |ecdaaKeyId| is present, [=self attestation=] is in use.
             - Validate that |alg| matches the algorithm of the <code>[=credentialPublicKey=]</code> in |authenticatorData|.
             - Verify that |sig| is a valid signature over the concatenation of |authenticatorData| and |clientDataHash| using the
                 credential public key with |alg|.
-            - If successful, return attestation type [=Self=] and empty [=attestation trust path=].
+            - If successful, return implementation-specific values representing [=attestation type=] [=Self=] and an empty
+                [=attestation trust path=].
 
 
 ### Packed Attestation Statement Certificate Requirements ### {#packed-attestation-cert-requirements}
@@ -3833,11 +3851,13 @@ engine.
     - Verify that |aikCert| meets the requirements in [[#tpm-cert-requirements]].
     - If |aikCert| contains an extension with OID `1 3 6 1 4 1 45724 1 1 4` (id-fido-gen-ce-aaguid) verify that the value of this
         extension matches the <code>[=aaguid=]</code> in |authenticatorData|.
-    - If successful, return attestation type [=AttCA=] and [=attestation trust path=] |x5c|.
+    - If successful, return implementation-specific values representing [=attestation type=] [=AttCA=] and [=attestation trust
+        path=] |x5c|.
 
     If |ecdaaKeyId| is present, then the attestation type is [=ECDAA=].
     - Perform ECDAA-Verify on |sig| to verify that it is a valid signature over |certInfo| (see [[!FIDOEcdaaAlgorithm]]).
-    - If successful, return attestation type [=ECDAA=] and the [=identifier of the ECDAA-Issuer public key=] |ecdaaKeyId|.
+    - If successful, return implementation-specific values representing [=attestation type=] [=ECDAA=] and [=attestation trust
+        path=] |ecdaaKeyId|.
 
 
 ### TPM Attestation Statement Certificate Requirements ### {#tpm-cert-requirements}
@@ -3924,7 +3944,8 @@ the attestation=] is consistent with the fields of the attestation certificate's
             [=RP ID=].
         - The value in the `AuthorizationList.origin` field is equal to `KM_TAG_GENERATED`.
         - The value in the `AuthorizationList.purpose` field is equal to `KM_PURPOSE_SIGN`.
-    - If successful, return attestation type [=Basic=] with the [=attestation trust path=] set to |x5c|.
+    - If successful, return implementation-specific values representing [=attestation type=] [=Basic=] and [=attestation trust
+        path=] |x5c|.
 
 
 ## Android SafetyNet Attestation Statement Format ## {#android-safetynet-attestation}
@@ -3985,10 +4006,12 @@ even if the SafetyNet API is also present.
         contained fields.
     - Verify that |response| is a valid SafetyNet response of version |ver|.
     - Verify that the nonce in the |response| is identical to the Base64url encoding of the SHA-256 hash of the concatenation of |authenticatorData| and |clientDataHash|.
-    - Verify that the attestation certificate is issued to the hostname "attest.android.com" (see
+    - Let |attestationCert| be the [=attestation certificate=].
+    - Verify that |attestatioCert| is issued to the hostname "attest.android.com" (see
         [SafetyNet online documentation](https://developer.android.com/training/safetynet/index.html#compat-check-response)).
     - Verify that the `ctsProfileMatch` attribute in the payload of |response| is [TRUE].
-    - If successful, return attestation type [=Basic=] with the [=attestation trust path=] set to the above attestation certificate.
+    - If successful, return implementation-specific values representing [=attestation type=] [=Basic=] and [=attestation trust
+        path=] |attestationCert|.
 
 
 ## FIDO U2F Attestation Statement Format ## {#fido-u2f-attestation}
@@ -4063,7 +4086,10 @@ This attestation statement format is used with FIDO U2F authenticators using the
     1. Let |verificationData| be the concatenation of (0x00 || |rpIdHash| ||
         |clientDataHash| || |credentialId| || |publicKeyU2F|) (see [=Section 4.3=] of [[!FIDO-U2F-Message-Formats]]).
     1. Verify the |sig| using |verificationData| and |certificate public key| per [[!SEC1]].
-    1. If successful, return attestation type [=Basic=] with the [=attestation trust path=] set to |x5c|.
+    1. Optionally, inspect |x5c| and consult externally provided knowledge to determine whether |attStmt| conveys a [=Basic=] or
+        [=AttCA=] attestation.
+    1. If successful, return implementation-specific values representing [=attestation type=] [=Basic=], [=AttCA=] or uncertainty,
+        and [=attestation trust path=] |x5c|.
 
 ## None Attestation Statement Format ## {#none-attestation}
 
@@ -4091,7 +4117,7 @@ The none attestation statement format is used to replace any [=authenticator=]-p
 :: Return the fixed attestation statement defined above.
 
 : Verification procedure
-:: Return attestation type [=None=] with an empty trust path.
+:: Return implementation-specific values representing [=attestation type=] [=None=] and an empty [=attestation trust path=].
 
 # WebAuthn Extensions # {#extensions}
 
