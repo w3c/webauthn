@@ -3167,6 +3167,9 @@ WebAuthn supports multiple attestation types:
     bilinear pairings, called [=ECDAA=] (see [[FIDOEcdaaAlgorithm]]) in this specification. Consequently we denote the DAA-Issuer
     as ECDAA-Issuer (see [[FIDOEcdaaAlgorithm]]).
 
+: The Entity Attestation Token (<dfn>eat</dfn>)
+:: In this case, the attestation data follows the Entity Attestation Token format - see [[IETF-EAT]].  
+
 : No attestation statement (<dfn>None</dfn>)
 :: In this case, no attestation information is available. See also [[#none-attestation]].
 
@@ -3950,6 +3953,67 @@ This attestation statement format is used with FIDO U2F authenticators using the
         |clientDataHash| || |credentialId| || |publicKeyU2F|) (see [=Section 4.3=] of [[!FIDO-U2F-Message-Formats]]).
     1. Verify the |sig| using |verificationData| and |certificate public key| per [[!SEC1]].
     1. If successful, return attestation type [=Basic=] with the [=attestation trust path=] set to |x5c|.
+
+## Entity Attestation Token (EAT) Statement Format ## {#fido-eat}
+
+This attestation statement format is based on the Entity Attestation Token (EAT) format [[IETF-EAT]].
+
+: Attestation statement format identifier
+:: eat
+
+: Attestation types supported
+:: [=Basic=]
+
+: Syntax
+:: The syntax of an EAT attestation statement is defined as follows:
+
+    ```
+    $$attStmtType //= (
+                          fmt: "eat",
+                          attStmt: eatStmtFormat
+                      )
+
+    eatStmtFormat = {
+                        x5c: [ leafCert: bytes, * (intermediateCerts: bytes), rootCert: bytes ],
+                        eat: 71(   // EAT CBOR tag
+                                {
+                                ... // EAT payload 
+                                }
+                               )
+                    }
+    ```
+
+    The semantics of the above fields are as follows:
+
+    : x5c
+    :: An array containing the attestation certificate chain in X.509 format.  The array can be optionally included in the 
+        EAT attestation, but is not necessary if the necessary public keys are provided out-of-band to the RP.  If it is
+        included, then the array must contain at least one certificate (leafCert) - the leaf certificate.  Zero or more
+        intermediate certificates along with one root certificate may be included.
+
+
+    : eat
+    :: The Entity Attestation Token.  
+        The EAT is designated by its CBOR tag, and the payload is the actual token as specified in [[IETF-EAT]].  There must
+        be on claim in the EAT, entitled 'credentialPublicKey', that is equivalent to the COSE_KEY formatted |credentialPublicKey|.
+
+: Signing procedure
+:: Since EAT leverages the COSE Web Token format [[!RFC8392]], the signature is embedded within the EAT payload.
+    Let |authenticatorData| denote the [=authenticator data for the attestation=].
+    Concatenate |authenticatorData| and |clientDataHash| to form the 'nonce' claim (see Sec. 3.5 of [[IETF-EAT]]).  Using |nonce|
+    the EAT can be created.
+
+
+: Verification procedure
+:: Given the [=verification procedure inputs=] |nonce| and |eat|, the [=verification procedure=] is
+    as per :
+    1. Verify that |attStmt| is valid CBOR conforming to the syntax defined above and perform CBOR decoding on it to extract the
+        contained fields.
+    1. Check that |x5c| has at least one element if present. Extract the |certificate public key| from the leaf certificate. 
+    1. Verify that the 'nonce' claim in the EAT is equivalent to the concatentation of |authenticatorData| and |clientDataHash|.
+    1. Verify that there exists one and only one EAT claim, 'credentialPublicKey', that corresponds to the COSE_KEY formatted |credentialPublicKey|.
+    1. Verify the |sig| using the |certificate public key| and the COSE algorithm specified in the EAT header.
+    1. If successful, return attestation type [=eat=] with the [=attestation trust path=] set to |x5c|.
 
 ## None Attestation Statement Format ## {#none-attestation}
 
@@ -5567,6 +5631,13 @@ for their contributions as our W3C Team Contacts.
     "status": "FIDO Alliance Implementation Draft"
   },
 
+  "IETF-EAT": {
+    "authors": ["G. Mandyam", "L. Lundblade", "M. Ballasteros", "J. O'Donoghue"],
+    "title": "The Entity Attestation Token (EAT)",
+    "href": "https://tools.ietf.org/html/draft-mandyam-eat",
+    "status": "IETF Internet Draft"
+  },
+  
   "FIDO-CTAP": {
     "authors": ["M. Antoine", "V. Bharadwaj", "C. Brand", "A. Czeskis", "J. Ehrensvärd", "J. Hodges", "M. B. Jones", "A. Kumar",
         "R. Lindemann", "M. J. Ploch", "A. Powers", "J. Verrept"],
