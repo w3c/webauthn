@@ -116,9 +116,9 @@ spec: HTML53; urlPrefix: https://w3c.github.io/html/
             text: scheme; url: origin-scheme
             text: port; url: origin-port
 
-spec: TokenBinding; urlPrefix: https://tools.ietf.org/html/draft-ietf-tokbind-protocol#
+spec: TokenBinding; urlPrefix: https://tools.ietf.org/html/rfc8471#
     type: dfn
-        text: Token Binding
+        text: Token Binding; url: section-1
         text: Token Binding ID; url: section-3.2
 
 spec: credential-management-1; urlPrefix: https://w3c.github.io/webappsec-credential-management/
@@ -255,7 +255,7 @@ the existence, of credentials [=scoped=] to other [=[RPS]=].
 
 [=[RPS]=] employ the [=Web Authentication API=] during two distinct, but related, [=ceremonies=] involving a user. The first
 is [=Registration=], where a [=public key credential=] is created on an [=authenticator=], and [=scoped=] to a [=[RP]=]
-with the present user's account (the account MAY already exist or MAY be created at this time). The second is
+with the present user's account (the account might already exist or might be created at this time). The second is
 [=Authentication=], where the [=[RP]=] is presented with an <em>[=Authentication Assertion=]</em> proving the presence
 and [=user consent|consent=] of the user who registered the [=public key credential=]. Functionally, the [=Web Authentication
 API=] comprises a {{PublicKeyCredential}} which extends the Credential Management API [[!CREDENTIAL-MANAGEMENT-1]], and
@@ -264,12 +264,14 @@ infrastructure which allows those credentials to be used with {{CredentialsConta
 latter during [=Authentication=].
 
 Broadly, compliant [=authenticators=] protect [=public key credentials=], and interact with user agents to implement the
-[=Web Authentication API=]. Some authenticators MAY run on the same [=client device=] (e.g., smart phone, tablet, desktop PC) as
-the user agent is running on. For instance, such an authenticator might consist of a Trusted Execution Environment (TEE) applet,
-a Trusted Platform Module (TPM), or a Secure Element (SE) integrated into the [=client device=] in conjunction with some means
-for [=user verification=], along with appropriate driver software to mediate access to these components' functionality. Other
-authenticators MAY operate autonomously from the [=client device=] running the user agent, and be accessed over a transport such
-as Universal Serial Bus (USB), Bluetooth Low Energy (BLE) or Near Field Communications (NFC).
+[=Web Authentication API=].
+Implementing compliant authenticators is possible in software executing
+(a) on a general-purpose computing device,
+(b) on an on-device Secure Execution Environment, Trusted Platform Module (TPM), or a Secure Element (SE), or
+(c) off device.
+Authenticators being implemented on device are called [=platform authenticators=].
+Authenticators being implemented off device ([=roaming authenticators=]) can be accessed over a transport such
+as Universal Serial Bus (USB), Bluetooth Low Energy (BLE), or Near Field Communications (NFC).
 
 ## Specification Roadmap ## {#spec-roadmap}
 
@@ -1545,13 +1547,13 @@ When this method is invoked, the user agent MUST execute the following algorithm
                                 ::  Using local configuration knowledge of the appropriate transport to use with |authenticator|,
                                     invoke the [=authenticatorGetAssertion=] operation on |authenticator| with |rpId|,
                                     |clientDataHash|, |allowCredentialDescriptorList|, |userPresence|, |userVerification|, and
-                                    |clientExtensions| as parameters.
+                                    |authenticatorExtensions| as parameters.
                             </dl>
 
                     :   [=list/is empty=]
                     ::  Using local configuration knowledge of the appropriate transport to use with |authenticator|, invoke the
                         [=authenticatorGetAssertion=] operation on |authenticator| with |rpId|, |clientDataHash|, |userPresence|,
-                        |userVerification| and |clientExtensions| as parameters.
+                        |userVerification| and |authenticatorExtensions| as parameters.
 
                         Note: In this case, the [=[RP]=] did not supply a list of acceptable credential descriptors. Thus, the
                             authenticator is being asked to exercise any credential it may possess that is [=scoped=] to
@@ -2021,7 +2023,7 @@ attributes.
         specified [[#attachment]].
 
     :   <dfn>requireResidentKey</dfn>
-    ::  This member describes the [=[RPS]=]' requirements regarding [=resident credentials=].
+    ::  This member describes the [=[RP]=]'s requirements regarding [=resident credentials=].
         If the parameter is set to [TRUE], the authenticator MUST create a
         [=client-side-resident public key credential source=] when creating a [=public key credential=].
 
@@ -2145,7 +2147,7 @@ an assertion. Its {{PublicKeyCredentialRequestOptions/challenge}} member MUST be
         preferred credential, and so on down the list).
 
     :   <dfn>userVerification</dfn>
-    ::  This member describes the [=[RP]=]'s requirements regarding [=user verification=] for the
+    ::  This OPTIONAL member describes the [=[RP]=]'s requirements regarding [=user verification=] for the
         {{CredentialsContainer/get()}} operation. Eligible authenticators are filtered to only those capable of satisfying this
         requirement.
 
@@ -2258,7 +2260,7 @@ Note: The {{CollectedClientData}} may be extended in the future. Therefore it's 
         the syntax defined by [[RFC6454]].
 
     :   <dfn>tokenBinding</dfn>
-    ::  This OPTIONAL member contains information about the state of the [=Token Binding=] protocol used when communicating
+    ::  This OPTIONAL member contains information about the state of the [=Token Binding=] protocol [[!TokenBinding]] used when communicating
         with the [=[RP]=]. Its absence indicates that the client doesn't support token binding.
 
         <div dfn-type="dict-member" dfn-for="TokenBinding">
@@ -2278,6 +2280,8 @@ Note: The {{CollectedClientData}} may be extended in the future. Therefore it's 
             ::  This member MUST be present if {{TokenBinding/status}} is {{TokenBindingStatus/present}}, and MUST be a [=base64url
                 encoding=] of the [=Token Binding ID=] that was used when communicating with the [=[RP]=].
         </div>
+
+        Note: Obtaining a [=Token Binding ID=] is a [=client platform=]-specific operation.
 
     The {{CollectedClientData}} structure is used by the client to compute the following quantities:
 
@@ -2573,8 +2577,13 @@ the requested [=public key credential|credential=] is [=scoped=] to exactly matc
 
 - Hash [=RP ID=] using SHA-256 to generate the [=rpIdHash=].
 
-- The `UP` [=flag=] SHALL be set if and only if the authenticator detected a user through an authenticator specific gesture. The
-    `RFU` bits SHALL be set to zero.
+- The `UP` [=flag=] SHALL be set if and only if the authenticator performed a [=test of user presence=].
+    The `UV` [=flag=] SHALL be set if and only if the authenticator performed [=user verification=].
+    The `RFU` bits SHALL be set to zero.
+
+    Note: If the authenticator performed both a [=test of user presence=] and [=user verification=],
+    possibly combined in a single [=authorization gesture=],
+    then the authenticator will set both the `UP` [=flag=] and the `UV` [=flag=].
 
 - For [=attestation signatures=], the authenticator MUST set the AT [=flag=] and include the <code>[=attestedCredentialData=]</code>. 
     For [=assertion signature|authentication signatures=], the AT [=flag=] MUST NOT be set and the <code>[=attestedCredentialData=]</code> MUST NOT be included.
@@ -3422,7 +3431,7 @@ When registering a new credential, represented by an {{AuthenticatorAttestationR
     {{AuthenticatorAttestationResponse}} structure to obtain the attestation statement format |fmt|, the [=authenticator data=]
     |authData|, and the attestation statement |attStmt|.
 
-1. Verify that the [=RP ID=] hash in |authData| is indeed the SHA-256 hash of the [=RP ID=] expected by the [=[RP]=].
+1. Verify that the <code>[=rpIdHash=]</code> in |authData| is the SHA-256 hash of the [=RP ID=] expected by the [=[RP]=].
 
 1. Verify that the [=User Present=] bit of the <code>[=flags=]</code> in |authData| is set.
 
@@ -3445,8 +3454,8 @@ When registering a new credential, represented by an {{AuthenticatorAttestationR
 
 1. Determine the attestation statement format by performing a USASCII case-sensitive match on |fmt| against the set of
     supported WebAuthn Attestation Statement Format Identifier values.
-    The up-to-date list of registered WebAuthn Attestation Statement Format Identifier values
-    is maintained in the in the IANA registry of the same name [[!WebAuthn-Registries]].
+    An up-to-date list of registered WebAuthn Attestation Statement Format Identifier values
+    is maintained in the IANA registry of the same name [[!WebAuthn-Registries]].
 
 1. Verify that |attStmt| is a correct [=attestation statement=], conveying a valid [=attestation signature=], by using the
     [=attestation statement format=] |fmt|'s [=verification procedure=] given |attStmt|, |authData| and the [=hash of the serialized
@@ -3506,12 +3515,12 @@ When verifying a given {{PublicKeyCredential}} structure (|credential|) and an {
 
     <dl class="switch">
         :  If the user was identified before the [=authentication ceremony=] was initiated, e.g., via a username or cookie,
-        :: verify that that user is the owner of |credentialSource|. If
+        :: verify that the identified user is the owner of |credentialSource|. If
             <code>|credential|.{{PublicKeyCredential/response}}.{{AuthenticatorAssertionResponse/userHandle}}</code> is present,
             let |userHandle| be its value. Verify that |userHandle| is also mapped to the same user.
 
         :  If the user was not identified before the [=authentication ceremony=] was initiated,
-        :: Verify that <code>|credential|.{{PublicKeyCredential/response}}.{{AuthenticatorAssertionResponse/userHandle}}</code> is
+        :: verify that <code>|credential|.{{PublicKeyCredential/response}}.{{AuthenticatorAssertionResponse/userHandle}}</code> is
             present, and that the user identified by this value is the owner of |credentialSource|.
     </dl>
 
@@ -3978,7 +3987,8 @@ the attestation=] is consistent with the fields of the attestation certificate's
             trusted execution environment, otherwise use the union of `teeEnforced` and `softwareEnforced`.
             - The value in the `AuthorizationList.origin` field is equal to `KM_ORIGIN_GENERATED`.
             - The value in the `AuthorizationList.purpose` field is equal to `KM_PURPOSE_SIGN`.
-    - If successful, return attestation type [=Basic=] with the [=attestation trust path=] set to |x5c|.
+    - If successful, return implementation-specific values representing [=attestation type=] [=Basic=] and [=attestation trust
+        path=] |x5c|.
 
 ### Android Key Attestation Statement Certificate Requirements ### {#key-attstn-cert-requirements}
 
@@ -4042,9 +4052,9 @@ even if the SafetyNet API is also present.
     - Verify that |attStmt| is valid CBOR conforming to the syntax defined above and perform CBOR decoding on it to extract the
         contained fields.
     - Verify that |response| is a valid SafetyNet response of version |ver|.
-    - Verify that the nonce in the |response| is identical to the Base64url encoding of the SHA-256 hash of the concatenation of |authenticatorData| and |clientDataHash|.
+    - Verify that the nonce in the |response| is identical to the Base64 encoding of the SHA-256 hash of the concatenation of |authenticatorData| and |clientDataHash|.
     - Let |attestationCert| be the [=attestation certificate=].
-    - Verify that |attestatioCert| is issued to the hostname "attest.android.com" (see
+    - Verify that |attestationCert| is issued to the hostname "attest.android.com" (see
         [SafetyNet online documentation](https://developer.android.com/training/safetynet/index.html#compat-check-response)).
     - Verify that the `ctsProfileMatch` attribute in the payload of |response| is [TRUE].
     - If successful, return implementation-specific values representing [=attestation type=] [=Basic=] and [=attestation trust
@@ -4357,7 +4367,7 @@ There MUST NOT be any values returned for ignored extensions.
 
 This section defines the initial set of extensions to be registered in the
 IANA "WebAuthn Extension Identifier" registry established by [[!WebAuthn-Registries]].
-These are RECOMMENDED for implementation by user agents targeting broad interoperability.
+These MAY be implemented by user agents targeting broad interoperability.
 
 
 ## FIDO <dfn>AppID</dfn> Extension (appid) ## {#sctn-appid-extension}
@@ -5272,7 +5282,7 @@ In this model, the user agent, together with the [=[WAC]=], comprise an intermed
 Additionally, [=authenticators=] can [=attestation|attest=] to [=[RPS]=] as to their provenance.
 
 At this time, this specification does not feature detailed security considerations. However, the [[FIDOSecRef]] document provides a security analysis which is overall applicable to this specification.
-Also, the [[FIDOAuthnrSecReqs]] document suite defines [=authenticator=] security characteristics which are overall applicable for WebAuthn [=authenticators=].
+Also, the [[FIDOAuthnrSecReqs]] document suite provides useful information about [=authenticator=] security characteristics.
 
 The below subsections comprise the current Web Authentication-specific security considerations.
 
@@ -5887,11 +5897,11 @@ for their contributions as our W3C Team Contacts.
   },
 
   "TokenBinding": {
-    "authors": ["A. Popov", "M. Nystroem", "D. Balfanz", "A. Langley", "J. Hodges"],
+    "authors": ["A. Popov", "M. Nystroem", "D. Balfanz", "J. Hodges"],
     "title": "The Token Binding Protocol Version 1.0",
-    "href": "https://tools.ietf.org/html/draft-ietf-tokbind-protocol",
-    "status": "Internet-Draft",
-    "date": "February 16, 2017"
+    "href": "https://tools.ietf.org/html/rfc8471",
+    "status": "IETF Proposed Standard",
+    "date": "October, 2018"
   },
 
   "EduPersonObjectClassSpec": {
