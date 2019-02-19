@@ -1,4 +1,4 @@
-<!--   ***********  Web Authentication - Level 1 - Spec source file ***********
+<!--   ***********  Web Authentication - Level 2 - Spec source file ***********
 Notes:
 * the h1 tag is spec title that is rendered within the document window. Wrapping
   may be controlled with break tags.  The spec 'Level' value is not appended.
@@ -6,13 +6,14 @@ Notes:
   tags will be rendered. It also has the spec 'Level' value (gratuitously) appended.
 -->
 
-<h1>Web Authentication:<br>An API for accessing Public Key Credentials<br>Level 1</h1>
+<h1>Web Authentication:<br>An API for accessing Public Key Credentials<br>Level 2</h1>
 <pre class='metadata'>
 Title: Web Authentication: An API for accessing Public Key Credentials - Level
 Status: ED
 Prepare for TR: true
 TR: https://www.w3.org/TR/webauthn/
 ED: https://w3c.github.io/webauthn/
+Previous Version: https://www.w3.org/TR/2019/PR-webauthn-20190117/
 Previous Version: https://www.w3.org/TR/2018/CR-webauthn-20180807/
 Previous Version: https://www.w3.org/TR/2018/CR-webauthn-20180320/
 Previous Version: https://www.w3.org/TR/2018/WD-webauthn-20180315/
@@ -26,10 +27,10 @@ Previous Version: https://www.w3.org/TR/2016/WD-webauthn-20160928/
 Previous Version: https://www.w3.org/TR/2016/WD-webauthn-20160902/
 Previous Version: https://www.w3.org/TR/2016/WD-webauthn-20160531/
 Shortname: webauthn
-Level: 1
+Level: 2
 Editor: Dirk Balfanz, w3cid 47648, Google, balfanz@google.com
 Editor: Alexei Czeskis, w3cid 87258, Google, aczeskis@google.com
-Editor: Jeff Hodges, w3cid 43843, Invited Expert, Jeff.Hodges@KingsMountain.com
+Editor: Jeff Hodges, w3cid 43843, Google, jdhodges@google.com
 Editor: J.C. Jones, w3cid 87240, Mozilla, jc@mozilla.com
 Editor: Michael B. Jones, w3cid 38745, Microsoft, mbj@microsoft.com
 Editor: Akshay Kumar, w3cid 99318, Microsoft, akshayku@microsoft.com
@@ -1269,6 +1270,15 @@ a numbered step. If outdented, it (today) is rendered as a bullet in the midst o
                         :   {{AuthenticatorAttestationResponse/attestationObject}}
                         ::  |attestationObject|
 
+                        :   {{AuthenticatorAttestationResponse/[[transports]]}}
+                        ::  A sequence of zero or more unique {{AuthenticatorTransport}} values, in lexicographical order, that the |authenticator| is believed to support.
+
+                            If a user agent does not wish to divulge this information it MAY substitute an arbitrary sequence designed to preserve privacy. This sequence MUST still be valid, i.e. lexicographically sorted and free of duplicates. For example, it may use the empty sequence. Either way, in this case the user agent takes the risk that [=[RP]=] behavior may be suboptimal.
+
+                            If the user agent does not have any transport information, it SHOULD set this field to the empty sequence.
+
+                            Note: How user agents discover transports supported by a given [=authenticator=] is outside the scope of this specification, but may include information from an [=attestation certificate=] (for example [[FIDO-Transports-Ext]]), metadata communicated in an [=authenticator=] protocol such as CTAP2, or special-case knowledge about a [=platform authenticator=].
+
                     :   {{PublicKeyCredential/[[clientExtensionsResults]]}}
                     ::  A new {{ArrayBuffer}}, created using |global|'s [=%ArrayBuffer%=], containing the bytes of
                         <code>|credentialCreationData|.[=credentialCreationData/clientExtensionResults=]</code>.
@@ -1747,6 +1757,7 @@ during registration.
     [SecureContext, Exposed=Window]
     interface AuthenticatorAttestationResponse : AuthenticatorResponse {
         [SameObject] readonly attribute ArrayBuffer      attestationObject;
+        sequence<AuthenticatorTransport>                 getTransports();
     };
 </xmp>
 <div dfn-type="attribute" dfn-for="AuthenticatorAttestationResponse">
@@ -1765,6 +1776,12 @@ during registration.
         [=attestation statement=], as well as to decode and validate the [=authenticator data=] along with the
         [=JSON-serialized client data=]. For more details, see [[#sctn-attestation]], [[#generating-an-attestation-object]],
         and [Figure 5](#fig-attStructs).
+
+    :   {{AuthenticatorAttestationResponse/getTransports()}}
+    ::  This operation returns the value of {{AuthenticatorAttestationResponse/[[transports]]}}.
+
+    :   <dfn>\[[transports]]</dfn>
+    ::  This [=internal slot=] contains a sequence of zero or more unique {{AuthenticatorTransport}} values in lexicographical order. These values are the transports that the [=authenticator=] is believed to support, or an empty sequence if the information is unavailable.
 </div>
 
 ### Web Authentication Assertion (interface <dfn interface>AuthenticatorAssertionResponse</dfn>) ### {#iface-authenticatorassertionresponse}
@@ -3472,7 +3489,8 @@ When registering a new credential, represented by an {{AuthenticatorAttestationR
     <code>[=aaguid=]</code> in the <code>[=attestedCredentialData=]</code> in |authData|.
 
 1. Assess the attestation trustworthiness using the outputs of the [=verification procedure=] in step 14, as follows:
-        - If [=self attestation=] was used, check if [=self attestation=] is acceptable under [=[RP]=] policy.
+        - If [=None|no attestation=] was provided, verify that [=None=] attestation is acceptable under [=[RP]=] policy.
+        - If [=self attestation=] was used, verify that [=self attestation=] is acceptable under [=[RP]=] policy.
         - If [=ECDAA=] was used, verify that the [=identifier of the ECDAA-Issuer public key=] used is included in the set of
             acceptable trust anchors obtained in step 15.
         - Otherwise, use the X.509 certificates returned by the [=verification procedure=] to verify that the attestation public key
@@ -3516,10 +3534,10 @@ When verifying a given {{PublicKeyCredential}} structure (|credential|) and an {
     |credentialSource| identified by <code>|credential|.{{Credential/id}}</code>:
 
     <dl class="switch">
-        :  If the user was identified before the [=authentication ceremony=] was initiated,
+        :  If the user was identified before the [=authentication ceremony=] was initiated, e.g., via a username or cookie,
         :: verify that the identified user is the owner of |credentialSource|. If
             <code>|credential|.{{PublicKeyCredential/response}}.{{AuthenticatorAssertionResponse/userHandle}}</code> is present,
-            verify that this value identifies the same user as was previously identified.
+            let |userHandle| be its value. Verify that |userHandle| also maps to the same user.
 
         :  If the user was not identified before the [=authentication ceremony=] was initiated,
         :: verify that <code>|credential|.{{PublicKeyCredential/response}}.{{AuthenticatorAssertionResponse/userHandle}}</code> is
@@ -4369,7 +4387,7 @@ There MUST NOT be any values returned for ignored extensions.
 
 This section defines the initial set of extensions to be registered in the
 IANA "WebAuthn Extension Identifier" registry established by [[!WebAuthn-Registries]].
-These can be implemented by user agents targeting broad interoperability.
+These MAY be implemented by user agents targeting broad interoperability.
 
 
 ## FIDO <dfn>AppID</dfn> Extension (appid) ## {#sctn-appid-extension}
@@ -5512,9 +5530,12 @@ instead of revealing the biometric data itself to the [=[RP]=].
 Attestation keys can be used to track users or link various online identities of the same user together. This can be mitigated
 in several ways, including:
 
-- A [=[WAA]=] manufacturer may choose to ship all of their [=authenticators=] with the same (or a fixed number of)
-    attestation key(s) (called [=Basic Attestation=]). This will anonymize the user at the risk of not being able to revoke a
-    particular attestation key if its private key is compromised.
+- A [=[WAA]=] manufacturer may choose to ship [=authenticators=] in batches
+    where [=authenticators=] in a batch share the same attestation key (called [=Basic Attestation=]).
+    This will anonymize the user at the risk of not being able to revoke a particular attestation key if its private key is compromised.
+    The [=authenticator=] manufacturer SHOULD then ensure that such batches are large enough to provide meaningful anonymization,
+    while also minimizing the batch size in order to limit the number of affected users
+    in case an attestation private key is compromised.
 
     [[UAFProtocol]] requires that at least 100,000 [=authenticator=] devices share the same attestation certificate in order to produce
     sufficiently large groups. This may serve as guidance about suitable batch sizes.
@@ -5880,6 +5901,13 @@ for their contributions as our W3C Team Contacts.
     "title": "FIDO Privacy Principles",
     "href": "https://fidoalliance.org/wp-content/uploads/2014/12/FIDO_Alliance_Whitepaper_Privacy_Principles.pdf",
     "status": "FIDO Alliance Whitepaper"
+  },
+
+  "FIDO-Transports-Ext": {
+    "authors": ["FIDO Alliance"],
+    "title": "FIDO U2F Authenticator Transports Extension",
+    "href": "https://fidoalliance.org/specs/fido-u2f-v1.2-ps-20170411/fido-u2f-authenticator-transports-extension-v1.2-ps-20170411.html",
+    "status": "FIDO Alliance Proposed Standard"
   },
 
   "CDDL": {
