@@ -5114,35 +5114,40 @@ a [=user-verifying platform authenticator=].
 
 1. The [=[RP]=] script runs the code snippet below.
 
-1. The user agent asks the user whether they are willing to register with the [=[RP]=] using an available [=platform authenticator=].
+    1. The user agent checks if a [=user-verifying platform authenticator=] is available.
 
-1. If the user is not willing, terminate this flow.
+    1. The [=[RP]=] asks the user if they want to create a credential with it.
 
-1. The user is shown appropriate UI and guided in creating a credential using one of the available platform authenticators.
-    Upon successful credential creation, the [=[RP]=] script conveys the new credential to the server.
+    1. If no [=user-verifying platform authenticator=] is available,
+        or if the user does not want to create a credential, terminate this flow.
+
+    1. The user agent and/or operating system shows appropriate UI and guides the user in creating a credential
+        using one of the available platform authenticators.
+
+    1. Upon successful credential creation, the [=[RP]=] script conveys the new credential to the server.
 
 <pre class="example" highlight="js">
     if (!window.PublicKeyCredential) { /* Client not capable of the API. Handle error. */ }
 
     PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable()
-        .then(function (userIntent) {
-
-            // If the user has affirmed willingness to register with the 
-            // relying party using an available platform authenticator
-            if (userIntent) {
-                var publicKeyOptions = { /* Public key credential creation options. */};
-
-                // Create and register credentials.
-                return navigator.credentials.create({ "publicKey": publicKeyOptions });
-            } else {
-
-                // Record that the user does not intend to use a platform authenticator
-                // and default the user to a password-based flow in the future.
+        .then(function (uvpaaAvailable) {
+            // If there is a user-verifying platform authenticator
+            if (uvpaaAvailable) {
+                // Render some RP-specific UI and get a Promise for a Boolean value
+                return askIfUserWantsToCreateCredential();
             }
-
+        }).then(function (userSaidYes) {
+            // If there is a user-verifying platform authenticator
+            // AND the user wants to create a credential
+            if (userSaidYes) {
+                var publicKeyOptions = { /* Public key credential creation options. */};
+                return navigator.credentials.create({ "publicKey": publicKeyOptions });
+            }
         }).then(function (newCredentialInfo) {
-            // Send new credential info to server for verification and registration.
-        }).catch( function(err) {
+            if (newCredentialInfo) {
+                // Send new credential info to server for verification and registration.
+            }
+        }).catch(function (err) {
             // Something went wrong. Handle appropriately.
         });
 </pre>
