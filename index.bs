@@ -213,6 +213,7 @@ spec:html; type:dfn; for:environment settings object; text:global object
 spec:infra; type:dfn; for:/; text:set
 spec:infra; type:dfn; text:list
 spec:infra; type:dfn; for:struct; text:item
+spec:infra; type:dfn; for:map-exists; text:exists
 spec:url; type:dfn; text:domain
 spec:url; type:dfn; for:url; text:host
 spec:url; type:dfn; text:valid domain;
@@ -1222,15 +1223,22 @@ a numbered step. If outdented, it (today) is rendered as a bullet in the midst o
                     mentioned in <code>|C|.{{transports}}</code>, the client MAY [=continue=].
                 1. Otherwise, [=list/Append=] |C| to |excludeCredentialDescriptorList|.
 
-            <!-- @@EDITOR-ANCHOR-01A: KEEP THIS LIST SYNC'D WITH THE LIST UP AT @@EDITOR-ANCHOR-01B -->
-            1. Invoke the [=authenticatorMakeCredential=] operation on |authenticator| with
-                |clientDataHash|,
-                <code>|options|.{{PublicKeyCredentialCreationOptions/rp}}</code>, <code>|options|.{{PublicKeyCredentialCreationOptions/user}}</code>,
-                |requireResidentKey|,
-                |userVerification|,
-                |credTypesAndPubKeyAlgs|,
-                |excludeCredentialDescriptorList|,
-                and |authenticatorExtensions| as parameters.
+<!-- Note: this next step is actually a top-level step, but bikeshed wanted it indented this much in order to render it as
+a numbered step. If outdented, it (today) is rendered either as a bullet in the midst of a numbered list or is mis-numabered :-/
+-->
+        	    <li id='CreateCred-InvokeAuthnrMakeCred'>
+
+        		<!-- @@EDITOR-ANCHOR-01A: KEEP THIS LIST SYNC'D WITH THE LIST UP AT @@EDITOR-ANCHOR-01B -->
+        		Invoke the [=authenticatorMakeCredential=] operation on |authenticator| with
+                	    |clientDataHash|,
+                	    <code>|options|.{{PublicKeyCredentialCreationOptions/rp}}</code>, <code>|options|.{{PublicKeyCredentialCreationOptions/user}}</code>,
+                	    |requireResidentKey|,
+                	    |userVerification|,
+                	    |credTypesAndPubKeyAlgs|,
+                	    |excludeCredentialDescriptorList|,
+                	    and |authenticatorExtensions| as parameters.
+
+        	    </li>
 
             1. [=set/Append=] |authenticator| to |issuedRequests|.
 
@@ -1263,7 +1271,7 @@ a numbered step. If outdented, it (today) is rendered as a bullet in the midst o
             [=[RP]=] in order to prevent leak of potentially identifying information. See [[#sec-make-credential-privacy]] for
             details.
 
-        :   If any |authenticator| indicates success,
+        :   If any |authenticator| <dfn for="CreateCred-AuthnrSuccess">indicates success</dfn>,
         ::  1.  [=set/Remove=] |authenticator| from |issuedRequests|.
 
             1.  Let |credentialCreationData| be a [=struct=] whose [=items=] are:
@@ -1284,6 +1292,7 @@ a numbered step. If outdented, it (today) is rendered as a bullet in the midst o
                     [=client extension output=] entries. The entries are created by running each extension's
                     [=client extension processing=] algorithm to create the [=client extension outputs=], for each
                     [=client extension=] in <code>{{AuthenticatorResponse/clientDataJSON}}.clientExtensions</code>.
+
 
             1.  Let |constructCredentialAlg| be an algorithm that takes a [=global object=]
                 |global|, and whose steps are:
@@ -5002,8 +5011,13 @@ as candidates to be employed in a [=registration ceremony=].
 
 ## Credential Properties Extension (<dfn>credProps</dfn>) ## {#sctn-authenticator-credential-properties-extension}
 
-This extension facilitates reporting selected [=credential properties=] back to the requesting [=[WRP]=] upon creation of 
-a [=public key credential source=] as a result of a [=registration ceremony=].
+This [=client extension|client=] and [=authenticator extension|authenticator=] [=registration extension=] facilitates reporting certain [=credential properties=] to the requesting [=[WRP]=] upon creation of a [=public key credential source=] as a result of a [=registration ceremony=].
+
+Generally, this extension allows for both, or either, the [=authenticator=] or the [=client=] to report on [=credential properties=]. However, certain [=credential properties=], known as <dfn>source-specific credential properties</dfn>, are defined to be reported on by only the [=authenticator=] or by the [=client=].
+
+In the opposite case, known as <dfn>all-sources credential properties</dfn>, it is possible for either the [=authenticator=] or the [=client=] to report on a certain [=credential property=]. Additionally, the [=client=] MAY so report if the [=client=] determines the [=authenticator=] failed to report, and the [=client=] possesses the appropriate data to report.
+
+At this time, one [=credential property=], which is a [=all-sources credential property=], is defined. It is known abstractly as the <dfn>resident key credential property</dfn>. It is a boolean value indicating whether or not the {{PublicKeyCredential}} returned as a result of a [=registration ceremony=] is a [=resident credential=] or a [=non-resident credential=].  
 
 : Extension identifier
 :: `credProps`
@@ -5020,17 +5034,29 @@ a [=public key credential source=] as a result of a [=registration ceremony=].
     </xmp>
 
 : Client extension processing
-:: None, except creating the authenticator extension input from the client extension input.
+::  1. Let |credPropsAuthenticatorInput| be the [=authenticator extension input=], created using the {{AuthenticationExtensionsClientInputs/credProps}} [=client extension input=].
+
+    1. When <a href='#CreateCred-InvokeAuthnrMakeCred'>invoking the authenticatorMakeCredential operation</a> include |credPropsAuthenticatorInput| in the |authenticatorExtensions| parameter.
+
+    1. If no [=authenticator=] indicates success, terminate this extension processing and do not return any outputs.
+
+    1. Assert: an [=authenticator=] [=CreateCred-AuthnrSuccess/indicates success=]. 
+
+    1. If <code>[=credentialCreationData/attestationObjectResult=].authData.[=authdataextensions|extensions=][`credProps`][`rk`]</code>:
+
+	<dl class="switch">
+            :  [=map-exists|Exists=]
+            ::  This is the [=authenticator=]'s result. 
+	        Terminate these extension steps, and do not return any [=client extension output=].
+
+            Note: the [=authenticator=]'s result will be conveyed to the [=[RP]=] within the <code>[=credentialCreationData/attestationObjectResult=]</code>.
+
+            :  [=map-exists|Does not exist=]
+            :: See "Client extension output", below.
+        </dl>
 
 : Client extension output
-:: This [=registration extension=] returns the newly-created [=credential=]'s properties to the calling [=[RP]=] 
-    [=web application=], if known by the [=client=]. For example, the [=client=] knows the parameters passed to the 
-    [=authenticatorMakeCredential=] operation and whether  the operation was successful or not. The [=client=] can then 
-    use this knowledge to report to the caller. The client MAY omit any [=credential properties=] at its discretion, 
-    and SHOULD omit any properties that would be duplicated in the authenticator extension output.
-
-    At this time, one [=credential property=] is defined, {{CredentialPropertiesOutput/rk}}, which indicates whether or 
-    not the returned {{PublicKeyCredential}} is a [=resident credential=].
+:: [=map-set|Set=] <code>[=credentialCreationData/clientExtensionResults=]["{{AuthenticationExtensionsClientOutputs/credProps}}"]</code> to the value of the |requireResidentKey| parameter that was used in the <a href='#CreateCred-InvokeAuthnrMakeCred'>invocation</a> of the [=authenticatorMakeCredential=] operation.
 
     <xmp class="idl">
     dictionary CredentialPropertiesOutput {
@@ -5049,8 +5075,16 @@ a [=public key credential source=] as a result of a [=registration ceremony=].
 :: None, other than to report on credential properties in the output.
 
 : Authenticator extension output
-:: The [=authenticator=] sets the [=authenticator extension output=] credProps of type CredentialPropertiesOutput encoded as a CBOR
-    map.
+:: If the [=authenticator=] supports this extension it returns a CBOR map with one entry:
+	<pre>
+	CDDL:
+	{
+	  rk: bool
+	}
+	</pre>
+
+    If the [=authenticator=] created a [=resident credential=] it sets `rk` to [TRUE]. Otherwise it sets `rk` to [FALSE].
+
 
 # IANA Considerations # {#sctn-IANA}
 
@@ -5137,8 +5171,8 @@ IANA "WebAuthn Extension Identifier" registry established by [[!WebAuthn-Registr
 - Specification Document: Section [[#sctn-uvm-extension]] of this specification
     <br/><br/>
 - WebAuthn Extension Identifier: credProps
-- Description: This [=registration extension=] enables reporting of a newly-created [=credential=]'s properties to the 
-    calling [=[WRP]=] [=web application=].
+- Description: This [=client extension|client=] and [=authenticator extension|authenticator=] [=registration extension=] enables reporting of a newly-created [=credential=]'s properties to the 
+    calling [=[WRP]=]'s [=web application=].
 - Specification Document: Section [[#sctn-authenticator-credential-properties-extension]] of this specification
     <br/><br/>
 
