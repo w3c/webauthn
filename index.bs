@@ -45,6 +45,7 @@ Former Editor: Angelo Liao, w3cid 94342, Microsoft, huliao@microsoft.com
 !Contributors: <a href="mailto:mandyam@qti.qualcomm.com">Giridhar Mandyam</a> (Qualcomm)
 !Contributors: <a href="mailto:mkwst@google.com">Mike West</a> (Google)
 !Contributors: <a href="mailto:jyasskin@google.com">Jeffrey Yasskin</a> (Google)
+!Contributors: <a href="mailto:sweeden@au1.ibm.com">Shane Weeden</a> (IBM)
 group: webauthn
 Issue Tracking: GitHub https://github.com/w3c/webauthn/issues
 !Tests: <a href=https://github.com/web-platform-tests/wpt/tree/master/webauthn>web-platform-tests webauthn/</a> (<a href=https://github.com/web-platform-tests/wpt/labels/webauthn>ongoing work</a>)
@@ -221,6 +222,7 @@ spec:html; type:dfn; for:environment settings object; text:global object
 spec:infra; type:dfn; for:/; text:set
 spec:infra; type:dfn; text:list
 spec:infra; type:dfn; for:struct; text:item
+spec:infra; type:dfn; for:map-exists; text:exists
 spec:url; type:dfn; text:domain
 spec:url; type:dfn; for:url; text:host
 spec:url; type:dfn; text:valid domain;
@@ -552,15 +554,13 @@ The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "S
 
 : <dfn>Authenticator</dfn>
 : <dfn>[WAA]</dfn>
-:: A cryptographic entity used by a [=[WAC]=] to (i) generate a [=public key credential=] and register it with a [=[RP]=],
-    and (ii) [=authentication|authenticate=] by potentially [=user verification|verifying the user=], and then 
-    cryptographically signing and returning, in the form of an [=Authentication Assertion=], 
-    a challenge and other data presented by a [=[WRP]=] (in concert with the [=[WAC]=]).
+:: A cryptographic entity, existing in hardware or software, that can [=registration|register=] a user with a given [=[RP]=] 
+    and later [=Authentication Assertion|assert possession=] of the registered [=public key credential=], and optionally 
+    [=user verification|verifying the user=], when requested by the [=[RP]=]. [=Authenticators=] can report information 
+    regarding their [=authenticator types|type=] and security characteristics via [=attestation=] during [=registration=].
 
-    A [=[WAA]=] could be, for example, a dedicated USB or wireless device separate from the [=client device=],
-    a dedicated hardware subsystem integrated into the [=client device=],
-    or a software component of the [=client=].
-    [=Authenticators=] can report their type and security characteristics via [=attestation=].
+    A [=[WAA]=] could be a [=roaming authenticator=], a dedicated hardware subsystem integrated into the [=client device=], 
+    or a software component of the [=client=] or [=client device=].
 
 : <dfn>Authorization Gesture</dfn>
 :: An [=authorization gesture=] is a physical interaction performed by a user with an authenticator as part of a [=ceremony=],
@@ -604,6 +604,7 @@ The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "S
     By definition, the [=credential private key=] is always exclusively controlled by the [=authenticator=]. In the case of a
     [=resident credential=], the [=authenticator=] might offload storage of wrapped key material to the
     [=client device=], but the [=client device=] is not expected to offload the key storage to remote entities (e.g., [=[WRP]=] Server).
+    See also: [=client-side credential storage modality=].
 
 : <dfn>Conforming User Agent</dfn>
 :: A user agent implementing, in cooperation with the underlying [=client device=], the [=Web Authentication API=] and algorithms
@@ -621,6 +622,10 @@ The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "S
         Note: [[FIDO-UAF-AUTHNR-CMDS]] includes guidance on encryption techniques under "Security Guidelines".
 
     [=[RPS]=] do not need to distinguish these two [=Credential ID=] forms.
+
+: <dfn>Credential Properties</dfn>
+:: A [=credential property=] is some characteristic property of a [=public key credential source=], such as whether it is a 
+    [=resident credential=] or a [=non-resident credential=].
 
 : <dfn>Credential Public Key</dfn>
 : <dfn>User Public Key</dfn>
@@ -736,6 +741,12 @@ The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "S
         Please note that this is a greater relaxation of "same-origin" restrictions than what
         [=document.domain=]'s setter provides.
     </div>
+
+: <dfn>Non-Resident Credential</dfn>
+: <dfn>Server-side-resident Public Key Credential Source</dfn>
+:: A [=Server-side-resident Public Key Credential Source=], or [=Non-Resident Credential=] for short, is a [=public key credential
+    source=] whose [=credential private key=] is not stored in the [=authenticator=], [=client=] or [=client device=], but is instead 
+    encrypted (i.e. wrapped) and returned to the server as the [=credential ID=]. See also: [=server-side credential storage modality=].
 
 : <dfn>Test of User Presence</dfn>
 :: A [=test of user presence=] is a simple form of [=authorization gesture=] and technical process where a user interacts with
@@ -1132,12 +1143,54 @@ a numbered step. If outdented, it (today) is rendered as a bullet in the midst o
 
                   1. If <code>|options|.{{PublicKeyCredentialCreationOptions/authenticatorSelection}}.{{authenticatorAttachment}}</code> is
                     [=present|present=] and its value is not equal to |authenticator|'s [=authenticator attachment modality=], [=iteration/continue=].
-                  1. If <code>|options|.{{PublicKeyCredentialCreationOptions/authenticatorSelection}}.{{requireResidentKey}}</code> is set to
-                    [TRUE] and the |authenticator| is not capable of storing a [=client-side-resident public key credential source=],
-                    [=iteration/continue=].
+
+                  1. If <code>|options|.{{PublicKeyCredentialCreationOptions/authenticatorSelection}}.{{residentKey}}</code>
+
+                      <dl class="switch">
+                          :   is present and set to {{ResidentKeyRequirement/required}}
+                          ::  If the |authenticator| is not capable of storing a [=client-side-resident public key credential
+                              source=], [=iteration/continue=].
+
+                          :   is present and set to {{ResidentKeyRequirement/preferred}} or {{ResidentKeyRequirement/discouraged}}
+                          ::  No effect.
+
+                          :   is [=not present=]
+                          ::  if <code>|options|.{{PublicKeyCredentialCreationOptions/authenticatorSelection}}.{{requireResidentKey}}</code>
+                              is set to [TRUE] and the |authenticator| is not capable of storing a [=client-side-resident public
+                              key credential source=], [=iteration/continue=].
+                      </dl>
+
                   1. If <code>|options|.{{PublicKeyCredentialCreationOptions/authenticatorSelection}}.{{AuthenticatorSelectionCriteria/userVerification}}</code> is
                     set to {{UserVerificationRequirement/required}} and the |authenticator| is not capable of performing [=user
                     verification=], [=iteration/continue=].
+
+            1. Let |requireResidentKey| be the <dfn>effective resident key requirement for credential creation</dfn>, a Boolean value, as follows: 
+
+                If <code>|options|.{{PublicKeyCredentialCreationOptions/authenticatorSelection}}.{{residentKey}}</code>
+
+                    <dl class="switch">
+
+                        :   is present and set to {{ResidentKeyRequirement/required}}
+                        ::  Let |requireResidentKey| be [TRUE].
+
+                        :   is present and set to {{ResidentKeyRequirement/preferred}}
+                        ::  If the |authenticator|
+
+                            <dl class="switch">
+                                :   is capable of [=client-side credential storage modality=]
+                                ::  Let |requireResidentKey| be [TRUE].
+
+                                :   is not capable of [=client-side credential storage modality=], or if the [=client=] cannot determine authenticator capability,
+                                ::  Let |requireResidentKey| be [FALSE].
+                            </dl>
+
+                        :   is present and set to {{ResidentKeyRequirement/discouraged}}
+                        ::  Let |requireResidentKey| be [FALSE].
+
+                        :   is [=not present=]
+                        ::  Let |requireResidentKey| be the value of <code>|options|.{{PublicKeyCredentialCreationOptions/authenticatorSelection}}.{{requireResidentKey}}</code>.
+
+                    </dl>
 
             1. Let |userVerification| be the <dfn>effective user verification requirement for credential creation</dfn>, a Boolean value,
                 as follows. If
@@ -1171,15 +1224,22 @@ a numbered step. If outdented, it (today) is rendered as a bullet in the midst o
                     mentioned in <code>|C|.{{transports}}</code>, the client MAY [=continue=].
                 1. Otherwise, [=list/Append=] |C| to |excludeCredentialDescriptorList|.
 
-            <!-- @@EDITOR-ANCHOR-01A: KEEP THIS LIST SYNC'D WITH THE LIST UP AT @@EDITOR-ANCHOR-01B -->
-            1. Invoke the [=authenticatorMakeCredential=] operation on |authenticator| with
-                |clientDataHash|,
-                <code>|options|.{{PublicKeyCredentialCreationOptions/rp}}</code>, <code>|options|.{{PublicKeyCredentialCreationOptions/user}}</code>,
-                <code>|options|.{{PublicKeyCredentialCreationOptions/authenticatorSelection}}.{{AuthenticatorSelectionCriteria/requireResidentKey}}</code>,
-                |userVerification|,
-                |credTypesAndPubKeyAlgs|,
-                |excludeCredentialDescriptorList|,
-                and |authenticatorExtensions| as parameters.
+<!-- Note: this next step is actually a top-level step, but bikeshed wanted it indented this much in order to render it as
+a numbered step. If outdented, it (today) is rendered either as a bullet in the midst of a numbered list or is mis-numabered :-/
+-->
+        	    <li id='CreateCred-InvokeAuthnrMakeCred'>
+
+        		<!-- @@EDITOR-ANCHOR-01A: KEEP THIS LIST SYNC'D WITH THE LIST UP AT @@EDITOR-ANCHOR-01B -->
+        		Invoke the [=authenticatorMakeCredential=] operation on |authenticator| with
+                	    |clientDataHash|,
+                	    <code>|options|.{{PublicKeyCredentialCreationOptions/rp}}</code>, <code>|options|.{{PublicKeyCredentialCreationOptions/user}}</code>,
+                	    |requireResidentKey|,
+                	    |userVerification|,
+                	    |credTypesAndPubKeyAlgs|,
+                	    |excludeCredentialDescriptorList|,
+                	    and |authenticatorExtensions| as parameters.
+
+        	    </li>
 
             1. [=set/Append=] |authenticator| to |issuedRequests|.
 
@@ -1212,7 +1272,7 @@ a numbered step. If outdented, it (today) is rendered as a bullet in the midst o
             [=[RP]=] in order to prevent leak of potentially identifying information. See [[#sec-make-credential-privacy]] for
             details.
 
-        :   If any |authenticator| indicates success,
+        :   If any |authenticator| <dfn for="CreateCred-AuthnrSuccess">indicates success</dfn>,
         ::  1.  [=set/Remove=] |authenticator| from |issuedRequests|.
 
             1.  Let |credentialCreationData| be a [=struct=] whose [=items=] are:
@@ -1233,6 +1293,7 @@ a numbered step. If outdented, it (today) is rendered as a bullet in the midst o
                     [=client extension output=] entries. The entries are created by running each extension's
                     [=client extension processing=] algorithm to create the [=client extension outputs=], for each
                     [=client extension=] in <code>{{AuthenticatorResponse/clientDataJSON}}.clientExtensions</code>.
+
 
             1.  Let |constructCredentialAlg| be an algorithm that takes a [=global object=]
                 |global|, and whose steps are:
@@ -2036,6 +2097,7 @@ attributes.
     dictionary AuthenticatorSelectionCriteria {
         AuthenticatorAttachment      authenticatorAttachment;
         boolean                      requireResidentKey = false;
+        ResidentKeyRequirement       residentKey;
         UserVerificationRequirement  userVerification = "preferred";
     };
 </xmp>
@@ -2046,9 +2108,19 @@ attributes.
         specified [[#attachment]].
 
     :   <dfn>requireResidentKey</dfn>
-    ::  This member describes the [=[RP]=]'s requirements regarding [=resident credentials=].
-        If the parameter is set to [TRUE], the authenticator MUST create a
-        [=client-side-resident public key credential source=] when creating a [=public key credential=].
+    ::  Note: This member is retained for backwards compatibility with WebAuthn Level 1 but is deprecated in favour of {{residentKey}}.
+        {{requireResidentKey}} is ignored if the caller supplies {{residentKey}} and the latter is understood by the [=client=]. 
+        Otherwise, {{requireResidentKey}}'s value is used. Note that {{requireResidentKey}}'s value defaults to [FALSE].
+
+        If used in absence of {{residentKey}}, it describes the [=[RP]=]'s requirements regarding [=resident credentials=]. 
+        If {{requireResidentKey}} is set to [TRUE], the authenticator MUST create a [=client-side-resident public key credential source=] 
+        when creating a [=public key credential=].
+
+    :   <dfn>residentKey</dfn>
+    ::  Note: This member supersedes {{requireResidentKey}}. If both are present and the [=client=] understands {{residentKey}}, then
+        {{residentKey}} is used and {{requireResidentKey}} is ignored. 
+
+        See {{ResidentKeyRequirement}} for the description of {{residentKey}}'s values and semantics.
 
     :   <dfn>userVerification</dfn>
     ::  This member describes the [=[RP]=]'s requirements regarding [=user verification=] for the
@@ -2085,6 +2157,39 @@ authenticating on another [=client device=]; or to specifically register a [=pla
 particular [=client device=]. The {{PublicKeyCredential/[[DiscoverFromExternalSource]](origin, options, sameOriginWithAncestors)}}
 operation has no [=authenticator attachment modality=] selection option, so the [=[RP]=] SHOULD accept any of the user's registered [=public key
 credential|credentials=]. The [=client=] and user will then use whichever is available and convenient at the time.
+
+
+### Resident Key Requirement Enumeration (enum <dfn enum>ResidentKeyRequirement</dfn>) ### {#residentKeyRequirement}
+
+<xmp class="idl">
+    enum ResidentKeyRequirement {
+        "discouraged",
+        "preferred",
+        "required"
+    };
+</xmp>
+
+This enumeration's values describe the [=[RP]=]'s requirements for [=resident credentials=]:
+
+<div dfn-type="enum-value" dfn-for="ResidentKeyRequirement">
+    :   <dfn>discouraged</dfn>
+    ::  This value indicates the [=[RP]=] prefers creating a [=non-resident credential=], but will accept a 
+        [=resident credential=].
+
+    :   <dfn>preferred</dfn>
+    ::  This value indicates the [=[RP]=] prefers creating a [=resident credential=], but will accept a 
+        [=non-resident credential=].
+
+    :   <dfn>required</dfn>
+    ::  This value indicates the [=[RP]=] requires a [=resident credential=], and is prepared to receive an error
+        if a [=resident credential=] cannot be created.
+</div>
+
+Note: The [=[RP]=] can use a combination of the value provided for |options|.{{PublicKeyCredentialCreationOptions/authenticatorSelection}}.{{residentKey}} 
+and the [=credProps|Credential Properties Extension=]'s return value to determine  whether or not the authenticator created a [=resident credential=]. 
+This is useful when values of  {{ResidentKeyRequirement/discouraged}} or {{ResidentKeyRequirement/preferred}} are used for 
+|options|.{{PublicKeyCredentialCreationOptions/authenticatorSelection}}.{{residentKey}}, because in those cases it is possible for an 
+[=authenticator=] to create either a [=resident credential=] or a [=non-resident credential=].
 
 
 ### <dfn>Attestation Conveyance</dfn> Preference Enumeration (enum <dfn enum>AttestationConveyancePreference</dfn>) ### {#attestation-convey}
@@ -2806,7 +2911,8 @@ modality</dfn> as follows:
 
 Note that a [=resident credential capable=] [=authenticator=] MAY support both storage strategies. In this case, the [=authenticator=] MAY
 at its discretion use different storage strategies for different [=public key credential|credentials=], though subject to the
-{{AuthenticatorSelectionCriteria/requireResidentKey}} option of {{CredentialsContainer/create()}}.
+{{AuthenticatorSelectionCriteria/residentKey}} or {{AuthenticatorSelectionCriteria/requireResidentKey}} options of 
+{{CredentialsContainer/create()}}.
 
 
 ### <dfn>Authentication Factor Capability</dfn> ### {#sctn-authentication-factor-capability}
@@ -2862,13 +2968,13 @@ It takes the following input parameters:
 : |userEntity|
 :: The user account's {{PublicKeyCredentialUserEntity}}, containing the [=user handle=] given by the [=[RP]=].
 : |requireResidentKey|
-:: The {{PublicKeyCredentialCreationOptions/authenticatorSelection}}.{{requireResidentKey}} value given by the [=[RP]=].
+:: The [=effective resident key requirement for credential creation=], a Boolean value determined by the [=client=].
 : |requireUserPresence|
 :: The constant Boolean value [TRUE].
     It is included here as a pseudo-parameter to simplify applying this abstract authenticator model to implementations that may
     wish to make a [=test of user presence=] optional although WebAuthn does not.
 : |requireUserVerification|
-:: The [=effective user verification requirement for credential creation=], a Boolean value provided by the client.
+:: The [=effective user verification requirement for credential creation=], a Boolean value determined by the [=client=].
 : |credTypesAndPubKeyAlgs|
 :: A sequence of pairs of {{PublicKeyCredentialType}} and public key algorithms ({{COSEAlgorithmIdentifier}}) requested by the
     [=[RP]=]. This sequence is ordered from most preferred to least preferred. The [=authenticator=] makes a best-effort to create the most
@@ -2878,7 +2984,7 @@ It takes the following input parameters:
     these are known to the authenticator, it SHOULD NOT create a new credential. |excludeCredentialDescriptorList| contains a 
     list of known credentials.
 : |extensions|
-:: A [=CBOR=] [=map=] from [=extension identifiers=] to their [=authenticator extension inputs=], created by the client based on
+:: A [=CBOR=] [=map=] from [=extension identifiers=] to their [=authenticator extension inputs=], created by the [=client=] based on
     the extensions requested by the [=[RP]=], if any.
 
 Note: Before performing this operation, all other operations in progress in the [=authenticator session=] MUST be aborted by 
@@ -4927,6 +5033,53 @@ as candidates to be employed in a [=registration ceremony=].
 : Authenticator extension output
 :: None.
 
+
+## Credential Properties Extension (<dfn>credProps</dfn>) ## {#sctn-authenticator-credential-properties-extension}
+
+This [=client extension|client=] [=registration extension=] facilitates reporting certain [=credential properties=] known by the [=client=] to the requesting [=[WRP]=] upon creation of a [=public key credential source=] as a result of a [=registration ceremony=].
+
+At this time, one [=credential property=] is defined. It is known abstractly as the <dfn>resident key credential property</dfn>. It is a boolean value indicating whether or not the {{PublicKeyCredential}} returned as a result of a [=registration ceremony=] is a [=resident credential=] or a [=non-resident credential=].  
+
+: Extension identifier
+:: `credProps`
+
+: Operation applicability
+:: [=registration extension|Registration=]
+
+: Client extension input
+:: The Boolean value [TRUE] to indicate that this extension is requested by the [=[RP]=].
+    <xmp class="idl">
+    partial dictionary AuthenticationExtensionsClientInputs {
+        boolean credProps;
+    };
+    </xmp>
+
+: Client extension processing
+::  None, other than to report on credential properties in the output.
+
+: Client extension output
+:: [=map/Set=] <code>[=credentialCreationData/clientExtensionResults=]["{{AuthenticationExtensionsClientOutputs/credProps}}"]["rk"]</code> to the value of the |requireResidentKey| parameter that was used in the <a href='#CreateCred-InvokeAuthnrMakeCred'>invocation</a> of the [=authenticatorMakeCredential=] operation.
+
+    <xmp class="idl">
+    dictionary CredentialPropertiesOutput {
+        boolean rk;
+    };
+
+    partial dictionary AuthenticationExtensionsClientOutputs {
+        CredentialPropertiesOutput credProps;
+    };
+    </xmp>
+
+: Authenticator extension input
+:: None.
+
+: Authenticator extension processing
+:: None.
+
+: Authenticator extension output
+:: None.
+
+
 # IANA Considerations # {#sctn-IANA}
 
 ## WebAuthn Attestation Statement Format Identifier Registrations ## {#sctn-att-fmt-reg}
@@ -5010,6 +5163,12 @@ IANA "WebAuthn Extension Identifier" registry established by [[!WebAuthn-Registr
     The user verification method extension returns to the [=[WRP]=] which user verification methods (factors) were
     used for the WebAuthn operation.
 - Specification Document: Section [[#sctn-uvm-extension]] of this specification
+    <br/><br/>
+- WebAuthn Extension Identifier: credProps
+- Description: This [=client extension|client=] [=registration extension=] enables reporting of a newly-created [=credential=]'s properties,
+    as determined by the [=client=], to the calling [=[WRP]=]'s [=web application=].
+- Specification Document: Section [[#sctn-authenticator-credential-properties-extension]] of this specification
+    <br/><br/>
 
 ## COSE Algorithm Registrations ## {#sctn-cose-alg-reg}
 
@@ -5750,6 +5909,7 @@ Yoshikazu Nojima,
 Kimberly Paulhamus,
 Adam Powers,
 Yaron Sheffer,
+Nick Steele,
 Anne van Kesteren,
 Johan Verrept,
 and
