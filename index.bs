@@ -3580,6 +3580,9 @@ When registering a new credential, represented by an {{AuthenticatorAttestationR
 {{AuthenticationExtensionsClientOutputs}} structure |clientExtensionResults|, as part of a [=registration ceremony=], a
 [=[RP]=] MUST proceed as follows:
 
+1. Let |options| be the {{PublicKeyCredentialCreationOptions}} that was passed
+    as the <code>{{CredentialCreationOptions/publicKey}}</code> option in the {{CredentialsContainer/create()}} call.
+
 1. Let |JSONtext| be the result of
     running [=UTF-8 decode=] on the value of <code>|response|.{{AuthenticatorResponse/clientDataJSON}}</code>.
 
@@ -3594,8 +3597,8 @@ When registering a new credential, represented by an {{AuthenticatorAttestationR
 
 1. Verify that the value of <code>|C|.{{CollectedClientData/type}}</code> is `webauthn.create`.
 
-1. Verify that the value of <code>|C|.{{CollectedClientData/challenge}}</code> matches the challenge that was sent to the
-    authenticator in the {{CredentialsContainer/create()}} call.
+1. Verify that the value of <code>|C|.{{CollectedClientData/challenge}}</code> equals
+    the base64url encoding of <code>|options|.{{PublicKeyCredentialCreationOptions/challenge}}</code>.
 
 1. Verify that the value of <code>|C|.{{CollectedClientData/origin}}</code> matches the [=[RP]=]'s [=origin=].
 
@@ -3616,12 +3619,11 @@ When registering a new credential, represented by an {{AuthenticatorAttestationR
 
 1. Verify that the values of the [=client extension outputs=] in |clientExtensionResults| and the [=authenticator extension
     outputs=] in the <code>[=authdataextensions|extensions=]</code> in |authData| are as expected, considering the [=client
-    extension input=] values that were given as the {{PublicKeyCredentialCreationOptions/extensions}} option in the
-    {{CredentialsContainer/create()}} call.
+    extension input=] values that were given in <code>|options|.{{PublicKeyCredentialCreationOptions/extensions}}</code>.
     In particular, any [=extension identifier=] values in the |clientExtensionResults| and
     the <code>[=authdataextensions|extensions=]</code> in |authData|
-    MUST be also be present as [=extension identifier=] values in
-    the {{PublicKeyCredentialCreationOptions/extensions}} member of |options|,
+    MUST also be present as [=extension identifier=] values in
+    <code>|options|.{{PublicKeyCredentialCreationOptions/extensions}}</code>,
     i.e., no extensions are present that were not requested.
     In the general case, the meaning of "are as expected" is specific to the [=[RP]=] and which extensions are in use.
 
@@ -3644,12 +3646,12 @@ When registering a new credential, represented by an {{AuthenticatorAttestationR
     example, the FIDO Metadata Service [[FIDOMetadataService]] provides one way to obtain such information, using the
     <code>[=aaguid=]</code> in the <code>[=attestedCredentialData=]</code> in |authData|.
 
-1. Assess the attestation trustworthiness using the outputs of the [=verification procedure=] in step 14, as follows:
+1. Assess the attestation trustworthiness using the outputs of the [=verification procedure=] in step 15, as follows:
         - If [=None|no attestation=] was provided, verify that [=None=] attestation is acceptable under [=[RP]=] policy.
         - If [=self attestation=] was used, verify that [=self attestation=] is acceptable under [=[RP]=] policy.
         - If [=ECDAA=] was used, verify that the [=identifier of the ECDAA-Issuer public key=],
              returned as the [=attestation trust path=] from the [=verification procedure=],
-             is included in the set of acceptable trust anchors obtained in step 15.
+             is included in the set of acceptable trust anchors obtained in step 16.
         - Otherwise, use the X.509 certificates returned as the [=attestation trust path=] from the [=verification procedure=]
             to verify that the attestation public key correctly chains up to an acceptable root certificate.
 
@@ -3658,13 +3660,12 @@ When registering a new credential, represented by an {{AuthenticatorAttestationR
     fail this [=registration ceremony=], or it MAY decide to accept the registration, e.g. while deleting the older registration.
 
 1. If the attestation statement |attStmt| verified successfully and is found to be trustworthy, then register the new
-    credential with the account that was denoted in the
-    {{PublicKeyCredential/[[Create]](origin, options, sameOriginWithAncestors)/options}}.{{PublicKeyCredentialCreationOptions/user}} passed to
-    {{CredentialsContainer/create()}}, by associating it with the <code>[=credentialId=]</code> and
+    credential with the account that was denoted in <code>|options|.{{PublicKeyCredentialCreationOptions/user}}</code>,
+    by associating it with the <code>[=credentialId=]</code> and
     <code>[=credentialPublicKey=]</code> in the <code>[=attestedCredentialData=]</code> in |authData|, as appropriate for the
     [=[RP]=]'s system.
 
-1. If the attestation statement |attStmt| successfully verified but is not trustworthy per step 16 above, the [=[RP]=] SHOULD fail
+1. If the attestation statement |attStmt| successfully verified but is not trustworthy per step 17 above, the [=[RP]=] SHOULD fail
     the [=registration ceremony=].
 
     NOTE: However, if permitted by policy, the [=[RP]=] MAY register the [=credential ID=] and credential public key but treat the
@@ -3673,7 +3674,7 @@ When registering a new credential, represented by an {{AuthenticatorAttestationR
         See [[FIDOSecRef]] and [[UAFProtocol]] for a more detailed discussion.
 
 Verification of [=attestation objects=] requires that the [=[RP]=] has a trusted method of determining acceptable trust anchors
-in step 15 above. Also, if certificates are being used, the [=[RP]=] MUST have access to certificate status information for the
+in step 16 above. Also, if certificates are being used, the [=[RP]=] MUST have access to certificate status information for the
 intermediate CA certificates. The [=[RP]=] MUST also be able to build the attestation certificate chain if the client did not
 provide this chain in the attestation information.
 
@@ -3683,9 +3684,12 @@ provide this chain in the attestation information.
 When verifying a given {{PublicKeyCredential}} structure (|credential|) and an {{AuthenticationExtensionsClientOutputs}} structure
 |clientExtensionResults|, as part of an [=authentication ceremony=], the [=[RP]=] MUST proceed as follows:
 
-1. If the {{PublicKeyCredentialRequestOptions/allowCredentials}} option was given when this [=authentication ceremony=] was
-    initiated, verify that <code>|credential|.{{Credential/id}}</code> identifies one of the [=public key credentials=] that were
-    listed in {{PublicKeyCredentialRequestOptions/allowCredentials}}.
+1. Let |options| be the {{PublicKeyCredentialRequestOptions}} that was passed
+    as the <code>{{CredentialCreationOptions/publicKey}}</code> option in the {{CredentialsContainer/get()}} call.
+
+1. If <code>|options|.{{PublicKeyCredentialRequestOptions/allowCredentials}}</code> [=list/is not empty=],
+    verify that <code>|credential|.{{Credential/id}}</code> identifies one of the [=public key credentials=]
+    listed in <code>|options|.{{PublicKeyCredentialRequestOptions/allowCredentials}}</code>.
 
 1. Identify the user being authenticated and verify that this user is the owner of the [=public key credential source=]
     |credentialSource| identified by <code>|credential|.{{Credential/id}}</code>:
@@ -3722,8 +3726,8 @@ When verifying a given {{PublicKeyCredential}} structure (|credential|) and an {
 
 1. Verify that the value of <code>|C|.{{CollectedClientData/type}}</code> is the string `webauthn.get`.
 
-1. Verify that the value of <code>|C|.{{CollectedClientData/challenge}}</code> matches the challenge that was sent to the
-    authenticator in the {{PublicKeyCredentialRequestOptions}} passed to the {{CredentialsContainer/get()}} call.
+1. Verify that the value of <code>|C|.{{CollectedClientData/challenge}}</code> equals
+    the base64url encoding of <code>|options|.{{PublicKeyCredentialRequestOptions/challenge}}</code>.
 
 1. Verify that the value of <code>|C|.{{CollectedClientData/origin}}</code> matches the [=[RP]=]'s [=origin=].
 
@@ -3738,12 +3742,11 @@ When verifying a given {{PublicKeyCredential}} structure (|credential|) and an {
 
 1. Verify that the values of the [=client extension outputs=] in |clientExtensionResults| and the [=authenticator extension
     outputs=] in the <code>[=authdataextensions|extensions=]</code> in |authData| are as expected, considering the [=client
-    extension input=] values that were given as the {{PublicKeyCredentialRequestOptions/extensions}} option in the
-    {{CredentialsContainer/get()}} call.
+    extension input=] values that were given in <code>|options|.{{PublicKeyCredentialRequestOptions/extensions}}</code>.
     In particular, any [=extension identifier=] values in the |clientExtensionResults| and
     the <code>[=authdataextensions|extensions=]</code> in |authData|
-    MUST be also be present as [=extension identifier=] values in
-    the {{PublicKeyCredentialCreationOptions/extensions}} member of |options|,
+    MUST also be present as [=extension identifier=] values in
+    the <code>|options|.{{PublicKeyCredentialCreationOptions/extensions}}</code>,
     i.e., no extensions are present that were not requested.
     In the general case, the meaning of "are as expected" is specific to the [=[RP]=] and which extensions are in use.
 
