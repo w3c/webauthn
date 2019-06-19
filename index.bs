@@ -3755,7 +3755,14 @@ When verifying a given {{PublicKeyCredential}} structure (|credential|) and an {
 
 1. Verify that the value of <code>|C|.{{CollectedClientData/tokenBinding}}.{{TokenBinding/status}}</code> matches the state of [=Token Binding=] for the TLS connection over which the attestation was obtained. If [=Token Binding=] was used on that TLS connection, also verify that <code>|C|.{{CollectedClientData/tokenBinding}}.{{TokenBinding/id}}</code> matches the [=base64url encoding=] of the [=Token Binding ID=] for the connection.
 
-1. Verify that the <code>[=rpIdHash=]</code> in |authData| is the SHA-256 hash of the [=RP ID=] expected by the [=[RP]=].
+<!-- Note: this next step is actually a top-level step, but bikeshed wanted it indented this much in order to render it as
+a numbered step. If outdented, it (today) is rendered as a bullet in the midst of a numbered list :-/
+-->
+    <li id='rp-op-verifying-assertion-step-rpid-hash'>
+      Verify that the <code>[=rpIdHash=]</code> in |authData| is the SHA-256 hash of the [=RP ID=] expected by the [=[RP]=].
+
+      Note: If using the [=appid=] extension, this step needs some special logic. See [[#sctn-appid-extension]] for details.
+    </li>
 
 1. Verify that the [=User Present=] bit of the <code>[=flags=]</code> in |authData| is set.
 
@@ -4583,6 +4590,25 @@ FIDO APIs use an alternative identifier for [=[RPS]=] called an |AppID|
 that identifier. Without this extension, they would need to be re-registered in
 order to be [=scoped=] to an [=RP ID=].
 
+In addition to setting the {{AuthenticationExtensionsClientInputs/appid}} extension input,
+using this extension requires some additional processing by the [=[RP]=]
+in order to allow users to [=authentication|authenticate=] using their registered U2F credentials:
+
+ 1. List the desired U2F credentials in the {{PublicKeyCredentialRequestOptions/allowCredentials}} option
+     of the {{CredentialsContainer/get()}} method:
+
+     - Set the {{PublicKeyCredentialDescriptor/type}} members to {{PublicKeyCredentialType/public-key}}.
+     - Set the {{PublicKeyCredentialDescriptor/id}} members to the respective U2F key handles of the desired credentials.
+
+     {{PublicKeyCredentialRequestOptions/allowCredentials}} MAY contain a mixture
+     of both WebAuthn [=credential IDs=] and U2F key handles;
+     stating the {{AuthenticationExtensionsClientInputs/appid}} via this extension
+     does not prevent the user from using a WebAuthn-registered credential
+     scoped to the [=RP ID=] stated in {{PublicKeyCredentialRequestOptions/rpId}}.
+
+ 1. When [verifying the assertion](#rp-op-verifying-assertion-step-rpid-hash), expect that the <code>[=rpIdHash=]</code>
+     MAY be the hash of the |AppID| instead of the [=RP ID=].
+
 This extension does not allow FIDO-compatible credentials to be created. Thus,
 credentials created with WebAuthn are not backwards compatible with the FIDO
 JavaScript APIs.
@@ -4632,7 +4658,7 @@ Instead, in step three, the comparison on the host is relaxed to accept hosts on
 [=same site=].
 
 : Client extension output
-:: Returns the value of |output|. If true, the |AppID| was used and thus, when [verifying an assertion](#sctn-verifying-assertion), the [=[RP]=] MUST expect the <code>[=rpIdHash=]</code> to be the hash of the |AppID|, not the [=RP ID=].
+:: Returns the value of |output|. If true, the |AppID| was used and thus, when [verifying the assertion](#rp-op-verifying-assertion-step-rpid-hash), the [=[RP]=] MUST expect the <code>[=rpIdHash=]</code> to be the hash of the |AppID|, not the [=RP ID=].
 
     <xmp class="idl">
     partial dictionary AuthenticationExtensionsClientOutputs {
