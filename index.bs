@@ -3031,8 +3031,9 @@ When this operation is invoked, the [=authenticator=] MUST perform the following
     1.  If [=credential id/looking up=] <code>|descriptor|.{{PublicKeyCredentialDescriptor/id}}</code> in this authenticator
         returns non-null, and the returned [=list/item=]'s [=RP ID=] and [=type=] match
         <code>|rpEntity|.{{PublicKeyCredentialRpEntity/id}}</code> and
-        <code>|excludeCredentialDescriptorList|.{{PublicKeyCredentialDescriptor/type}}</code> respectively, then obtain [=user
-        consent=] for creating a new credential. The method of obtaining [=user consent=] MUST include a [=test
+        <code>|excludeCredentialDescriptorList|.{{PublicKeyCredentialDescriptor/type}}</code> respectively,
+        then collect an [=authorization gesture=] confirming [=user
+        consent=] for creating a new credential. The [=authorization gesture=] MUST include a [=test
         of user presence=]. If the user
         <dl class="switch">
             :   confirms consent to create a new credential
@@ -3051,21 +3052,22 @@ When this operation is invoked, the [=authenticator=] MUST perform the following
 a numbered step. If outdented, it (today) is rendered as a bullet in the midst of a numbered list :-/
 -->
     <li id='op-makecred-step-user-consent'>
-        Obtain [=user consent=] for creating a new credential. The prompt for obtaining this [=user consent|consent=] is shown by the
+        Collect an [=authorization gesture=] confirming [=user consent=] for creating a new credential.
+        The prompt for the [=authorization gesture=] is shown by the
         authenticator if it has its own output capability, or by the user agent otherwise. The prompt SHOULD display
         <code>|rpEntity|.{{PublicKeyCredentialRpEntity/id}}</code>, <code>|rpEntity|.{{PublicKeyCredentialEntity/name}}</code>,
         <code>|userEntity|.{{PublicKeyCredentialEntity/name}}</code> and
         <code>|userEntity|.{{PublicKeyCredentialUserEntity/displayName}}</code>, if possible.
 
-        If |requireUserVerification| is [TRUE], the method of obtaining [=user consent=] MUST include [=user verification=].
+        If |requireUserVerification| is [TRUE], the [=authorization gesture=] MUST include [=user verification=].
 
-        If |requireUserPresence| is [TRUE], the method of obtaining [=user consent=] MUST include a [=test of user presence=].
+        If |requireUserPresence| is [TRUE], the [=authorization gesture=] MUST include a [=test of user presence=].
 
         If the user does not [=user consent|consent=] or if [=user verification=] fails, return an error code equivalent to
         "{{NotAllowedError}}" and terminate the operation.
     </li>
 
-1. Once [=user consent=] has been obtained, generate a new credential object:
+1. Once the [=authorization gesture=] has been completed and [=user consent=] has been obtained, generate a new credential object:
     1. Let (|publicKey|, |privateKey|) be a new pair of cryptographic keys using the combination of {{PublicKeyCredentialType}}
         and cryptographic parameters represented by the first [=list/item=] in |credTypesAndPubKeyAlgs| that is supported by
         this authenticator.
@@ -3157,16 +3159,17 @@ When this method is invoked, the [=authenticator=] MUST perform the following pr
 1. If |credentialOptions| is now empty, return an error code equivalent to "{{NotAllowedError}}" and terminate the operation.
 
 1. Prompt the user to select a [=public key credential source=] |selectedCredential| from |credentialOptions|.
-    Obtain [=user consent=] for using |selectedCredential|. The prompt for obtaining this [=user consent|consent=] may be shown
+    Collect an [=authorization gesture=] confirming [=user consent=] for using |selectedCredential|.
+    The prompt for the [=authorization gesture=] may be shown
     by the [=authenticator=] if it has its own output capability, or by the user agent otherwise.
 
-    If |requireUserVerification| is [TRUE], the method of obtaining [=user consent=] MUST include [=user verification=].
+    If |requireUserVerification| is [TRUE], the [=authorization gesture=] MUST include [=user verification=].
 
         Note: For the overall WebAuthn security properties to hold, the user verified here must be the same user that was
         verified when this [=authenticator=] created this [=public key credential=] in
         <a href='#op-makecred-step-user-consent'>Step 6</a> of [[#sctn-op-make-cred]].
 
-    If |requireUserPresence| is [TRUE], the method of obtaining [=user consent=] MUST include a
+    If |requireUserPresence| is [TRUE], the [=authorization gesture=] MUST include a
         [=test of user presence=].
 
     If the user does not [=user consent|consent=], return an error code equivalent to
@@ -3595,6 +3598,9 @@ When registering a new credential, represented by an {{AuthenticatorAttestationR
 {{AuthenticationExtensionsClientOutputs}} structure |clientExtensionResults|, as part of a [=registration ceremony=], a
 [=[RP]=] MUST proceed as follows:
 
+1. Let |options| be the {{PublicKeyCredentialCreationOptions}} that was passed
+    as the <code>{{CredentialCreationOptions/publicKey}}</code> option in the {{CredentialsContainer/create()}} call.
+
 1. Let |JSONtext| be the result of
     running [=UTF-8 decode=] on the value of <code>|response|.{{AuthenticatorResponse/clientDataJSON}}</code>.
 
@@ -3609,14 +3615,14 @@ When registering a new credential, represented by an {{AuthenticatorAttestationR
 
 1. Verify that the value of <code>|C|.{{CollectedClientData/type}}</code> is `webauthn.create`.
 
-1. Verify that the value of <code>|C|.{{CollectedClientData/challenge}}</code> matches the challenge that was sent to the
-    authenticator in the {{CredentialsContainer/create()}} call.
+1. Verify that the value of <code>|C|.{{CollectedClientData/challenge}}</code> equals
+    the base64url encoding of <code>|options|.{{PublicKeyCredentialCreationOptions/challenge}}</code>.
 
 1. Verify that the value of <code>|C|.{{CollectedClientData/origin}}</code> matches the [=[RP]=]'s [=origin=].
 
 1. Verify that the value of <code>|C|.{{CollectedClientData/tokenBinding}}.{{TokenBinding/status}}</code> matches the state of [=Token Binding=] for the TLS connection over which the [=assertion=] was obtained. If [=Token Binding=] was used on that TLS connection, also verify that <code>|C|.{{CollectedClientData/tokenBinding}}.{{TokenBinding/id}}</code> matches the [=base64url encoding=] of the [=Token Binding ID=] for the connection.
 
-1. Compute the hash of <code>|response|.{{AuthenticatorResponse/clientDataJSON}}</code> using SHA-256.
+1. Let |hash| be the result of computing a hash over <code>|response|.{{AuthenticatorResponse/clientDataJSON}}</code> using SHA-256.
 
 1. Perform CBOR decoding on the {{AuthenticatorAttestationResponse/attestationObject}} field of the
     {{AuthenticatorAttestationResponse}} structure to obtain the attestation statement format |fmt|, the [=authenticator data=]
@@ -3629,14 +3635,17 @@ When registering a new credential, represented by an {{AuthenticatorAttestationR
 1. If [=user verification=] is required for this registration, verify that the [=User Verified=] bit of the <code>[=flags=]</code>
     in |authData| is set.
 
+1. Verify that the "alg" parameter in the [=credentialPublicKey|credential public key=] in |authData|
+    matches the {{PublicKeyCredentialParameters/alg}} attribute of one of the [=list/items=] in
+    <code>|options|.{{PublicKeyCredentialCreationOptions/pubKeyCredParams}}</code>.
+
 1. Verify that the values of the [=client extension outputs=] in |clientExtensionResults| and the [=authenticator extension
     outputs=] in the <code>[=authdataextensions|extensions=]</code> in |authData| are as expected, considering the [=client
-    extension input=] values that were given as the {{PublicKeyCredentialCreationOptions/extensions}} option in the
-    {{CredentialsContainer/create()}} call.
+    extension input=] values that were given in <code>|options|.{{PublicKeyCredentialCreationOptions/extensions}}</code>.
     In particular, any [=extension identifier=] values in the |clientExtensionResults| and
     the <code>[=authdataextensions|extensions=]</code> in |authData|
-    MUST be also be present as [=extension identifier=] values in
-    the {{PublicKeyCredentialCreationOptions/extensions}} member of |options|,
+    MUST also be present as [=extension identifier=] values in
+    <code>|options|.{{PublicKeyCredentialCreationOptions/extensions}}</code>,
     i.e., no extensions are present that were not requested.
     In the general case, the meaning of "are as expected" is specific to the [=[RP]=] and which extensions are in use.
 
@@ -3649,8 +3658,7 @@ When registering a new credential, represented by an {{AuthenticatorAttestationR
     is maintained in the IANA registry of the same name [[!WebAuthn-Registries]].
 
 1. Verify that |attStmt| is a correct [=attestation statement=], conveying a valid [=attestation signature=], by using the
-    [=attestation statement format=] |fmt|'s [=verification procedure=] given |attStmt|, |authData| and the [=hash of the serialized
-    client data=] computed in step 7.
+    [=attestation statement format=] |fmt|'s [=verification procedure=] given |attStmt|, |authData| and |hash|.
 
     Note: Each [=attestation statement format=] specifies its own [=verification procedure=]. See [[#sctn-defined-attestation-formats]] for
     the initially-defined formats, and [[!WebAuthn-Registries]] for the up-to-date list.
@@ -3660,12 +3668,12 @@ When registering a new credential, represented by an {{AuthenticatorAttestationR
     example, the FIDO Metadata Service [[FIDOMetadataService]] provides one way to obtain such information, using the
     <code>[=aaguid=]</code> in the <code>[=attestedCredentialData=]</code> in |authData|.
 
-1. Assess the attestation trustworthiness using the outputs of the [=verification procedure=] in step 14, as follows:
+1. Assess the attestation trustworthiness using the outputs of the [=verification procedure=] in step 16, as follows:
         - If [=None|no attestation=] was provided, verify that [=None=] attestation is acceptable under [=[RP]=] policy.
         - If [=self attestation=] was used, verify that [=self attestation=] is acceptable under [=[RP]=] policy.
         - If [=ECDAA=] was used, verify that the [=identifier of the ECDAA-Issuer public key=],
              returned as the [=attestation trust path=] from the [=verification procedure=],
-             is included in the set of acceptable trust anchors obtained in step 15.
+             is included in the set of acceptable trust anchors obtained in step 17.
         - Otherwise, use the X.509 certificates returned as the [=attestation trust path=] from the [=verification procedure=]
             to verify that the attestation public key correctly chains up to an acceptable root certificate.
 
@@ -3674,13 +3682,12 @@ When registering a new credential, represented by an {{AuthenticatorAttestationR
     fail this [=registration ceremony=], or it MAY decide to accept the registration, e.g. while deleting the older registration.
 
 1. If the attestation statement |attStmt| verified successfully and is found to be trustworthy, then register the new
-    credential with the account that was denoted in the
-    {{PublicKeyCredential/[[Create]](origin, options, sameOriginWithAncestors)/options}}.{{PublicKeyCredentialCreationOptions/user}} passed to
-    {{CredentialsContainer/create()}}, by associating it with the <code>[=credentialId=]</code> and
+    credential with the account that was denoted in <code>|options|.{{PublicKeyCredentialCreationOptions/user}}</code>,
+    by associating it with the <code>[=credentialId=]</code> and
     <code>[=credentialPublicKey=]</code> in the <code>[=attestedCredentialData=]</code> in |authData|, as appropriate for the
     [=[RP]=]'s system.
 
-1. If the attestation statement |attStmt| successfully verified but is not trustworthy per step 16 above, the [=[RP]=] SHOULD fail
+1. If the attestation statement |attStmt| successfully verified but is not trustworthy per step 18 above, the [=[RP]=] SHOULD fail
     the [=registration ceremony=].
 
     NOTE: However, if permitted by policy, the [=[RP]=] MAY register the [=credential ID=] and credential public key but treat the
@@ -3689,7 +3696,7 @@ When registering a new credential, represented by an {{AuthenticatorAttestationR
         See [[FIDOSecRef]] and [[UAFProtocol]] for a more detailed discussion.
 
 Verification of [=attestation objects=] requires that the [=[RP]=] has a trusted method of determining acceptable trust anchors
-in step 15 above. Also, if certificates are being used, the [=[RP]=] MUST have access to certificate status information for the
+in step 17 above. Also, if certificates are being used, the [=[RP]=] MUST have access to certificate status information for the
 intermediate CA certificates. The [=[RP]=] MUST also be able to build the attestation certificate chain if the client did not
 provide this chain in the attestation information.
 
@@ -3699,9 +3706,12 @@ provide this chain in the attestation information.
 When verifying a given {{PublicKeyCredential}} structure (|credential|) and an {{AuthenticationExtensionsClientOutputs}} structure
 |clientExtensionResults|, as part of an [=authentication ceremony=], the [=[RP]=] MUST proceed as follows:
 
-1. If the {{PublicKeyCredentialRequestOptions/allowCredentials}} option was given when this [=authentication ceremony=] was
-    initiated, verify that <code>|credential|.{{Credential/id}}</code> identifies one of the [=public key credentials=] that were
-    listed in {{PublicKeyCredentialRequestOptions/allowCredentials}}.
+1. Let |options| be the {{PublicKeyCredentialRequestOptions}} that was passed
+    as the <code>{{CredentialCreationOptions/publicKey}}</code> option in the {{CredentialsContainer/get()}} call.
+
+1. If <code>|options|.{{PublicKeyCredentialRequestOptions/allowCredentials}}</code> [=list/is not empty=],
+    verify that <code>|credential|.{{Credential/id}}</code> identifies one of the [=public key credentials=]
+    listed in <code>|options|.{{PublicKeyCredentialRequestOptions/allowCredentials}}</code>.
 
 1. Identify the user being authenticated and verify that this user is the owner of the [=public key credential source=]
     |credentialSource| identified by <code>|credential|.{{Credential/id}}</code>:
@@ -3717,8 +3727,9 @@ When verifying a given {{PublicKeyCredential}} structure (|credential|) and an {
             present, and that the user identified by this value is the owner of |credentialSource|.
     </dl>
 
-1. Using |credential|'s {{Credential/id}} attribute (or the corresponding {{PublicKeyCredential/rawId}}, if
-    [=base64url encoding=] is inappropriate for your use case), look up the corresponding credential public key.
+1. Using <code>|credential|.{{Credential/id}}</code> (or <code>|credential|.{{PublicKeyCredential/rawId}}</code>, if
+    [=base64url encoding=] is inappropriate for your use case), look up the corresponding [=credential public key=]
+    and let |credentialPublicKey| be that [=credential public key=].
 
 1. Let |cData|, |authData| and |sig| denote the value of |credential|'s {{PublicKeyCredential/response}}'s
     {{AuthenticatorResponse/clientDataJSON}}, {{AuthenticatorAssertionResponse/authenticatorData}}, and
@@ -3737,14 +3748,21 @@ When verifying a given {{PublicKeyCredential}} structure (|credential|) and an {
 
 1. Verify that the value of <code>|C|.{{CollectedClientData/type}}</code> is the string `webauthn.get`.
 
-1. Verify that the value of <code>|C|.{{CollectedClientData/challenge}}</code> matches the challenge that was sent to the
-    authenticator in the {{PublicKeyCredentialRequestOptions}} passed to the {{CredentialsContainer/get()}} call.
+1. Verify that the value of <code>|C|.{{CollectedClientData/challenge}}</code> equals
+    the base64url encoding of <code>|options|.{{PublicKeyCredentialRequestOptions/challenge}}</code>.
 
 1. Verify that the value of <code>|C|.{{CollectedClientData/origin}}</code> matches the [=[RP]=]'s [=origin=].
 
 1. Verify that the value of <code>|C|.{{CollectedClientData/tokenBinding}}.{{TokenBinding/status}}</code> matches the state of [=Token Binding=] for the TLS connection over which the attestation was obtained. If [=Token Binding=] was used on that TLS connection, also verify that <code>|C|.{{CollectedClientData/tokenBinding}}.{{TokenBinding/id}}</code> matches the [=base64url encoding=] of the [=Token Binding ID=] for the connection.
 
-1. Verify that the <code>[=rpIdHash=]</code> in |authData| is the SHA-256 hash of the [=RP ID=] expected by the [=[RP]=].
+<!-- Note: this next step is actually a top-level step, but bikeshed wanted it indented this much in order to render it as
+a numbered step. If outdented, it (today) is rendered as a bullet in the midst of a numbered list :-/
+-->
+    <li id='rp-op-verifying-assertion-step-rpid-hash'>
+      Verify that the <code>[=rpIdHash=]</code> in |authData| is the SHA-256 hash of the [=RP ID=] expected by the [=[RP]=].
+
+      Note: If using the [=appid=] extension, this step needs some special logic. See [[#sctn-appid-extension]] for details.
+    </li>
 
 1. Verify that the [=User Present=] bit of the <code>[=flags=]</code> in |authData| is set.
 
@@ -3753,12 +3771,11 @@ When verifying a given {{PublicKeyCredential}} structure (|credential|) and an {
 
 1. Verify that the values of the [=client extension outputs=] in |clientExtensionResults| and the [=authenticator extension
     outputs=] in the <code>[=authdataextensions|extensions=]</code> in |authData| are as expected, considering the [=client
-    extension input=] values that were given as the {{PublicKeyCredentialRequestOptions/extensions}} option in the
-    {{CredentialsContainer/get()}} call.
+    extension input=] values that were given in <code>|options|.{{PublicKeyCredentialRequestOptions/extensions}}</code>.
     In particular, any [=extension identifier=] values in the |clientExtensionResults| and
     the <code>[=authdataextensions|extensions=]</code> in |authData|
-    MUST be also be present as [=extension identifier=] values in
-    the {{PublicKeyCredentialCreationOptions/extensions}} member of |options|,
+    MUST also be present as [=extension identifier=] values in
+    the <code>|options|.{{PublicKeyCredentialCreationOptions/extensions}}</code>,
     i.e., no extensions are present that were not requested.
     In the general case, the meaning of "are as expected" is specific to the [=[RP]=] and which extensions are in use.
 
@@ -3767,24 +3784,24 @@ When verifying a given {{PublicKeyCredential}} structure (|credential|) and an {
 
 1. Let |hash| be the result of computing a hash over the |cData| using SHA-256.
 
-1. Using the credential public key looked up in step 3, verify that |sig| is a valid signature over the binary concatenation of
+1. Using |credentialPublicKey|, verify that |sig| is a valid signature over the binary concatenation of
     |authData| and |hash|.
 
     Note: This verification step is compatible with signatures generated by FIDO U2F authenticators. See
     [[#sctn-fido-u2f-sig-format-compat]].
 
 1. If the [=signature counter=] value |authData|.<code>[=signCount=]</code> is nonzero or the value stored
-    in conjunction with |credential|'s {{Credential/id}} attribute
+    in conjunction with <code>|credential|.{{Credential/id}}</code>
     is nonzero, then run the following sub-step:
       - If the [=signature counter=] value |authData|.<code>[=signCount=]</code> is
            <dl class="switch">
               <dt>greater than the [=signature counter=] value stored in conjunction
-                  with |credential|'s {{Credential/id}} attribute.</dt>
+                  with <code>|credential|.{{Credential/id}}</code>.</dt>
               <dd>Update the stored [=signature counter=] value, associated with
-                  |credential|'s {{Credential/id}} attribute, to be the value of
+                  <code>|credential|.{{Credential/id}}</code>, to be the value of
                   |authData|.<code>[=signCount=]</code>.</dd>
               <dt>less than or equal to the [=signature counter=] value stored in conjunction
-                  with |credential|'s {{Credential/id}} attribute.</dt>
+                  with <code>|credential|.{{Credential/id}}</code>.</dt>
               <dd>This is a signal that
                   the authenticator may be cloned, i.e. at least
                   two copies of the [=credential private key=] may exist and are
@@ -4573,13 +4590,34 @@ FIDO APIs use an alternative identifier for [=[RPS]=] called an |AppID|
 that identifier. Without this extension, they would need to be re-registered in
 order to be [=scoped=] to an [=RP ID=].
 
+In addition to setting the {{AuthenticationExtensionsClientInputs/appid}} extension input,
+using this extension requires some additional processing by the [=[RP]=]
+in order to allow users to [=authentication|authenticate=] using their registered U2F credentials:
+
+ 1. List the desired U2F credentials in the {{PublicKeyCredentialRequestOptions/allowCredentials}} option
+     of the {{CredentialsContainer/get()}} method:
+
+     - Set the {{PublicKeyCredentialDescriptor/type}} members to {{PublicKeyCredentialType/public-key}}.
+     - Set the {{PublicKeyCredentialDescriptor/id}} members to the respective U2F key handles of the desired credentials.
+
+     {{PublicKeyCredentialRequestOptions/allowCredentials}} MAY contain a mixture
+     of both WebAuthn [=credential IDs=] and U2F key handles;
+     stating the {{AuthenticationExtensionsClientInputs/appid}} via this extension
+     does not prevent the user from using a WebAuthn-registered credential
+     scoped to the [=RP ID=] stated in {{PublicKeyCredentialRequestOptions/rpId}}.
+
+ 1. When [verifying the assertion](#rp-op-verifying-assertion-step-rpid-hash), expect that the <code>[=rpIdHash=]</code>
+     MAY be the hash of the |AppID| instead of the [=RP ID=].
+
 This extension does not allow FIDO-compatible credentials to be created. Thus,
 credentials created with WebAuthn are not backwards compatible with the FIDO
 JavaScript APIs.
 
 Note: {{AuthenticationExtensionsClientInputs/appid}} should be set to the AppID
 that the [=[RP]=] *previously* used in the legacy FIDO APIs.
-This might not be the same as the result of translating the [=[RP]=]'s WebAuthn [=RP ID=] to the AppID format.
+This might not be the same as the result of translating the [=[RP]=]'s WebAuthn [=RP ID=] to the AppID format,
+e.g., the previously used AppID may have been "https://accounts.example.com"
+but the currently used [=RP ID=] might be "example.com".
 
 : Extension identifier
 :: `appid`
@@ -4620,7 +4658,7 @@ Instead, in step three, the comparison on the host is relaxed to accept hosts on
 [=same site=].
 
 : Client extension output
-:: Returns the value of |output|. If true, the |AppID| was used and thus, when [verifying an assertion](#sctn-verifying-assertion), the [=[RP]=] MUST expect the <code>[=rpIdHash=]</code> to be the hash of the |AppID|, not the [=RP ID=].
+:: Returns the value of |output|. If true, the |AppID| was used and thus, when [verifying the assertion](#rp-op-verifying-assertion-step-rpid-hash), the [=[RP]=] MUST expect the <code>[=rpIdHash=]</code> to be the hash of the |AppID|, not the [=RP ID=].
 
     <xmp class="idl">
     partial dictionary AuthenticationExtensionsClientOutputs {
