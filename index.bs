@@ -4696,19 +4696,52 @@ During a transition from legacy FIDO JavaScript APIs, a [=[RP]=] may have a popu
     </xmp>
 
 : Client extension processing
-:: When [creating a new credential](#sctn-createCredential):
-        1. Just after [establishing the RP ID](#CreateCred-DetermineRpId):
-            1. Let |facetId| be the result of passing the caller's [=origin=] to the FIDO algorithm for [=determining the FacetID of a calling application=].
-            1. Let |appId| be the extension input.
-            1. Pass |facetId| and |appId| to the FIDO algorithm for [=determining if a caller's FacetID is authorized for an AppID=]. If that algorithm rejects |appId| then return a "{{SecurityError}}" {{DOMException}}.
-        1. Just prior to [invoking authenticatorMakeCredential](#CreateCred-InvokeAuthnrMakeCred) perform these steps:
-            1. If |authenticator| does not support the U2F protocol, continue with normal processing.
-            1. For each element of |excludeCredentialDescriptorList|:
-                1. Attempt to obtain a U2F assertion (without user-presence) for the excluded credential using the SHA-256 hash of |appId| as the application parameter.
-                1. If successful, cease normal processing of this authenticator and indicate in a platform-specific manner that the authenticator is inapplicable. For example, this could be in the form of UI, or could involve requesting user-consent from the authenticator and, upon receipt, treating it as if the authenticator had returned {{InvalidStateError}}.
-            1. Continue with normal processing.
+:: When [[#sctn-createCredential|creating a new credential]]:
+        1. Just after [establishing the RP ID](#CreateCred-DetermineRpId) perform these steps:
+            1. Let |facetId| be the result of passing the caller's [=origin=] to the FIDO algorithm
+                for [=determining the FacetID of a calling application=].
+            1. Let |appId| be the value of the extension input {{appidExclude}}
+            1. Pass |facetId| and |appId| to the FIDO algorithm for [=determining if a caller's
+                FacetID is authorized for an AppID=]. If the latter algorithm rejects |appId| then
+                return a "{{SecurityError}}" {{DOMException}} and terminate the
+                [creating a new credential](#sctn-createCredential) algorithm as well as these steps.
 
-Note: In practice, several implementations do not implement steps four and onward of the algorithm for [=determining if a caller's FacetID is authorized for an AppID=]. Instead, in step three, the comparison on the host is relaxed to accept hosts on the [=same site=].
+                Note: In practice, several implementations do not implement steps four and onward of the algorithm for [=determining if a caller's FacetID is authorized for an AppID=]. Instead, in step three, the comparison on the host is relaxed to accept hosts on the [=same site=].
+
+            1. Otherwise, continue with normal processing.
+
+        1. Just prior to [invoking authenticatorMakeCredential](#CreateCred-InvokeAuthnrMakeCred) perform these steps:
+            1. If |authenticator| supports the U2F protocol [[!FIDO-U2F-Message-Formats]], then [=list/for each=]
+                [credential descriptor](#dictdef-publickeycredentialdescriptor) |C| in |excludeCredentialDescriptorList|:
+                1. Check whether |C| was created using U2F on |authenticator| by sending a
+                    `U2F_AUTHENTICATE` message to |authenticator|
+                    whose "five parts" are set to the following values:
+
+                        :   |control byte|
+                        ::  `0x07` ("check-only")
+
+                        :   <var ignore>challenge parameter</var>
+                        ::  32 random bytes
+
+                        :   <var ignore>application parameter</var>
+                        ::  SHA-256 hash of |appId|
+
+                        :   <var ignore>key handle length</var>
+                        ::  Length of <code>|C|.{{PublicKeyCredentialDescriptor/id}}</code> (in bytes)
+
+                        :   <var ignore>key handle</var>
+                        ::  <code>|C|.{{PublicKeyCredentialDescriptor/id}}</code>'s value, i.e., the [=credential id=].
+
+                1. If |authenticator| responds with `message:error:test-of-user-presence-required` (i.e., success):
+                    cease normal processing of this |authenticator| and indicate in a platform-specific manner
+                    that the authenticator is inapplicable. For example, this could be in the form of UI, or
+                    could involve requesting [=user consent=] from |authenticator| and, upon receipt, treating
+                    it as if the authenticator had returned {{InvalidStateError}}. Requesting [=user consent=]
+                    can be accomplished by sending another `U2F_AUTHENTICATE` message to |authenticator| as
+                    above except for setting |control byte| to `0x03` ("enforce-user-presence-and-sign"),
+                    and ignoring the response.
+
+            1. Continue with normal processing.
 
 : Client extension output
 :: None.
