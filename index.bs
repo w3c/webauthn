@@ -113,6 +113,7 @@ spec: ECMAScript; urlPrefix: https://tc39.github.io/ecma262/#
         url: sec-object-internal-methods-and-internal-slots
             text: internal method
             text: internal slot
+        text: own property; url: sec-own-property
 
 spec: RFC8152; urlPrefix: https://tools.ietf.org/html/rfc8152
     type: dfn
@@ -235,6 +236,7 @@ spec: webdriver; urlPrefix: https://w3c.github.io/webdriver/webdriver-spec.html#
         text: extension command; url: dfn-extension-command
         text: extension command name; url: dfn-extension-command-name
         text: getting a property; url: dfn-getting-properties
+        text: set a property; url: dfn-set-a-property
         text: prefix; url: dfn-url-prefix
         text: invalid argument; url: dfn-invalid-argument
         text: local end; url: dfn-local-end
@@ -5520,33 +5522,17 @@ Each stored [=virtual authenticator=] has the following properties:
 : |hasUserVerification|
 :: If set to [TRUE], the authenticator supports [=user verification=].
 : |isUserPresent|
-:: Determines the result of a [=test of user presence=] performed on the [=Virtual Authenticator=]. If set to `true`,
-    a [=test of user presence=] will always succeed. If set to `false`, it will fail.
+:: Determines the result of a [=test of user presence=] performed on the [=Virtual Authenticator=]. If set to [TRUE],
+    a [=test of user presence=] will always succeed. If set to [FALSE], it will fail.
 : |isUserVerified|
-:: Determines the result of [=User Verification=] performed on the [=Virtual Authenticator=]. If set to `true`,
-    [=User Verification=] will always succeed. If set to `false`, it will fail. This property has no effect if
-    |hasUserVerification| is set to `false`.
+:: Determines the result of [=User Verification=] performed on the [=Virtual Authenticator=]. If set to [TRUE],
+    [=User Verification=] will always succeed. If set to [FALSE], it will fail. This property has no effect if
+    |hasUserVerification| is set to [FALSE].
 
 ## <dfn>Add Virtual Authenticator</dfn> ## {#sctn-automation-add-virtual-authenticator}
 
 The [=Add Virtual Authenticator=] [=extension command=] creates a software [=Virtual Authenticator=]. The
 WebDriver [=extension command=] is defined as follows:
-
-    <xmp class="idl">
-    enum AuthenticatorProtocol {
-        "u2f",
-        "ctap2",
-    };
-
-    dictionary AddVirtualAuthenticatorParameters {
-        required AuthenticatorProtocol protocol;
-        required AuthenticatorTransport transport;
-        boolean hasResidentKey = false;
-        boolean hasUserVerification = false;
-        boolean isUserPresent = true;
-        boolean isUserVerified = true;
-    };
-    </xmp>
 
 <figure id="table-addVirtualAuthenticator" class="table">
     <table class="data">
@@ -5565,20 +5551,83 @@ WebDriver [=extension command=] is defined as follows:
     </table>
 </figure>
 
+The <dfn>Authenticator Configuration</dfn> is a JSON [=Object=] containing the following parameters:
+
+<figure id="table-addVirtualAuthenticator" class="table">
+    <table class="data">
+        <thead>
+            <tr>
+                <th>Key</th>
+                <th>Value Type</th>
+                <th>Valid Values</th>
+                <th>Default</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td>|protocol|</td>
+                <td>string</td>
+                <td>`"u2f"`, `"ctap2"`</td>
+                <td>None</td>
+            </tr>
+            <tr>
+                <td>|transport|</td>
+                <td>string</td>
+                <td>{{AuthenticatorTransport}} values</td>
+                <td>None</td>
+            </tr>
+            <tr>
+                <td>|hasResidentKey|</td>
+                <td>boolean</td>
+                <td>[TRUE], [FALSE]</td>
+                <td>[FALSE]</td>
+            </tr>
+            <tr>
+                <td>|hasUserVerification|</td>
+                <td>boolean</td>
+                <td>[TRUE], [FALSE]</td>
+                <td>[FALSE]</td>
+            </tr>
+            <tr>
+                <td>|isUserPresent|</td>
+                <td>boolean</td>
+                <td>[TRUE], [FALSE]</td>
+                <td>[TRUE]</td>
+            </tr>
+            <tr>
+                <td>|isUserVerified|</td>
+                <td>boolean</td>
+                <td>[TRUE], [FALSE]</td>
+                <td>[TRUE]</td>
+            </tr>
+        </tbody>
+    </table>
+</figure>
+
 The [=remote end steps=] are:
 
  1. If |parameters| is not a JSON [=Object=], return a [=WebDriver error=] with [=WebDriver error code=]
      [=invalid argument=].
- 1. Let |protocol| be the result of [=trying=] to get the |parameter|'s {{AddVirtualAuthenticatorParameters/protocol}}
-    property.
- 1. If |protocol| is null, return a [=WebDriver error=] with [=WebDriver error code=] [=invalid argument=].
- 1. Let |transport| be the result of [=trying=] to get the |parameter|'s {{AddVirtualAuthenticatorParameters/transport}}
-    property.
- 1. If |transport| is null, return a [=WebDriver error=] with [=WebDriver error code=] [=invalid argument=].
- 1. Generate an arbitrary and unique string |authenticatorId|.
- 1. Create a new [=Virtual Authenticator=] with the fields |authenticatorId|, |protocol|, |transport|,
-    |hasResidentKey|, |hasUserVerification|, |isUserPresent|, and |isUserVerified|.
- 1. Store the authenticator in the [=Virtual Authenticator Database=].
+ 1. Let |authenticator| be a new [=Virtual Authenticator=].
+ 1. For each enumerable [=own property=] in |parameters|:
+    1. Let |key| be the name of the property.
+    1. Let |value| be the result of [=getting a property=] named |name| from |parameter|.
+    1. If there is no matching `key` for |key| in the [=Authenticator Configuration=], return a [=WebDriver error=] with
+        [=WebDriver error code=] [=invalid argument=].
+    1. If |value| is not one of the `valid values` for that |key|, return a [=WebDriver error=] with [=WebDriver error code=]
+        [=invalid argument=].
+    1. [=Set a property=] |key| to |value| on |authenticator|.
+ 1. For each property in [=Authenticator Configuration=] with a default defined:
+    1. If `key` is not a defined property of |authenticator|, [=set a property=] `key` to `default` on |authenticator|.
+ 1. For each property in [=Authenticator Configuration=]:
+    1. If `key` is not a defined property of |authenticator|, return a [=WebDriver error=] with [=WebDriver error code=]
+        [=invalid argument=].
+ 1. Generate an unique string |authenticatorId| out of Unreserved Characters [[RFC3986]].
+    <div class="note">
+        Note: This string can be a UUID [[RFC4122]].
+    </div>
+ 1. [=Set a property=] `authenticatorId` to |authenticatorId| on |authenticator|.
+ 1. Store |authenticator| in the [=Virtual Authenticator Database=].
  1. Return [=success=] with data |authenticatorId|.
 
 ## <dfn>Remove Virtual Authenticator</dfn> ## {#sctn-automation-remove-virtual-authenticator}
