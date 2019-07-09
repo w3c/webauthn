@@ -5512,9 +5512,8 @@ Each stored [=virtual authenticator=] has the following properties:
 
 : <dfn>authenticatorId</dfn>
 :: An non-null string made of up to 48 Unreserved Characters [[RFC3986]] that uniquely identifies the [=Virtual Authenticator=].
-    <div class="note">
-        Note: This string can be a UUID [[RFC4122]].
-    </div>
+
+    Note: This string can be a UUID [[RFC4122]].
 : |protocol|
 :: The protocol the [=Virtual Authenticator=] speaks: either `ctap2` or `ctap1-u2f` [[FIDO-CTAP]].
 : |transport|
@@ -5529,8 +5528,9 @@ Each stored [=virtual authenticator=] has the following properties:
     a [=test of user presence=] will always succeed. If set to [FALSE], it will fail.
 : |isUserVerified|
 :: Determines the result of [=User Verification=] performed on the [=Virtual Authenticator=]. If set to [TRUE],
-    [=User Verification=] will always succeed. If set to [FALSE], it will fail. This property has no effect if
-    |hasUserVerification| is set to [FALSE].
+    [=User Verification=] will always succeed. If set to [FALSE], it will fail.
+
+    Note: This property has no effect if |hasUserVerification| is set to [FALSE].
 
 ## <dfn>Add Virtual Authenticator</dfn> ## {#sctn-automation-add-virtual-authenticator}
 
@@ -5611,11 +5611,12 @@ The [=remote end steps=] are:
 
  1. If |parameters| is not a JSON [=Object=], return a [=WebDriver error=] with [=WebDriver error code=]
      [=invalid argument=].
+
      Note: |parameters| is a [=Authenticator Configuration=] object.
  1. Let |authenticator| be a new [=Virtual Authenticator=].
  1. For each enumerable [=own property=] in |parameters|:
     1. Let |key| be the name of the property.
-    1. Let |value| be the result of [=getting a property=] named |key| from |parameter|.
+    1. Let |value| be the result of [=getting a property=] named |key| from |parameters|.
     1. If there is no matching `key` for |key| in |parameters|, return a [=WebDriver error=] with
         [=WebDriver error code=] [=invalid argument=].
     1. If |value| is not one of the `valid values` for that |key|, return a [=WebDriver error=] with [=WebDriver error code=]
@@ -5626,7 +5627,7 @@ The [=remote end steps=] are:
  1. For each property in [=Authenticator Configuration=]:
     1. If `key` is not a defined property of |authenticator|, return a [=WebDriver error=] with [=WebDriver error code=]
         [=invalid argument=].
- 1. Generate an valid unique [=authenticatorId=].
+ 1. Generate a valid unique [=authenticatorId=].
  1. [=Set a property=] `authenticatorId` to |authenticatorId| on |authenticator|.
  1. Store |authenticator| in the [=Virtual Authenticator Database=].
  1. Return [=success=] with data |authenticatorId|.
@@ -5718,11 +5719,11 @@ The [=remote end steps=] are:
  1. If |parameters| is not a JSON [=Object=], return a [=WebDriver error=] with [=WebDriver error code=]
      [=invalid argument=].
      Note: |parameters| is a [=Credential Parameters=] object.
- 1. Let |credentialId| be the result of decoding [=Base64url Encoding=] on the |parameter|'s |credentialId| property.
+ 1. Let |credentialId| be the result of decoding [=Base64url Encoding=] on the |parameters|' |credentialId| property.
  1. If |credentialId| is failure, return a [=WebDriver error=] with [=WebDriver error code=] [=invalid argument=].
- 1. Let |rpId| be the the |parameter|'s |rpId| property.
+ 1. Let |rpId| be the the |parameters|'' |rpId| property.
  1. If |rpId| is not a valid [=RP ID=], return a [=WebDriver error=] with [=WebDriver error code=] [=invalid argument=].
- 1. Let |privateKey| be the result of decoding [=Base64url Encoding=] on the |parameter|'s |privateKey| property.
+ 1. Let |privateKey| be the result of decoding [=Base64url Encoding=] on the |parameters|' |privateKey| property.
  1. If |privateKey| is failure, return a [=WebDriver error=] with [=WebDriver error code=] [=invalid argument=].
  1. If |privateKey| is not a validly-encoded asymmetric key package containing a single private key per [[RFC5958]],
      return a [=WebDriver error=] with [=WebDriver error code=] [=invalid argument=].
@@ -5739,8 +5740,8 @@ The [=remote end steps=] are:
     :: |rpId|
     : [=public key credential source/userHandle=]
     :: `null`
- 1. Let |signCount| be the |parameter|'s |signCount| parameter or `0` if |signCount| is `null`.
- 1. Associate a [=signature counter=] |counter| to the |credential| with a starting value equal to |signCount|.
+ 1. Associate a [=signature counter=] |counter| to the |credential| with a starting value equal to the |parameters|'
+     |signCount| or `0` if |signCount| is `null`.
  1. Store the |credential| and |counter| in the database of the [=Virtual Authenticator=] identified by |authenticatorId|.
  1. Return [=success=].
 
@@ -5771,13 +5772,15 @@ The [=remote end steps=] are:
 
  1. If |authenticatorId| does not match any [=Virtual Authenticator=] stored in the [=Virtual Authenticator
      Database=], return a [=WebDriver error=] with [=WebDriver error code=] [=invalid argument=].
- 1. For every [=Credential Key Pair=], construct a corresponding {{CredentialParams}}.
+ 1. Let |credentialsArray| be an empty array.
+ 1. For each [=Public Key Credential Source=] |credential|, managed by the authenticator identified by |authenticatorId|,
+    construct a corresponding [=Credential Parameters=] [=Object=] and add it to |credentialsArray|.
  1. Return [=success=] with data containing |credentialsArray|.
 
 ## <dfn>Remove Credentials</dfn> ## {#sctn-automation-remove-credentials}
 
-The [=Remove Credentials=] WebDriver [=extension command=] removes all [=Credential Key Pairs=] stored on a [=Virtual Authenticator=].
-It is defined as follows:
+The [=Remove Credentials=] WebDriver [=extension command=] removes all [=Public Key Credential Sources=] stored on a
+[=Virtual Authenticator=]. It is defined as follows:
 
 <figure id="table-removeCredentials" class="table">
     <table class="data">
@@ -5800,19 +5803,13 @@ The [=remote end steps=] are:
 
  1. If |authenticatorId| does not match any [=Virtual Authenticator=] stored in the [=Virtual Authenticator
      Database=], return a [=WebDriver error=] with [=WebDriver error code=] [=invalid argument=].
- 1. Remove all [=Credential Key Pairs=] from the [=Virtual Authenticator=]'s database.
+ 1. Remove all [=Public Key Credential Sources=] managed by the [=Virtual Authenticator=] identified by |authenticatorId|.
  1. Return [=success=].
 
 ## <dfn>Set User Verified</dfn> ## {#sctn-automation-set-user-verified}
 
 The [=Set User Verified=] [=extension command=] sets the |isUserVerified| property on the [=Virtual Authenticator=]. It
 is defined as follows:
-
-    <xmp class="idl">
-    dictionary UserVerifiedParams {
-        required boolean isUserVerified;
-    };
-    </xmp>
 
 <figure id="table-setUserVerified" class="table">
     <table class="data">
@@ -5833,9 +5830,14 @@ is defined as follows:
 
 The [=remote end steps=] are:
 
+ 1. If |parameters| is not a JSON [=Object=], return a [=WebDriver error=] with [=WebDriver error code=]
+     [=invalid argument=].
  1. If |authenticatorId| does not match any [=Virtual Authenticator=] stored in the [=Virtual Authenticator
      Database=], return a [=WebDriver error=] with [=WebDriver error code=] [=invalid argument=].
- 1. Set the [=Virtual Authenticator=]'s |isUserVerified| flag to {{UserVerifiedParams/isUserVerified}}.
+ 1. If |isUserVerified| is not a defined property of |parameters|, return a [=WebDriver error=] with [=WebDriver error code=]
+     [=invalid argument=].
+ 1. Let |authenticator| be the [=Virtual Authenticator=] identified by |authenticatorId|.
+ 1. Set the |authenticator|'s |isUserVerified| property to the |parameters|' |isUserVerified| property.
  1. Return [=success=].
 
 # IANA Considerations # {#sctn-IANA}
