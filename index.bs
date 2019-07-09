@@ -5665,15 +5665,6 @@ The [=remote end steps=] are:
 The [=Add Credential=] WebDriver [=extension command=] injects a [=Credential Key Pair=] and associated [=Authenticator Data=]
 into an existing [=Virtual Authenticator=]. It is defined as follows:
 
-    <xmp class="idl">
-    dictionary CredentialParams {
-        required USVString credentialId;
-        required USVString rpIdHash;
-        required USVString privateKey;
-        unsigned long signCount = 0;
-    };
-    </xmp>
-
 <figure id="table-addCredential" class="table">
     <table class="data">
         <thead>
@@ -5691,34 +5682,72 @@ into an existing [=Virtual Authenticator=]. It is defined as follows:
     </table>
 </figure>
 
+The <dfn>Credential Parameters</dfn> is a JSON [=Object=] passed to the [=remote end steps=] as |parameters|. It contains the following |key| and |value| pairs:
+
+<figure id="table-credentialParameters" class="table">
+    <table class="data">
+        <thead>
+            <tr>
+                <th>Key</th>
+                <th>Value Type</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td>|credentialId|</td>
+                <td>string</td>
+            </tr>
+            <tr>
+                <td>|rpId|</td>
+                <td>string</td>
+            </tr>
+            <tr>
+                <td>|privateKey|</td>
+                <td>string</td>
+            </tr>
+            <tr>
+                <td>|signCount|</td>
+                <td>number</td>
+            </tr>
+        </tbody>
+    </table>
+</figure>
+
 The [=remote end steps=] are:
 
  1. If |parameters| is not a JSON [=Object=], return a [=WebDriver error=] with [=WebDriver error code=]
      [=invalid argument=].
- 1. Let |credentialId| be the result of [=trying=] to decode [=Base64url Encoding=] on the |parameter|'s
-     {{CredentialParams/credentialId}} property.
+     Note: |parameters| is a [=Credential Parameters=] object.
+ 1. Let |credentialId| be the result of decoding [=Base64url Encoding=] on the |parameter|'s |credentialId| property.
  1. If |credentialId| is failure, return a [=WebDriver error=] with [=WebDriver error code=] [=invalid argument=].
- 1. Let |rpIdHash| be the result of [=trying=] to decode [=Base64url Encoding=] on the |parameter|'s
-     {{CredentialParams/rpIdHash}} property.
- 1. If |rpIdHash| is failure, return a [=WebDriver error=] with [=WebDriver error code=] [=invalid argument=].
- 1. If |rpIdHash| is not a valid [=rpIdHash=], return a [=WebDriver error=] with [=WebDriver error code=]
-    [=invalid argument=].
- 1. Let |privateKey| be the result of [=trying=] to decode [=Base64url Encoding=] on the |parameter|'s
-     {{CredentialParams/privateKey}} property.
+ 1. Let |rpId| be the the |parameter|'s |rpId| property.
+ 1. If |rpId| is not a valid [=RP ID=], return a [=WebDriver error=] with [=WebDriver error code=] [=invalid argument=].
+ 1. Let |privateKey| be the result of decoding [=Base64url Encoding=] on the |parameter|'s |privateKey| property.
  1. If |privateKey| is failure, return a [=WebDriver error=] with [=WebDriver error code=] [=invalid argument=].
+ 1. If |privateKey| is not a validly-encoded asymmetric key package containing a single private key per [[RFC5958]],
+     return a [=WebDriver error=] with [=WebDriver error code=] [=invalid argument=].
  1. If |authenticatorId| does not match any [=Virtual Authenticator=] stored in the [=Virtual Authenticator
      Database=], return a [=WebDriver error=] with [=WebDriver error code=] [=invalid argument=].
- 1. If |privateKey| is not a validly-encoded asymmetric key package containing a single private key per [[RFC5958]], return a [=WebDriver error=] with
-     [=WebDriver error code=] [=invalid argument=].
- 1. Create a [=Credential Key Pair=] from |privateKey| identified by |credentialId| and an [=Authenticator Data=]
-     structure from |rpIdHash| and |signCount|, and store them in the database of the [=Virtual Authenticator=]
-     identified by |authenticatorId|.
+ 1. Let |credential| be a new [=Public Key Credential Source=] whose items are:
+    : [=public key credential source/type=]
+    :: {{public-key}}
+    : [=public key credential source/id=]
+    :: |credentialId|
+    : [=public key credential source/privateKey=]
+    :: |privateKey|
+    : [=public key credential source/rpId=]
+    :: |rpId|
+    : [=public key credential source/userHandle=]
+    :: `null`
+ 1. Let |signCount| be the |parameter|'s |signCount| parameter or `0` if |signCount| is `null`.
+ 1. Associate a [=signature counter=] |counter| to the |credential| with a starting value equal to |signCount|.
+ 1. Store the |credential| and |counter| in the database of the [=Virtual Authenticator=] identified by |authenticatorId|.
  1. Return [=success=].
 
 ## <dfn>Get Credentials</dfn> ## {#sctn-automation-get-credentials}
 
-The [=Get Credentials=] WebDriver [=extension command=] returns one {{CredentialParams}} for every [=Credential Key Pair=]
-and associated [=Authenticator Data=] stored in a [=Virtual Authenticator=], regardless of whether they were
+The [=Get Credentials=] WebDriver [=extension command=] returns one [=Credential Parameters=] object for every
+[=Public Key Credential Source=] stored in a [=Virtual Authenticator=], regardless of whether they were
 stored using [=Add Credential=] or {{CredentialsContainer/create()|navigator.credentials.create()}}. It is defined as follows:
 
 <figure id="table-getCredentials" class="table">
