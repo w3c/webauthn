@@ -155,10 +155,10 @@ spec: credential-management-1; urlPrefix: https://w3c.github.io/webappsec-creden
         text: CredentialRequestOptions; url: dictdef-credentialrequestoptions
     for: Credential
         type: method
-            text: [[CollectFromCredentialStore]](origin, options, sameOriginWithAncestors)
-            text: [[Create]](origin, options, sameOriginWithAncestors)
-            text: [[DiscoverFromExternalSource]](origin, options, sameOriginWithAncestors)
-            text: [[Store]](credential, sameOriginWithAncestors)
+            text: [[CollectFromCredentialStore]](origin, options, crossOrigin)
+            text: [[Create]](origin, options, crossOrigin)
+            text: [[DiscoverFromExternalSource]](origin, options, crossOrigin)
+            text: [[Store]](credential, crossOrigin)
     for: CredentialsContainer
         type: method
             text: create(); url: dom-credentialscontainer-create
@@ -888,7 +888,7 @@ The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "S
 
 : <dfn>Client</dfn>
 : <dfn>[WAC]</dfn>
-:: Also referred to herein as simply a [=client=]. See also [=Conforming User Agent=]. A [=[WAC]=] is an intermediary entity typically implemented in the user agent (in whole, or in part). Conceptually, it underlies the [=Web Authentication API=] and embodies the implementation of the {{PublicKeyCredential/[[Create]](origin, options, sameOriginWithAncestors)}} and {{PublicKeyCredential/[[DiscoverFromExternalSource]](origin, options, sameOriginWithAncestors)}} [=internal methods=]. It is responsible for both marshalling the inputs for the underlying [=authenticator operations=], and for returning the results of the latter operations to the [=Web Authentication API=]'s callers.
+:: Also referred to herein as simply a [=client=]. See also [=Conforming User Agent=]. A [=[WAC]=] is an intermediary entity typically implemented in the user agent (in whole, or in part). Conceptually, it underlies the [=Web Authentication API=] and embodies the implementation of the {{PublicKeyCredential/[[Create]](origin, options, crossOrigin)}} and {{PublicKeyCredential/[[DiscoverFromExternalSource]](origin, options, crossOrigin)}} [=internal methods=]. It is responsible for both marshalling the inputs for the underlying [=authenticator operations=], and for returning the results of the latter operations to the [=Web Authentication API=]'s callers.
 
     The [=[WAC]=] runs on, and is distinct from, a [=[WAC] Device=].
 
@@ -1272,9 +1272,9 @@ that are returned to the caller when a new credential is created, or a new asser
 </dl>
 
 {{PublicKeyCredential}}'s [=interface object=] inherits {{Credential}}'s implementation of
-{{Credential/[[CollectFromCredentialStore]](origin, options, sameOriginWithAncestors)}}, and defines its own
-implementation of {{PublicKeyCredential/[[Create]](origin, options, sameOriginWithAncestors)}}, {{PublicKeyCredential/[[DiscoverFromExternalSource]](origin, options, sameOriginWithAncestors)}}, and
-{{Credential/[[Store]](credential, sameOriginWithAncestors)}}.
+{{Credential/[[CollectFromCredentialStore]](origin, options, crossOrigin)}}, and defines its own
+implementation of {{PublicKeyCredential/[[Create]](origin, options, crossOrigin)}}, {{PublicKeyCredential/[[DiscoverFromExternalSource]](origin, options, crossOrigin)}}, and
+{{Credential/[[Store]](credential, crossOrigin)}}.
 
 
 ### `CredentialCreationOptions` Dictionary Extension ### {#sctn-credentialcreationoptions-extension}
@@ -1300,11 +1300,11 @@ To support obtaining assertions via {{CredentialsContainer/get()|navigator.crede
 </xmp>
 
 
-### Create a New Credential - PublicKeyCredential's `[[Create]](origin, options, sameOriginWithAncestors)` Method ### {#sctn-createCredential}
+### Create a New Credential - PublicKeyCredential's `[[Create]](origin, options, crossOrigin)` Method ### {#sctn-createCredential}
 
-<div link-for-hint="PublicKeyCredential/[[Create]](origin, options, sameOriginWithAncestors)">
+<div link-for-hint="PublicKeyCredential/[[Create]](origin, options, crossOrigin)">
 {{PublicKeyCredential}}'s [=interface object=]'s implementation of the <dfn for="PublicKeyCredential" method>\[[Create]](origin,
-options, sameOriginWithAncestors)</dfn> [=internal method=] [[!CREDENTIAL-MANAGEMENT-1]] allows
+options, crossOrigin)</dfn> [=internal method=] [[!CREDENTIAL-MANAGEMENT-1]] allows
 [=[WRP]=] scripts to call {{CredentialsContainer/create()|navigator.credentials.create()}} to request the creation of a new
 [=public key credential source=], [=bound credential|bound=] to an [=authenticator=]. This
 {{CredentialsContainer/create()|navigator.credentials.create()}} operation can be aborted by leveraging the {{AbortController}};
@@ -1313,7 +1313,7 @@ see [[dom#abortcontroller-api-integration]] for detailed instructions.
 
 This [=internal method=] accepts three arguments:
 
-<dl dfn-type="argument" dfn-for="PublicKeyCredential/[[Create]](origin, options, sameOriginWithAncestors)">
+<dl dfn-type="argument" dfn-for="PublicKeyCredential/[[Create]](origin, options, crossOrigin)">
 
     :   <dfn>origin</dfn>
     ::  This argument is the [=relevant settings object=]'s [=environment settings object/origin=], as determined by the
@@ -1324,9 +1324,13 @@ This [=internal method=] accepts three arguments:
         <code>|options|.{{CredentialCreationOptions/publicKey}}</code> member contains a {{PublicKeyCredentialCreationOptions}}
         object specifying the desired attributes of the to-be-created [=public key credential=].
 
-    :   <dfn>sameOriginWithAncestors</dfn>
-    ::  This argument is a Boolean value which is [TRUE] if and only if the caller's [=environment settings object=] is
-        [=same-origin with its ancestors=].
+    :   <dfn>crossOrigin</dfn>
+    ::  This argument is a Boolean value which is [TRUE] if this [=internal method=] is being
+        invoked from a cross-origin [=browsing context=].
+
+        Note: Invocation of this [=internal method=] indicates that it was allowed by
+        [=feature policy=], which is evauated at the [[!CREDENTIAL-MANAGEMENT-1]] level.
+        See [[#sctn-feature-policy]].
 
 </dl>
 
@@ -1341,18 +1345,6 @@ When this method is invoked, the user agent MUST execute the following algorithm
 
 1. Assert: <code>|options|.{{CredentialCreationOptions/publicKey}}</code> is [=present=].
 
-1. If <var ignore>sameOriginWithAncestors</var> is [FALSE], return a "{{NotAllowedError}}" {{DOMException}}.
-
-    Note: This "sameOriginWithAncestors" restriction aims to address the concern raised in the
-    [[CREDENTIAL-MANAGEMENT-1#security-origin-confusion|Origin Confusion]] section of [[!CREDENTIAL-MANAGEMENT-1]],
-    while allowing [=[RP]=] script access to Web Authentication functionality, e.g., when running in
-    a [=secure context=] framed document that is [=same-origin with its ancestors=].
-    However, in the future, this specification (in conjunction with
-    [[!CREDENTIAL-MANAGEMENT-1]]) may provide [=[RPS]=] with more fine-grained control--e.g., ranging
-    from allowing only top-level access to Web Authentication functionality,
-    to allowing cross-origin embedded cases--by leveraging
-    [[!Feature-Policy]] once the latter specification becomes stably implemented in user agents.
-
 1. Let |options| be the value of <code>|options|.{{CredentialCreationOptions/publicKey}}</code>.
 
 1. If the {{PublicKeyCredentialCreationOptions/timeout}} member of |options| is [=present=], check if its value lies within a
@@ -1365,7 +1357,7 @@ When this method is invoked, the user agent MUST execute the following algorithm
 
         Note: The user agent should take cognitive guidelines into considerations regarding timeout for users with special needs.
 
-1. Let |callerOrigin| be {{PublicKeyCredential/[[Create]](origin, options, sameOriginWithAncestors)/origin}}. If |callerOrigin| is an [=opaque origin=], return a {{DOMException}} whose name is
+1. Let |callerOrigin| be {{PublicKeyCredential/[[Create]](origin, options, crossOrigin)/origin}}. If |callerOrigin| is an [=opaque origin=], return a {{DOMException}} whose name is
     "{{NotAllowedError}}", and terminate this algorithm.
 
 1. Let |effectiveDomain| be the |callerOrigin|'s [=effective domain=].
@@ -1439,6 +1431,9 @@ a numbered step. If outdented, it (today) is rendered as a bullet in the midst o
     :: The [=base64url encoding=] of |options|.{{PublicKeyCredentialCreationOptions/challenge}}.
     : {{CollectedClientData/origin}}
     :: The [=ascii serialization of an origin|serialization of=] |callerOrigin|.
+    : {{CollectedClientData/crossOrigin}}
+    :: The value of the {{PublicKeyCredential/[[Create]](origin, options, crossOrigin)/crossOrigin}}
+        argument passed to this [=internal method=].
     : {{CollectedClientData/tokenBinding}}
     :: The status of [=Token Binding=] between the client and the |callerOrigin|, as well as the [=Token Binding ID=] associated with |callerOrigin|, if one is available.
 
@@ -1727,20 +1722,20 @@ exactly one of those, it then calls <code>PublicKeyCredential.{{PublicKeyCredent
 the user select a [=credential source=].
 
 Since this specification requires an [=authorization gesture=] to create any [=credentials=], the <code>PublicKeyCredential.<dfn
-for="PublicKeyCredential" method>\[[CollectFromCredentialStore]](origin, options, sameOriginWithAncestors)</dfn></code> [=internal method=] inherits the default behavior of
+for="PublicKeyCredential" method>\[[CollectFromCredentialStore]](origin, options, crossOrigin)</dfn></code> [=internal method=] inherits the default behavior of
 {{Credential/[[CollectFromCredentialStore]]()|Credential.[[CollectFromCredentialStore]]()}}, of returning an empty set.
 
 This
 {{CredentialsContainer/get()|navigator.credentials.get()}} operation can be aborted by leveraging the {{AbortController}};
 see [[dom#abortcontroller-api-integration]] for detailed instructions.
 
-#### PublicKeyCredential's <code><dfn for="PublicKeyCredential" method>\[[DiscoverFromExternalSource]](origin, options, sameOriginWithAncestors)</dfn></code> Method #### {#sctn-discover-from-external-source}
+#### PublicKeyCredential's <code><dfn for="PublicKeyCredential" method>\[[DiscoverFromExternalSource]](origin, options, crossOrigin)</dfn></code> Method #### {#sctn-discover-from-external-source}
 
-<div link-for-hint="PublicKeyCredential/[[DiscoverFromExternalSource]](origin, options, sameOriginWithAncestors)">
+<div link-for-hint="PublicKeyCredential/[[DiscoverFromExternalSource]](origin, options, crossOrigin)">
 
 This [=internal method=] accepts three arguments:
 
-<dl dfn-type="argument" dfn-for="PublicKeyCredential/[[DiscoverFromExternalSource]](origin, options, sameOriginWithAncestors)">
+<dl dfn-type="argument" dfn-for="PublicKeyCredential/[[DiscoverFromExternalSource]](origin, options, crossOrigin)">
 
     :   <dfn>origin</dfn>
     ::  This argument is the [=relevant settings object=]'s [=environment settings object/origin=], as determined by the
@@ -1751,9 +1746,13 @@ This [=internal method=] accepts three arguments:
         <code>|options|.{{CredentialRequestOptions/publicKey}}</code> member contains a {{PublicKeyCredentialRequestOptions}}
         object specifying the desired attributes of the [=public key credential=] to discover.
 
-    :   <dfn>sameOriginWithAncestors</dfn>
-    ::  This argument is a Boolean value which is [TRUE] if and only if the caller's [=environment settings object=] is
-        [=same-origin with its ancestors=].
+    :   <dfn>crossOrigin</dfn>
+    ::  This argument is a Boolean value which is [TRUE] if this [=internal method=] is being
+        invoked from a cross-origin [=browsing context=].
+
+        Note: Invocation of this [=internal method=] indicates that it was allowed by
+        [=feature policy=], which is evauated at the [[!CREDENTIAL-MANAGEMENT-1]] level.
+        See [[#sctn-feature-policy]].
 </dl>
 
 Note: <strong>This algorithm is synchronous:</strong> the {{Promise}} resolution/rejection is handled by
@@ -1767,18 +1766,6 @@ When this method is invoked, the user agent MUST execute the following algorithm
 
 1. Assert: <code>|options|.{{CredentialRequestOptions/publicKey}}</code> is [=present=].
 
-1. If <var ignore>sameOriginWithAncestors</var> is [FALSE], return a "{{NotAllowedError}}" {{DOMException}}.
-
-    Note: This "sameOriginWithAncestors" restriction aims to address the concern raised in the
-    [[CREDENTIAL-MANAGEMENT-1#security-origin-confusion|Origin Confusion]] section of [[!CREDENTIAL-MANAGEMENT-1]],
-    while allowing [=[RP]=] script access to Web Authentication functionality, e.g., when running in
-    a [=secure context=] framed document that is [=same-origin with its ancestors=].
-    However, in the future, this specification (in conjunction with
-    [[!CREDENTIAL-MANAGEMENT-1]]) may provide [=[RPS]=] with more fine-grained control--e.g., ranging
-    from allowing only top-level access to Web Authentication functionality,
-    to allowing cross-origin embedded cases--by leveraging
-    [[!Feature-Policy]] once the latter specification becomes stably implemented in user agents.
-
 1. Let |options| be the value of <code>|options|.{{CredentialRequestOptions/publicKey}}</code>.
 
 1. If the {{PublicKeyCredentialRequestOptions/timeout}} member of |options| is [=present=], check if its value lies
@@ -1791,7 +1778,7 @@ When this method is invoked, the user agent MUST execute the following algorithm
 
         Note: The user agent should take cognitive guidelines into considerations regarding timeout for users with special needs.
 
-1. Let |callerOrigin| be {{PublicKeyCredential/[[DiscoverFromExternalSource]](origin, options, sameOriginWithAncestors)/origin}}. If |callerOrigin| is
+1. Let |callerOrigin| be {{PublicKeyCredential/[[DiscoverFromExternalSource]](origin, options, crossOrigin)/origin}}. If |callerOrigin| is
     an [=opaque origin=], return a {{DOMException}} whose name is "{{NotAllowedError}}", and terminate this algorithm.
 
 1. Let |effectiveDomain| be the |callerOrigin|'s [=effective domain=].
@@ -1843,6 +1830,9 @@ When this method is invoked, the user agent MUST execute the following algorithm
     :: The [=base64url encoding=] of |options|.{{PublicKeyCredentialRequestOptions/challenge}}
     : {{CollectedClientData/origin}}
     :: The [=ascii serialization of an origin|serialization of=] |callerOrigin|.
+    : {{CollectedClientData/crossOrigin}}
+    :: The value of the {{PublicKeyCredential/[[DiscoverFromExternalSource]](origin, options, crossOrigin)/crossOrigin}}
+        argument passed to this [=internal method=].
     : {{CollectedClientData/tokenBinding}}
     :: The status of [=Token Binding=] between the client and the |callerOrigin|, as well as the [=Token Binding ID=] associated with |callerOrigin|, if one is available.
 
@@ -2077,11 +2067,11 @@ authorizing an authenticator with which to complete the operation.
 </div>
 
 
-### Store an Existing Credential - PublicKeyCredential's `[[Store]](credential, sameOriginWithAncestors)` Method ### {#sctn-storeCredential}
+### Store an Existing Credential - PublicKeyCredential's `[[Store]](credential, crossOrigin)` Method ### {#sctn-storeCredential}
 
-<div link-for-hint="PublicKeyCredential/[[Store]](credential, sameOriginWithAncestors)">
+<div link-for-hint="PublicKeyCredential/[[Store]](credential, crossOrigin)">
 
-The <dfn for="PublicKeyCredential" method>\[[Store]](credential, sameOriginWithAncestors)</dfn> method is not supported
+The <dfn for="PublicKeyCredential" method>\[[Store]](credential, crossOrigin)</dfn> method is not supported
 for Web Authentication's {{PublicKeyCredential}} type, so it always returns an error.
 
 Note: This algorithm is synchronous; the {{Promise}} resolution/rejection is handled by
@@ -2089,11 +2079,11 @@ Note: This algorithm is synchronous; the {{Promise}} resolution/rejection is han
 
 This [=internal method=] accepts two arguments:
 
-<dl dfn-type="argument" dfn-for="PublicKeyCredential/[[Store]](credential, sameOriginWithAncestors)">
+<dl dfn-type="argument" dfn-for="PublicKeyCredential/[[Store]](credential, crossOrigin)">
     :   <dfn>credential</dfn>
     ::  This argument is a {{PublicKeyCredential}} object.
 
-    :   <dfn>sameOriginWithAncestors</dfn>
+    :   <dfn>crossOrigin</dfn>
     ::  This argument is a Boolean value which is [TRUE] if and only if the caller's [=environment settings object=] is
         [=same-origin with its ancestors=].
 </dl>
@@ -2104,11 +2094,11 @@ When this method is invoked, the user agent MUST execute the following algorithm
 
 </div>
 
-###  Preventing Silent Access to an Existing Credential - PublicKeyCredential's `[[preventSilentAccess]](credential, sameOriginWithAncestors)` Method ### {#sctn-preventSilentAccessCredential}
+###  Preventing Silent Access to an Existing Credential - PublicKeyCredential's `[[preventSilentAccess]](credential, crossOrigin)` Method ### {#sctn-preventSilentAccessCredential}
 
-<div link-for-hint="PublicKeyCredential/[[preventSilentAccess]](credential, sameOriginWithAncestors)">
+<div link-for-hint="PublicKeyCredential/[[preventSilentAccess]](credential, crossOrigin)">
 
-Calling the <dfn for="PublicKeyCredential" method>\[[preventSilentAccess]](credential, sameOriginWithAncestors)</dfn> method
+Calling the <dfn for="PublicKeyCredential" method>\[[preventSilentAccess]](credential, crossOrigin)</dfn> method
 will have no effect on authenticators that require an [=authorization gesture=],
 but setting that flag may potentially exclude authenticators that can operate without user intervention.
 
@@ -2134,7 +2124,7 @@ This method has no arguments and returns a Boolean value.
     };
 </xmp>
 
-Note: Invoking this method from a [=browsing context=] where the [=Web Authentication API=] is "disabled" according to the [=allowed to use=] algorithm&mdash;i.e., by a [=feature policy=]&mdash;will result in the promise being rejected with a {{DOMException}} whose name is "{{NotAllowedError}}".
+Note: Invoking this method from a [=browsing context=] where the [=Web Authentication API=] is "disabled" according to the [=allowed to use=] algorithm&mdash;i.e., by a [=feature policy=]&mdash;will result in the promise being rejected with a {{DOMException}} whose name is "{{NotAllowedError}}". See also [[#sctn-feature-policy]].
 
 </div>
 
@@ -2503,9 +2493,9 @@ to [[#sctn-createCredential|create a credential]].
 </div>
 
 Note: An [=authenticator attachment modality=] selection option is available only in the {{PublicKeyCredential/[[Create]](origin, options,
-sameOriginWithAncestors)}} operation. The [=[RP]=] may use it to, for example, ensure the user has a [=roaming credential=] for
+crossOrigin)}} operation. The [=[RP]=] may use it to, for example, ensure the user has a [=roaming credential=] for
 authenticating on another [=client device=]; or to specifically register a [=platform credential=] for easier reauthentication using a
-particular [=client device=]. The {{PublicKeyCredential/[[DiscoverFromExternalSource]](origin, options, sameOriginWithAncestors)}}
+particular [=client device=]. The {{PublicKeyCredential/[[DiscoverFromExternalSource]](origin, options, crossOrigin)}}
 operation has no [=authenticator attachment modality=] selection option, so the [=[RP]=] SHOULD accept any of the user's registered [=public key
 credential|credentials=]. The [=client=] and user will then use whichever is available and convenient at the time.
 
@@ -2630,24 +2620,24 @@ an assertion. Its {{PublicKeyCredentialRequestOptions/challenge}} member MUST be
 ## Abort Operations with `AbortSignal` ## {#sctn-abortoperation}
 
 Developers are encouraged to leverage the {{AbortController}} to manage the
-{{PublicKeyCredential/[[Create]](origin, options, sameOriginWithAncestors)}} and {{PublicKeyCredential/[[DiscoverFromExternalSource]](origin, options, sameOriginWithAncestors)}} operations.
+{{PublicKeyCredential/[[Create]](origin, options, crossOrigin)}} and {{PublicKeyCredential/[[DiscoverFromExternalSource]](origin, options, crossOrigin)}} operations.
 See [[dom#abortcontroller-api-integration]] section for detailed instructions.
 
     Note: [[dom#abortcontroller-api-integration]] section specifies that web platform APIs integrating with the
     {{AbortController}} must reject the promise immediately once the [=AbortSignal/aborted flag=] is set.
-    Given the complex inheritance and parallelization structure of the {{PublicKeyCredential/[[Create]](origin, options, sameOriginWithAncestors)}}
-    and {{PublicKeyCredential/[[DiscoverFromExternalSource]](origin, options, sameOriginWithAncestors)}} methods, the algorithms for the two APIs fulfills this
+    Given the complex inheritance and parallelization structure of the {{PublicKeyCredential/[[Create]](origin, options, crossOrigin)}}
+    and {{PublicKeyCredential/[[DiscoverFromExternalSource]](origin, options, crossOrigin)}} methods, the algorithms for the two APIs fulfills this
     requirement by checking the [=AbortSignal/aborted flag=] in three places. In the case of
-    {{PublicKeyCredential/[[Create]](origin, options, sameOriginWithAncestors)}}, the aborted flag is checked first in
-    [[credential-management-1#algorithm-create]] immediately before calling {{Credential/[[Create]](origin, options, sameOriginWithAncestors)}},
+    {{PublicKeyCredential/[[Create]](origin, options, crossOrigin)}}, the aborted flag is checked first in
+    [[credential-management-1#algorithm-create]] immediately before calling {{Credential/[[Create]](origin, options, crossOrigin)}},
     then in [[#sctn-createCredential]] right before [=authenticator sessions=] start, and finally
     during [=authenticator sessions=]. The same goes for
-    {{PublicKeyCredential/[[DiscoverFromExternalSource]](origin, options, sameOriginWithAncestors)}}.
+    {{PublicKeyCredential/[[DiscoverFromExternalSource]](origin, options, crossOrigin)}}.
 
 The [=visibility states|visibility=] and [=focus=] state of the [=Window=] object determines whether the
-{{PublicKeyCredential/[[Create]](origin, options, sameOriginWithAncestors)}} and {{PublicKeyCredential/[[DiscoverFromExternalSource]](origin, options, sameOriginWithAncestors)}} operations
+{{PublicKeyCredential/[[Create]](origin, options, crossOrigin)}} and {{PublicKeyCredential/[[DiscoverFromExternalSource]](origin, options, crossOrigin)}} operations
 should continue. When the [=Window=] object associated with the [[=Document=] loses focus,
-{{PublicKeyCredential/[[Create]](origin, options, sameOriginWithAncestors)}} and {{PublicKeyCredential/[[DiscoverFromExternalSource]](origin, options, sameOriginWithAncestors)}} operations
+{{PublicKeyCredential/[[Create]](origin, options, crossOrigin)}} and {{PublicKeyCredential/[[DiscoverFromExternalSource]](origin, options, crossOrigin)}} operations
 SHOULD be aborted.
 
     Issue: The WHATWG HTML WG is discussing whether to provide a hook when a browsing context gains or
@@ -2712,6 +2702,7 @@ Note: The {{CollectedClientData}} may be extended in the future. Therefore it's 
         required DOMString           type;
         required DOMString           challenge;
         required DOMString           origin;
+        boolean                      crossOrigin;
         TokenBinding                 tokenBinding;
     };
 
@@ -2736,6 +2727,9 @@ Note: The {{CollectedClientData}} may be extended in the future. Therefore it's 
     :   <dfn>origin</dfn>
     ::  This member contains the fully qualified [=origin=] of the requester, as provided to the authenticator by the client, in
         the syntax defined by [[!RFC6454]].
+
+    :   <dfn>crossOrigin</dfn>
+    ::  This member contains the argument value of the same name that was passed into the [=internal method=].
 
     :   <dfn>tokenBinding</dfn>
     ::  This OPTIONAL member contains information about the state of the [=Token Binding=] protocol [[!TokenBinding]] used when communicating
@@ -2903,7 +2897,7 @@ to successfully invoke the [=Web Authentication API=], i.e., via
 If disabled in any document, no content in the document will be [=allowed to use=]
 the foregoing methods: attempting to do so will [return an error](https://www.w3.org/2001/tag/doc/promises-guide#errors).
 
-Note: Algorithms specified in [[!CREDENTIAL-MANAGEMENT-1]] perform the actual feature policy evaluation. This is because such policy evaluation needs to occur when there is access to the [=current settings object=]. The {{PublicKeyCredential/[[Create]](origin, options, sameOriginWithAncestors)}} and {{PublicKeyCredential/[[DiscoverFromExternalSource]](origin, options, sameOriginWithAncestors)}} [=internal methods=] do not have such access since they are invoked [=in parallel=] (by algorithms specified in [[!CREDENTIAL-MANAGEMENT-1]]).
+Note: Algorithms specified in [[!CREDENTIAL-MANAGEMENT-1]] perform the actual feature policy evaluation. This is because such policy evaluation needs to occur when there is access to the [=current settings object=]. The {{PublicKeyCredential/[[Create]](origin, options, crossOrigin)}} and {{PublicKeyCredential/[[DiscoverFromExternalSource]](origin, options, crossOrigin)}} [=internal methods=] do not have such access since they are invoked [=in parallel=] (by algorithms specified in [[!CREDENTIAL-MANAGEMENT-1]]).
 
 
 
@@ -5975,7 +5969,7 @@ in several ways, including:
 ## Registration Ceremony Privacy ## {#sctn-make-credential-privacy}
 
 In order to protect users from being identified without [=user consent|consent=], implementations of the
-{{PublicKeyCredential/[[Create]](origin, options, sameOriginWithAncestors)}} method need to take care to not leak information that
+{{PublicKeyCredential/[[Create]](origin, options, crossOrigin)}} method need to take care to not leak information that
 could enable a malicious [=[WRP]=] to distinguish between these cases, where "excluded" means that at least one of the [=public key
 credential|credentials=] listed by the [=[RP]=] in {{PublicKeyCredentialCreationOptions/excludeCredentials}} is [=bound credential|bound=] to the
 [=authenticator=]:
@@ -5998,7 +5992,7 @@ leaked.
 ## Authentication Ceremony Privacy ## {#sctn-assertion-privacy}
 
 In order to protect users from being identified without [=user consent|consent=], implementations of the
-{{PublicKeyCredential/[[DiscoverFromExternalSource]](origin, options, sameOriginWithAncestors)}} method need to take care to not
+{{PublicKeyCredential/[[DiscoverFromExternalSource]](origin, options, crossOrigin)}} method need to take care to not
 leak information that could enable a malicious [=[WRP]=] to distinguish between these cases, where "named" means that the [=public
 key credential|credential=] is listed by the [=[RP]=] in {{PublicKeyCredentialRequestOptions/allowCredentials}}:
 
