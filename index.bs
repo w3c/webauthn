@@ -220,6 +220,8 @@ spec: RFC4949; urlPrefix: https://tools.ietf.org/html/rfc4949
 spec: SP800-800-63r3; urlPrefix: https://pages.nist.gov/800-63-3/sp800-63-3.html
     type: dfn
         text: authentication factor; url: af
+        text: multi-factor; url: af
+        text: second-factor; url: af
         text: single-factor; url: sf
         text: something you know; url: af
         text: something you have; url: af
@@ -247,6 +249,7 @@ spec:infra; type:dfn; for:map-exists; text:exists
 spec:url; type:dfn; text:domain
 spec:url; type:dfn; for:url; text:host
 spec:url; type:dfn; text:valid domain;
+spec:webidl; type:dfn; text:DOMString
 spec:webidl; type:interface; text:Promise
 </pre>
 
@@ -454,8 +457,7 @@ In this flow, the [=[WRP]=] does not have a preference for [=platform authentica
 
 1. The [=client=] connects to the authenticator, performing any pairing actions if necessary.
 
-1. The authenticator shows appropriate UI for the user to select the authenticator on which the new credential will be
-    created, and obtains a biometric or other authorization gesture from the user.
+1. The authenticator shows appropriate UI for the user to provide a biometric or other authorization gesture.
 
 1. The authenticator returns a response to the [=client=], which in turn returns a response to the [=[RP]=] script. If
     the user declined to select an authenticator or provide authorization, an appropriate error is returned.
@@ -531,10 +533,7 @@ a [=user-verifying platform authenticator=].
 
     1. The user agent checks if a [=user-verifying platform authenticator=] is available. If not, terminate this flow.
 
-    1. The [=[RP]=] asks the user if they want to create a credential with it.
-
-    1. If no [=user-verifying platform authenticator=] is available,
-        or if the user does not want to create a credential, terminate this flow.
+    1. The [=[RP]=] asks the user if they want to create a credential with it. If not, terminate this flow.
 
     1. The user agent and/or operating system shows appropriate UI and guides the user in creating a credential
         using one of the available platform authenticators.
@@ -706,7 +705,7 @@ handled on the server side and do not need support from the API specified here.
     * User goes to server.example.net, authenticates and follows a link to report a lost/stolen [=authenticator=].
     * Server returns a page showing the list of registered credentials with friendly names as configured during registration.
     * User selects a credential and the server deletes it from its database.
-    * In future, the [=[RP]=] script does not specify this credential in any list of acceptable credentials, and assertions
+    * In the future, the [=[RP]=] script does not specify this credential in any list of acceptable credentials, and assertions
         signed by this credential are rejected.
 
 - Possibility #2 -- server deregisters the credential due to inactivity.
@@ -919,15 +918,25 @@ The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "S
 
 : <dfn>Client-side-resident Public Key Credential Source</dfn>
 : <dfn>Resident Credential</dfn>
-:: A [=Client-side-resident Public Key Credential Source=], or [=Resident Credential=] for short, is a [=public key credential
-    source=] whose [=credential private key=] is stored in the [=authenticator=], [=client=] or [=client device=]. Such
-    [=client-side=] storage requires a [=resident credential capable=] [=authenticator=] and has the property that the [=authenticator=]
-    is able to select the [=credential private key=] given
-    only an [=RP ID=], possibly with user assistance (e.g., by providing the user a pick list of [=public key credential|credentials=] [=scoped=] to the [=RP ID=]).
-    By definition, the [=credential private key=] is always exclusively controlled by the [=authenticator=]. In the case of a
-    [=resident credential=], the [=authenticator=] might offload storage of wrapped key material to the
-    [=client device=], but the [=client device=] is not expected to offload the key storage to remote entities (e.g., [=[WRP]=] Server).
+:: A [=Client-side-resident Public Key Credential Source=], or [=Resident Credential=] for short,
+    is a [=public key credential source=] that is discoverable and usable in [=authentication ceremonies=]
+    without providing [=credential ID=]s,
+    i.e., calling {{CredentialsContainer/get()|navigator.credentials.get()}}
+    with an [=list/is empty|empty=] {{PublicKeyCredentialRequestOptions/allowCredentials}} argument.
+
+    As a consequence, a [=resident credential capable=] [=authenticator=] can generate an [=assertion signature=]
+    for a [=resident credential=] given only an [=RP ID=],
+    which in turn means that the [=public key credential source=]
+    is stored in the [=authenticator=] or [=client platform=].
+    This is in contrast to a [=server-side-resident public key credential source=],
+    which requires that the [=authenticator=] is given both the [=RP ID=] and the [=credential ID=]
+    but does not require [=client-side=] storage of the [=public key credential source=].
+
     See also: [=client-side credential storage modality=].
+
+    Note: [=Resident credentials=] are also usable in [=authentication ceremonies=] where [=credential ID=]s are given,
+    i.e., when calling {{CredentialsContainer/get()|navigator.credentials.get()}}
+    with a non-[=list/is empty|empty=] {{PublicKeyCredentialRequestOptions/allowCredentials}} argument.
 
 : <dfn>Conforming User Agent</dfn>
 :: A user agent implementing, in cooperation with the underlying [=client device=], the [=Web Authentication API=] and algorithms
@@ -1077,9 +1086,18 @@ The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "S
 
 : <dfn>Server-side-resident Public Key Credential Source</dfn>
 : <dfn>Non-Resident Credential</dfn>
-:: A [=Server-side-resident Public Key Credential Source=], or [=Non-Resident Credential=] for short, is a [=public key credential
-    source=] whose [=credential private key=] is not stored in the [=authenticator=], [=client=] or [=client device=], but is instead
-    encrypted (i.e. wrapped) and returned to the server as the [=credential ID=]. See also: [=server-side credential storage modality=].
+:: A [=Server-side-resident Public Key Credential Source=], or [=Non-Resident Credential=] for short,
+    is a [=public key credential source=] that cannot be used in an [=authentication ceremony=]
+    without providing the [=authenticator=] with the [=credential ID=], e.g.,
+    the credential is only usable when its [=credential ID=] is specified in the {{PublicKeyCredentialRequestOptions/allowCredentials}} argument.
+
+    As a consequence, [=client-side=] storage of the [=public key credential source=]
+    is not required for a [=non-resident credential=].
+    This is in contrast to a [=client-side-resident public key credential source=],
+    which does not require the [=credential ID=] to be provided
+    but instead requires [=client-side=] storage of the [=public key credential source=].
+
+    See also: [=server-side credential storage modality=].
 
 : <dfn>Test of User Presence</dfn>
 :: A [=test of user presence=] is a simple form of [=authorization gesture=] and technical process where a user interacts with
@@ -1098,9 +1116,7 @@ The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "S
     to a specific user account with the [=[RP]=]. Authenticators in turn [=credentials map|map=] [=RP ID=]s and user handle pairs
     to [=public key credential sources=].
 
-    A user handle is an opaque [=byte sequence=] with a maximum size of 64 bytes. User handles are not meant to be displayed to users.
-    The user handle MUST NOT contain [PII] about the user, such as a username or e-mail address; see
-    [[#sctn-user-handle-privacy]] for details.
+    A user handle is an opaque [=byte sequence=] with a maximum size of 64 bytes, and is not meant to be displayed to the user.
 
 : <dfn>User Verification</dfn>
 :: The technical process by which an [=authenticator=] <em>locally authorizes</em> the invocation of the
@@ -1667,7 +1683,7 @@ a numbered step. If outdented, it (today) is rendered either as a bullet in the 
                         ::  |attestationObject|
 
                         :   {{AuthenticatorAttestationResponse/[[transports]]}}
-                        ::  A sequence of zero or more unique {{AuthenticatorTransport}} values, in lexicographical order, that the |authenticator| is believed to support.
+                        ::  A sequence of zero or more unique {{DOMString}}s, in lexicographical order, that the |authenticator| is believed to support. The values SHOULD be members of {{AuthenticatorTransport}}.
 
                             If a user agent does not wish to divulge this information it MAY substitute an arbitrary sequence designed to preserve privacy. This sequence MUST still be valid, i.e. lexicographically sorted and free of duplicates. For example, it may use the empty sequence. Either way, in this case the user agent takes the risk that [=[RP]=] behavior may be suboptimal.
 
@@ -2154,7 +2170,7 @@ during registration.
     [SecureContext, Exposed=Window]
     interface AuthenticatorAttestationResponse : AuthenticatorResponse {
         [SameObject] readonly attribute ArrayBuffer      attestationObject;
-        sequence<AuthenticatorTransport>                 getTransports();
+        sequence<DOMString>                              getTransports();
     };
 </xmp>
 <div dfn-type="attribute" dfn-for="AuthenticatorAttestationResponse">
@@ -2178,7 +2194,7 @@ during registration.
     ::  This operation returns the value of {{AuthenticatorAttestationResponse/[[transports]]}}.
 
     :   <dfn>\[[transports]]</dfn>
-    ::  This [=internal slot=] contains a sequence of zero or more unique {{AuthenticatorTransport}} values in lexicographical order. These values are the transports that the [=authenticator=] is believed to support, or an empty sequence if the information is unavailable.
+    ::  This [=internal slot=] contains a sequence of zero or more unique {{DOMString}}s in lexicographical order. These values are the transports that the [=authenticator=] is believed to support, or an empty sequence if the information is unavailable. The values SHOULD be members of {{AuthenticatorTransport}} but [=[RPS]=] MUST accept unknown values.
 </div>
 
 ### Web Authentication Assertion (interface <dfn interface>AuthenticatorAssertionResponse</dfn>) ### {#iface-authenticatorassertionresponse}
@@ -2395,9 +2411,16 @@ credential.
 
 <div dfn-type="dict-member" dfn-for="PublicKeyCredentialUserEntity">
     :   <dfn>id</dfn>
-    ::  The [=user handle=] of the user account entity. To ensure secure operation, authentication and authorization
+    ::  The [=user handle=] of the user account entity.
+        A [=user handle=] is an opaque [=byte sequence=] with a maximum size of 64 bytes,
+        and is not meant to be displayed to the user.
+
+        To ensure secure operation, authentication and authorization
         decisions MUST be made on the basis of this {{PublicKeyCredentialUserEntity/id}} member,  not the
         {{PublicKeyCredentialUserEntity/displayName}} nor {{PublicKeyCredentialEntity/name}} members. See Section 6.1 of [[!RFC8266]].
+
+        The [=user handle=] MUST NOT contain [PII] about the user, such as a username or e-mail address;
+        see [[#sctn-user-handle-privacy]] for details.
 
     :   <dfn>displayName</dfn>
     ::  A [=human palatability|human-palatable=] name for the user account, intended only for display. For example, "Alex P. Müller" or "田中 倫". The
@@ -2776,7 +2799,7 @@ Note: The {{CollectedClientData}} may be extended in the future. Therefore it's 
     dictionary PublicKeyCredentialDescriptor {
         required PublicKeyCredentialType      type;
         required BufferSource                 id;
-        sequence<AuthenticatorTransport>      transports;
+        sequence<DOMString>                   transports;
     };
 </xmp>
 
@@ -2793,7 +2816,7 @@ parameter to the {{CredentialsContainer/create()}} or {{CredentialsContainer/get
 
     :   <dfn>transports</dfn>
     ::  This OPTIONAL member contains a hint as to how the [=client=] might communicate with the [=managing authenticator=] of the
-        [=public key credential=] the caller is referring to.
+        [=public key credential=] the caller is referring to. The values SHOULD be members of {{AuthenticatorTransport}} but [=client platforms=] MUST ignore unknown values.
 </div>
 
 
@@ -2804,7 +2827,8 @@ parameter to the {{CredentialsContainer/create()}} or {{CredentialsContainer/get
         "usb",
         "nfc",
         "ble",
-        "internal"
+        "internal",
+        "lightning"
     };
 </xmp>
 
@@ -2812,11 +2836,16 @@ parameter to the {{CredentialsContainer/create()}} or {{CredentialsContainer/get
     [=Authenticators=] may implement various [[#enum-transport|transports]] for communicating with [=clients=]. This enumeration
     defines hints as to how clients might communicate with a particular authenticator in order to obtain an assertion for a
     specific credential. Note that these hints represent the [=[WRP]=]'s best belief as to how an authenticator may be reached. A
-    [=[RP]=] may obtain a list of transports hints from some [=attestation statement formats=] or via some out-of-band mechanism;
-    it is outside the scope of this specification to define that mechanism.
+    [=[RP]=] will typically learn of the supported transports for a [=public key credential=] via
+    {{AuthenticatorAttestationResponse/getTransports()}}.
+
+    Note: The {{AuthenticatorTransport}} enumeration is not referenced by other parts of the Web IDL because that would preclude other values from being used without updating this specification and its implementations. It is important for backwards compatibility that [=client platforms=] and [=[RPS]=] handle unknown values. Therefore it exists here for documentation and as a registry. Where transports are represented elsewhere, they are typed as {{DOMString}}s, for example in {{PublicKeyCredentialDescriptor/transports}}.
 
     :   <dfn>usb</dfn>
     ::  Indicates the respective [=authenticator=] can be contacted over removable USB.
+    
+    :   <dfn>lightning</dfn>
+    ::  Indicates the respective [=authenticator=] can be contacted over removable Lightning.
 
     :   <dfn>nfc</dfn>
     ::  Indicates the respective [=authenticator=] can be contacted over Near Field Communication (NFC).
@@ -2874,7 +2903,7 @@ needs.
 ## Feature Policy integration ## {#sctn-feature-policy}
 
 This specification defines a [=policy-controlled feature=] identified by
-the feature policy token "<code><dfn data-lt="webauthn-feature" export>webauthn</dfn></code>".
+the feature-identifier token "<code><dfn data-lt="webauthn-feature" export>publickey-credentials</dfn></code>".
 Its [=default allowlist=] is '<code>self</code>'. [[!Feature-Policy]]
 
 A {{Document}}'s [=Document/feature policy=] determines whether any content in that <a href="https://html.spec.whatwg.org/multipage/dom.html#documents">document</a> is allowed
@@ -2891,7 +2920,7 @@ Note: Algorithms specified in [[!CREDENTIAL-MANAGEMENT-1]] perform the actual fe
 ## Using Web Authentication within <code>iframe</code> elements ## {#sctn-iframe-guidance}
 
 The [=Web Authentication API=] is disabled by default in cross-origin <{iframe}>s.
-To override this default policy and indicate that a cross-origin <{iframe}> is allowed to invoke the [=Web Authentication API=], specify the <{iframe/allow}> attribute on the <{iframe}> element and include the `webauthn` feature policy token in the <{iframe/allow}> attribute's value.
+To override this default policy and indicate that a cross-origin <{iframe}> is allowed to invoke the [=Web Authentication API=], specify the <{iframe/allow}> attribute on the <{iframe}> element and include the `publickey-credentials` feature policy token in the <{iframe/allow}> attribute's value.
 
 
 
@@ -3129,10 +3158,32 @@ the same procedure as other [=assertion signatures=] generated by the [=authenti
 
 ## Authenticator Taxonomy ## {#sctn-authenticator-taxonomy}
 
-[=Authenticator=] types vary along several different dimensions: [=authenticator attachment modality=], employed [[#enum-transport|transport(s)]],
-[=credential storage modality=], and [=authentication factor capability=]. The combination of these dimensions defines an
-[=authenticator=]'s <dfn>authenticator type</dfn>, which in turn determines the broad use cases the [=authenticator=] supports.
-[Table 2](#table-authenticatorTypes) defines names for some [=authenticator types=].
+Many use cases are dependent on the capabilities of the [=authenticator=] used.
+This section defines some terminology for those capabilities, their most important combinations,
+and which use cases those combinations enable.
+
+For example:
+
+- When authenticating for the first time on a particular [=client device=], a [=roaming authenticator=] is typically needed
+    since the user doesn't yet have a [=platform credential=] on that [=client device=].
+- For subsequent re-authentication on the same [=client device=], a [=platform authenticator=] is likely the most convenient
+    since it's built directly into the [=client device=] rather than being a separate device that the user may have to locate.
+- For [=second-factor=] authentication in addition to a traditional username and password, any [=authenticator=] can be used.
+- Passwordless [=multi-factor=] authentication requires an [=authenticator=]
+    capable of [=user verification=], and in some cases also [=resident credential capable=].
+- A laptop computer might support connecting to [=roaming authenticators=] via USB and Bluetooth,
+    while a mobile phone might only support NFC.
+
+The above examples illustrate the the primary <dfn>authenticator type</dfn> characteristics:
+
+- Whether the [=authenticator=] is a [=roaming authenticator|roaming=] or [=platform authenticator|platform=] authenticator
+    &mdash; the [=authenticator attachment modality=].
+    A [=roaming authenticator=] can support one or more [[#enum-transport|transports]] for communicating with the [=client=].
+- Whether the authenticator is capable of [=user verification=] &mdash; the [=authentication factor capability=].
+- Whether the authenticator is [=resident credential capable=] &mdash; the [=credential storage modality=].
+
+These characteristics are independent and may in theory be combined in any way,
+but [Table 2](#table-authenticatorTypes) lists and names some [=authenticator types=] of particular interest.
 
 <figure id="table-authenticatorTypes" class="table">
     <table class="data">
@@ -3146,40 +3197,28 @@ the same procedure as other [=assertion signatures=] generated by the [=authenti
         </thead>
         <tbody>
             <tr>
-                <th> Second-factor platform authenticator </th>
+                <th> <dfn>Second-factor platform authenticator</dfn> </th>
                 <td> [=platform attachment|platform=] </td>
-                <td> [=server-side credential storage modality|Server-side storage=] </td>
-                <td> [=single-factor capable|Single-factor=] </td>
+                <td> Either </td>
+                <td> [=Single-factor capable=] </td>
             </tr>
             <tr>
                 <th> <dfn>User-verifying platform authenticator</dfn> </th>
                 <td> [=platform attachment|platform=] </td>
-                <td> [=server-side credential storage modality|Server-side storage=] </td>
-                <td> [=multi-factor capable|Multi-factor=] </td>
+                <td> Either </td>
+                <td> [=Multi-factor capable=] </td>
             </tr>
             <tr>
-                <th> First-factor platform authenticator </th>
-                <td> [=platform attachment|platform=] </td>
-                <td> [=client-side credential storage modality|Client-side storage=] </td>
-                <td> [=multi-factor capable|Multi-factor=] </td>
-            </tr>
-            <tr>
-                <th> Second-factor roaming authenticator </th>
+                <th> <dfn>Second-factor roaming authenticator</dfn> </th>
                 <td> [=cross-platform attachment|cross-platform=] </td>
                 <td> [=server-side credential storage modality|Server-side storage=] </td>
-                <td> [=single-factor capable|Single-factor=] </td>
-            </tr>
-            <tr>
-                <th> User-verifying roaming authenticator </th>
-                <td> [=cross-platform attachment|cross-platform=] </td>
-                <td> [=server-side credential storage modality|Server-side storage=] </td>
-                <td> [=multi-factor capable|Multi-factor=] </td>
+                <td> [=Single-factor capable=] </td>
             </tr>
             <tr>
                 <th> <dfn>First-factor roaming authenticator</dfn> </th>
                 <td> [=cross-platform attachment|cross-platform=] </td>
                 <td> [=client-side credential storage modality|Client-side storage=] </td>
-                <td> [=multi-factor capable|Multi-factor=] </td>
+                <td> [=Multi-factor capable=] </td>
             </tr>
         </tbody>
     </table>
@@ -3188,9 +3227,36 @@ the same procedure as other [=assertion signatures=] generated by the [=authenti
     </figcaption>
 </figure>
 
-These types can be further broken down into subtypes, such as which [[#enum-transport|transport(s)]] a [=roaming authenticator=]
-supports. The following sections define the terms [=authenticator attachment modality=], [=credential storage modality=] and
-[=authentication factor capability=].
+A [=second-factor platform authenticator=] is convenient to use for re-authentication on the same [=client device=],
+and can be used to add an extra layer of security both when initiating a new session and when resuming an existing session.
+A [=second-factor roaming authenticator=] is more likely to be used
+to authenticate on a particular [=client device=] for the first time,
+or on a [=client device=] shared between multiple users.
+
+[=User-verifying platform authenticators=] and [=first-factor roaming authenticators=]
+enable passwordless [=multi-factor=] authentication.
+In addition to the proof of possession of the [=credential private key=],
+these authenticators support [=user verification=] as a second [=authentication factor=],
+typically a PIN or [=biometric recognition=].
+The [=authenticator=] can thus act as two kinds of [=authentication factor=],
+which enables [=multi-factor=] authentication while eliminating the need to share a password with the [=[RP]=].
+
+The four combinations not named in [Table 2](#table-authenticatorTypes) have less distinguished use cases:
+
+- The [=credential storage modality=] is less relevant for a [=platform authenticator=] than for a [=roaming authenticator=],
+    since users using a [=platform authenticator=] can typically be identified by a session cookie or the like
+    (i.e., ambient credentials).
+- A [=roaming authenticator=] that is [=resident credential capable=] but not [=multi-factor capable=]
+    can be used for [=single-factor=] authentication without a username,
+    where the user is automatically identified by the [=user handle=]
+    and possession of the [=credential private key=] is used as the only [=authentication factor=].
+    This can be useful in some situations, but makes the user particularly vulnerable to theft of the [=authenticator=].
+- A [=roaming authenticator=] that is [=multi-factor capable=] but not [=resident credential capable=]
+    can be used for [=multi-factor=] authentication, but requires the user to be identified first
+    which risks leaking [PII]; see [[#sctn-credential-id-privacy-leak]].
+
+The following subsections define the aspects [=authenticator attachment modality=],
+[=credential storage modality=] and [=authentication factor capability=] in more depth.
 
 
 ### <dfn>Authenticator Attachment Modality</dfn> ### {#sctn-authenticator-attachment-modality}
@@ -3206,22 +3272,28 @@ transport protocols are referred to as <dfn>roaming authenticators</dfn>.
     device=]. A [=public key credential=] [=bound credential|bound=] to a [=platform authenticator=] is called a <dfn>platform credential</dfn>.
 
 - A [=roaming authenticator=] is attached using cross-platform transports, called <dfn>cross-platform attachment</dfn>. Authenticators of this class are removable from, and
-    can "roam" among, [=client devices=]. A [=public key credential=] [=bound credential|bound=] to a [=roaming authenticator=] is called a <dfn>roaming
+    can "roam" between, [=client devices=]. A [=public key credential=] [=bound credential|bound=] to a [=roaming authenticator=] is called a <dfn>roaming
     credential</dfn>.
 
 Some [=platform authenticators=] could possibly also act as [=roaming authenticators=] depending on context. For example, a
 [=platform authenticator=] integrated into a mobile device could make itself available as a [=roaming authenticator=] via
-Bluetooth. In this case the [=client=] would recognize it only as a [=roaming authenticator=], and not as a [=platform
-authenticator=].
+Bluetooth.
+In this case [=clients=] running on the mobile device would recognise the authenticator as a [=platform authenticator=],
+while [=clients=] running on a different [=client device=] and communicating with the same authenticator via Bluetooth
+would recognize it as a [=roaming authenticator=].
 
-A primary use case for [=platform authenticators=] is to register a particular [=client device=] as a "trusted device" available
-as a [=something you have=] [=authentication factor=] for future [=authentication=]. This gives the user the convenience benefit
+The primary use case for [=platform authenticators=] is to register a particular [=client device=] as a "trusted device",
+so the [=client device=] itself acts as a [=something you have=] [=authentication factor=] for future [=authentication=].
+This gives the user the convenience benefit
 of not needing a [=roaming authenticator=] for future [=authentication ceremonies=], e.g., the user will not have to dig around in
 their pocket for their key fob or phone.
 
-A primary use case for [=roaming authenticators=] is for initial [=authentication=] on a new [=client device=], or on [=client
-devices=] that are rarely used or do not include a [=platform authenticator=]; or when policy or preference dictates that the
-[=authenticator=] be kept separate from the [=clients=] it is used with. A [=roaming authenticator=] can also be used to hold
+Use cases for [=roaming authenticators=] include:
+[=authentication|authenticating=] on a new [=client device=] for the first time,
+on rarely used [=client devices=], [=client devices=] shared between multiple users,
+or [=client devices=] that do not include a [=platform authenticator=];
+and when policy or preference dictates that the [=authenticator=] be kept separate from the [=client devices=] it is used with.
+A [=roaming authenticator=] can also be used to hold
 backup [=public key credential|credentials=] in case another [=authenticator=] is lost.
 
 
@@ -3229,8 +3301,8 @@ backup [=public key credential|credentials=] in case another [=authenticator=] i
 
 An [=authenticator=] can store a [=public key credential source=] in one of two ways:
 
- 1. In persistent storage embedded in the [=authenticator=], [=client=] or [=client device=], e.g., in a secure element. A
-    [=public key credential source=] stored in this way is a [=resident credential=].
+ 1. In persistent storage embedded in the [=authenticator=], [=client=] or [=client device=], e.g., in a secure element.
+    This is a technical requirement for a [=client-side-resident public key credential source=].
 
  1. By encrypting (i.e., wrapping) the [=credential private key=] such that only this [=authenticator=] can decrypt (i.e., unwrap) it and letting the resulting
     ciphertext be the [=credential ID=] for the [=public key credential source=]. The [=credential ID=] is stored by the [=[RP]=]
@@ -3995,10 +4067,12 @@ When registering a new credential, represented by an {{AuthenticatorAttestationR
     fail this [=registration ceremony=], or it MAY decide to accept the registration, e.g. while deleting the older registration.
 
 1. If the attestation statement |attStmt| verified successfully and is found to be trustworthy, then register the new
-    credential with the account that was denoted in <code>|options|.{{PublicKeyCredentialCreationOptions/user}}</code>,
-    by associating it with the <code>[=credentialId=]</code> and
-    <code>[=credentialPublicKey=]</code> in the <code>[=attestedCredentialData=]</code> in |authData|, as appropriate for the
-    [=[RP]=]'s system.
+    credential with the account that was denoted in <code>|options|.{{PublicKeyCredentialCreationOptions/user}}</code>:
+
+    - Associate the user's account with the <code>[=credentialId=]</code> and <code>[=credentialPublicKey=]</code>
+        in <code>|authData|.[=attestedCredentialData=]</code>, as appropriate for the [=[RP]=]'s system.
+    - Associate the <code>[=credentialId=]</code> with a new stored [=signature counter=] value
+        initialized to the value of <code>|authData|.[=signCount=]</code>.
 
 1. If the attestation statement |attStmt| successfully verified but is not trustworthy per step 18 above, the [=[RP]=] SHOULD fail
     the [=registration ceremony=].
@@ -4103,24 +4177,21 @@ a numbered step. If outdented, it (today) is rendered as a bullet in the midst o
     Note: This verification step is compatible with signatures generated by FIDO U2F authenticators. See
     [[#sctn-fido-u2f-sig-format-compat]].
 
-1. If the [=signature counter=] value |authData|.<code>[=signCount=]</code> is nonzero or the value stored
-    in conjunction with <code>|credential|.{{Credential/id}}</code>
-    is nonzero, then run the following sub-step:
-      - If the [=signature counter=] value |authData|.<code>[=signCount=]</code> is
+1. Let |storedSignCount| be the stored [=signature counter=] value associated with <code>|credential|.{{Credential/id}}</code>.
+    If |authData|.<code>[=signCount=]</code> is nonzero or |storedSignCount| is nonzero,
+    then run the following sub-step:
+      - If |authData|.<code>[=signCount=]</code> is
            <dl class="switch">
-              <dt>greater than the [=signature counter=] value stored in conjunction
-                  with <code>|credential|.{{Credential/id}}</code>.</dt>
-              <dd>Update the stored [=signature counter=] value, associated with
-                  <code>|credential|.{{Credential/id}}</code>, to be the value of
+              <dt>greater than |storedSignCount|:</dt>
+              <dd>Update |storedSignCount| to be the value of
                   |authData|.<code>[=signCount=]</code>.</dd>
-              <dt>less than or equal to the [=signature counter=] value stored in conjunction
-                  with <code>|credential|.{{Credential/id}}</code>.</dt>
+              <dt>less than or equal to |storedSignCount|:</dt>
               <dd>This is a signal that
                   the authenticator may be cloned, i.e. at least
                   two copies of the [=credential private key=] may exist and are
                   being used in parallel. [=[RPS]=] should incorporate this information
-                  into their risk scoring.  Whether the [=[RP]=] updates the
-                  stored [=signature counter=] value in this case, or not, or fails the
+                  into their risk scoring.  Whether the [=[RP]=] updates |storedSignCount|
+                  in this case, or not, or fails the
                   [=authentication ceremony=] or not, is
                   [=[RP]=]-specific. </dd>
            </dl>
@@ -4515,7 +4586,7 @@ the attestation=] is consistent with the fields of the attestation certificate's
 ### Android Key Attestation Statement Certificate Requirements ### {#sctn-key-attstn-cert-requirements}
 
 Android Key Attestation [=attestation certificate=]'s <dfn>android key attestation certificate extension
-data</dfn> is identified by the OID "1.3.6.1.4.1.11129.2.1.17".
+data</dfn> is identified by the OID "1.3.6.1.4.1.11129.2.1.17", and its schema is defined in the [Android developer documentation](https://developer.android.com/training/articles/security-key-attestation#certificate_schema).
 
 ## Android SafetyNet Attestation Statement Format ## {#sctn-android-safetynet-attestation}
 
@@ -4653,7 +4724,7 @@ This attestation statement format is used with FIDO U2F authenticators using the
             Note: This signifies uncompressed ECC key format.
     1. Let |verificationData| be the concatenation of (0x00 || |rpIdHash| ||
         |clientDataHash| || |credentialId| || |publicKeyU2F|) (see [=Section 4.3=] of [[!FIDO-U2F-Message-Formats]]).
-    1. Verify the |sig| using |verificationData| and |certificate public key| per [[!SEC1]].
+    1. Verify the |sig| using |verificationData| and the |certificate public key| per section 4.1.4 of [[!SEC1]] with SHA-256 as the hash function used in step two.
     1. Optionally, inspect |x5c| and consult externally provided knowledge to determine whether |attStmt| conveys a [=Basic=] or
         [=AttCA=] attestation.
     1. If successful, return implementation-specific values representing [=attestation type=] [=Basic=], [=AttCA=] or uncertainty,
@@ -4911,7 +4982,7 @@ in order to allow users to [=authentication|authenticate=] using their registere
      of the {{CredentialsContainer/get()}} method:
 
      - Set the {{PublicKeyCredentialDescriptor/type}} members to {{PublicKeyCredentialType/public-key}}.
-     - Set the {{PublicKeyCredentialDescriptor/id}} members to the respective U2F key handles of the desired credentials.
+     - Set the {{PublicKeyCredentialDescriptor/id}} members to the respective U2F key handles of the desired credentials. Note that U2F key handles commonly use [=base64url encoding=] but must be decoded to their binary form when used in {{PublicKeyCredentialDescriptor/id}}.
 
      {{PublicKeyCredentialRequestOptions/allowCredentials}} MAY contain a mixture
      of both WebAuthn [=credential IDs=] and U2F key handles;
@@ -4988,6 +5059,86 @@ Instead, in step three, the comparison on the host is relaxed to accept hosts on
 : Authenticator extension output
 :: None.
 
+## FIDO AppID Exclusion Extension (appidExclude) ## {#sctn-appid-exclude-extension}
+
+This registration extension allows [=[WRPS]=] to exclude authenticators which contain specified credentials that were created with the legacy FIDO U2F JavaScript API [[FIDOU2FJavaScriptAPI]].
+
+During a transition from the FIDO U2F JavaScript API, a [=[RP]=] may have a population of users with legacy credentials already registered. The [appid](#sctn-appid-extension) extension allows the sign-in flow to be transitioned smoothly but, when transitioning the registration flow, the [excludeCredentials](#dom-publickeycredentialcreationoptions-excludecredentials) field will not be effective in excluding authenticators with legacy credentials because its contents are taken to be WebAuthn credentials. This extension directs [=client platforms=] to consider the contents of [excludeCredentials](#dom-publickeycredentialcreationoptions-excludecredentials) as both WebAuthn and legacy FIDO credentials. Note that U2F key handles commonly use [=base64url encoding=] but must be decoded to their binary form when used in [excludeCredentials](#dom-publickeycredentialcreationoptions-excludecredentials).
+
+
+: Extension identifier
+:: `appidExclude`
+
+: Operation applicability
+:: [=registration extension|Registration=]
+
+: Client extension input
+:: A single USVString specifying a FIDO |AppID|.
+    <xmp class="idl">
+    partial dictionary AuthenticationExtensionsClientInputs {
+      USVString appidExclude;
+    };
+    </xmp>
+
+: Client extension processing
+:: When [[#sctn-createCredential|creating a new credential]]:
+        1. Just after [establishing the RP ID](#CreateCred-DetermineRpId) perform these steps:
+            1. Let |facetId| be the result of passing the caller's [=origin=] to the FIDO algorithm
+                for [=determining the FacetID of a calling application=].
+            1. Let |appId| be the value of the extension input {{appidExclude}}.
+            1. Pass |facetId| and |appId| to the FIDO algorithm for [=determining if a caller's
+                FacetID is authorized for an AppID=]. If the latter algorithm rejects |appId| then
+                return a "{{SecurityError}}" {{DOMException}} and terminate the
+                [creating a new credential](#sctn-createCredential) algorithm as well as these steps.
+
+                Note: In practice, several implementations do not implement steps four and onward of the algorithm for [=determining if a caller's FacetID is authorized for an AppID=]. Instead, in step three, the comparison on the host is relaxed to accept hosts on the [=same site=].
+
+            1. Otherwise, continue with normal processing.
+
+        1. Just prior to [invoking authenticatorMakeCredential](#CreateCred-InvokeAuthnrMakeCred) perform these steps:
+            1. If |authenticator| supports the U2F protocol [[!FIDO-U2F-Message-Formats]], then [=list/for each=]
+                [credential descriptor](#dictdef-publickeycredentialdescriptor) |C| in |excludeCredentialDescriptorList|:
+                1. Check whether |C| was created using U2F on |authenticator| by sending a
+                    `U2F_AUTHENTICATE` message to |authenticator|
+                    whose "five parts" are set to the following values:
+
+                        :   |control byte|
+                        ::  `0x07` ("check-only")
+
+                        :   <var ignore>challenge parameter</var>
+                        ::  32 random bytes
+
+                        :   <var ignore>application parameter</var>
+                        ::  SHA-256 hash of |appId|
+
+                        :   <var ignore>key handle length</var>
+                        ::  The length of <code>|C|.{{PublicKeyCredentialDescriptor/id}}</code> (in bytes)
+
+                        :   <var ignore>key handle</var>
+                        ::  The value of <code>|C|.{{PublicKeyCredentialDescriptor/id}}</code>, i.e., the [=credential id=].
+
+                1. If |authenticator| responds with `message:error:test-of-user-presence-required` (i.e., success):
+                    cease normal processing of this |authenticator| and indicate in a platform-specific manner
+                    that the authenticator is inapplicable. For example, this could be in the form of UI, or
+                    could involve requesting [=user consent=] from |authenticator| and, upon receipt, treating
+                    it as if the authenticator had returned {{InvalidStateError}}. Requesting [=user consent=]
+                    can be accomplished by sending another `U2F_AUTHENTICATE` message to |authenticator| as
+                    above except for setting |control byte| to `0x03` ("enforce-user-presence-and-sign"),
+                    and ignoring the response.
+
+            1. Continue with normal processing.
+
+: Client extension output
+:: None.
+
+: Authenticator extension input
+:: None.
+
+: Authenticator extension processing
+:: None.
+
+: Authenticator extension output
+:: None.
 
 ## Simple Transaction Authorization Extension (txAuthSimple) ## {#sctn-simple-txauth-extension}
 
@@ -5987,7 +6138,7 @@ leakage due to such an attack:
         ceremony by invoking {{CredentialsContainer/get()|navigator.credentials.get()}} using a syntactically valid
         {{PublicKeyCredentialRequestOptions}} object that is populated with plausible imaginary values.
 
-        This approach could also be used to mitigate privacy leak via {{PublicKeyCredentialRequestOptions/allowCredentials}};
+        This approach could also be used to mitigate privacy leakage via {{PublicKeyCredentialRequestOptions/allowCredentials}};
         see [[#sctn-credential-id-privacy-leak]].
 
         Note: The username may be "provided" in various [=[RP]=]-specific fashions: login form, session cookie, etc.
