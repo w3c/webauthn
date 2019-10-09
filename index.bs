@@ -2835,6 +2835,7 @@ parameter to the {{CredentialsContainer/create()}} or {{CredentialsContainer/get
     :   <dfn>transports</dfn>
     ::  This OPTIONAL member contains a hint as to how the [=client=] might communicate with the [=managing authenticator=] of the
         [=public key credential=] the caller is referring to. The values SHOULD be members of {{AuthenticatorTransport}} but [=client platforms=] MUST ignore unknown values.
+        The {{AuthenticatorAttestationResponse/getTransports()}} operation can provide suitable values for this member.
 </div>
 
 
@@ -3997,12 +3998,20 @@ structures.
 
 ## Registering a New Credential ## {#sctn-registering-a-new-credential}
 
-When registering a new credential, represented by an {{AuthenticatorAttestationResponse}} structure |response| and an
-{{AuthenticationExtensionsClientOutputs}} structure |clientExtensionResults|, as part of a [=registration ceremony=], a
-[=[RP]=] MUST proceed as follows:
+In order to perform a [=registration ceremony=], the [=[RP]=] MUST proceed as follows:
 
-1. Let |options| be the {{PublicKeyCredentialCreationOptions}} that was passed
-    as the <code>{{CredentialCreationOptions/publicKey}}</code> option in the {{CredentialsContainer/create()}} call.
+1. Let |options| be a new {{PublicKeyCredentialCreationOptions}} structure configured to the [=[RP]=]'s needs for the ceremony.
+
+1. Call {{CredentialsContainer/create()|navigator.credentials.create()}} and pass |options|
+    as the <code>{{CredentialCreationOptions/publicKey}}</code> option.
+    Let |credential| be the result of the successfully resolved promise.
+    If the promise is rejected, abort the ceremony with a user-visible error.
+
+1. Let |response| be <code>|credential|.{{PublicKeyCredential/response}}</code>.
+    If |response| is not an instance of {{AuthenticatorAttestationResponse}}, abort the ceremony with a user-visible error.
+
+1. Let |clientExtensionResults| be the result of calling
+    <code>|credential|.{{PublicKeyCredential/getClientExtensionResults()}}</code>.
 
 1. Let |JSONtext| be the result of
     running [=UTF-8 decode=] on the value of <code>|response|.{{AuthenticatorResponse/clientDataJSON}}</code>.
@@ -4075,12 +4084,12 @@ When registering a new credential, represented by an {{AuthenticatorAttestationR
     example, the FIDO Metadata Service [[FIDOMetadataService]] provides one way to obtain such information, using the
     <code>[=aaguid=]</code> in the <code>[=attestedCredentialData=]</code> in |authData|.
 
-1. Assess the attestation trustworthiness using the outputs of the [=verification procedure=] in step 16, as follows:
+1. Assess the attestation trustworthiness using the outputs of the [=verification procedure=] in step 19, as follows:
         - If [=None|no attestation=] was provided, verify that [=None=] attestation is acceptable under [=[RP]=] policy.
         - If [=self attestation=] was used, verify that [=self attestation=] is acceptable under [=[RP]=] policy.
         - If [=ECDAA=] was used, verify that the [=identifier of the ECDAA-Issuer public key=],
              returned as the [=attestation trust path=] from the [=verification procedure=],
-             is included in the set of acceptable trust anchors obtained in step 17.
+             is included in the set of acceptable trust anchors obtained in step 20.
         - Otherwise, use the X.509 certificates returned as the [=attestation trust path=] from the [=verification procedure=]
             to verify that the attestation public key correctly chains up to an acceptable root certificate.
 
@@ -4096,7 +4105,15 @@ When registering a new credential, represented by an {{AuthenticatorAttestationR
     - Associate the <code>[=credentialId=]</code> with a new stored [=signature counter=] value
         initialized to the value of <code>|authData|.[=signCount=]</code>.
 
-1. If the attestation statement |attStmt| successfully verified but is not trustworthy per step 18 above, the [=[RP]=] SHOULD fail
+    It is RECOMMENDED to also:
+
+    - Associate the <code>[=credentialId=]</code> with the transport hints
+        returned by calling <code>|credential|.{{AuthenticatorAttestationResponse/getTransports()}}</code>.
+        It is RECOMMENDED to use these to populate the {{PublicKeyCredentialDescriptor/transports}}
+        of the {{PublicKeyCredentialRequestOptions/allowCredentials}} option in future {{CredentialsContainer/get()}} calls
+        to help the [=client=] know how to find a suitable [=authenticator=].
+
+1. If the attestation statement |attStmt| successfully verified but is not trustworthy per step 21 above, the [=[RP]=] SHOULD fail
     the [=registration ceremony=].
 
     NOTE: However, if permitted by policy, the [=[RP]=] MAY register the [=credential ID=] and credential public key but treat the
@@ -4105,18 +4122,26 @@ When registering a new credential, represented by an {{AuthenticatorAttestationR
         See [[FIDOSecRef]] and [[UAFProtocol]] for a more detailed discussion.
 
 Verification of [=attestation objects=] requires that the [=[RP]=] has a trusted method of determining acceptable trust anchors
-in step 17 above. Also, if certificates are being used, the [=[RP]=] MUST have access to certificate status information for the
+in step 20 above. Also, if certificates are being used, the [=[RP]=] MUST have access to certificate status information for the
 intermediate CA certificates. The [=[RP]=] MUST also be able to build the attestation certificate chain if the client did not
 provide this chain in the attestation information.
 
 
 ## Verifying an Authentication Assertion ## {#sctn-verifying-assertion}
 
-When verifying a given {{PublicKeyCredential}} structure (|credential|) and an {{AuthenticationExtensionsClientOutputs}} structure
-|clientExtensionResults|, as part of an [=authentication ceremony=], the [=[RP]=] MUST proceed as follows:
+In order to perform an [=authentication ceremony=], the [=[RP]=] MUST proceed as follows:
 
-1. Let |options| be the {{PublicKeyCredentialRequestOptions}} that was passed
-    as the <code>{{CredentialCreationOptions/publicKey}}</code> option in the {{CredentialsContainer/get()}} call.
+1. Let |options| be a new {{PublicKeyCredentialRequestOptions}} structure configured to the [=[RP]=]'s needs for the ceremony.
+
+1. Call {{CredentialsContainer/get()|navigator.credentials.get()}} and pass |options|
+    as the <code>{{CredentialRequestOptions/publicKey}}</code> option.
+    Let |credential| be the result of the successfully resolved promise.
+    If the promise is rejected, abort the ceremony with a user-visible error.
+
+1. Let |response| be <code>|credential|.{{PublicKeyCredential/response}}</code>.
+    If |response| is not an instance of {{AuthenticatorAssertionResponse}}, abort the ceremony with a user-visible error.
+
+1. Let |clientExtensionResults| be the result of calling <code>|credential|.{{PublicKeyCredential/getClientExtensionResults()}}</code>.
 
 1. If <code>|options|.{{PublicKeyCredentialRequestOptions/allowCredentials}}</code> [=list/is not empty=],
     verify that <code>|credential|.{{Credential/id}}</code> identifies one of the [=public key credentials=]
@@ -4128,11 +4153,11 @@ When verifying a given {{PublicKeyCredential}} structure (|credential|) and an {
     <dl class="switch">
         :  If the user was identified before the [=authentication ceremony=] was initiated, e.g., via a username or cookie,
         :: verify that the identified user is the owner of |credentialSource|. If
-            <code>|credential|.{{PublicKeyCredential/response}}.{{AuthenticatorAssertionResponse/userHandle}}</code> is present,
+            <code>|response|.{{AuthenticatorAssertionResponse/userHandle}}</code> is present,
             let |userHandle| be its value. Verify that |userHandle| also maps to the same user.
 
         :  If the user was not identified before the [=authentication ceremony=] was initiated,
-        :: verify that <code>|credential|.{{PublicKeyCredential/response}}.{{AuthenticatorAssertionResponse/userHandle}}</code> is
+        :: verify that <code>|response|.{{AuthenticatorAssertionResponse/userHandle}}</code> is
             present, and that the user identified by this value is the owner of |credentialSource|.
     </dl>
 
@@ -4140,7 +4165,7 @@ When verifying a given {{PublicKeyCredential}} structure (|credential|) and an {
     [=base64url encoding=] is inappropriate for your use case), look up the corresponding [=credential public key=]
     and let |credentialPublicKey| be that [=credential public key=].
 
-1. Let |cData|, |authData| and |sig| denote the value of |credential|'s {{PublicKeyCredential/response}}'s
+1. Let |cData|, |authData| and |sig| denote the value of |response|'s
     {{AuthenticatorResponse/clientDataJSON}}, {{AuthenticatorAssertionResponse/authenticatorData}}, and
     {{AuthenticatorAssertionResponse/signature}} respectively.
 
