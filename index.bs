@@ -2393,8 +2393,7 @@ associated with or [=scoped=] to, respectively.
         When [=clients=], [=client platforms=], or [=authenticators=] display a {{PublicKeyCredentialEntity/name}}'s value, they should always use UI elements to provide a clear boundary around the displayed value, and not allow overflow into other elements [[css-overflow-3]].
 
         [=Authenticators=] MUST accept and store a 64-byte minimum length for a {{PublicKeyCredentialEntity/name}} member's
-        value. Authenticators MAY truncate a {{PublicKeyCredentialEntity/name}} member's value to a length equal to or greater
-        than 64 bytes. See also [[#sctn-strings]].
+        value. Authenticators MAY truncate a {{PublicKeyCredentialEntity/name}} member's value so that it fits within 64 bytes. See [[#sctn-strings]] about truncation and other considerations.
 
     :   <dfn>icon</dfn>
     ::  A [=URL serializer|serialized=] URL which resolves to an image associated with the entity. For example, this could be
@@ -2462,8 +2461,7 @@ credential.
         When [=clients=], [=client platforms=], or [=authenticators=] display a {{PublicKeyCredentialUserEntity/displayName}}'s value, they should always use UI elements to provide a clear boundary around the displayed value, and not allow overflow into other elements [[css-overflow-3]].
 
         [=Authenticators=] MUST accept and store a 64-byte minimum length for a {{PublicKeyCredentialUserEntity/displayName}}
-        member's value. Authenticators MAY truncate a {{PublicKeyCredentialUserEntity/displayName}} member's value to a length
-        equal to or greater than 64 bytes. See also [[#sctn-strings]].
+        member's value. Authenticators MAY truncate a {{PublicKeyCredentialUserEntity/displayName}} member's value so that it fits within 64 bytes. See [[#sctn-strings]] about truncation and other considerations.
 </div>
 
 
@@ -3651,11 +3649,18 @@ or [=authenticatorGetAssertion=] operation currently in progress.
 
 Authenticators may be required to store arbitrary strings chosen by a [=[RP]=], for example the {{PublicKeyCredentialEntity/name}}, {{PublicKeyCredentialUserEntity/displayName}}, and {{PublicKeyCredentialEntity/icon}} members in a {{PublicKeyCredentialUserEntity}}. Each will have some accommodation for the potentially limited resources available to an [=authenticator=].
 
-If string value truncation is the chosen accommodation, the [=authenticator=] SHOULD take care to truncate on character boundaries, although the authenticator MAY truncate without reference to any character encoding. For example, an authenticator could truncate a {{PublicKeyCredentialEntity/name}} and leave a partial UTF-8 sequence at the end. If the authenticator is using [[!FIDO-CTAP]] then future messages from the authenticator may contain invalid CBOR since the value is typed as a CBOR string and thus is required to be valid UTF-8.
+If string value truncation is the chosen accommodation then the amount truncated MUST be, at most, the minimum amount neccessary while respecting UTF-8 sequence and [=grapheme cluster=] boundaries. For example, in the following example the string is 65 bytes long. If truncating to 64 bytes then the final 0x88 byte must be dropped purely because of space reasons. Since that leaves a partial UTF-8 sequence an authenticator MAY drop the remainder of that sequence. Since that leaves a partial [=grapheme cluster=] an authenticator MAY drop the remainder of that cluster. That defines that maximum truncation permitted and authenticators MUST NOT truncate further.
 
-Additionally, a [=grapheme cluster=] may be truncated [[UTR29]], <i>altering</i> the resulting character in the mind of the user.
+<figure id="fig-stringTruncation">
+    <img src="images/string-truncation.svg"/>
+    <figcaption>A UTF-8 encoded string showing the positions where different truncation algorithms would cut it.</figcaption>
+</figure>
 
-User agents are tasked with handling this to avoid burdening authenticators with understanding character encodings and Unicode character properties. Thus, when dealing with [=authenticators=], user agents SHOULD:
+[=Conforming User Agents=] are responsible for ensuring that the authenticator behaviour observed by [=[RPS]=] conforms to this specification with respect to string handling. For example, if an authenticator is known to behave incorrectly when asked to store large strings, the user-agent should perform the truncation for it in order to maintain the model from the point of view of the [=[RP]=]. User-agents that do this SHOULD truncate at [=grapheme clusters=].
+
+Authenticators that truncate on UTF-8 sequences alone may cause a [=grapheme cluster=] to be truncated [[UTR29]], <i>altering</i> the resulting character in the mind of the user.
+
+In addition to that, truncating on byte boundaries alone causes a known issue that user-agents should be aware of: if the authenticator is using [[!FIDO-CTAP]] then future messages from the authenticator may contain invalid CBOR since the value is typed as a CBOR string and thus is required to be valid UTF-8. User agents are tasked with handling this to avoid burdening authenticators with understanding character encodings and Unicode character properties. Thus, when dealing with [=authenticators=], user agents SHOULD:
 
 1. Ensure that any strings sent to authenticators are validly encoded.
 1. Handle the case where strings have been truncated resulting in an invalid encoding. For example, any partial code point at the end may be dropped or replaced with [U+FFFD](http://unicode.org/cldr/utility/character.jsp?a=FFFD).
