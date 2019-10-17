@@ -848,7 +848,7 @@ The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "S
     In the WebAuthn context, [=attestation=] is employed to <em>attest</em> to the <em>provenance</em> of an [=authenticator=]
     and the data it emits; including, for example: [=credential IDs=], [=credential key pairs=], signature counters, etc. An
     [=attestation statement=] is conveyed in an [=attestation object=] during [=registration=]. See also [[#sctn-attestation]]
-    and [Figure 5](#fig-attStructs). Whether or how the [=client=] conveys the [=attestation statement=] and [=AAGUID=]
+    and [Figure 6](#fig-attStructs). Whether or how the [=client=] conveys the [=attestation statement=] and [=AAGUID=]
     portions of the [=attestation object=] to the [=[RP]=] is described by [=attestation conveyance=].
 
 : <dfn>Attestation Certificate</dfn>
@@ -2212,7 +2212,7 @@ during registration.
         [=authenticator=]. It also contains any additional information that the [=[RP]=]'s server requires to validate the
         [=attestation statement=], as well as to decode and validate the [=authenticator data=] along with the
         [=JSON-serialized client data=]. For more details, see [[#sctn-attestation]], [[#sctn-generating-an-attestation-object]],
-        and [Figure 5](#fig-attStructs).
+        and [Figure 6](#fig-attStructs).
 
     :   {{AuthenticatorAttestationResponse/getTransports()}}
     ::  This operation returns the value of {{AuthenticatorAttestationResponse/[[transports]]}}.
@@ -3649,18 +3649,20 @@ or [=authenticatorGetAssertion=] operation currently in progress.
 
 Authenticators may be required to store arbitrary strings chosen by a [=[RP]=], for example the {{PublicKeyCredentialEntity/name}}, {{PublicKeyCredentialUserEntity/displayName}}, and {{PublicKeyCredentialEntity/icon}} members in a {{PublicKeyCredentialUserEntity}}. Each will have some accommodation for the potentially limited resources available to an [=authenticator=].
 
-If string value truncation is the chosen accommodation then the amount truncated MUST be, at most, the minimum amount neccessary while respecting UTF-8 sequence and [=grapheme cluster=] boundaries. For example, in the following example the string is 65 bytes long. If truncating to 64 bytes then the final 0x88 byte must be dropped purely because of space reasons. Since that leaves a partial UTF-8 sequence an authenticator MAY drop the remainder of that sequence. Since that leaves a partial [=grapheme cluster=] an authenticator MAY drop the remainder of that cluster. That defines that maximum truncation permitted and authenticators MUST NOT truncate further.
+If string value truncation is the chosen accommodation then authenticators MAY truncate in order to make the string fit within a length equal or greater than the specified minimum supported length. Such truncation MAY also respect UTF-8 sequence boundaries or [=grapheme cluster=] boundaries [[UTR29]]. This defines the maximum truncation permitted and authenticators MUST NOT truncate further.
+
+For example, in [figure 5](#fig-stringTruncation) the string is 65 bytes long. If truncating to 64 bytes then the final 0x88 byte must be removed purely because of space reasons. Since that leaves a partial UTF-8 sequence the remainder of that sequence may also be removed. Since that leaves a partial [=grapheme cluster=] an authenticator may remove the remainder of that cluster.
 
 <figure id="fig-stringTruncation">
     <img src="images/string-truncation.svg"/>
-    <figcaption>A UTF-8 encoded string showing the positions where different truncation algorithms would cut it.</figcaption>
+    <figcaption>The end of a UTF-8 encoded string showing the positions of different truncation boundaries.</figcaption>
 </figure>
 
-[=Conforming User Agents=] are responsible for ensuring that the authenticator behaviour observed by [=[RPS]=] conforms to this specification with respect to string handling. For example, if an authenticator is known to behave incorrectly when asked to store large strings, the user-agent should perform the truncation for it in order to maintain the model from the point of view of the [=[RP]=]. User-agents that do this SHOULD truncate at [=grapheme clusters=].
+[=Conforming User Agents=] are responsible for ensuring that the authenticator behaviour observed by [=[RPS]=] conforms to this specification with respect to string handling. For example, if an authenticator is known to behave incorrectly when asked to store large strings, the user agent SHOULD perform the truncation for it in order to maintain the model from the point of view of the [=[RP]=]. User-agents that do this SHOULD truncate at [=grapheme clusters=].
 
-Authenticators that truncate on UTF-8 sequences alone may cause a [=grapheme cluster=] to be truncated [[UTR29]], <i>altering</i> the resulting character in the mind of the user.
+Truncation based on UTF-8 sequences alone may cause a [=grapheme cluster=] to be truncated, but still valid [[UTR29]]. This could make the grapheme cluster render as a different valid glyph instead of removing the glyph entirely.
 
-In addition to that, truncating on byte boundaries alone causes a known issue that user-agents should be aware of: if the authenticator is using [[!FIDO-CTAP]] then future messages from the authenticator may contain invalid CBOR since the value is typed as a CBOR string and thus is required to be valid UTF-8. User agents are tasked with handling this to avoid burdening authenticators with understanding character encodings and Unicode character properties. Thus, when dealing with [=authenticators=], user agents SHOULD:
+In addition to that, truncating on byte boundaries alone causes a known issue that user agents should be aware of: if the authenticator is using [[!FIDO-CTAP]] then future messages from the authenticator may contain invalid CBOR since the value is typed as a CBOR string and thus is required to be valid UTF-8. User agents are tasked with handling this to avoid burdening authenticators with understanding character encodings and Unicode character properties. Thus, when dealing with [=authenticators=], user agents SHOULD:
 
 1. Ensure that any strings sent to authenticators are validly encoded.
 1. Handle the case where strings have been truncated resulting in an invalid encoding. For example, any partial code point at the end may be dropped or replaced with [U+FFFD](http://unicode.org/cldr/utility/character.jsp?a=FFFD).
@@ -3677,7 +3679,7 @@ MAY either perform [=self attestation=] of the [=credential public key=] with th
 or otherwise perform [=None|no attestation=]. All this
 information is returned by [=authenticators=] any time a new [=public key credential=] is generated, in the overall form of an
 <dfn>attestation object</dfn>. The relationship of the [=attestation object=] with [=authenticator data=] (containing
-[=attested credential data=]) and the [=attestation statement=] is illustrated in [figure 5](#fig-attStructs), below.
+[=attested credential data=]) and the [=attestation statement=] is illustrated in [figure 6](#fig-attStructs), below.
 
 If an [=authenticator=] employs [=self attestation=] or [=None|no attestation=], then no provenance information is provided
 for the [=[RP]=] to base a trust decision on.
@@ -3933,7 +3935,7 @@ calling {{CredentialsContainer/create()|navigator.credentials.create()}} they se
 
 ### Generating an Attestation Object ### {#sctn-generating-an-attestation-object}
 
-To generate an [=attestation object=] (see: [Figure 5](#fig-attStructs)) given:
+To generate an [=attestation object=] (see: [Figure 6](#fig-attStructs)) given:
 
 : |attestationFormat|
 :: An [=attestation statement format=].
