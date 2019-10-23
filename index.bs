@@ -291,9 +291,11 @@ as Universal Serial Bus (USB), Bluetooth Low Energy (BLE), or Near Field Communi
 While many W3C specifications are directed primarily to user agent developers and also to web application developers
 (i.e., "Web authors"), the nature of Web Authentication requires that this specification be correctly used by multiple audiences,
 as described below.
-All audiences ought to begin with [[#sctn-use-cases]], [[#sctn-sample-scenarios]], and [[#sctn-terminology]], and should also
+
+**All audiences** ought to begin with [[#sctn-use-cases]], [[#sctn-sample-scenarios]], and [[#sctn-terminology]], and should also
 refer to [[WebAuthnAPIGuide]] for an overall tutorial.
-<br><br>
+Beyond that, the intended audiences for this document are the following main groups:
+
 - [=[RP]=] web application developers, expecially those responsible for [=[RP]=] [=web application=] login flows, account recovery flows,
     user account database content, etc.
 - Web framework developers
@@ -304,18 +306,19 @@ refer to [[WebAuthnAPIGuide]] for an overall tutorial.
         Additionally, if they intend to verify [=authenticator=] [=attestations=], then
         [[#sctn-attestation]] and [[#sctn-defined-attestation-formats]] will also be relevant.
         [[#sctn-extensions]], and [[#sctn-defined-extensions]] will be of interest if they wish to make use of extensions.
-        <br><br>
+        Finally, they should read [[#sctn-security-considerations-rp]] and [[#sctn-privacy-considerations-rp]]
+        and consider which challenges apply to their application and users.
 
 - User agent developers
 - OS platform developers, responsible for OS platform API design and implementation in regards to platform-specific
     [=authenticator=] APIs, platform [=WebAuthn Client=] instantiation, etc.
 
     - The above two audiences should read [[#sctn-api]] very carefully, along with [[#sctn-extensions]] if they intend to support extensions.
-        <br><br>
+        They should also carefully read [[#sctn-security-considerations-client]] and [[#sctn-privacy-considerations-client]].
 
 - [=Authenticator=] developers. These readers will want to pay particular attention to [[#sctn-authenticator-model]],
     [[#sctn-defined-attestation-formats]], [[#sctn-extensions]], and [[#sctn-defined-extensions]].
-    <br><br>
+    They should also carefully read [[#sctn-security-considerations-authenticator]] and [[#sctn-privacy-considerations-authenticator]].
 
 <div class="note">
     Note: Along with the [[#sctn-api|Web Authentication API]] itself, this specification defines a
@@ -785,7 +788,7 @@ below and in [[#index-defined-elsewhere]].
     as defined in [[!FIDO-CTAP]].
 
 : CDDL
-:: This specification describes the syntax of all [=CBOR=]-encoded data using the CBOR Data Definition Language (CDDL) [[!CDDL]].
+:: This specification describes the syntax of all [=CBOR=]-encoded data using the CBOR Data Definition Language (CDDL) [[!RFC8610]].
 
 : COSE
 :: CBOR Object Signing and Encryption (COSE) [[!RFC8152]].  The IANA COSE Algorithms registry established by this specification is also used.
@@ -863,6 +866,13 @@ The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "S
 
     A [=[WAA]=] could be a [=roaming authenticator=], a dedicated hardware subsystem integrated into the [=client device=],
     or a software component of the [=client=] or [=client device=].
+
+    In general, an [=authenticator=] is assumed to have only one user.
+    If multiple natural persons share access to an [=authenticator=],
+    they are considered to represent the same user in the context of that [=authenticator=].
+    If an [=authenticator=] implementation supports multiple users in separated compartments,
+    then each compartment is considered a separate [=authenticator=]
+    with a single user with no access to other users' [=credentials=].
 
 : <dfn>Authorization Gesture</dfn>
 :: An [=authorization gesture=] is a physical interaction performed by a user with an authenticator as part of a [=ceremony=],
@@ -1123,10 +1133,16 @@ The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "S
     [=biometric recognition=] (e.g., presenting a fingerprint) [[ISOBiometricVocabulary]]. The intent is to
     distinguish individual users.
 
+    Note that [=user verification=] does not give the [=[RP]=] a concrete identification of the user,
+    but when 2 or more ceremonies with [=user verification=] have been done with that [=credential=]
+    it expresses that it was the same user that performed all of them.
+    The same user might not always be the same natural person, however,
+    if multiple natural persons share access to the same [=authenticator=].
+
     Note: Distinguishing natural persons depends in significant part upon the [=client platform=]'s
     and [=authenticator=]'s capabilities.
     For example, some devices are intended to be used by a single individual,
-    yet they may allow multiple natural persons to enroll fingerprints
+    yet they may allow multiple natural persons to enroll fingerprints or know the same PIN
     and thus access the same [=[RP]=] account(s) using that device.
     See also [[#sctn-uvi-extension]].
 
@@ -1209,6 +1225,8 @@ where a single [=[RP]=] maintains multiple [=origins=].
 The client facilitates these security measures by providing the [=[RP]=]'s [=origin=] and [=RP ID=] to the [=authenticator=] for
 each operation. Since this is an integral part of the WebAuthn security model, user agents only expose this API to callers in
 [=secure contexts=].
+For web contexts in particular,
+this only includes those accessed via a secure transport (e.g., TLS) established without errors.
 
 The Web Authentication API is defined by the union of the Web IDL fragments presented in the following sections. A combined IDL
 listing is given in the [[#idl-index]].
@@ -2841,7 +2859,7 @@ parameter to the {{CredentialsContainer/create()}} or {{CredentialsContainer/get
 
     :   <dfn>usb</dfn>
     ::  Indicates the respective [=authenticator=] can be contacted over removable USB.
-    
+
     :   <dfn>lightning</dfn>
     ::  Indicates the respective [=authenticator=] can be contacted over removable Lightning.
 
@@ -2905,8 +2923,8 @@ This specification defines a [=policy-controlled feature=] identified by
 the feature-identifier token "<code><dfn data-lt="publickey-credentials-feature" export>publickey-credentials</dfn></code>".
 Its [=default allowlist=] is '<code>self</code>'. [[!Feature-Policy]]
 
-A {{Document}}'s [=Document/feature policy=] determines whether any content in that <a href="https://html.spec.whatwg.org/multipage/dom.html#documents">document</a> is allowed
-to successfully invoke the [=Web Authentication API=], i.e., via
+A {{Document}}'s [=Document/feature policy=] determines whether any content in that <a href="https://html.spec.whatwg.org/multipage/dom.html#documents">document</a> is
+[=allowed to use|allowed to successfully invoke=] the [=Web Authentication API=], i.e., via
 <code><a idl for="CredentialsContainer" lt="create()">navigator.credentials.create({publicKey:..., ...})</a></code> and
 <code><a idl for="CredentialsContainer" lt="get()">navigator.credentials.get({publicKey:..., ...})</a></code>.
 If disabled in any document, no content in the document will be [=allowed to use=]
@@ -3428,6 +3446,15 @@ When this operation is invoked, the [=authenticator=] MUST perform the following
             ::  return an error code equivalent to "{{NotAllowedError}}" and terminate the operation.
         </dl>
 
+        Note: The purpose of this [=authorization gesture=] is not to proceed with creating a credential,
+        but for privacy reasons to authorize disclosure of the fact that
+        <code>|descriptor|.{{PublicKeyCredentialDescriptor/id}}</code> is [=bound credential|bound=] to this [=authenticator=].
+        If the user consents, the [=client=] and [=[RP]=] can detect this and guide the user to use a different [=authenticator=].
+        If the user does not consent,
+        the [=authenticator=] does not reveal that <code>|descriptor|.{{PublicKeyCredentialDescriptor/id}}</code>
+        is [=bound credential|bound=] to it,
+        and responds as if the user simply declined consent to create a credential.
+
 1. If |requireResidentKey| is [TRUE] and the authenticator cannot store a [=client-side-resident public key credential source=],
     return an error code equivalent to "{{ConstraintError}}" and terminate the operation.
 1. If |requireUserVerification| is [TRUE] and the authenticator cannot perform [=user verification=], return an error code
@@ -3549,10 +3576,6 @@ When this method is invoked, the [=authenticator=] MUST perform the following pr
     by the [=authenticator=] if it has its own output capability, or by the user agent otherwise.
 
     If |requireUserVerification| is [TRUE], the [=authorization gesture=] MUST include [=user verification=].
-
-        Note: For the overall WebAuthn security properties to hold, the user verified here must be the same user that was
-        verified when this [=authenticator=] created this [=public key credential=] in
-        <a href='#op-makecred-step-user-consent'>Step 6</a> of [[#sctn-op-make-cred]].
 
     If |requireUserPresence| is [TRUE], the [=authorization gesture=] MUST include a
         [=test of user presence=].
@@ -3747,7 +3770,7 @@ object=] for a given credential. Its format is shown in [Table 3](#table-atteste
 #### Examples of `credentialPublicKey` Values Encoded in COSE_Key Format #### {#sctn-encoded-credPubKey-examples}
 
 This section provides examples of COSE_Key-encoded Elliptic Curve and RSA public keys for the ES256, PS256, and RS256
-signature algorithms. These examples adhere to the rules defined above for the [=credentialPublicKey=] value, and are presented in [[!CDDL]] for clarity.
+signature algorithms. These examples adhere to the rules defined above for the [=credentialPublicKey=] value, and are presented in CDDL [[!RFC8610]] for clarity.
 
 [[!RFC8152]] [=Section 7=] defines the general framework for all COSE_Key-encoded keys.
 Specific key types for specific algorithms are defined in other sections of [[!RFC8152]] as well as in other specifications,
@@ -3770,7 +3793,7 @@ algorithm (ECDSA w/ SHA-256, see [[!RFC8152]] [=Section 8.1=]:
 </pre>
 
 Below is the above Elliptic Curve public key encoded in the [=CTAP2 canonical CBOR encoding form=], whitespace and line breaks
-are included here for clarity and to match the [[!CDDL]] presentation above:
+are included here for clarity and to match the CDDL [[!RFC8610]] presentation above:
 
 <pre class="example" highlight="json">
   A5
@@ -3827,7 +3850,7 @@ template:
 - <strong>Supported [=attestation types=]:</strong>
 
 - <strong>Syntax:</strong>
-    The syntax of an [=attestation statement=] produced in this format, defined using [[!CDDL]] for the extension point
+    The syntax of an [=attestation statement=] produced in this format, defined using CDDL [[!RFC8610]] for the extension point
     `$attStmtFormat` defined in [[#sctn-generating-an-attestation-object]].
 
 - <dfn>Signing procedure</dfn>:
@@ -3868,6 +3891,8 @@ calling {{CredentialsContainer/create()|navigator.credentials.create()}} they se
 :: In the case of basic attestation [[UAFProtocol]], the authenticator's [=attestation key pair=] is specific to an
     authenticator model.  Thus, authenticators of the same model often share the same [=attestation key pair=]. See
     [[#sctn-attestation-privacy]] for further information.
+
+    [=Basic attestation=] is sometimes also called <dfn>batch attestation</dfn>.
 
 : <dfn>Self Attestation</dfn> (<dfn>Self</dfn>)
 :: In the case of [=self attestation=], also known as surrogate basic attestation [[UAFProtocol]], the Authenticator does not have
@@ -4027,18 +4052,18 @@ When registering a new credential, represented by an {{AuthenticatorAttestationR
 1. Verify that the values of the [=client extension outputs=] in |clientExtensionResults| and the [=authenticator extension
     outputs=] in the <code>[=authdataextensions|extensions=]</code> in |authData| are as expected, considering the [=client
     extension input=] values that were given in <code>|options|.{{PublicKeyCredentialCreationOptions/extensions}}</code>
-    and any specific policy of the [=[RP]=] regarding unsolicited extensions, i.e., those that were not specified as part of 
+    and any specific policy of the [=[RP]=] regarding unsolicited extensions, i.e., those that were not specified as part of
     <code>|options|.{{PublicKeyCredentialCreationOptions/extensions}}</code>.
     In the general case, the meaning of "are as expected" is specific to the [=[RP]=] and which extensions are in use.
 
     Note:  [=Client platforms=] MAY enact local policy that sets additional [=authenticator extensions=] or
     [=client extensions=] and thus cause values to appear in the [=authenticator extension outputs=] or
-    [=client extension outputs=] that were not originally specified as part of 
-    <code>|options|.{{PublicKeyCredentialCreationOptions/extensions}}</code>. [=[RPS]=] MUST be prepared to handle such 
-    situations, whether it be to ignore the unsolicited extensions or reject the attestation. The [=[RP]=] can make this 
+    [=client extension outputs=] that were not originally specified as part of
+    <code>|options|.{{PublicKeyCredentialCreationOptions/extensions}}</code>. [=[RPS]=] MUST be prepared to handle such
+    situations, whether it be to ignore the unsolicited extensions or reject the attestation. The [=[RP]=] can make this
     decision based on local policy and the extensions in use.
 
-    Note: Since all extensions are OPTIONAL for both the [=client=] and the [=authenticator=], the [=[RP]=] MUST also be 
+    Note: Since all extensions are OPTIONAL for both the [=client=] and the [=authenticator=], the [=[RP]=] MUST also be
     prepared to handle cases where none or not all of the requested extensions were acted upon.
 
 1. Determine the attestation statement format by performing a USASCII case-sensitive match on |fmt| against the set of
@@ -4163,18 +4188,18 @@ a numbered step. If outdented, it (today) is rendered as a bullet in the midst o
 1. Verify that the values of the [=client extension outputs=] in |clientExtensionResults| and the [=authenticator extension
     outputs=] in the <code>[=authdataextensions|extensions=]</code> in |authData| are as expected, considering the [=client
     extension input=] values that were given in <code>|options|.{{PublicKeyCredentialRequestOptions/extensions}}</code>
-    and any specific policy of the [=[RP]=] regarding unsolicited extensions, i.e., those that were not specified as part of 
+    and any specific policy of the [=[RP]=] regarding unsolicited extensions, i.e., those that were not specified as part of
     <code>|options|.{{PublicKeyCredentialRequestOptions/extensions}}</code>.
     In the general case, the meaning of "are as expected" is specific to the [=[RP]=] and which extensions are in use.
 
     Note:  [=Client platforms=] MAY enact local policy that sets additional [=authenticator extensions=] or
     [=client extensions=] and thus cause values to appear in the [=authenticator extension outputs=] or
-    [=client extension outputs=] that were not originally specified as part of 
-    <code>|options|.{{PublicKeyCredentialRequestOptions/extensions}}</code>. [=[RPS]=] MUST be prepared to handle such 
-    situations, whether it be to ignore the unsolicited extensions or reject the assertion. The [=[RP]=] can make this 
+    [=client extension outputs=] that were not originally specified as part of
+    <code>|options|.{{PublicKeyCredentialRequestOptions/extensions}}</code>. [=[RPS]=] MUST be prepared to handle such
+    situations, whether it be to ignore the unsolicited extensions or reject the assertion. The [=[RP]=] can make this
     decision based on local policy and the extensions in use.
 
-    Note: Since all extensions are OPTIONAL for both the [=client=] and the [=authenticator=], the [=[RP]=] MUST also be 
+    Note: Since all extensions are OPTIONAL for both the [=client=] and the [=authenticator=], the [=[RP]=] MUST also be
     prepared to handle cases where none or not all of the requested extensions were acted upon.
 
 1. Let |hash| be the result of computing a hash over the |cData| using SHA-256.
@@ -6038,7 +6063,7 @@ or link various online identities of the same user together.
 This can be mitigated in several ways, including:
 
 - A [=[WAA]=] manufacturer may choose to ship [=authenticators=] in batches
-    where [=authenticators=] in a batch share the same [=attestation certificate=] (called [=Basic Attestation=]).
+    where [=authenticators=] in a batch share the same [=attestation certificate=] (called [=Basic Attestation=] or [=batch attestation=]).
     This will anonymize the user at the risk of not being able to revoke a particular [=attestation certificate=]
     if its [=attestation private key|private key=] is compromised.
     The [=authenticator=] manufacturer SHOULD then ensure that such batches are large enough to provide meaningful anonymization,
@@ -6475,12 +6500,12 @@ for their contributions as our W3C Team Contacts.
     "status": "FIDO Alliance Proposed Standard"
   },
 
-  "CDDL": {
-    "authors": ["C. Vigano", "H. Birkholz"],
-    "title": "CBOR data definition language (CDDL): a notational convention to express CBOR data structures",
-    "href": "https://tools.ietf.org/html/draft-greevenbosch-appsawg-cbor-cddl",
-    "status": "Internet Draft (work in progress)",
-    "date": "21 September 2016"
+  "RFC8610": {
+    "authors": ["H. Birkholz", "C. Vigano", "C. Bormann"],
+    "title": "Concise Data Definition Language (CDDL): A Notational Convention to Express Concise Binary Object Representation (CBOR) and JSON Data Structures",
+    "href": "https://tools.ietf.org/html/rfc8610",
+    "status": "IETF Proposed Standard",
+    "date": "June 2019"
   },
 
   "ISOBiometricVocabulary": {
