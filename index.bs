@@ -1401,7 +1401,11 @@ This [=internal method=] accepts three arguments:
 
     :   <dfn>sameOriginWithAncestors</dfn>
     ::  This argument is a Boolean value which is [TRUE] if and only if the caller's [=environment settings object=] is
-        [=same-origin with its ancestors=].
+        [=same-origin with its ancestors=]. It is [FALSE] if caller is cross-origin.
+
+        Note: Invocation of this [=internal method=] indicates that it was allowed by
+        [=feature policy=], which is evaluated at the [[!CREDENTIAL-MANAGEMENT-1]] level.
+        See [[#sctn-feature-policy]].
 
 </dl>
 
@@ -1415,18 +1419,6 @@ by the buffer source=] and use that copy for relevant portions of the algorithm.
 When this method is invoked, the user agent MUST execute the following algorithm:
 
 1. Assert: <code>|options|.{{CredentialCreationOptions/publicKey}}</code> is [=present=].
-
-1. If <var ignore>sameOriginWithAncestors</var> is [FALSE], return a "{{NotAllowedError}}" {{DOMException}}.
-
-    Note: This "sameOriginWithAncestors" restriction aims to address the concern raised in the
-    [[CREDENTIAL-MANAGEMENT-1#security-origin-confusion|Origin Confusion]] section of [[!CREDENTIAL-MANAGEMENT-1]],
-    while allowing [=[RP]=] script access to Web Authentication functionality, e.g., when running in
-    a [=secure context=] framed document that is [=same-origin with its ancestors=].
-    However, in the future, this specification (in conjunction with
-    [[!CREDENTIAL-MANAGEMENT-1]]) may provide [=[RPS]=] with more fine-grained control--e.g., ranging
-    from allowing only top-level access to Web Authentication functionality,
-    to allowing cross-origin embedded cases--by leveraging
-    [[!Feature-Policy]] once the latter specification becomes stably implemented in user agents.
 
 1. Let |options| be the value of <code>|options|.{{CredentialCreationOptions/publicKey}}</code>.
 
@@ -1523,6 +1515,10 @@ a numbered step. If outdented, it (today) is rendered as a bullet in the midst o
     :: The [=base64url encoding=] of |options|.{{PublicKeyCredentialCreationOptions/challenge}}.
     : {{CollectedClientData/origin}}
     :: The [=ascii serialization of an origin|serialization of=] |callerOrigin|.
+    : {{CollectedClientData/crossOrigin}}
+    :: The inverse of the value of the 
+        {{PublicKeyCredential/[[Create]](origin, options, sameOriginWithAncestors)/sameOriginWithAncestors}}
+        argument passed to this [=internal method=].
     : {{CollectedClientData/tokenBinding}}
     :: The status of [=Token Binding=] between the client and the |callerOrigin|, as well as the [=Token Binding ID=] associated with |callerOrigin|, if one is available.
 
@@ -1837,7 +1833,11 @@ This [=internal method=] accepts three arguments:
 
     :   <dfn>sameOriginWithAncestors</dfn>
     ::  This argument is a Boolean value which is [TRUE] if and only if the caller's [=environment settings object=] is
-        [=same-origin with its ancestors=].
+        [=same-origin with its ancestors=]. It is [FALSE] if caller is cross-origin.
+
+        Note: Invocation of this [=internal method=] indicates that it was allowed by
+        [=feature policy=], which is evaluated at the [[!CREDENTIAL-MANAGEMENT-1]] level.
+        See [[#sctn-feature-policy]].
 </dl>
 
 Note: <strong>This algorithm is synchronous:</strong> the {{Promise}} resolution/rejection is handled by
@@ -1850,18 +1850,6 @@ by the buffer source=] and use that copy for relevant portions of the algorithm.
 When this method is invoked, the user agent MUST execute the following algorithm:
 
 1. Assert: <code>|options|.{{CredentialRequestOptions/publicKey}}</code> is [=present=].
-
-1. If <var ignore>sameOriginWithAncestors</var> is [FALSE], return a "{{NotAllowedError}}" {{DOMException}}.
-
-    Note: This "sameOriginWithAncestors" restriction aims to address the concern raised in the
-    [[CREDENTIAL-MANAGEMENT-1#security-origin-confusion|Origin Confusion]] section of [[!CREDENTIAL-MANAGEMENT-1]],
-    while allowing [=[RP]=] script access to Web Authentication functionality, e.g., when running in
-    a [=secure context=] framed document that is [=same-origin with its ancestors=].
-    However, in the future, this specification (in conjunction with
-    [[!CREDENTIAL-MANAGEMENT-1]]) may provide [=[RPS]=] with more fine-grained control--e.g., ranging
-    from allowing only top-level access to Web Authentication functionality,
-    to allowing cross-origin embedded cases--by leveraging
-    [[!Feature-Policy]] once the latter specification becomes stably implemented in user agents.
 
 1. Let |options| be the value of <code>|options|.{{CredentialRequestOptions/publicKey}}</code>.
 
@@ -1936,6 +1924,10 @@ When this method is invoked, the user agent MUST execute the following algorithm
     :: The [=base64url encoding=] of |options|.{{PublicKeyCredentialRequestOptions/challenge}}
     : {{CollectedClientData/origin}}
     :: The [=ascii serialization of an origin|serialization of=] |callerOrigin|.
+    : {{CollectedClientData/crossOrigin}}
+    :: The inverse of the value of the
+        {{PublicKeyCredential/[[DiscoverFromExternalSource]](origin, options, sameOriginWithAncestors)/sameOriginWithAncestors}}
+        argument passed to this [=internal method=].
     : {{CollectedClientData/tokenBinding}}
     :: The status of [=Token Binding=] between the client and the |callerOrigin|, as well as the [=Token Binding ID=] associated with |callerOrigin|, if one is available.
 
@@ -2227,7 +2219,7 @@ This method has no arguments and returns a Boolean value.
     };
 </xmp>
 
-Note: Invoking this method from a [=browsing context=] where the [=Web Authentication API=] is "disabled" according to the [=allowed to use=] algorithm&mdash;i.e., by a [=feature policy=]&mdash;will result in the promise being rejected with a {{DOMException}} whose name is "{{NotAllowedError}}".
+Note: Invoking this method from a [=browsing context=] where the [=Web Authentication API=] is "disabled" according to the [=allowed to use=] algorithm&mdash;i.e., by a [=feature policy=]&mdash;will result in the promise being rejected with a {{DOMException}} whose name is "{{NotAllowedError}}". See also [[#sctn-feature-policy]].
 
 </div>
 
@@ -2795,6 +2787,7 @@ Note: The {{CollectedClientData}} may be extended in the future. Therefore it's 
         required DOMString           type;
         required DOMString           challenge;
         required DOMString           origin;
+        boolean                      crossOrigin;
         TokenBinding                 tokenBinding;
     };
 
@@ -2819,6 +2812,10 @@ Note: The {{CollectedClientData}} may be extended in the future. Therefore it's 
     :   <dfn>origin</dfn>
     ::  This member contains the fully qualified [=origin=] of the requester, as provided to the authenticator by the client, in
         the syntax defined by [[!RFC6454]].
+
+    :   <dfn>crossOrigin</dfn>
+    ::  This member contains the inverse of the `sameOriginWithAncestors` argument value
+        that was passed into the [=internal method=].
 
     :   <dfn>tokenBinding</dfn>
     ::  This OPTIONAL member contains information about the state of the [=Token Binding=] protocol [[!TokenBinding]] used when communicating
@@ -3001,7 +2998,7 @@ Note: Algorithms specified in [[!CREDENTIAL-MANAGEMENT-1]] perform the actual fe
 ## Using Web Authentication within <code>iframe</code> elements ## {#sctn-iframe-guidance}
 
 The [=Web Authentication API=] is disabled by default in cross-origin <{iframe}>s.
-To override this default policy and indicate that a cross-origin <{iframe}> is allowed to invoke the [=Web Authentication API=], specify the <{iframe/allow}> attribute on the <{iframe}> element and include the `publickey-credentials` feature policy token in the <{iframe/allow}> attribute's value.
+To override this default policy and indicate that a cross-origin <{iframe}> is allowed to invoke the [=Web Authentication API=], specify the <{iframe/allow}> attribute on the <{iframe}> element and include the <code><a data-lt="publickey-credentials-feature">publickey-credentials</a></code> feature-identifier token in the <{iframe/allow}> attribute's value.
 
 
 
