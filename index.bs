@@ -1530,7 +1530,7 @@ a numbered step. If outdented, it (today) is rendered as a bullet in the midst o
     : {{CollectedClientData/tokenBinding}}
     :: The status of [=Token Binding=] between the client and the |callerOrigin|, as well as the [=Token Binding ID=] associated with |callerOrigin|, if one is available.
 
-1. Let |clientDataJSON| be the [=JSON-serialized client data=] constructed from |collectedClientData|.
+1. Let |clientDataJSON| be the [=JSON-compatible serialization of client data=] constructed from |collectedClientData|.
 
 1. Let |clientDataHash| be the [=hash of the serialized client data=] represented by |clientDataJSON|.
 
@@ -1946,7 +1946,7 @@ When this method is invoked, the user agent MUST execute the following algorithm
     : {{CollectedClientData/tokenBinding}}
     :: The status of [=Token Binding=] between the client and the |callerOrigin|, as well as the [=Token Binding ID=] associated with |callerOrigin|, if one is available.
 
-1. Let |clientDataJSON| be the [=JSON-serialized client data=] constructed from |collectedClientData|.
+1. Let |clientDataJSON| be the [=JSON-compatible serialization of client data=] constructed from |collectedClientData|.
 
 1. Let |clientDataHash| be the [=hash of the serialized client data=] represented by |clientDataJSON|.
 
@@ -2251,7 +2251,7 @@ Note: Invoking this method from a [=browsing context=] where the [=Web Authentic
 </xmp>
 <div dfn-type="attribute" dfn-for="AuthenticatorResponse">
     :   <dfn>clientDataJSON</dfn>
-    ::  This attribute contains a [=JSON-serialized client data|JSON serialization=] of the [=client data=] passed to the
+    ::  This attribute contains a [JSON-compatible serialization](#clientdatajson-serialization) of the [=client data=] passed to the
         authenticator by the client in its call to either {{CredentialsContainer/create()}} or {{CredentialsContainer/get()}}.
 </div>
 
@@ -2271,7 +2271,7 @@ during registration.
 </xmp>
 <div dfn-type="attribute" dfn-for="AuthenticatorAttestationResponse">
     :   {{AuthenticatorResponse/clientDataJSON}}
-    ::  This attribute, inherited from {{AuthenticatorResponse}}, contains the [=JSON-serialized client data=] (see
+    ::  This attribute, inherited from {{AuthenticatorResponse}}, contains the [=JSON-compatible serialization of client data=] (see
         [[#sctn-attestation]]) passed to the authenticator by the client in order to generate this credential. The
         exact JSON serialization MUST be preserved, as the [=hash of the serialized client data=] has been computed
         over it.
@@ -2283,7 +2283,7 @@ during registration.
         contents of the [=attestation statement=] are determined by the [=attestation statement format=] used by the
         [=authenticator=]. It also contains any additional information that the [=[RP]=]'s server requires to validate the
         [=attestation statement=], as well as to decode and validate the [=authenticator data=] along with the
-        [=JSON-serialized client data=]. For more details, see [[#sctn-attestation]], [[#sctn-generating-an-attestation-object]],
+        [=JSON-compatible serialization of client data=]. For more details, see [[#sctn-attestation]], [[#sctn-generating-an-attestation-object]],
         and [Figure 6](#fig-attStructs).
 
     :   {{AuthenticatorAttestationResponse/getTransports()}}
@@ -2310,7 +2310,7 @@ optionally evidence of [=user consent=] to a specific transaction.
 </xmp>
 <div dfn-type="attribute" dfn-for="AuthenticatorAssertionResponse">
     :   {{AuthenticatorResponse/clientDataJSON}}
-    ::  This attribute, inherited from {{AuthenticatorResponse}}, contains the [=JSON-serialized client data=] (see
+    ::  This attribute, inherited from {{AuthenticatorResponse}}, contains the [=JSON-compatible serialization of client data=] (see
         [[#dictionary-client-data]]) passed to the authenticator by the client in order to generate this assertion. The
         exact JSON serialization MUST be preserved, as the [=hash of the serialized client data=] has been computed
         over it.
@@ -2857,14 +2857,48 @@ Note: The {{CollectedClientData}} may be extended in the future. Therefore it's 
 
     The {{CollectedClientData}} structure is used by the client to compute the following quantities:
 
-    : <dfn dfn>JSON-serialized client data</dfn>
-    :: This is the result of [=serialize JSON to bytes|JSON-serializing to bytes=] a
-        {{CollectedClientData}} dictionary.
+    : <dfn dfn>JSON-compatible serialization of client data</dfn>
+    :: This is the result of performing the [JSON-compatible serialization algorithm](#clientdatajson-serialization) on the {{CollectedClientData}} dictionary.
 
     : <dfn dfn>Hash of the serialized client data</dfn>
-    :: This is the hash (computed using SHA-256) of the [=JSON-serialized client data=], as constructed by the client.
+    :: This is the hash (computed using SHA-256) of the [=JSON-compatible serialization of client data=], as constructed by the client.
 </div>
 
+#### Serialization #### {#clientdatajson-serialization}
+
+The serialization of the {{CollectedClientData}} is a subset of the algorithm for [=serialize JSON to bytes|JSON-serializing to bytes=]. I.e. it produces a valid JSON encoding of the {{CollectedClientData}} but also provides additional structure that may be exploited by verifiers to avoid integrating a full JSON parser.
+
+The serialization algorithm works by appending successive byte strings to an, initially empty, partial result until the complete result is obtained. If a step in the following algorithm suggests appending a string, then the byte string to append is formed by [UTF-8 encoding](https://encoding.spec.whatwg.org/#utf-8-encode) that string.
+
+1. Append &lsquo;`{"type":`&rsquo;.
+1. Append [=CCDToString=]({{CollectedClientData/type}}).
+1. Append &lsquo;`,"challenge":`&rsquo;.
+1. Append [=CCDToString=]({{CollectedClientData/challenge}}).
+1. Append &lsquo;`,"origin":`&rsquo;.
+1. Append [=CCDToString=]({{CollectedClientData/origin}}).
+1. Append &lsquo;`,"crossOrigin":`&rsquo;.
+1. If {{CollectedClientData/crossOrigin}} is not included, or is `false`:
+    1. Append &lsquo;`false`&rsquo;.
+1. Otherwise:
+    1. Append &lsquo;`true`&rsquo;.
+1. Create a temporary copy of the {{CollectedClientData}} and remove the fields `type`, `challenge`, `origin`, and `crossOrigin` (if present). Invoke [=serialize JSON to bytes=] on it to produce a byte string `remainder`.
+1. If `remainder` is equal to 0x7b7d (i.e. "{}") then:
+    1. Append &lsquo;`}`&rsquo;.
+1. Otherwise:
+    1. Append &lsquo;`,`&rsquo;.
+    1. Remove the leading byte from `remainder`.
+    1. Append `remainder` to the partial result.
+
+The function <dfn>CCDToString</dfn> is used in the above algorithm and is defined as:
+
+1. Append &lsquo;`"`&rsquo;.
+1. Invoke [ToString](https://tc39.es/ecma262/#sec-tostring) on the given object to convert to a string.
+1. For each code point in the resulting string:
+    1. If the code point is in the set {0x20, 0x21, 0x23&ndash;0x5b, 0x5d&ndash;0x10ffff} then append the UTF-8 encoding of that code point.
+    1. If the code point is 0x22, append &lsquo;`\"`&rsquo;.
+    1. If the code point is 0x5c, append &lsquo;<kbd>\\</kbd>&rsquo;
+    1. Otherwise, append &lsquo;`\u`&rsquo; followed by four, lower-case hex digits that, when interpreted as a base-16 number, represent that code point.
+1. Append &lsquo;`"`&rsquo;.
 
 ### Credential Type Enumeration (enum <dfn enum>PublicKeyCredentialType</dfn>) ### {#enum-credentialType}
 
