@@ -2251,7 +2251,7 @@ Note: Invoking this method from a [=browsing context=] where the [=Web Authentic
 </xmp>
 <div dfn-type="attribute" dfn-for="AuthenticatorResponse">
     :   <dfn>clientDataJSON</dfn>
-    ::  This attribute contains a [JSON-compatible serialization](#clientdatajson-serialization) of the [=client data=] passed to the
+    ::  This attribute contains a [[#clientdatajson-serialization|JSON-compatible serialization]] of the [=client data=] passed to the
         authenticator by the client in its call to either {{CredentialsContainer/create()}} or {{CredentialsContainer/get()}}.
 </div>
 
@@ -2866,39 +2866,96 @@ Note: The {{CollectedClientData}} may be extended in the future. Therefore it's 
 
 #### Serialization #### {#clientdatajson-serialization}
 
-The serialization of the {{CollectedClientData}} is a subset of the algorithm for [=serialize JSON to bytes|JSON-serializing to bytes=]. I.e. it produces a valid JSON encoding of the {{CollectedClientData}} but also provides additional structure that may be exploited by verifiers to avoid integrating a full JSON parser.
+The serialization of the {{CollectedClientData}} is a subset of the algorithm for [=serialize JSON to bytes|JSON-serializing to bytes=]. I.e. it produces a valid JSON encoding of the {{CollectedClientData}} but also provides additional structure that may be exploited by verifiers to avoid integrating a full JSON parser. While verifiers are recommended to perform standard JSON parsing, they may use the [more limited algorithm](#clientdatajson-verification) below in contexts where a full JSON parser is too large. This verification algorithm requires only [=base64url encoding=], appending of bytestrings (which could be implemented by writing into a fixed template), and three conditional checks (assuming that inputs are known not to need escaping).
 
-The serialization algorithm works by appending successive byte strings to an, initially empty, partial result until the complete result is obtained. If a step in the following algorithm suggests appending a string, then the byte string to append is formed by [UTF-8 encoding](https://encoding.spec.whatwg.org/#utf-8-encode) that string.
+The serialization algorithm works by appending successive byte strings to an, initially empty, partial result until the complete result is obtained.
 
-1. Append &lsquo;`{"type":`&rsquo;.
-1. Append [=CCDToString=]({{CollectedClientData/type}}).
-1. Append &lsquo;`,"challenge":`&rsquo;.
-1. Append [=CCDToString=]({{CollectedClientData/challenge}}).
-1. Append &lsquo;`,"origin":`&rsquo;.
-1. Append [=CCDToString=]({{CollectedClientData/origin}}).
-1. Append &lsquo;`,"crossOrigin":`&rsquo;.
+1. Let |result| be an empty byte string.
+1. Append 0x7b2274797065223a (`{"type":`) to |result|.
+1. Append [=CCDToString=]({{CollectedClientData/type}}) to |result|.
+1. Append 0x2c226368616c6c656e6765223a (`,"challenge":`) to |result|.
+1. Append [=CCDToString=]({{CollectedClientData/challenge}}) to |result|.
+1. Append 0x2c226f726967696e223a (`,"origin":`) to |result|.
+1. Append [=CCDToString=]({{CollectedClientData/origin}}) to |result|.
+1. Append 0x2c2263726f73734f726967696e223a (`,"crossOrigin":`) to |result|.
 1. If {{CollectedClientData/crossOrigin}} is not included, or is `false`:
-    1. Append &lsquo;`false`&rsquo;.
+    1. Append 0x66616c7365 (`false`) to |result|.
 1. Otherwise:
-    1. Append &lsquo;`true`&rsquo;.
-1. Create a temporary copy of the {{CollectedClientData}} and remove the fields `type`, `challenge`, `origin`, and `crossOrigin` (if present). Invoke [=serialize JSON to bytes=] on it to produce a byte string `remainder`.
-1. If `remainder` is equal to 0x7b7d (i.e. "{}") then:
-    1. Append &lsquo;`}`&rsquo;.
+    1. Append 0x74727565 (`true`) to |result|.
+1. Create a temporary copy of the {{CollectedClientData}} and remove the fields {{CollectedClientData/type}}, {{CollectedClientData/challenge}}, {{CollectedClientData/origin}}, and {{CollectedClientData/crossOrigin}} (if present).
+1. If no fields remain in the temporary copy then:
+    1. Append 0x7d (`}`) to |result|.
 1. Otherwise:
-    1. Append &lsquo;`,`&rsquo;.
-    1. Remove the leading byte from `remainder`.
-    1. Append `remainder` to the partial result.
+    1. Invoke [=serialize JSON to bytes=] on the temporary copy to produce a byte string |remainder|.
+    1. Append 0x2c (`,`) to |result|.
+    1. Remove the leading byte from |remainder|.
+    1. Append |remainder| to |result|.
+1. The result of the serialization is the value of |result|.
 
 The function <dfn>CCDToString</dfn> is used in the above algorithm and is defined as:
 
-1. Append &lsquo;`"`&rsquo;.
+1. Let |encoded| be an empty byte string.
+1. Append 0x22 (`"`) to |encoded|.
 1. Invoke [ToString](https://tc39.es/ecma262/#sec-tostring) on the given object to convert to a string.
-1. For each code point in the resulting string:
-    1. If the code point is in the set {0x20, 0x21, 0x23&ndash;0x5b, 0x5d&ndash;0x10ffff} then append the UTF-8 encoding of that code point.
-    1. If the code point is 0x22, append &lsquo;`\"`&rsquo;.
-    1. If the code point is 0x5c, append &lsquo;<kbd>\\</kbd>&rsquo;
-    1. Otherwise, append &lsquo;`\u`&rsquo; followed by four, lower-case hex digits that, when interpreted as a base-16 number, represent that code point.
-1. Append &lsquo;`"`&rsquo;.
+1. For each code point in the resulting string, if the code point:
+    <dl class="switch">
+        : is in the set {U+0020, U+0021, U+0023&ndash;U+005B, U+005D&ndash;U+10FFFF}
+        :: Append the UTF-8 encoding of that code point to |encoded|.
+
+        : is U+0022
+        :: Append 0x5c22 (`\"`) to |encoded|.
+
+        : is U+005C
+        :: Append 0x5c5c (<kbd>\\</kbd>) to |encoded|.
+
+        : otherwise
+        :: Append 0x5c75 (`\u`) to |encoded|, followed by four, lower-case hex digits that, when interpreted as a base-16 number, represent that code point.
+    </dl>
+1. Append 0x22 (`"`) to |encoded|.
+1. The result of this function is the value of |encoded|.
+
+#### Verification #### {#clientdatajson-verification}
+
+Verifiers may use the following algorithm to verify an encoded {{CollectedClientData}} if they cannot support a full JSON parser:
+
+1. The inputs to the algorithm are:
+    1. A bytestring, |clientDataJSON|, that contains {{AuthenticatorResponse/clientDataJSON}}&thinsp;&mdash;&thinsp;the serialized {{CollectedClientData}} that is to be verified.
+    1. A string, |type|, that contains the expected {{CollectedClientData/type}}.
+    1. A byte string, |challenge|, that contains the challenge byte string that was given in the {{PublicKeyCredentialRequestOptions}} or {{PublicKeyCredentialCreationOptions}}.
+    1. A string, |origin|, that contains the expected {{CollectedClientData/origin}} that issued the request to the user agent.
+    1. A boolean, |crossOrigin|, that is true if, and only if, the request should have been performed within a cross-origin <{iframe}>.
+1. Let |expected| be an empty byte string.
+1. Append 0x7b2274797065223a (`{"type":`) to |expected|.
+1. Append [=CCDToString=](|type|) to |expected|.
+1. Append 0x2c226368616c6c656e6765223a (`,"challenge":`) to |expected|.
+1. Perform [=base64url encoding=] on |challenge| to produce a string, |challengeBase64|.
+1. Append [=CCDToString=](|challengeBase64|) to |expected|.
+1. Append 0x2c226f726967696e223a (`,"origin":`) to |expected|.
+1. Append [=CCDToString=](|origin|) to |expected|.
+1. Append 0x2c2263726f73734f726967696e223a (`,"crossOrigin":`) to |expected|.
+1. If |crossOrigin| is true:
+    1. Append 0x74727565 (`true`) to |expected|.
+1. Otherwise, i.e. |crossOrigin| is false:
+    1. Append 0x66616c7365 (`false`) to |expected|.
+1. If |expected| is not a prefix of |clientDataJSON| then the verification has failed.
+1. If |clientDataJSON| is not at least one byte longer than |expected| then the verification has failed.
+1. If the byte of |clientDataJSON| at the offset equal to the length of |expected|:
+    <dl class="switch">
+        : is 0x7d
+        :: The verification is successful.
+
+        : is 0x2c
+        :: The verification is successful.
+
+        : otherwise
+        :: The verification has failed.
+    </dl>
+
+#### Future development #### {#clientdatajson-development}
+
+In order to remain compatible with the [limited verification algorithm](#clientdatajson-verification), future versions of this specification may not remove any of the fields {{CollectedClientData/type}}, {{CollectedClientData/challenge}}, {{CollectedClientData/origin}}, or {{CollectedClientData/crossOrigin}} from {{CollectedClientData}}. They may also not change the [serialization algorithm](#clientdatajson-verification) to change the order in which those fields are serialized.
+
+If additional fields are added to {{CollectedClientData}} then verifiers that employ the [limited verification algorithm](#clientdatajson-verification) will not be able to consider them until the two algorithms above are updated to include them. Once such an update occurs then the added fields inherit the same limitations as described in the previous paragraph. Such an algorithm update would have to accomodate serializations produced by previous versions. I.e. the verification algorithm would have to handle the fact that a fifth key&ndash;value pair may not appear fifth (or at all) if generated by a user agent working from a previous version.
 
 ### Credential Type Enumeration (enum <dfn enum>PublicKeyCredentialType</dfn>) ### {#enum-credentialType}
 
