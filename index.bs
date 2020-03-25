@@ -149,6 +149,8 @@ spec: RFC8152; urlPrefix: https://tools.ietf.org/html/rfc8152
         text: Section 7; url: section-7
         text: Section 13.1; url: section-13.1
         text: Section 8.1; url: section-8.1
+        text: kty; url: section-7.1
+        text: crv; url: section-13.1.1
 
 spec: RFC8230; urlPrefix: https://tools.ietf.org/html/rfc8230
     type: dfn
@@ -284,6 +286,10 @@ spec: webdriver; urlPrefix: https://w3c.github.io/webdriver/webdriver-spec.html#
 spec: UTR29
     urlPrefix: https://unicode.org/reports/tr29/
         type: dfn; for:/; url: Grapheme_Cluster_Boundaries; text: grapheme cluster
+
+spec: RFC5280; urlPrefix: https://tools.ietf.org/html/rfc5280
+    type: dfn
+        text: SubjectPublicKeyInfo; url: section-4.1.2.7
 
 </pre> <!-- class=anchors -->
 
@@ -2267,6 +2273,7 @@ during registration.
     interface AuthenticatorAttestationResponse : AuthenticatorResponse {
         [SameObject] readonly attribute ArrayBuffer      attestationObject;
         sequence<DOMString>                              getTransports();
+        DOMString                                        getPublicKey();
     };
 </xmp>
 <div dfn-type="attribute" dfn-for="AuthenticatorAttestationResponse">
@@ -2289,9 +2296,25 @@ during registration.
     :   {{AuthenticatorAttestationResponse/getTransports()}}
     ::  This operation returns the value of {{AuthenticatorAttestationResponse/[[transports]]}}.
 
+    :   {{AuthenticatorAttestationResponse/getPublicKey()}}
+    ::  This operation returns a string that contains the base64-encoded, DER [=SubjectPublicKeyInfo=] of the new credential, or an empty string if this is not available. See [[#sctn-public-key-easy]]
+
     :   <dfn>\[[transports]]</dfn>
     ::  This [=internal slot=] contains a sequence of zero or more unique {{DOMString}}s in lexicographical order. These values are the transports that the [=authenticator=] is believed to support, or an empty sequence if the information is unavailable. The values SHOULD be members of {{AuthenticatorTransport}} but [=[RPS]=] MUST accept unknown values.
 </div>
+
+#### Easily accessing the public key #### {#sctn-public-key-easy}
+
+Every user of the [[#sctn-createCredential|create method]] will need to parse and store the returned public key in order to verify future assertions. However, the public key is in [[!RFC8152]] (COSE) format, inside the [=credentialPublicKey=] member of the [=attestedCredentialData=], inside the [=authenticator data=], inside the [=attestation object=] from {{AuthenticatorAttestationResponse/attestationObject}}. Users that wish to use [=attestation=] MUST do the work of parsing that out because that copy of the public-key is the one that the [=authenticator=] has [signed](#signing-procedure). However, many valid uses of WebAuthn do not need [=attestation=]. For those uses, user agents can do the work of parsing the public key and can translate it into a more convenient format.
+
+The {{AuthenticatorAttestationResponse/getPublicKey()}} operation thus returns the credential public key as a [=SubjectPublicKeyInfo=]. After base64 decoding, this format can, for example, be passed to Java's `java.security.spec.X509EncodedKeySpec`, .NET's `System.Security.Cryptography.ECDsa.ImportSubjectPublicKeyInfo`, or Go's `crypto/x509.ParsePKIXPublicKey`.
+
+Use of this function does impose some limitations: by using {{PublicKeyCredentialCreationOptions/pubKeyCredParams}}, a [=[RP]=] can negotiate with the [=authenticator=] to use public-key algorithms that the user agent may not understand. However, if it does so, the user agent will not be able translate the resulting public key into [=SubjectPublicKeyInfo=] format and the return value of {{AuthenticatorAttestationResponse/getPublicKey()}} will be an empty string.
+
+User agents MUST be able to provide a non-empty value for {{AuthenticatorAttestationResponse/getPublicKey()}} when the [=credential public key=] has a {{COSEAlgorithmIdentifier}} value of:
+   * -7 (ECDSA with SHA-256), where [=kty=] is 2 (uncompressed points) and [=crv=] is 1 (P-256).
+   * -257 (RSA PKCS#1 with SHA-256).
+   * -8 (EdDSA), where [=crv=] is 6 (Ed25519).
 
 ### Web Authentication Assertion (interface <dfn interface>AuthenticatorAssertionResponse</dfn>) ### {#iface-authenticatorassertionresponse}
 
