@@ -2273,6 +2273,7 @@ during registration.
     interface AuthenticatorAttestationResponse : AuthenticatorResponse {
         [SameObject] readonly attribute ArrayBuffer      attestationObject;
         sequence<DOMString>                              getTransports();
+        ArrayBuffer                                      getAuthenticatorData();
         DOMString                                        getPublicKey();
     };
 </xmp>
@@ -2296,16 +2297,19 @@ during registration.
     :   {{AuthenticatorAttestationResponse/getTransports()}}
     ::  This operation returns the value of {{AuthenticatorAttestationResponse/[[transports]]}}.
 
+    :   {{AuthenticatorAttestationResponse/getAuthenticatorData()}}
+    ::  This operation returns the [=authenticator data=] contained within {{AuthenticatorAttestationResponse/attestationObject}}. See [[#sctn-public-key-easy]].
+
     :   {{AuthenticatorAttestationResponse/getPublicKey()}}
-    ::  This operation returns a string that contains the base64-encoded, DER [=SubjectPublicKeyInfo=] of the new credential, or an empty string if this is not available. See [[#sctn-public-key-easy]]
+    ::  This operation returns a string that contains the base64-encoded, DER [=SubjectPublicKeyInfo=] of the new credential, or an empty string if this is not available. See [[#sctn-public-key-easy]].
 
     :   <dfn>\[[transports]]</dfn>
     ::  This [=internal slot=] contains a sequence of zero or more unique {{DOMString}}s in lexicographical order. These values are the transports that the [=authenticator=] is believed to support, or an empty sequence if the information is unavailable. The values SHOULD be members of {{AuthenticatorTransport}} but [=[RPS]=] MUST accept unknown values.
 </div>
 
-#### Easily accessing the public key #### {#sctn-public-key-easy}
+#### Easily accessing credential data #### {#sctn-public-key-easy}
 
-Every user of the [[#sctn-createCredential|create method]] will need to parse and store the returned public key in order to verify future assertions. However, the public key is in [[!RFC8152]] (COSE) format, inside the [=credentialPublicKey=] member of the [=attestedCredentialData=], inside the [=authenticator data=], inside the [=attestation object=] from {{AuthenticatorAttestationResponse/attestationObject}}. Users that wish to use [=attestation=] MUST do the work of parsing that out because that copy of the public-key is the one that the [=authenticator=] has [signed](#signing-procedure). However, many valid uses of WebAuthn do not need [=attestation=]. For those uses, user agents can do the work of parsing the public key and can translate it into a more convenient format.
+Every user of the [[#sctn-createCredential|create method]] will need to parse and store the returned public key in order to verify future assertions. However, the public key is in [[!RFC8152]] (COSE) format, inside the [=credentialPublicKey=] member of the [=attestedCredentialData=], inside the [=authenticator data=], inside the [=attestation object=] from {{AuthenticatorAttestationResponse/attestationObject}}. Users that wish to use [=attestation=] MUST do the work of parsing that out because that copy of the public-key is the one that the [=authenticator=] has [signed](#signing-procedure). However, many valid uses of WebAuthn do not need [=attestation=]. For those uses, user agents can do the work of parsing, expose the [=authenticator data=] directly, and translate the public key into a more convenient format.
 
 The {{AuthenticatorAttestationResponse/getPublicKey()}} operation thus returns the credential public key as a [=SubjectPublicKeyInfo=]. After base64 decoding, this format can, for example, be passed to Java's `java.security.spec.X509EncodedKeySpec`, .NET's `System.Security.Cryptography.ECDsa.ImportSubjectPublicKeyInfo`, or Go's `crypto/x509.ParsePKIXPublicKey`.
 
@@ -2315,6 +2319,10 @@ User agents MUST be able to provide a non-empty value for {{AuthenticatorAttesta
    * -7 (ECDSA with SHA-256), where [=kty=] is 2 (uncompressed points) and [=crv=] is 1 (P-256).
    * -257 (RSA PKCS#1 with SHA-256).
    * -8 (EdDSA), where [=crv=] is 6 (Ed25519).
+
+To remove the need to parse CBOR completely in many cases, {{AuthenticatorAttestationResponse/getAuthenticatorData()}} returns the [=authenticator data=] from {{AuthenticatorAttestationResponse/attestationObject}}. The [=authenticator data=] contains other fields that are encoded in a binary format. However, helper functions are not provided to access them because [=[RPS]=] already need to extract those fields when [getting an assertion](#sctn-getAssertion). In contrast to [credential creation](#sctn-createCredential), where signature verification is [optional](#enumdef-attestationconveyancepreference), [=[RPS]=] should always be verifying signatures from an assertion and thus must extract fields from the signed [=authenticator data=]. The same functions used there will also serve during credential creation.
+
+Note: {{AuthenticatorAttestationResponse/getPublicKey()}} and {{AuthenticatorAttestationResponse/getAuthenticatorData()}} were only added in level two of this spec. [=[RPS]=] SHOULD use feature detection being using the function by testing the value of `'getPublicKey' in AuthenticatorAttestationResponse.prototype`. [=[RPS]=] that require this function to exist may not interoperate with older user-agents.
 
 ### Web Authentication Assertion (interface <dfn interface>AuthenticatorAssertionResponse</dfn>) ### {#iface-authenticatorassertionresponse}
 
