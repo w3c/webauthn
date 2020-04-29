@@ -1678,6 +1678,19 @@ a numbered step. If outdented, it (today) is rendered as a bullet in the midst o
 
                     </dl>
 
+            1. Let |enterpriseAttestationPossible| be a Boolean value, as follows. If
+                <code>|options|.{{PublicKeyCredentialCreationOptions/attestation}}</code>
+
+                    <dl class="switch">
+
+                        :   is set to {{AttestationConveyancePreference/enterprise}}
+                        ::  Let |enterpriseAttestationPossible| be [TRUE] if the user agent wishes to support enterprise attestation for <code>|options|.{{PublicKeyCredentialCreationOptions/rp}}.{{PublicKeyCredentialRpEntity/id}}</code> (see [Step 5](#CreateCred-DetermineRpId), above). Otherwise [FALSE].
+
+                        :   otherwise
+                        ::  Let |enterpriseAttestationPossible| be [FALSE].
+
+                    </dl>
+
             1. Let |excludeCredentialDescriptorList| be a new [=list=].
 
             1. [=list/For each=] credential descriptor |C| in <code>|options|.{{PublicKeyCredentialCreationOptions/excludeCredentials}}</code>:
@@ -1695,19 +1708,20 @@ a numbered step. If outdented, it (today) is rendered as a bullet in the midst o
 <!-- Note: this next step is actually a top-level step, but bikeshed wanted it indented this much in order to render it as
 a numbered step. If outdented, it (today) is rendered either as a bullet in the midst of a numbered list or is mis-numabered :-/
 -->
-        	    <li id='CreateCred-InvokeAuthnrMakeCred'>
+                    <li id='CreateCred-InvokeAuthnrMakeCred'>
 
-        		<!-- @@EDITOR-ANCHOR-01A: KEEP THIS LIST SYNC'D WITH THE LIST UP AT @@EDITOR-ANCHOR-01B -->
-        		Invoke the [=authenticatorMakeCredential=] operation on |authenticator| with
-                	    |clientDataHash|,
-                	    <code>|options|.{{PublicKeyCredentialCreationOptions/rp}}</code>, <code>|options|.{{PublicKeyCredentialCreationOptions/user}}</code>,
-                	    |requireResidentKey|,
-                	    |userVerification|,
-                	    |credTypesAndPubKeyAlgs|,
-                	    |excludeCredentialDescriptorList|,
-                	    and |authenticatorExtensions| as parameters.
-
-        	    </li>
+                        <!-- @@EDITOR-ANCHOR-01A: KEEP THIS LIST SYNC'D WITH THE LIST UP AT @@EDITOR-ANCHOR-01B -->
+                        Invoke the [=authenticatorMakeCredential=] operation on |authenticator| with
+                            |clientDataHash|,
+                            <code>|options|.{{PublicKeyCredentialCreationOptions/rp}}</code>,
+                            <code>|options|.{{PublicKeyCredentialCreationOptions/user}}</code>,
+                            |requireResidentKey|,
+                            |userVerification|,
+                            |credTypesAndPubKeyAlgs|,
+                            |excludeCredentialDescriptorList|,
+                            |enterpriseAttestationPossible|,
+                            and |authenticatorExtensions| as parameters.
+                    </li>
 
             1. [=set/Append=] |authenticator| to |issuedRequests|.
 
@@ -1780,7 +1794,7 @@ a numbered step. If outdented, it (today) is rendered either as a bullet in the 
                         ::  The client MAY replace the [=AAGUID=] and [=attestation statement=] with a more privacy-friendly
                             and/or more easily verifiable version of the same data (for example, by employing an [=Anonymization CA=]).
 
-                        :   "direct"
+                        :   "direct" or "enterprise"
                         ::  Convey the [=authenticator=]'s [=AAGUID=] and [=attestation statement=], unaltered, to the [=[RP]=].
                     </dl>
 
@@ -2393,7 +2407,7 @@ optionally evidence of [=user consent=] to a specific transaction.
         unsigned long                                timeout;
         sequence<PublicKeyCredentialDescriptor>      excludeCredentials = [];
         AuthenticatorSelectionCriteria               authenticatorSelection;
-        AttestationConveyancePreference              attestation = "none";
+        DOMString                                    attestation = "none";
         AuthenticationExtensionsClientInputs         extensions;
     };
 </xmp>
@@ -2440,7 +2454,9 @@ optionally evidence of [=user consent=] to a specific transaction.
 
     :   <dfn>attestation</dfn>
     ::  This member is intended for use by [=[RPS]=] that wish to express their preference for [=attestation conveyance=].
-        The default is {{AttestationConveyancePreference/none}}.
+        Its values SHOULD be members of {{AttestationConveyancePreference}}.
+        [=Client platforms=] MUST ignore unknown values.
+        Its default value is "none".
 
     :   <dfn>extensions</dfn>
     ::  This member contains additional parameters requesting additional processing by the client and authenticator. For
@@ -2672,7 +2688,8 @@ during credential generation.
     enum AttestationConveyancePreference {
         "none",
         "indirect",
-        "direct"
+        "direct",
+        "enterprise"
     };
 </xmp>
 
@@ -2697,6 +2714,10 @@ during credential generation.
     ::  This value indicates that the [=[RP]=] wants to receive the [=attestation statement=] as generated by the
         [=authenticator=].
 
+    :   <dfn>enterprise</dfn>
+    ::  This value indicates that the [=[RP]=] wants to receive an [=attestation statement=] that may include uniquely identifying information. This is intended for controlled deployments within an enterprise where the organization wishes to tie registrations to specific authenticators. User agents MUST NOT provide such an attestation unless the user agent or authenticator configuration permits it for the requested [=RP ID=].
+
+        If permitted, the user agent SHOULD signal to the authenticator (at [invocation time](#CreateCred-InvokeAuthnrMakeCred)) that enterprise attestation is requested, and convey the resulting [=AAGUID=] and [=attestation statement=], unaltered, to the [=[RP]=].
 </div>
 
 
@@ -3529,6 +3550,8 @@ It takes the following input parameters:
 :: An OPTIONAL list of {{PublicKeyCredentialDescriptor}} objects provided by the [=[RP]=] with the intention that, if any of
     these are known to the authenticator, it SHOULD NOT create a new credential. |excludeCredentialDescriptorList| contains a
     list of known credentials.
+: |enterpriseAttestationPossible|
+:: A Boolean value that indicates that individually-identifying attestation MAY be returned by the authenticator.
 : |extensions|
 :: A [=CBOR=] [=map=] from [=extension identifiers=] to their [=authenticator extension inputs=], created by the [=client=] based on
     the extensions requested by the [=[RP]=], if any.
@@ -3643,9 +3666,9 @@ a numbered step. If outdented, it (today) is rendered as a bullet in the midst o
 1. Let |authenticatorData| [=perform the following steps to generate an authenticator data structure|be the byte array=] specified in [[#sctn-authenticator-data]], including |attestedCredentialData| as the
     <code>[=attestedCredentialData=]</code> and |processedExtensions|, if any, as the
     <code>[=authDataExtensions|extensions=]</code>.
-1. Return the [=attestation object=] for the new credential created by the procedure specified in
-    [[#sctn-generating-an-attestation-object]] using an authenticator-chosen [=attestation statement format=], |authenticatorData|,
-    and |hash|. For more details on attestation, see [[#sctn-attestation]].
+1. Create an [=attestation object=] for the new credential using the procedure specified in
+    [[#sctn-generating-an-attestation-object]], using an authenticator-chosen [=attestation statement format=], |authenticatorData|,
+    and |hash|, as well as {{enterprise|taking into account}} the value of |enterpriseAttestationPossible|. For more details on attestation, see [[#sctn-attestation]].
 
 On successful completion of this operation, the authenticator returns the [=attestation object=] to the client.
 
