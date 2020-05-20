@@ -4146,8 +4146,7 @@ template:
     The procedure returns either:
     - An error indicating that the attestation is invalid, or
     - An implementation-specific value representing the [=attestation type=], and the [=attestation trust path|trust path=]. This <dfn>attestation trust path</dfn> is either
-        empty (in case of [=self attestation=]), an identifier of an [=ECDAA-Issuer public key=] (in the case of [=ECDAA=]), or a
-        set of X.509 certificates.
+        empty (in case of [=self attestation=]), or a set of X.509 certificates.
 
 The initial list of specified [=attestation statement formats=] is in [[#sctn-defined-attestation-formats]].
 
@@ -4194,13 +4193,6 @@ calling {{CredentialsContainer/create()|navigator.credentials.create()}} they se
     as [=attestation statements=] conveying [=attestations=] of [=attestation type|type=] [=Basic=], so the two attestation types
     are, in general, distinguishable only with externally provided knowledge regarding the contents of the [=attestation
     certificates=] conveyed in the [=attestation statement=].
-
-: <dfn>Elliptic Curve based Direct Anonymous Attestation</dfn> (<dfn>ECDAA</dfn>)
-:: In this case, the Authenticator receives direct anonymous attestation (DAA) credentials from a single DAA-Issuer.
-    These DAA credentials are used along with blinding to sign the [=attested credential data=]. The concept of blinding avoids
-    the DAA credentials being misused as global correlation handle. WebAuthn supports DAA using elliptic curve cryptography and
-    bilinear pairings, called [=ECDAA=] (see [[FIDOEcdaaAlgorithm]]) in this specification. Consequently we denote the DAA-Issuer
-    as ECDAA-Issuer (see [[FIDOEcdaaAlgorithm]]).
 
 : No attestation statement (<dfn>None</dfn>)
 :: In this case, no attestation information is available. See also [[#sctn-none-attestation]].
@@ -4364,17 +4356,14 @@ In order to perform a [=registration ceremony=], the [=[RP]=] MUST proceed as fo
     Note: Each [=attestation statement format=] specifies its own [=verification procedure=]. See [[#sctn-defined-attestation-formats]] for
     the initially-defined formats, and [[!WebAuthn-Registries]] for the up-to-date list.
 
-1. If validation is successful, obtain a list of acceptable trust anchors (attestation root certificates or [=ECDAA-Issuer
-    public key=]s) for that attestation type and attestation statement format |fmt|, from a trusted source or from policy. For
+1. If validation is successful, obtain a list of acceptable trust anchors (i.e. attestation root certificates)
+    for that attestation type and attestation statement format |fmt|, from a trusted source or from policy. For
     example, the FIDO Metadata Service [[FIDOMetadataService]] provides one way to obtain such information, using the
     <code>[=aaguid=]</code> in the <code>[=attestedCredentialData=]</code> in |authData|.
 
 1. Assess the attestation trustworthiness using the outputs of the [=verification procedure=] in step 19, as follows:
         - If [=None|no attestation=] was provided, verify that [=None=] attestation is acceptable under [=[RP]=] policy.
         - If [=self attestation=] was used, verify that [=self attestation=] is acceptable under [=[RP]=] policy.
-        - If [=ECDAA=] was used, verify that the [=identifier of the ECDAA-Issuer public key=],
-             returned as the [=attestation trust path=] from the [=verification procedure=],
-             is included in the set of acceptable trust anchors obtained in step 20.
         - Otherwise, use the X.509 certificates returned as the [=attestation trust path=] from the [=verification procedure=]
             to verify that the attestation public key correctly chains up to an acceptable root certificate.
 
@@ -4580,7 +4569,7 @@ implementable by [=authenticators=] with limited resources (e.g., secure element
 :: packed
 
 : Attestation types supported
-:: [=Basic=], [=Self=], [=AttCA=], [=ECDAA=]
+:: [=Basic=], [=Self=], [=AttCA=]
 
 : Syntax
 :: The syntax of a Packed Attestation statement is defined by the following CDDL:
@@ -4622,11 +4611,6 @@ implementable by [=authenticators=] with limited resources (e.g., secure element
     : attestnCert
     :: The attestation certificate, encoded in X.509 format.
 
-    : ecdaaKeyId
-    :: The <dfn>identifier of the ECDAA-Issuer public key</dfn>.  This is the
-        BigNumberToB encoding of the component "c" of the <dfn>ECDAA-Issuer public key</dfn>
-        as defined section 3.3, step 3.5 in [[!FIDOEcdaaAlgorithm]].
-
 : Signing procedure
 :: The signing procedure for this attestation statement format is
     similar to [the procedure for generating assertion signatures](#fig-signature).
@@ -4637,12 +4621,6 @@ implementable by [=authenticators=] with limited resources (e.g., secure element
             |clientDataHash|, and signing the result using an [=attestation private key=] selected through an authenticator-specific
             mechanism. It sets |x5c| to the certificate chain of the [=attestation public key=] and |alg| to the algorithm of the
             attestation private key.
-
-        1. If [=ECDAA=] is in use, the authenticator produces |sig| by concatenating |authenticatorData| and |clientDataHash|, and
-            signing the result using ECDAA-Sign (see section 3.5 of [[!FIDOEcdaaAlgorithm]]) after selecting an
-            [=ECDAA-Issuer public key=] related to the ECDAA signature private key through an
-            authenticator-specific mechanism (see [[!FIDOEcdaaAlgorithm]]). It sets |alg| to the algorithm of the selected
-            [=ECDAA-Issuer public key=] and |ecdaaKeyId| to the [=identifier of the ECDAA-Issuer public key=] (see above).
 
         1. If [=self attestation=] is in use, the authenticator produces |sig| by concatenating |authenticatorData| and |clientDataHash|,
             and signing the result using the credential private key. It sets |alg| to the algorithm of the credential private key and
@@ -4655,7 +4633,7 @@ implementable by [=authenticators=] with limited resources (e.g., secure element
         1. Verify that |attStmt| is valid CBOR conforming to the syntax defined above and perform CBOR decoding on it to extract
             the contained fields.
 
-        1. If |x5c| is present, this indicates that the attestation type is not [=ECDAA=]. In this case:
+        1. If |x5c| is present:
             - Verify that |sig| is a valid signature over the concatenation of |authenticatorData| and |clientDataHash| using the
                 attestation public key in |attestnCert| with the algorithm specified in |alg|.
             - Verify that |attestnCert| meets the requirements in [[#sctn-packed-attestation-cert-requirements]].
@@ -4666,13 +4644,7 @@ implementable by [=authenticators=] with limited resources (e.g., secure element
             - If successful, return implementation-specific values representing [=attestation type=] [=Basic=], [=AttCA=] or
                 uncertainty, and [=attestation trust path=] |x5c|.
 
-        1. If |ecdaaKeyId| is present, then the attestation type is [=ECDAA=]. In this case:
-            - Verify that |sig| is a valid signature over the concatenation of |authenticatorData| and |clientDataHash| using
-                ECDAA-Verify with [=ECDAA-Issuer public key=] identified by |ecdaaKeyId| (see [[!FIDOEcdaaAlgorithm]]).
-            - If successful, return implementation-specific values representing [=attestation type=] [=ECDAA=] and [=attestation
-                trust path=] |ecdaaKeyId|.
-
-        1. If neither |x5c| nor |ecdaaKeyId| is present, [=self attestation=] is in use.
+        1. If |x5c| is not present, [=self attestation=] is in use.
             - Validate that |alg| matches the algorithm of the <code>[=credentialPublicKey=]</code> in |authenticatorData|.
             - Verify that |sig| is a valid signature over the concatenation of |authenticatorData| and |clientDataHash| using the
                 credential public key with |alg|.
@@ -4727,7 +4699,7 @@ engine.
 :: tpm
 
 : Attestation types supported
-:: [=AttCA=], [=ECDAA=]
+:: [=AttCA=]
 
 : Syntax
 :: The syntax of a TPM Attestation statement is as follows:
@@ -4767,11 +4739,6 @@ engine.
 
     : aikCert
     :: The AIK certificate used for the attestation, in X.509 encoding.
-
-    : ecdaaKeyId
-    :: The [=identifier of the ECDAA-Issuer public key=]. This is the
-        BigNumberToB encoding of the component "c" as defined section 3.3,
-        step 3.5 in [[!FIDOEcdaaAlgorithm]].
 
     : sig
     :: The [=attestation signature=], in the form of a TPMT_SIGNATURE structure as specified in [[!TPMv2-Part2]] section 11.3.4.
@@ -4815,11 +4782,11 @@ engine.
         whose `name` field contains a valid Name for |pubArea|,
         as computed using the algorithm in the `nameAlg` field of |pubArea| using the procedure specified in [[!TPMv2-Part1]]
         section 16.
+    - Verify that |x5c| is present.
     - Note that the remaining fields in the "Standard Attestation Structure" [[!TPMv2-Part1]]
         section 31.2, i.e., `qualifiedSigner`, `clockInfo` and `firmwareVersion` are ignored.
         These fields MAY be used as an input to risk engines.
 
-    If |x5c| is present, this indicates that the attestation type is not [=ECDAA=]. In this case:
     - Verify the |sig| is a valid signature over |certInfo| using the attestation public key in |aikCert| with the
         algorithm specified in |alg|.
     - Verify that |aikCert| meets the requirements in [[#sctn-tpm-cert-requirements]].
@@ -4827,12 +4794,6 @@ engine.
         extension matches the <code>[=aaguid=]</code> in |authenticatorData|.
     - If successful, return implementation-specific values representing [=attestation type=] [=AttCA=] and [=attestation trust
         path=] |x5c|.
-
-    If |ecdaaKeyId| is present, then the attestation type is [=ECDAA=].
-    - Perform ECDAA-Verify on |sig| to verify that it is a valid signature over |certInfo| (see [[!FIDOEcdaaAlgorithm]]).
-    - If successful, return implementation-specific values representing [=attestation type=] [=ECDAA=] and [=attestation trust
-        path=] |ecdaaKeyId|.
-
 
 ### TPM Attestation Statement Certificate Requirements ### {#sctn-tpm-cert-requirements}
 
@@ -6130,27 +6091,6 @@ IANA "WebAuthn Extension Identifier" registry established by [[!WebAuthn-Registr
 - Specification Document: Section [[#sctn-authenticator-credential-properties-extension]] of this specification
     <br/><br/>
 
-## COSE Algorithm Registrations ## {#sctn-cose-alg-reg}
-
-This section registers identifiers for the following ECDAA algorithms in the
-IANA COSE Algorithms registry [[!IANA-COSE-ALGS-REG]].
-Note that [[!WebAuthn-COSE-Algs]] also registers
-RSASSA-PKCS1-v1_5 [[RFC8017]] algorithms using SHA-2 and SHA-1 hash functions in the
-IANA COSE Algorithms registry [[!IANA-COSE-ALGS-REG]],
-such as registering -257 for "RS256".
-
-- Name: ED256
-- Value: TBD (requested assignment -260)
-- Description: TPM_ECC_BN_P256 curve w/ SHA-256
-- Reference: Section 4.2 of [[!FIDOEcdaaAlgorithm]]
-- Recommended: Yes
-    <br/><br/>
-- Name: ED512
-- Value: TBD (requested assignment -261)
-- Description: ECC_BN_ISOP512 curve w/ SHA-512
-- Reference: Section 4.2 of [[!FIDOEcdaaAlgorithm]]
-- Recommended: Yes
-
 
 # Security Considerations # {#sctn-security-considerations}
 
@@ -6240,9 +6180,6 @@ manufactured [=[WAA]s=], if the exposure was due to a firmware flaw. (The proces
 scope for this specification.) If the [=[WAA]=] manufacturer does not have this capability, then it may not be
 possible for [=[RPS]=] to trust any further [=attestation statements=] from the affected [=[WAA]s=].
 
-If an [=ECDAA=] [=attestation private key=] has been compromised, it can be added to the RogueList (i.e., the list of revoked
-authenticators) maintained by the related ECDAA-Issuer.
-
 See also the related security consideration for [=[RPS]=] in [[#sctn-revoked-attestation-certificates]].
 
 
@@ -6330,11 +6267,6 @@ un-registers (or marks with a trust level equivalent to "[=self attestation=]") 
 after the CA compromise date using an [=attestation certificate=] chaining up to the same intermediate CA. It is thus RECOMMENDED
 that [=[RPS]=] remember intermediate attestation CA certificates during [=registration=] in order to un-register
 related [=public key credentials=] if the [=registration=] was performed after revocation of such certificates.
-
-If an [=ECDAA=] [=attestation private key=] has been compromised, it can be added to the RogueList (i.e., the list of revoked
-authenticators) maintained by the related ECDAA-Issuer. The [=[RP]=] SHOULD verify whether an [=authenticator=] belongs to the
-RogueList when performing ECDAA-Verify (see section 3.6 in [[!FIDOEcdaaAlgorithm]]). For example, the FIDO Metadata Service
-[[FIDOMetadataService]] provides one way to access such information.
 
 See also the related security consideration for [=authenticators=] in [[#sctn-ca-compromise]].
 
@@ -6481,10 +6413,6 @@ This can be mitigated in several ways, including:
         the TCG now refers to as an [=Attestation CA=] (ACA) [[!TCG-CMCProfile-AIKCertEnroll]], and the envisioned functionality
         of an [=Anonymization CA=] is not firmly established, we are using the term [=Anonymization CA=] here to try to mitigate
         confusion in the specific context of this specification.
-
-- A [=[WAA]=] can implement [=Elliptic Curve based direct anonymous attestation=] (see [[FIDOEcdaaAlgorithm]]).
-    Using this scheme, the authenticator generates a blinded [=attestation signature=]. This allows the [=[WRP]=] to verify the
-    signature using the [=ECDAA-Issuer public key=], but the [=attestation signature=] does not serve as a global correlation handle.
 
 
 ### Privacy of [PII] Stored in Authenticators ### {#sctn-pii-privacy}
@@ -6767,15 +6695,6 @@ for their contributions as our W3C Team Contacts.
     "title": "FIDO UAF Protocol Specification v1.0",
     "status": "FIDO Alliance Proposed Standard",
     "href": "https://fidoalliance.org/specs/fido-uaf-v1.0-ps-20141208/fido-uaf-protocol-v1.0-ps-20141208.html"
-  },
-
-  "FIDOEcdaaAlgorithm": {
-    "title": "FIDO ECDAA Algorithm",
-    "authors": ["R. Lindemann", "Jan Camenisch", "Manu Drijvers", "Alec Edgington", "Anja Lehmann", "Rainer Urian"],
-    "status": "FIDO Alliance Implementation Draft",
-    "href": "https://fidoalliance.org/specs/fido-v2.0-id-20180227/fido-ecdaa-algorithm-v2.0-id-20180227.html",
-    "status": "FIDO Alliance Implementation Draft",
-    "date": "27 February 2018"
   },
 
   "SEC1": {
