@@ -292,6 +292,19 @@ spec: RFC5280; urlPrefix: https://tools.ietf.org/html/rfc5280
     type: dfn
         text: SubjectPublicKeyInfo; url: section-4.1.2.7
 
+spec: RFC2104; urlPrefix: https://tools.ietf.org/html/rfc2104
+    type: dfn
+        text: HMAC-SHA-256
+
+spec: RFC5869; urlPrefix: https://tools.ietf.org/html/rfc5869
+    type: dfn
+        text: HKDF-Extract; url: section-2.2
+        text: HKDF-Expand; url: section-2.3
+
+spec: RFC6090; urlPrefix: https://tools.ietf.org/html/rfc6090
+    type: dfn
+        text: ECDH; url: section-4
+
 </pre> <!-- class=anchors -->
 
 <!-- L128 spec:webappsec-credential-management-1; type:dictionary; for:/; text:CredentialRequestOptions -->
@@ -5637,6 +5650,545 @@ At this time, one [=credential property=] is defined: the [=resident key credent
 
 : Authenticator extension output
 :: None.
+
+
+## Recovery Credentials Extension (recovery) ## {#sctn-recovery-credentials-extension}
+
+This [=authenticator extension=] allows for registering [=recovery credentials=] with an RP,
+which can be used for account recovery in the case of a lost or destroyed [=primary authenticator=].
+
+This is done through a cryptographic association between a <dfn>primary authenticator</dfn> and a <dfn>backup authenticator</dfn>.
+After the association is established, the [=primary authenticator=] can generate [=credential public keys=]
+for which the [=backup authenticator=] can derive the corresponding [=credential private key=].
+These key pairs are referred to as <dfn>recovery credentials</dfn>
+and are associated with the [=credential=] the [=primary authenticator=] used to create them,
+referred to as the <dfn>primary credential</dfn>.
+Each [=authenticator=] MAY be both a [=primary authenticator|primary=] and [=backup authenticator=] simultaneously,
+and each [=primary authenticator=] MAY be associated with any number of [=backup authenticators=] simultaneously.
+
+This extension does not specify the association procedure,
+but assumes that each [=backup authenticator=] has a <dfn>recovery seed pair</dfn> (s, S)
+with private seed |s| and public seed |S|.
+Only the [=backup authenticator=] has access to the private recovery seed |s|.
+Each associated [=primary authenticator=] imports and stores the <dfn>public recovery seed</dfn> |S|
+in a tuple (|alg|, |aaguid|, |S|), where |aaguid| is the [=AAGUID=] of the [=backup authenticator=].
+|alg| is an extension point identifying a key generation algorithm;
+currently the only valid value is 0,
+indicating the [=recovery seed pair=] (|s|, |S|) is an elliptic curve key pair on the P-256 curve.
+Neither part of the [=recovery seed pair=] is exposed to the [=[RP]=],
+and the key generation algorithm is opaque to the [=[RP]=].
+Each [=primary authenticator=] also has a <dfn>recovery credentials state counter</dfn>
+which is initialized to zero and is incremented
+whenever the [=primary authenticator=]'s set of imported [=public recovery seeds=] changes.
+The [=[RP]=] uses this counter to detect when [=recovery credentials=] can be generated
+or need to be regenerated.
+
+The user uses the [=primary authenticator=] to register [=recovery credentials=] as part of an [=authentication ceremony=].
+If the user loses the [=primary authenticator=],
+the [=backup authenticator=] can [=authenticatorMakeCredential|create a new credential=]
+and use a [=recovery credential=] to sign the new credential during the [=registration ceremony=].
+This creates a signature chain from the [=primary credential=], via the [=recovery credential=],
+to the new credential created by the [=backup authenticator=],
+and the [=backup authenticator=] can perform [=attestation=] for the new credential as usual.
+
+[=Recovery credentials=] by definition cannot be [=discoverable credentials=],
+since they are created by the [=primary authenticator=] but used by the [=backup authenticator=],
+but they can be used to "back up" both [=discoverable credentials=] and non-discoverable credentials,
+since the recovery process replaces the [=recovery credential=] with a new ordinary credential.
+Any {{PublicKeyCredentialCreationOptions/user}} information associated with
+a [=discoverable credential|discoverable=] [=primary credential=]
+is lost in the recovery process, but can be re-assigned when the new credential is created.
+
+This extension requires additional processing by the [=[RP]=] as detailed in [[#sctn-recovery-credentials-extension-rp-processing]].
+
+
+: Extension identifier
+:: `recovery`
+
+: Operation applicability
+:: [=registration extension|Registration=] and [=authentication extension|Authentication=]
+
+: Client extension input
+:: A {{RecoveryExtensionInput}} object as defined below.
+
+    <xmp class="idl">
+    partial dictionary AuthenticationExtensionsClientInputs {
+      RecoveryExtensionInput recovery;
+    };
+
+    dictionary RecoveryExtensionInput {
+      required RecoveryExtensionAction action;
+      sequence<PublicKeyCredentialDescriptor> allowCredentials;
+    };
+
+    enum RecoveryExtensionAction {
+      "state",
+      "generate",
+      "recover"
+    };
+    </xmp>
+
+    <div dfn-type="dict-member" dfn-for="RecoveryExtensionInput">
+        :   <dfn>action</dfn>
+        ::  This member indicates the sub-operation to perform,
+            and thus whether the [=authenticator=] will be acting as a [=primary authenticator=] or a [=backup authenticator=].
+            Its value is one of the following:
+
+            <div dfn-type="enum-value" dfn-for="RecoveryExtensionAction">
+                :   <dfn>state</dfn>
+                ::  Get the [=recovery credentials state counter=] value from the [=authenticator=].
+                    Applicable to both [=registration ceremony|registration=] and [=authentication ceremonies=];
+                    the [=authenticator=] acts as a [=primary authenticator=].
+
+                :   <dfn>generate</dfn>
+                ::  Generate new [=recovery credentials=].
+                    Applicable only to [=authentication ceremonies=]; the [=authenticator=] acts as a [=primary authenticator=].
+
+                :   <dfn>recover</dfn>
+                ::  Sign the newly created [=credential=] with a [=recovery credential=].
+                    Applicable only to [=registration ceremonies=];
+                    the [=authenticator=] is acting as a [=backup authenticator=]
+                    which will assume the role of [=primary authenticator=] upon successful completion of the [=registration ceremony=].
+            </div>
+
+        :   <dfn>allowCredentials</dfn>
+        ::  This member, indicates the [=recovery credentials=] that MAY be used in a [=registration ceremony=]
+            where {{RecoveryExtensionInput/action}} is set to {{RecoveryExtensionAction/recover}}.
+            Its function is analogous to that of
+            <code>{{PublicKeyCredentialRequestOptions}}.{{PublicKeyCredentialRequestOptions/allowCredentials}}</code>.
+    </div>
+
+: Client extension processing
+::  Create the authenticator extension input from the client extension input.
+
+    If the client implements support for this extension,
+    then when {{RecoveryExtensionInput/action}} is {{RecoveryExtensionAction/generate}},
+    the client SHOULD notify the user of the number of [=recovery credentials=] in the response.
+
+: Client extension output
+::  None.
+
+
+: Authenticator extension input
+::  The client extension input encoded as a CBOR map.
+
+: Authenticator extension processing
+::  The following definitions are used below:
+
+    - `LEFT(X, n)` is the first n bytes of the byte array X.
+    - `DROP_LEFT(X, n)` is the byte array X without the first n bytes.
+
+    If {{RecoveryExtensionInput/action}} is
+        <dl class="switch">
+            :   {{RecoveryExtensionAction/state}}
+            ::  Generate the [=authenticator extension output=] as described in the <strong>Authenticator extension output</strong> section.
+
+            :   {{RecoveryExtensionAction/generate}}
+            ::  1. If the current operation is not an [=authenticatorGetAssertion=] operation,
+                    return an error code equivalent to "{{OperationError}}" and terminate the operation.
+
+                1. Let |creds| be a new [=list=].
+
+                1. [=list/For each=] recovery seed tuple (|alg|, |aaguid|, |S|) stored in this authenticator:
+
+                    1. If |alg|:
+
+                        <dl class="switch">
+                            :   equals 0,
+                            ::  Issue: The following procedure might be more suitable to extract to an external reference.
+
+                                1. Generate an ephemeral P-256 elliptic curve key pair;
+                                    let |e| be the private key and |E| be the public key.
+                                    |E| MUST NOT be the point at infinity.
+
+                                1. Let <code>|ikm| = [=ECDH=](|e|, |S|)</code> [[!RFC6090]].
+                                    Let |ikm_x| be the X coordinate of |ikm|,
+                                    encoded as a byte string of length 32 as described in section 2.3.7 of [[!SEC1]].
+
+                                1. Let |prk| be the pseudorandom key output from [=HKDF-Extract=] [[!RFC5869]] with the arguments:
+
+                                    - `Hash`: SHA-256.
+                                    - `salt`: Not set.
+                                    - `IKM`: |ikm_x|.
+
+                                1. Let |okm| be 64 bytes of output keying material from [=HKDF-Expand=] [[!RFC5869]] with the arguments:
+
+                                    - `Hash`: SHA-256.
+                                    - `PRK`: |prk|.
+                                    - `info`: Not set.
+                                    - `L`: 64.
+
+                                1. Let <code>|credKey| = LEFT(|okm|, 32)</code>
+                                    and <code>|macKey| = LEFT(DROP_LEFT(|okm|, 32), 32)</code>,
+                                    both parsed as big-endian unsigned 256-bit numbers.
+
+                                1. If |credKey| >= n, where n is the order of the P-256 curve, start over from 1.
+
+                                1. Let <code>|P| = (|credKey| * G) + |S|</code>,
+                                    where * and + are elliptic curve point multiplication and addition,
+                                    and G is the generator of the P-256 curve.
+
+                                1. If |P| is the point at infinity, start over from 1.
+
+                                1. Let |E_enc| be |E| encoded as described in section 2.3.3 of [[!SEC1]], without point compression.
+
+                                1. Let <code>|credentialId| = |alg| || |E_enc| || LEFT([=HMAC-SHA-256=](|macKey|, |alg| || |E_enc| || [=rpIdHash=]), 16)</code> [[!RFC2104]].
+
+                            :   equals anything else,
+                            ::  Return an error code equivalent to "{{UnknownError}}" and terminate the operation.
+
+                                Note: This should never happen,
+                                since the authenticator should never store a recovery seed with an unknown |alg| value.
+                        </dl>
+
+                    1. Let |attCredData| be a new [=attested credential data=] structure with the following member values:
+
+                        - [=aaguid=]: |aaguid|.
+                        - [=credentialIdLength=]: The byte length of |credentialId|.
+                        - [=credentialId=]: |credentialId|.
+                        - [=credentialPublicKey=]: |P|.
+
+                    1. Add |attCredData| to |creds|.
+
+                1. Generate the [=authenticator extension output=] as described
+                    in the <strong>Authenticator extension output</strong> section,
+                    with the {{RecoveryExtensionOutput/creds}} member set to |creds|.
+
+
+            :   {{RecoveryExtensionAction/recover}}
+            ::  1. If the current operation is not an [=authenticatorMakeCredential=] operation,
+                    return an error code equivalent to "{{OperationError}}" and terminate the operation.
+
+                1. If the [=recovery seed pair=] (|s|, |S|) has not been initialized,
+                    return an error code equivalent to "{{ConstraintError}}" and terminate the operation.
+
+                1. Let |creds| be a new [=list=].
+
+                1. [=list/For each=] |cred| in {{RecoveryExtensionInput/allowCredentials}}:
+
+                    1. Let <code>|alg| = LEFT(|cred|.{{PublicKeyCredentialDescriptor/id}}, 1)</code>.
+
+                    1. If |alg|:
+
+                        <dl class="switch">
+                            :   equals 0,
+                            ::  Issue: The following procedure might be more suitable to extract to an external reference.
+
+                                1. Let <code>|E_enc| = LEFT(DROP_LEFT(|cred|.{{PublicKeyCredentialDescriptor/id}}, 1), 65)</code>.
+
+                                1. Let |E| be the P-256 public key decoded from the uncompressed point |E_enc|
+                                    as described in section 2.3.4 of [[!SEC1]].
+                                    If invalid, [=continue=].
+
+                                1. If |E| is the point at infinity, [=continue=].
+
+                                1. Let <code>|ikm| = [=ECDH=](|s|, |E|)</code>.
+                                    Let |ikm_x| be the X coordinate of |ikm|,
+                                    encoded as a byte string of length 32 as described in section 2.3.7 of [[!SEC1]].
+
+                                1. Let |prk| be the pseudorandom key output from [=HKDF-Extract=] [[!RFC5869]] with the arguments:
+
+                                    - `Hash`: SHA-256.
+                                    - `salt`: Not set.
+                                    - `IKM`: |ikm_x|.
+
+                                1. Let |okm| be 64 bytes of output keying material from [=HKDF-Expand=] [[!RFC5869]] with the arguments:
+
+                                    - `Hash`: SHA-256.
+                                    - `PRK`: |prk|.
+                                    - `info`: Not set.
+                                    - `L`: 64.
+
+                                1. Let <code>|credKey| = LEFT(|okm|, 32)</code>
+                                    and <code>|macKey| = LEFT(DROP_LEFT(|okm|, 32), 32)</code>,
+                                    both parsed as big-endian unsigned 256-bit numbers.
+
+                                1. If <code>|cred|.{{PublicKeyCredentialDescriptor/id}}</code> is not exactly equal to
+                                    <code>|alg| || |E| || LEFT([=HMAC-SHA-256=](|macKey|, |alg| || |E| || [=rpIdHash=]), 16)</code> [[!RFC2104]],
+                                    [=continue=].
+
+                                1. Let <code>|p| = |credKey| + |s| (mod n)</code>, where n is the order of the P-256 curve,
+                                    and interpret |p| as a P-256 elliptic curve private key.
+
+                                1. Let |authDataWithoutExtensions| be the [=authenticator data=]
+                                    that will be returned from this [=authenticatorMakeCredential=] operation,
+                                    but without the [=authDataExtensions|extensions=] part.
+                                    The `ED` [=flag=] in |authDataWithoutExtensions| MUST be set to 1
+                                    even though |authDataWithoutExtensions| does not include extension data.
+
+                                1. Let |clientDataHash| be the |hash| argument to this [=authenticatorMakeCredential=] operation.
+
+                                1. Let |sig| be a signature of the concatenation
+                                    <code>|authDataWithoutExtensions| || |clientDataHash|</code>
+                                    using the private key |p|.
+                                    |sig| is DER encoded as described in [[!RFC3279]].
+
+                            :   equals anything else,
+                            ::  [=Continue=].
+                        </dl>
+
+                    1. Generate the [=authenticator extension output=] as described
+                        in the <strong>Authenticator extension output</strong> section,
+                        with the {{RecoveryExtensionOutput/credId}} member set to <code>|cred|.{{PublicKeyCredentialDescriptor/id}}</code>
+                        and the {{RecoveryExtensionOutput/sig}} member set to |sig|,
+                        and end extension processing.
+
+                1. Return an error code equivalent to "{{InvalidStateError}}".
+        </dl>
+
+
+: Authenticator extension output
+::  A CBOR map with the following structure:
+
+    <xmp class="idl">
+    dictionary RecoveryExtensionOutput {
+      required RecoveryExtensionAction action;
+      required int state;
+      sequence<ArrayBuffer> creds;
+      ArrayBuffer credId;
+      ArrayBuffer sig;
+    };
+    </xmp>
+
+    ```
+    $$recoveryExtOutput //= {
+                              action: RecoveryExtensionAction,
+                              state: int
+                              creds: [ * (cred: bytes) ],
+                              credId: bytes,
+                              sig: bytes,
+                            }
+    ```
+
+    <div dfn-type="dict-member" dfn-for="RecoveryExtensionOutput">
+        :   <dfn>action</dfn>
+        ::  The value of the extension input {{RecoveryExtensionInput/action}}.
+
+        :   <dfn>state</dfn>
+        ::  The current value of the [=recovery credentials state counter=].
+
+        :   <dfn>creds</dfn>
+        ::  This member MUST be present if and only if the output {{RecoveryExtensionOutput/action}} is {{RecoveryExtensionAction/generate}}.
+            Its value is a sequence of [=attested credential data=] structures representing newly created [=recovery credentials=].
+
+        :   <dfn>credId</dfn>
+        ::  This member MUST be present if and only if the output {{RecoveryExtensionOutput/action}} is {{RecoveryExtensionAction/recover}}.
+            Its value is the [=credential ID=] of the [=recovery credential=] that was used to create the signature {{RecoveryExtensionOutput/sig}}.
+
+        :   <dfn>sig</dfn>
+        ::  This member MUST be present if and only if the output {{RecoveryExtensionOutput/action}} is {{RecoveryExtensionAction/recover}}.
+            Its value is a signature generated as described in the <strong>Authenticator extension processing</strong> section.
+    </div>
+
+
+### [=[RP]=] extension processing ### {#sctn-recovery-credentials-extension-rp-processing}
+
+A [=[RP]=] supporting this extension SHOULD include this extension
+with {{RecoveryExtensionInput/action}} set to {{RecoveryExtensionAction/state}}
+whenever performing a [=registration ceremony|registration=] or [=authentication ceremony=].
+There are two cases where the response indicates that
+the [=[RP]=] SHOULD initiate [[#sctn-recovery-credentials-extension-rp-register-recovery-creds|recovery credential registration]], which are:
+
+  - Upon successful {{CredentialsContainer/create()|navigator.credentials.create()}},
+      if {{RecoveryExtensionOutput/state}} > 0.
+  - Upon successful {{CredentialsContainer/create()|navigator.credentials.create()}},
+      if {{RecoveryExtensionOutput/state}} is greater than the previous value for {{RecoveryExtensionOutput/state}}
+      that the [=[RP]=] has seen for the used [=credential=].
+
+The following operations assume that each user account contains a |recoveryStates| field,
+which is a [=map=] with [=credential IDs=] as keys.
+|recoveryStates| is initialized to an [=map/is empty|empty=] [=map=].
+
+
+#### Detecting changes to recovery seeds #### {#sctn-recovery-credentials-extension-rp-detect-changed-seeds}
+
+To detect when the user's [=primary authenticator=] has updated its set of [=public recovery seeds=],
+the [=[RP]=] SHOULD add the following steps to all registration and authentication ceremonies:
+
+ 1. When initiating any {{CredentialsContainer/create()}} or {{CredentialsContainer/get()}} operation,
+    set the extension input `"recovery": {"action": "state"}`.
+
+ 1. Let |pkc| be the {{PublicKeyCredential}} response from the [=client=].
+
+ 1. In step 17 of the [=[RP]=] Operation to [[#sctn-registering-a-new-credential|register a new credential]],
+    or 18 of the RP Operation to [[#sctn-verifying-assertion|verify an authentication assertion]],
+    perform the following steps:
+
+     1. Let |extOutput| be the `recovery` extension output, or null if not present.
+        For {{CredentialsContainer/create()}} ceremonies,
+        this is <code>|extOutput| = |pkc|.{{PublicKeyCredential/response}}.{{AuthenticatorAttestationResponse/attestationObject}}["authData"].[=authDataExtensions|extensions=]["recovery"]</code>;
+        for {{CredentialsContainer/get()}} ceremonies it is <code>|extOutput| =
+        |pkc|.{{PublicKeyCredential/response}}.{{AuthenticatorAssertionResponse/authenticatorData}}.[=authDataExtensions|extensions=]["recovery"]</code>.
+
+     1. If |extOutput| is not null:
+
+         1. If <code>|extOutput|.{{RecoveryExtensionOutput/action}}</code> does not equal {{RecoveryExtensionAction/state}}
+            or <code>|extOutput|.{{RecoveryExtensionOutput/state}}</code> is not present,
+            abort this extension processing and OPTIONALLY show a user-visible warning.
+
+         1. If <code>|extOutput|.{{RecoveryExtensionOutput/state}}</code> > 0:
+
+             1. Let <code>|recoveryState| = |recoveryStates|[|pkc|.{{Credential/id}}]</code>,
+                or null if <code>|pkc|.{{Credential/id}}</code> is not present in |recoveryStates|.
+
+             1. If |recoveryState| is null or <code>|extOutput|.{{RecoveryExtensionOutput/state}} > |recoveryState|.state</code>:
+
+                 1. If the ceremony finishes successfully,
+                    prompt the user that their [=recovery credentials=] need to be updated
+                    and ask to initiate a [[#sctn-recovery-credentials-extension-rp-register-recovery-creds]] ceremony.
+                    It is RECOMMENDED to set {{PublicKeyCredentialRequestOptions/allowCredentials}}
+                    to contain only <code>|pkc|.{{Credential/id}}</code> in this authentication ceremony.
+
+ 1. Continue with the remaining steps of the registration or authentication ceremony.
+
+
+#### Registering recovery credentials #### {#sctn-recovery-credentials-extension-rp-register-recovery-creds}
+
+To register new [=recovery credentials=] for a given [=primary credential=],
+or replace the existing recovery credentials with updated ones,
+the RP performs the following procedure:
+
+ 1. Initiate a {{CredentialsContainer/get()}} operation
+    and set the extension input `"recovery": {"action": "generate"}`.
+
+    If this ceremony was triggered as described in [[#sctn-recovery-credentials-extension-rp-detect-changed-seeds]],
+    it is RECOMMENDED to set {{PublicKeyCredentialRequestOptions/allowCredentials}}
+    to contain only the [=credential ID=] that was used in that preceding ceremony.
+
+ 1. Let |pkc| be the {{PublicKeyCredential}} response from the [=client=].
+    If the operation fails, abort the ceremony with an error.
+
+ 1. In step 18 of the [=[RP]=] Operation to [[#sctn-verifying-assertion|verify an authentication assertion]],
+    perform the following steps:
+
+     1. Let <code>|extOutput| = |pkc|.{{PublicKeyCredential/response}}.{{AuthenticatorAssertionResponse/authenticatorData}}.[=authDataExtensions|extensions=]["recovery"]</code>,
+        or null if not present.
+
+     1. If |extOutput| is null,
+        <code>|extOutput|.{{RecoveryExtensionOutput/action}}</code> does not equal {{RecoveryExtensionAction/generate}},
+        or <code>|extOutput|.{{RecoveryExtensionOutput/creds}}</code> is not present,
+        abort the ceremony with an error.
+
+     1. Let |acceptedCreds| be a new [=list=].
+
+     1. Let |rejectedCreds| be a new [=list=].
+
+     1. [=list/For each=] |cred| in <code>|extOutput|.{{RecoveryExtensionOutput/creds}}</code>:
+
+         1. If <code>|cred|.[=aaguid=]</code> identifies an [=authenticator=] model accepted by the [=[RP]=]'s policy,
+            [=list/append=] |cred| to |acceptedCreds|.
+            Otherwise, [=list/append=] |cred| to |rejectedCreds|.
+
+            Note: This AAGUID is not yet verifiable by an [=attestation signature=],
+            but can be verified when [[#sctn-recovery-credentials-extension-rp-recover]];
+            this step helps fail early if the [=[RP]=] would reject the [=backup authenticator=] at that point.
+            If an authenticator is dishonest about <code>|cred|.[=aaguid=]</code>,
+            it could at worst cause a false-positive rejection of this [=recovery credential=].
+
+     1. Set <code>|recoveryStates|[|pkc|.{{Credential/id}}] = (|extOutput|.{{RecoveryExtensionOutput/state}}, |acceptedCreds|)</code>.
+
+        Note: This intentionally overwrites any [=recovery credentials=] previously registered with this [=primary credential=].
+
+     1. Show the user a confirmation message containing the length of |acceptedCreds|.
+
+     1. If |rejectedCreds| is not [=list/empty=], show the user a warning message.
+        The warning message SHOULD contain the length of |rejectedCreds| and, if possible,
+        descriptions of the AAGUIDs that were rejected.
+
+ 1. Continue with the remaining steps of the authentication ceremony.
+
+
+#### Using a [=recovery credential=] to replace a lost [=primary credential=] #### {#sctn-recovery-credentials-extension-rp-recover}
+
+To authenticate the user with a [=recovery credential=] and create a new [=primary credential=],
+the [=[RP]=] performs the following procedure:
+
+ 1. Identify the user, for example by asking for a username.
+
+ 1. Let |allowCredentials| be a new [=list=].
+
+ 1. [=list/For each=] (|state|, |creds|) value in the |recoveryStates| map stored in the user's account:
+
+     1. [=list/For each=] |cred| in |creds|:
+
+         1. Let |credDesc| be a {{PublicKeyCredentialDescriptor}} structure with the following member values:
+
+            - {{PublicKeyCredentialDescriptor/type}}: "public-key".
+            - {{PublicKeyCredentialDescriptor/id}}: <code>|cred|.[=credentialId=]</code>.
+
+         1. Add |credDesc| to |allowCredentials|.
+
+    Note: The privacy considerations in [[#sctn-credential-id-privacy-leak]] apply here also.
+
+ 1. If |allowCredentials| is [=list/empty=], abort this procedure with an error.
+
+ 1. Initiate a {{CredentialsContainer/create()}} operation with the {{AuthenticationExtensionsClientInputs/recovery}} extension input members:
+
+    - {{RecoveryExtensionInput/action}}: {{RecoveryExtensionAction/recover}}
+    - {{RecoveryExtensionInput/allowCredentials}}: |allowCredentials|
+
+ 1. Let |pkc| be the {{PublicKeyCredential}} response from the [=client=].
+    If the operation fails, abort the ceremony with an error.
+
+ 1. In step 17 of the [=[RP]=] Operation to [[#sctn-registering-a-new-credential|register a new credential]],
+    perform the following steps:
+
+     1. Let <code>|extOutput| = |pkc|.{{PublicKeyCredential/response}}.{{AuthenticatorAttestationResponse/attestationObject}}["authData"].[=authDataExtensions|extensions=]["recovery"]</code>,
+        or null if not present.
+
+     1. If |extOutput| is null,
+        <code>|extOutput|.{{RecoveryExtensionOutput/action}}</code> does not equal {{RecoveryExtensionAction/recover}},
+        or any of
+        <code>|extOutput|.{{RecoveryExtensionOutput/state}}</code>,
+        <code>|extOutput|.{{RecoveryExtensionOutput/credId}}</code>,
+        or <code>|extOutput|.{{RecoveryExtensionOutput/sig}}</code>
+        is not present, abort the ceremony with an error.
+
+     1. If <code>|extOutput|.{{RecoveryExtensionOutput/credId}}</code> does not equal
+        the {{PublicKeyCredentialDescriptor/id}} member of some element of |allowCredentials|,
+        abort the ceremony with an error.
+
+     1. Let |revokedCredId| be null.
+
+     1. [=map/For each=] |primaryCredId| → (|state|, |creds|) of |recoveryStates|:
+
+         1. [=list/For each=] |cred| in |creds|:
+
+             1. If <code>|cred|.[=credentialId=]</code> equals <code>|extOutput|.{{RecoveryExtensionOutput/credId}}</code>:
+
+                 1. Let |publicKey| be the decoded public key <code>|cred|.[=credentialPublicKey=]</code>.
+
+                 1. Let <code>|authDataWithoutExtensions| = |pkc|.{{PublicKeyCredential/response}}.{{AuthenticatorAttestationResponse/attestationObject}}["authData"]</code>,
+                    but without the [=authDataExtensions|extensions=] part.
+                    The `ED` [=flag=] in |authDataWithoutExtensions| MUST be set to 1
+                    even though |authDataWithoutExtensions| does not include extension data.
+
+                 1. Let |clientDataHash| be the [=hash of the serialized client data=] for this registration ceremony.
+
+                 1. Using |publicKey|, verify that <code>|extOutput|.{{RecoveryExtensionOutput/sig}}</code>
+                    is a valid signature over <code>|authDataWithoutExtensions| || |clientDataHash|</code>.
+                    If the signature is invalid, fail the registration ceremony.
+
+                 1. Set <code>|revokedCredId| = |primaryCredId|</code>.
+
+                 1. [=Break=].
+
+         1. If |revokedCredId| is not null, [=break=].
+
+     1. If |revokedCredId| is null, abort the ceremony with an error.
+
+ 1. Continue with the remaining steps of the registration ceremony.
+    This means a new [=credential=] has now been registered using the [=backup authenticator=].
+
+ 1. Invalidate the credential identified by |revokedCredId| and all [=recovery credentials=] associated with it
+    (i.e., delete <code>|recoveryStates|[|revokedCredId|]</code>).
+    This step and the registration of the new credential SHOULD be performed as an atomic operation.
+
+ 1. It is RECOMMENDED to send the user an e-mail or similar notification about this change to their account.
+
+ 1. If <code>|extOutput|.{{RecoveryExtensionOutput/state}}</code> is greater than 0,
+    it is RECOMMENDED to treat this as equivalent to detecting this as described in [[#sctn-recovery-credentials-extension-rp-detect-changed-seeds]],
+    and initiate [[#sctn-recovery-credentials-extension-rp-register-recovery-creds]] for the newly registered credential.
 
 
 # User Agent Automation # {#sctn-automation}
