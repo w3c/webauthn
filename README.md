@@ -40,6 +40,18 @@ cp -R .spec-data/* ./bikeshed/bikeshed/spec-data
 
 Alternatively, you can use the [Vagrant VM with `bikeshed` already installed](vagrant/bikeshed), or the [Docker image](docker/bikeshed).
 
+# Updating copies of Bikeshed data files stored in this repo
+
+For the purpose of giving consistent builds, copies of some Bikeshed data files are stored in this repository and used by the CI build to auto-publish the https://w3c.github.io/webauthn/ draft.
+
+The repository copies of those Bikeshed data files must be periodicallly updated and re-committed. To update and re-commit them, run the following commands:
+
+```
+./update-bikeshed-cache.sh \
+  && git add .spec-data .bikeshed-include \
+  && git commit -m "Bikeshed spec data update" . \
+  && git push
+```
 
 # Continuous Integration & Branches
 
