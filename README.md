@@ -47,10 +47,15 @@ For the purpose of giving consistent builds, copies of some Bikeshed data files 
 The repository copies of those Bikeshed data files must be periodicallly updated and re-committed. To update and re-commit them, run the following commands:
 
 ```
+cd <your local w3c/webauthn repo or fork clone>
+git co master
+git pull           # if necessary...
+git co -b <a new branch name>
 ./update-bikeshed-cache.sh \
   && git add .spec-data .bikeshed-include \
   && git commit -m "Bikeshed spec data update" . \
   && git push
+<in the w3c/webauthn repo create a pull request for this new branch, have it reviewed and merged>
 ```
 
 # Continuous Integration & Branches
