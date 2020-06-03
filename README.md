@@ -47,7 +47,7 @@ For the purpose of giving consistent builds, copies of some Bikeshed data files 
 The repository copies of those Bikeshed data files must be periodicallly updated and re-committed. To update and re-commit them, run the following commands:
 
 ```
-cd <your local w3c/webauthn repo or fork clone>
+cd <your local w3c/webauthn repo clone or fork clone>
 git checkout master
 git pull           # if necessary...
 git checkout -b <a new branch name>
