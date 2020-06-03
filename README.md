@@ -48,7 +48,7 @@ The repository copies of those Bikeshed data files must be periodicallly updated
 
 ```
 cd <your local w3c/webauthn repo or fork clone>
-git co master
+git checkout master
 git pull           # if necessary...
 git co -b <a new branch name>
 ./update-bikeshed-cache.sh \
