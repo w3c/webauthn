@@ -5717,6 +5717,7 @@ This extension requires additional processing by the [=[RP]=] as detailed in [[#
 
     dictionary RecoveryExtensionInput {
       required RecoveryExtensionAction action;
+      DOMString attestation = "none";
       sequence<PublicKeyCredentialDescriptor> allowCredentials;
     };
 
@@ -5750,6 +5751,19 @@ This extension requires additional processing by the [=[RP]=] as detailed in [[#
                     which will assume the role of [=primary authenticator=] upon successful completion of the [=registration ceremony=].
             </div>
 
+        :   <dfn>attestation</dfn>
+        ::  This member, which is ignored unless {{action}} is {{RecoveryExtensionAction/generate}},
+            is intended for use by [=[RPS]=] that wish to express their preference for [=attestation conveyance=].
+            Its value SHOULD be a member of {{AttestationConveyancePreference}}.
+            [=Client platforms=] MUST ignore unknown values.
+
+            If set to {{AttestationConveyancePreference/direct}} or {{AttestationConveyancePreference/enterprise}},
+            the [=authenticator=] will emit the [=backup authenticator=]'s [=AAGUID=] with each generated [=recovery credential=].
+            If absent or set to anything else, the [=AAGUID=]s will be zeroed.
+
+            The [=client=] SHOULD apply the same restrictions to this member
+            as it does to the {{PublicKeyCredentialCreationOptions/attestation}} member of {{PublicKeyCredentialCreationOptions}}.
+
         :   <dfn>allowCredentials</dfn>
         ::  This member, REQUIRED when {{action}} is {{RecoveryExtensionAction/recover}} and ignored otherwise,
             indicates the [=recovery credentials=] that MAY be used in the [=registration ceremony=].
@@ -5758,10 +5772,18 @@ This extension requires additional processing by the [=[RP]=] as detailed in [[#
     </div>
 
 : Client extension processing
-::  Create the authenticator extension input from the client extension input.
+::  Create the authenticator extension input from the client extension input:
 
-    If the client implements support for this extension,
-    then when {{RecoveryExtensionInput/action}} is {{RecoveryExtensionAction/generate}},
+    - <code>[=recoveryExtInput-action|action=]</code>: {{RecoveryExtensionInput/action}}.
+    - <code>[=recoveryExtInput-aaguid|aaguid=]</code>:
+        If {{RecoveryExtensionInput/attestation}} is present
+        and set to {{AttestationConveyancePreference/direct}} or {{AttestationConveyancePreference/enterprise}},
+        and the [=client=] allows emitting attestation information, [TRUE].
+        Otherwise, [FALSE].
+    - <code>[=recoveryExtInput-allowList|allowList=]</code>:
+        The {{PublicKeyCredentialDescriptor/id}} member of each [=list/item=] in {{RecoveryExtensionInput/allowCredentials}}, in order.
+
+    When {{RecoveryExtensionInput/action}} is {{RecoveryExtensionAction/generate}},
     the client SHOULD notify the user of the number of [=recovery credentials=] in the response.
 
 : Client extension output
@@ -5773,11 +5795,15 @@ This extension requires additional processing by the [=[RP]=] as detailed in [[#
 
     ```
     recoveryExtInput = {
-      action: "state" / "generate",
+      0: "state",
       //
 
-      action: "recover",
-      allowCredentials: [* publicKeyCredentialDescriptor],
+      0: "generate",
+      1: bool,
+      //
+
+      0: "recover",
+      2: [* publicKeyCredentialDescriptor],
     }
 
     publicKeyCredentialDescriptor = {
@@ -5789,10 +5815,15 @@ This extension requires additional processing by the [=[RP]=] as detailed in [[#
 
     The semantics of the above fields are as follows:
 
-    :   <dfn lt="recoveryExtInput-action">action</dfn>
+    :   0 (<dfn lt="recoveryExtInput-action">action</dfn>)
     ::  The value of the [=client extension input=] {{RecoveryExtensionInput/action}}.
 
-    :   <dfn lt="recoveryExtInput-allowCredentials">allowCredentials</dfn>
+    :   1 (<dfn lt="recoveryExtInput-aaguid">aaguid</dfn>)
+    ::  [TRUE] if the [=authenticator=] should emit AAGUIDs for generated [=recovery credentials=],
+        [FALSE] otherwise.
+        MUST be present if and only if <code>[=recoveryExtInput-action|action=]</code> is {{RecoveryExtensionAction/generate}}.
+
+    :   2 (<dfn lt="recoveryExtInput-allowList">allowList</dfn>)
     ::  A list identifying [=recovery credentials=] that MAY be used in a [=registration ceremony=].
         MUST be present if and only if <code>[=recoveryExtInput-action|action=]</code> is {{RecoveryExtensionAction/recover}}.
 
@@ -5867,9 +5898,19 @@ This extension requires additional processing by the [=[RP]=] as detailed in [[#
                                 since the authenticator should never store a recovery seed with an unknown |alg| value.
                         </dl>
 
+                    1. Let |emittedAaguid| be a byte string computed as follows:
+
+                        <dl class="switch">
+                            :   If <code>[=recoveryExtInput-aaguid|aaguid=]</code> is [TRUE],
+                            ::  let |emittedAaguid| be |aaguid|.
+
+                            :   Otherwise,
+                            ::  let |emittedAaguid| be 16 zero bytes.
+                        </dl>
+
                     1. Let |attCredData| be a new [=attested credential data=] structure with the following member values:
 
-                        - [=aaguid=]: |aaguid|.
+                        - [=aaguid=]: |emittedAaguid|.
                         - [=credentialIdLength=]: The byte length of |credentialId|.
                         - [=credentialId=]: |credentialId|.
                         - [=credentialPublicKey=]: |P|.
@@ -5890,7 +5931,7 @@ This extension requires additional processing by the [=[RP]=] as detailed in [[#
 
                 1. Let |creds| be a new [=list=].
 
-                1. [=list/For each=] |cred| in <code>[=recoveryExtInput-allowCredentials|allowCredentials=]</code>:
+                1. [=list/For each=] |cred| in <code>[=recoveryExtInput-allowList|allowList=]</code>:
 
                     1. Let <code>|alg| = LEFT(|cred|.{{PublicKeyCredentialDescriptor/id}}, 1)</code>.
 
@@ -5970,42 +6011,42 @@ This extension requires additional processing by the [=[RP]=] as detailed in [[#
 
     ```
     recoveryExtOutput = {
-      action: "state",
-      state: uint,
+      0: "state",
+      1: uint,
       //
 
-      action: "generate",
-      state: uint,
-      creds: [* bytes],
+      0: "generate",
+      1: uint,
+      2: [* bytes],
       //
 
-      action: "recover",
-      state: uint,
-      credId: bytes,
-      sig: bytes,
+      0: "recover",
+      1: uint,
+      3: bytes,
+      4: bytes,
     }
     ```
 
     The semantics of the above fields are as follows:
 
-    :   <dfn lt="recoveryExtOutput-action">action</dfn>
+    :   0 (<dfn lt="recoveryExtOutput-action">action</dfn>)
     ::  The value of the extension input <code>[=recoveryExtInput-action|action=]</code>.
 
-    :   <dfn lt="recoveryExtOutput-state">state</dfn>
+    :   1 (<dfn lt="recoveryExtOutput-state">state</dfn>)
     ::  The current value of the [=recovery credentials state counter=].
 
-    :   <dfn lt="recoveryExtOutput-creds">creds</dfn>
+    :   2 (<dfn lt="recoveryExtOutput-creds">creds</dfn>)
     ::  This member MUST be present if and only if the output <code>[=recoveryExtOutput-action|action=]</code>
         is {{RecoveryExtensionAction/generate}}.
         Its value is a sequence of [=attested credential data=] structures conveying newly created [=recovery credentials=].
 
-    :   <dfn lt="recoveryExtOutput-credId">credId</dfn>
+    :   3 (<dfn lt="recoveryExtOutput-credId">credId</dfn>)
     ::  This member MUST be present if and only if the output <code>[=recoveryExtOutput-action|action=]</code>
         is {{RecoveryExtensionAction/recover}}.
         Its value is the [=credential ID=] of the [=recovery credential=] that was used
         to create the signature <code>[=recoveryExtOutput-sig|sig=]</code>.
 
-    :   <dfn lt="recoveryExtOutput-sig">sig</dfn>
+    :   4 (<dfn lt="recoveryExtOutput-sig">sig</dfn>)
     ::  This member MUST be present if and only if the output <code>[=recoveryExtOutput-action|action=]</code>
         is {{RecoveryExtensionAction/recover}}.
         Its value is a signature generated as described in the <strong>Authenticator extension processing</strong> section.
