@@ -5751,7 +5751,7 @@ This extension requires additional processing by the [=[RP]=] as detailed in [[#
             </div>
 
         :   <dfn>allowCredentials</dfn>
-        ::  This member, REQUIRED when {{action}} is {{RecoveryExtensionAction/recover}},
+        ::  This member, REQUIRED when {{action}} is {{RecoveryExtensionAction/recover}} and ignored otherwise,
             indicates the [=recovery credentials=] that MAY be used in the [=registration ceremony=].
             Its function is analogous to that of
             <code>{{PublicKeyCredentialRequestOptions}}.{{PublicKeyCredentialRequestOptions/allowCredentials}}</code>.
@@ -5769,7 +5769,33 @@ This extension requires additional processing by the [=[RP]=] as detailed in [[#
 
 
 : Authenticator extension input
-::  The client extension input encoded as a CBOR map.
+::  A CBOR map with the following structure:
+
+    ```
+    recoveryExtInput = {
+      action: "state" / "generate",
+      //
+
+      action: "recover",
+      allowCredentials: [* publicKeyCredentialDescriptor],
+    }
+
+    publicKeyCredentialDescriptor = {
+      type: "public-key",
+      id: bytes,
+      ? transports: [* tstr],
+    }
+    ```
+
+    The semantics of the above fields are as follows:
+
+    :   <dfn lt="recoveryExtInput-action">action</dfn>
+    ::  The value of the [=client extension input=] {{RecoveryExtensionInput/action}}.
+
+    :   <dfn lt="recoveryExtInput-allowCredentials">allowCredentials</dfn>
+    ::  A list identifying [=recovery credentials=] that MAY be used in a [=registration ceremony=].
+        MUST be present if and only if <code>[=recoveryExtInput-action|action=]</code> is {{RecoveryExtensionAction/recover}}.
+
 
 : Authenticator extension processing
 ::  The following definitions are used below:
@@ -5777,7 +5803,7 @@ This extension requires additional processing by the [=[RP]=] as detailed in [[#
     - `LEFT(X, n)` is the first n bytes of the byte array X.
     - `DROP_LEFT(X, n)` is the byte array X without the first n bytes.
 
-    If {{RecoveryExtensionInput/action}} is
+    If <code>[=recoveryExtInput-action|action=]</code> is
         <dl class="switch">
             :   {{RecoveryExtensionAction/state}}
             ::  Generate the [=authenticator extension output=] as described in the <strong>Authenticator extension output</strong> section.
@@ -5808,8 +5834,8 @@ This extension requires additional processing by the [=[RP]=] as detailed in [[#
 
                                     - `salt`: Not set (equivalent to 32 zero bytes).
                                     - `IKM`: |ikm_x|
-                                    - `info`: the byte string `0x776562617574686e2e7265636f766572792e637265645f6b6579`
-                                        (the [=UTF-8 encoded=] string `webauthn.recovery.cred_key`).
+                                    - `info`: the [=UTF-8 encoded=] string `webauthn.recovery.cred_key`
+                                        (CDDL: `h'776562617574686e2e7265636f766572792e637265645f6b6579'`).
                                     - `L`: 32.
 
                                     Parse |credKey| as a big-endian unsigned 256-bit number.
@@ -5818,8 +5844,8 @@ This extension requires additional processing by the [=[RP]=] as detailed in [[#
 
                                     - `salt`: Not set (equivalent to 32 zero bytes).
                                     - `IKM`: |ikm_x|
-                                    - `info`: the byte string `0x776562617574686e2e7265636f766572792e6d61635f6b6579`
-                                        (the [=UTF-8 encoded=] string `webauthn.recovery.mac_key`).
+                                    - `info`: the [=UTF-8 encoded=] string `webauthn.recovery.mac_key`
+                                        (CDDL: `h'776562617574686e2e7265636f766572792e6d61635f6b6579'`).
                                     - `L`: 32.
 
                                 1. If |credKey| >= n, where n is the order of the P-256 curve, start over from 1.
@@ -5852,7 +5878,7 @@ This extension requires additional processing by the [=[RP]=] as detailed in [[#
 
                 1. Generate the [=authenticator extension output=] as described
                     in the <strong>Authenticator extension output</strong> section,
-                    with the {{RecoveryExtensionOutput/creds}} member set to |creds|.
+                    with the <code>[=recoveryExtOutput-creds|creds=]</code> member set to |creds|.
 
 
             :   {{RecoveryExtensionAction/recover}}
@@ -5864,7 +5890,7 @@ This extension requires additional processing by the [=[RP]=] as detailed in [[#
 
                 1. Let |creds| be a new [=list=].
 
-                1. [=list/For each=] |cred| in {{RecoveryExtensionInput/allowCredentials}}:
+                1. [=list/For each=] |cred| in <code>[=recoveryExtInput-allowCredentials|allowCredentials=]</code>:
 
                     1. Let <code>|alg| = LEFT(|cred|.{{PublicKeyCredentialDescriptor/id}}, 1)</code>.
 
@@ -5890,8 +5916,8 @@ This extension requires additional processing by the [=[RP]=] as detailed in [[#
 
                                     - `salt`: Not set (equivalent to 32 zero bytes).
                                     - `IKM`: |ikm_x|
-                                    - `info`: the byte string `0x776562617574686e2e7265636f766572792e637265645f6b6579`
-                                        (the [=UTF-8 encoded=] string `webauthn.recovery.cred_key`).
+                                    - `info`: the [=UTF-8 encoded=] string `webauthn.recovery.cred_key`
+                                        (CDDL: `h'776562617574686e2e7265636f766572792e637265645f6b6579'`).
                                     - `L`: 32.
 
                                     Parse |credKey| as a big-endian unsigned 256-bit number.
@@ -5900,8 +5926,8 @@ This extension requires additional processing by the [=[RP]=] as detailed in [[#
 
                                     - `salt`: Not set (equivalent to 32 zero bytes).
                                     - `IKM`: |ikm_x|
-                                    - `info`: the byte string `0x776562617574686e2e7265636f766572792e6d61635f6b6579`
-                                        (the [=UTF-8 encoded=] string `webauthn.recovery.mac_key`).
+                                    - `info`: the [=UTF-8 encoded=] string `webauthn.recovery.mac_key`
+                                        (CDDL: `h'776562617574686e2e7265636f766572792e6d61635f6b6579'`).
                                     - `L`: 32.
 
                                 1. If <code>|cred|.{{PublicKeyCredentialDescriptor/id}}</code> is not exactly equal to
@@ -5930,8 +5956,9 @@ This extension requires additional processing by the [=[RP]=] as detailed in [[#
 
                     1. Generate the [=authenticator extension output=] as described
                         in the <strong>Authenticator extension output</strong> section,
-                        with the {{RecoveryExtensionOutput/credId}} member set to <code>|cred|.{{PublicKeyCredentialDescriptor/id}}</code>
-                        and the {{RecoveryExtensionOutput/sig}} member set to |sig|,
+                        with the <code>[=recoveryExtOutput-credId|credId=]</code> member set to
+                        <code>|cred|.{{PublicKeyCredentialDescriptor/id}}</code>
+                        and the <code>[=recoveryExtOutput-sig|sig=]</code> member set to |sig|,
                         and end extension processing.
 
                 1. Return an error code equivalent to "{{InvalidStateError}}".
@@ -5941,45 +5968,47 @@ This extension requires additional processing by the [=[RP]=] as detailed in [[#
 : Authenticator extension output
 ::  A CBOR map with the following structure:
 
-    <xmp class="idl">
-    dictionary RecoveryExtensionOutput {
-      required RecoveryExtensionAction action;
-      required int state;
-      sequence<ArrayBuffer> creds;
-      ArrayBuffer credId;
-      ArrayBuffer sig;
-    };
-    </xmp>
-
     ```
-    $$recoveryExtOutput //= {
-                              action: RecoveryExtensionAction,
-                              state: int
-                              creds: [ * (cred: bytes) ],
-                              credId: bytes,
-                              sig: bytes,
-                            }
+    recoveryExtOutput = {
+      action: "state",
+      state: uint,
+      //
+
+      action: "generate",
+      state: uint,
+      creds: [* bytes],
+      //
+
+      action: "recover",
+      state: uint,
+      credId: bytes,
+      sig: bytes,
+    }
     ```
 
-    <div dfn-type="dict-member" dfn-for="RecoveryExtensionOutput">
-        :   <dfn>action</dfn>
-        ::  The value of the extension input {{RecoveryExtensionInput/action}}.
+    The semantics of the above fields are as follows:
 
-        :   <dfn>state</dfn>
-        ::  The current value of the [=recovery credentials state counter=].
+    :   <dfn lt="recoveryExtOutput-action">action</dfn>
+    ::  The value of the extension input <code>[=recoveryExtInput-action|action=]</code>.
 
-        :   <dfn>creds</dfn>
-        ::  This member MUST be present if and only if the output {{RecoveryExtensionOutput/action}} is {{RecoveryExtensionAction/generate}}.
-            Its value is a sequence of [=attested credential data=] structures representing newly created [=recovery credentials=].
+    :   <dfn lt="recoveryExtOutput-state">state</dfn>
+    ::  The current value of the [=recovery credentials state counter=].
 
-        :   <dfn>credId</dfn>
-        ::  This member MUST be present if and only if the output {{RecoveryExtensionOutput/action}} is {{RecoveryExtensionAction/recover}}.
-            Its value is the [=credential ID=] of the [=recovery credential=] that was used to create the signature {{RecoveryExtensionOutput/sig}}.
+    :   <dfn lt="recoveryExtOutput-creds">creds</dfn>
+    ::  This member MUST be present if and only if the output <code>[=recoveryExtOutput-action|action=]</code>
+        is {{RecoveryExtensionAction/generate}}.
+        Its value is a sequence of [=attested credential data=] structures conveying newly created [=recovery credentials=].
 
-        :   <dfn>sig</dfn>
-        ::  This member MUST be present if and only if the output {{RecoveryExtensionOutput/action}} is {{RecoveryExtensionAction/recover}}.
-            Its value is a signature generated as described in the <strong>Authenticator extension processing</strong> section.
-    </div>
+    :   <dfn lt="recoveryExtOutput-credId">credId</dfn>
+    ::  This member MUST be present if and only if the output <code>[=recoveryExtOutput-action|action=]</code>
+        is {{RecoveryExtensionAction/recover}}.
+        Its value is the [=credential ID=] of the [=recovery credential=] that was used
+        to create the signature <code>[=recoveryExtOutput-sig|sig=]</code>.
+
+    :   <dfn lt="recoveryExtOutput-sig">sig</dfn>
+    ::  This member MUST be present if and only if the output <code>[=recoveryExtOutput-action|action=]</code>
+        is {{RecoveryExtensionAction/recover}}.
+        Its value is a signature generated as described in the <strong>Authenticator extension processing</strong> section.
 
 
 ### [=[RP]=] extension processing ### {#sctn-recovery-credentials-extension-rp-processing}
@@ -5991,9 +6020,10 @@ There are two cases where the response indicates that
 the [=[RP]=] SHOULD initiate [[#sctn-recovery-credentials-extension-rp-register-recovery-creds|recovery credential registration]], which are:
 
   - Upon successful {{CredentialsContainer/create()|navigator.credentials.create()}},
-      if {{RecoveryExtensionOutput/state}} > 0.
+      if <code>[=recoveryExtOutput-state|state=]</code> > 0.
   - Upon successful {{CredentialsContainer/create()|navigator.credentials.create()}},
-      if {{RecoveryExtensionOutput/state}} is greater than the previous value for {{RecoveryExtensionOutput/state}}
+      if <code>[=recoveryExtOutput-state|state=]</code> is greater than the previous value
+      for <code>[=recoveryExtOutput-state|state=]</code>
       that the [=[RP]=] has seen for the used [=credential=].
 
 The following operations assume that each user account contains a |recoveryStates| field,
@@ -6023,16 +6053,16 @@ the [=[RP]=] SHOULD add the following steps to all registration and authenticati
 
      1. If |extOutput| is not null:
 
-         1. If <code>|extOutput|.{{RecoveryExtensionOutput/action}}</code> does not equal {{RecoveryExtensionAction/state}}
-            or <code>|extOutput|.{{RecoveryExtensionOutput/state}}</code> is not present,
+         1. If <code>|extOutput|.[=recoveryExtOutput-action|action=]</code> does not equal {{RecoveryExtensionAction/state}}
+            or <code>|extOutput|.[=recoveryExtOutput-state|state=]</code> is not present,
             abort this extension processing and OPTIONALLY show a user-visible warning.
 
-         1. If <code>|extOutput|.{{RecoveryExtensionOutput/state}}</code> > 0:
+         1. If <code>|extOutput|.[=recoveryExtOutput-state|state=]</code> > 0:
 
              1. Let <code>|recoveryState| = |recoveryStates|[|pkc|.{{Credential/id}}]</code>,
                 or null if <code>|pkc|.{{Credential/id}}</code> is not present in |recoveryStates|.
 
-             1. If |recoveryState| is null or <code>|extOutput|.{{RecoveryExtensionOutput/state}} > |recoveryState|.state</code>:
+             1. If |recoveryState| is null or <code>|extOutput|.[=recoveryExtOutput-state|state=] > |recoveryState|.state</code>:
 
                  1. If the ceremony finishes successfully,
                     prompt the user that their [=recovery credentials=] need to be updated
@@ -6066,15 +6096,15 @@ the RP performs the following procedure:
         or null if not present.
 
      1. If |extOutput| is null,
-        <code>|extOutput|.{{RecoveryExtensionOutput/action}}</code> does not equal {{RecoveryExtensionAction/generate}},
-        or <code>|extOutput|.{{RecoveryExtensionOutput/creds}}</code> is not present,
+        <code>|extOutput|.[=recoveryExtOutput-action|action=]</code> does not equal {{RecoveryExtensionAction/generate}},
+        or <code>|extOutput|.[=recoveryExtOutput-creds|creds=]</code> is not present,
         abort the ceremony with an error.
 
      1. Let |acceptedCreds| be a new [=list=].
 
      1. Let |rejectedCreds| be a new [=list=].
 
-     1. [=list/For each=] |cred| in <code>|extOutput|.{{RecoveryExtensionOutput/creds}}</code>:
+     1. [=list/For each=] |cred| in <code>|extOutput|.[=recoveryExtOutput-creds|creds=]</code>:
 
          1. If <code>|cred|.[=aaguid=]</code> identifies an [=authenticator=] model accepted by the [=[RP]=]'s policy,
             [=list/append=] |cred| to |acceptedCreds|.
@@ -6086,7 +6116,7 @@ the RP performs the following procedure:
             If an authenticator is dishonest about <code>|cred|.[=aaguid=]</code>,
             it could at worst cause a false-positive rejection of this [=recovery credential=].
 
-     1. Set <code>|recoveryStates|[|pkc|.{{Credential/id}}] = (|extOutput|.{{RecoveryExtensionOutput/state}}, |acceptedCreds|)</code>.
+     1. Set <code>|recoveryStates|[|pkc|.{{Credential/id}}] = (|extOutput|.[=recoveryExtOutput-state|state=], |acceptedCreds|)</code>.
 
         Note: This intentionally overwrites any [=recovery credentials=] previously registered with this [=primary credential=].
 
@@ -6138,14 +6168,14 @@ the [=[RP]=] performs the following procedure:
         or null if not present.
 
      1. If |extOutput| is null,
-        <code>|extOutput|.{{RecoveryExtensionOutput/action}}</code> does not equal {{RecoveryExtensionAction/recover}},
+        <code>|extOutput|.[=recoveryExtOutput-action|action=]</code> does not equal {{RecoveryExtensionAction/recover}},
         or any of
-        <code>|extOutput|.{{RecoveryExtensionOutput/state}}</code>,
-        <code>|extOutput|.{{RecoveryExtensionOutput/credId}}</code>,
-        or <code>|extOutput|.{{RecoveryExtensionOutput/sig}}</code>
+        <code>|extOutput|.[=recoveryExtOutput-state|state=]</code>,
+        <code>|extOutput|.[=recoveryExtOutput-credId|credId=]</code>,
+        or <code>|extOutput|.[=recoveryExtOutput-sig|sig=]</code>
         is not present, abort the ceremony with an error.
 
-     1. If <code>|extOutput|.{{RecoveryExtensionOutput/credId}}</code> does not equal
+     1. If <code>|extOutput|.[=recoveryExtOutput-credId|credId=]</code> does not equal
         the {{PublicKeyCredentialDescriptor/id}} member of some element of |allowCredentials|,
         abort the ceremony with an error.
 
@@ -6155,7 +6185,7 @@ the [=[RP]=] performs the following procedure:
 
          1. [=list/For each=] |cred| in |creds|:
 
-             1. If <code>|cred|.[=credentialId=]</code> equals <code>|extOutput|.{{RecoveryExtensionOutput/credId}}</code>:
+             1. If <code>|cred|.[=credentialId=]</code> equals <code>|extOutput|.[=recoveryExtOutput-credId|credId=]</code>:
 
                  1. Let |publicKey| be the decoded public key <code>|cred|.[=credentialPublicKey=]</code>.
 
@@ -6166,7 +6196,7 @@ the [=[RP]=] performs the following procedure:
 
                  1. Let |clientDataHash| be the [=hash of the serialized client data=] for this registration ceremony.
 
-                 1. Using |publicKey|, verify that <code>|extOutput|.{{RecoveryExtensionOutput/sig}}</code>
+                 1. Using |publicKey|, verify that <code>|extOutput|.[=recoveryExtOutput-sig|sig=]</code>
                     is a valid signature over <code>|authDataWithoutExtensions| || |clientDataHash|</code>.
                     If the signature is invalid, fail the registration ceremony.
 
@@ -6187,7 +6217,7 @@ the [=[RP]=] performs the following procedure:
 
  1. It is RECOMMENDED to send the user an e-mail or similar notification about this change to their account.
 
- 1. If <code>|extOutput|.{{RecoveryExtensionOutput/state}}</code> is greater than 0,
+ 1. If <code>|extOutput|.[=recoveryExtOutput-state|state=]</code> is greater than 0,
     it is RECOMMENDED to treat this as equivalent to detecting this as described in [[#sctn-recovery-credentials-extension-rp-detect-changed-seeds]],
     and initiate [[#sctn-recovery-credentials-extension-rp-register-recovery-creds]] for the newly registered credential.
 
