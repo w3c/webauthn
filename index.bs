@@ -5643,7 +5643,7 @@ At this time, one [=credential property=] is defined: the [=resident key credent
 
 This [=client extension|client=] [=registration extension=] and [=authentication extension=] allows a [=[RP]=] to evaluate outputs from a pseudo-random function (PRF) associated with a [=credential=]. The PRFs provided by this extension map from {{USVString}}s of any length to 32-byte {{ArrayBuffer}}s.
 
-When requested, if a [=credential=] is created on an [=authenticator=] that supports this extension then either one or two freshly-seeded PRFs are associated with it. If two PRFs are associated then, when outputs are requested, one PRF is evaluated if [=user verification=] is performed and the other is evaluated if only a [=test of user presence|user presence test=] is performed. It is the responsibility of the [=[RP]=] to set the {{PublicKeyCredentialRequestOptions/userVerification}} parameter accordingly: [=[RPS]=] SHOULD *consistently* use either the {{UserVerificationRequirement/required}} or {{UserVerificationRequirement/discouraged}} values of {{UserVerificationRequirement}} when using this extension, otherwise the outputs may vary for a given input. To avoid mistakes, the default value of {{UserVerificationRequirement/preferred}} is prohibited when using this extension because that could cause the PRF used to vary between operations if [=user verification=] is later enabled on an [=authenticator=].
+When requested, if a [=credential=] is created on an [=authenticator=] that supports this extension then either one or two freshly-seeded PRFs are associated with it. If two PRFs are associated then, when outputs are requested, one PRF is evaluated if [=user verification=] is performed and the other is evaluated if only a [=test of user presence|user presence test=] is performed. It is the responsibility of the [=[RP]=] to set the {{PublicKeyCredentialRequestOptions/userVerification}} parameter accordingly: [=[RPS]=] SHOULD *consistently* use either the {{UserVerificationRequirement/required}} or {{UserVerificationRequirement/discouraged}} values of {{UserVerificationRequirement}} when using this extension, otherwise the outputs may vary for a given input. To avoid mistakes, the default value of {{UserVerificationRequirement/preferred}} is prohibited when using this extension during [=assertion=] because that could cause the PRF used to vary between operations if [=user verification=] is later enabled on an [=authenticator=].
 
 As a motivating example, PRF outputs could be used as symmetric keys to encrypt user data. Such encrypted data would be inaccessible without the ability to get assertions from the associated [=credential=]. By using the provision below to evaluate the PRF at two inputs in a single [=assertion=] operation, the encryption key could be periodically rotated during [=assertions=] by choosing a fresh, random input and reencrypting under the new output. If the evaluation inputs are unpredictable then even an attacker who could satisfy [=user verification=], and who had time-limited access to the authenticator, could not learn the encryption key without also knowing the correct PRF input.
 
@@ -5686,14 +5686,14 @@ Note: this extension may be implemented for [=authenticators=] that do not use [
 ::
        1. If {{AuthenticationExtensionsClientInputs/prf}} is present:
            1. If {{AuthenticationExtensionsPRFInputs/evalByCredential}} is present, return a {{DOMException}} whose name is “{{NotSupportedError}}”.
-           1. If {{AuthenticatorSelectionCriteria/userVerification}} has the value {{UserVerificationRequirement/preferred}}:
-               1. Return a {{DOMException}} whose name is “{{NotSupportedError}}”.
            1. Set `hmac-secret` to [TRUE] in the authenticator extensions input.
            1. If {{AuthenticationExtensionsPRFInputs/eval}} is present and a future extension to [[FIDO-CTAP]] permits evaluation of the PRF at creation time, configure `hmac-secret` inputs accordingly:
                * Let `salt1` be the value of <code>SHA-256(UTF8Encode("WebAuthn PRF") || 0x00 || {{AuthenticationExtensionsPRFInputs/eval}}.{{AuthenticationExtensionsPRFValues/first}})</code>.
                * If <code>{{AuthenticationExtensionsPRFInputs/eval}}.{{AuthenticationExtensionsPRFValues/second}}</code> is present, let `salt2` be the value of <code>SHA-256(UTF8Encode("WebAuthn PRF") || 0x00 || {{AuthenticationExtensionsPRFInputs/eval}}.{{AuthenticationExtensionsPRFValues/second}})</code>.
            1. Set {{AuthenticationExtensionsPRFOutputs/enabled}} to the value of `hmac-secret` in the authenticator extensions output. If not present, set {{AuthenticationExtensionsPRFOutputs/enabled}} to [FALSE].
-           1. Set {{AuthenticationExtensionsPRFOutputs/results}} to the PRF outputs, if any.
+           1. Set {{AuthenticationExtensionsPRFOutputs/results}} to the decrypted PRF result(s), if any.
+
+Note: If PRF results are obtained during [=registration=] then [=[RPS]=] MUST inspect the [=UV=] bit in the [=flags=] of the response in order to determine the correct value of {{PublicKeyCredentialRequestOptions/userVerification}} for future [=assertions=]. Otherwise results from [=assertions=] may be inconsistent with those from the [=registration=].
 
 : Client extension output
 :: <xmp class="idl">
@@ -5717,19 +5717,18 @@ Note: this extension may be implemented for [=authenticators=] that do not use [
 
 : Client extension processing ([=authentication extension|authentication=])
 ::
-       1. If {{AuthenticationExtensionsPRFInputs/evalByCredential}} is present and {{PublicKeyCredentialRequestOptions/allowCredentials}} is empty, return a {{DOMException}} whose name is “{{NotSupportedError}}”.
-       1. If either {{AuthenticationExtensionsPRFInputs/evalByCredential}} is present or {{AuthenticationExtensionsPRFInputs/eval}} is present, and {{PublicKeyCredentialRequestOptions/userVerification}} has the value {{UserVerificationRequirement/preferred}}, return a {{DOMException}} whose name is “{{NotSupportedError}}”.
-       1. Let |ev| be null, and try to find any applicable PRF input(s):
-           1. If {{AuthenticationExtensionsPRFInputs/evalByCredential}} is present and [=map/exists|contains=] an [=map/entry=] whose [=map/key=] is the [=base64url encoding=] of the [=credential ID=] that will be returned, let |ev| be the [=map/value=] of that entry.
-           1. If |ev| is null and {{AuthenticationExtensionsPRFInputs/eval}} is present, then let |ev| be the value of {{AuthenticationExtensionsPRFInputs/eval}}.
-       1. If |ev| is null:
+       1. If {{AuthenticationExtensionsClientInputs/prf}} is present and either {{AuthenticationExtensionsPRFInputs/eval}} is present or {{AuthenticationExtensionsPRFInputs/evalByCredential}} is not empty:
+           1. If {{PublicKeyCredentialRequestOptions/userVerification}} has the value {{UserVerificationRequirement/preferred}}, return a {{DOMException}} whose name is “{{NotSupportedError}}”.
+           1. If {{AuthenticationExtensionsPRFInputs/evalByCredential}} is not empty but {{PublicKeyCredentialRequestOptions/allowCredentials}} is empty, return a {{DOMException}} whose name is “{{NotSupportedError}}”.
            1. Set {{AuthenticationExtensionsClientOutputs/prf}} to an empty dictionary.
-       1. Else:
-           1. Let `salt1` be the value of <code>SHA-256(UTF8Encode("WebAuthn PRF") || 0x00 || |ev|.{{AuthenticationExtensionsPRFValues/first}})</code>.
-           1. If <code>|ev|.{{AuthenticationExtensionsPRFValues/second}}</code> is present, let `salt2` be the value of <code>SHA-256(UTF8Encode("WebAuthn PRF") || 0x00 || |ev|.{{AuthenticationExtensionsPRFValues/second}})</code>.
-           1. Send an `hmac-secret` extension to the [=authenticator=] using the values of `salt1` and, if set, `salt2` as the parameters of the same name in that process.
-           1. Decrypt the extension result and set {{AuthenticationExtensionsPRFOutputs/results}} to that result.
-
+           1. Let |ev| be null, and try to find any applicable PRF input(s):
+               1. If {{AuthenticationExtensionsPRFInputs/evalByCredential}} is present and [=map/exists|contains=] an [=map/entry=] whose [=map/key=] is the [=base64url encoding=] of the [=credential ID=] that will be returned, let |ev| be the [=map/value=] of that entry.
+               1. If |ev| is null and {{AuthenticationExtensionsPRFInputs/eval}} is present, then let |ev| be the value of {{AuthenticationExtensionsPRFInputs/eval}}.
+           1. If |ev| is not null:
+               1. Let `salt1` be the value of <code>SHA-256(UTF8Encode("WebAuthn PRF") || 0x00 || |ev|.{{AuthenticationExtensionsPRFValues/first}})</code>.
+               1. If <code>|ev|.{{AuthenticationExtensionsPRFValues/second}}</code> is present, let `salt2` be the value of <code>SHA-256(UTF8Encode("WebAuthn PRF") || 0x00 || |ev|.{{AuthenticationExtensionsPRFValues/second}})</code>.
+               1. Send an `hmac-secret` extension to the [=authenticator=] using the values of `salt1` and, if set, `salt2` as the parameters of the same name in that process.
+               1. Decrypt the extension result and set {{AuthenticationExtensionsPRFOutputs/results}} to the PRF result(s), if any.
 
 : Authenticator extension input / processing / output
 :: This extension uses the [[FIDO-CTAP]] `hmac-secret` extension when communicating with the authenticator. It thus does not specify any direct authenticator interaction for [=[RPS]=].
