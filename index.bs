@@ -225,6 +225,7 @@ spec: FIDO-CTAP; urlPrefix: https://fidoalliance.org/specs/fido-v2.0-ps-20190130
     type: dfn
         text: CTAP2 canonical CBOR encoding form; url: ctap2-canonical-cbor-encoding-form
         text: §6.2. Responses; url: responses
+        text: large, per-credential blobs; url: large-blob
 
 spec: FIDO-APPID; urlPrefix: https://fidoalliance.org/specs/fido-v2.0-id-20180227/fido-appid-and-facets-v2.0-id-20180227.html
     type: dfn
@@ -5642,6 +5643,78 @@ At this time, one [=credential property=] is defined: the [=resident key credent
 
 : Authenticator extension output
 :: None.
+
+
+## Large blob storage extension (<dfn>largeBlob</dfn>) ## {#sctn-large-blob-extension}
+
+This [=client extension|client=] [=authentication extension=] allows a [=[RP]=] to store opaque data associated with a credential. Since [=authenticators=] can only store small amounts of data, and most [=[RPS]=] are online services that can store arbitrary amounts of state for a user, this is only useful in specific cases. For example, the [=[RP]=] might wish to issue certificates rather than run a centralised authentication service.
+
+Note: [=[RPS]=] can assume that the opaque data will be compressed when being written to a space-limited device and so need not compress it themselves.
+
+Since a certificate system needs to sign over the public key of the credential, and that public key is only available after creation, this extension is not defined in the [=registration extension|registration=] context.
+
+Since certificates are sizable relative to the storage capabilities of typical authenticators, user agents SHOULD consider what indications and confirmations are suitable to best guide the user in allocating this limited resource and prevent abuse.
+
+Note: In order to interoperate, user agents storing large blobs on authenticators using [[!FIDO-CTAP]] are expected to use the provisions detailed in that specification for storing [=large, per-credential blobs=].
+
+: Extension identifier
+:: `largeBlob`
+
+: Operation applicability
+:: [=authentication extension|Authentication=]
+
+: Client extension input
+::  <xmp class="idl">
+    partial dictionary AuthenticationExtensionsClientInputs {
+        AuthenticationExtensionsLargeBlobInputs largeBlob;
+    };
+
+    dictionary AuthenticationExtensionsLargeBlobInputs {
+        boolean read;
+        ArrayBuffer write;
+    };
+    </xmp>
+
+    <div dfn-type="dict-member" dfn-for="AuthenticationExtensionsLargeBlobInputs">
+        :   <dfn>read</dfn>
+        ::  A boolean that indicates that the [=[RP]=] would like to fetch the previously-written blob associated with the asserted credential.
+
+        :   <dfn>write</dfn>
+        ::  An opaque byte string that the [=[RP]=] wishes to store with the existing credential.
+    </div>
+
+: Client extension processing ([=authentication extension|authentication=])
+::
+       1. If {{AuthenticationExtensionsLargeBlobInputs/read}} is present and has the value `true`:
+           1. If the [[#sctn-getAssertion|assertion]] operation is successful, attempt to read any data associated with the asserted credential.
+           1. If successful, set {{AuthenticationExtensionsLargeBlobOutputs/blob}} to the result.
+       1. If {{AuthenticationExtensionsLargeBlobInputs/write}} is present, {{PublicKeyCredentialRequestOptions/allowCredentials}} contains exactly one element, and {{AuthenticationExtensionsLargeBlobInputs/read}} is not present, or has the value `false`:
+           1. If the [[#sctn-getAssertion|assertion]] operation is successful, attempt to store the contents of {{AuthenticationExtensionsLargeBlobInputs/write}} on the [=authenticator=], associated with the indicated credential.
+           1. Set {{AuthenticationExtensionsLargeBlobOutputs/written}} to `true` if successful and `false` otherwise.
+
+: Client extension output
+:: <xmp class="idl">
+    partial dictionary AuthenticationExtensionsClientOutputs {
+        AuthenticationExtensionsLargeBlobOutputs largeBlob;
+    };
+
+    dictionary AuthenticationExtensionsLargeBlobOutputs {
+        ArrayBuffer blob;
+        boolean written;
+    };
+    </xmp>
+
+    <div dfn-type="dict-member" dfn-for="AuthenticationExtensionsLargeBlobOutputs">
+        :   <dfn>blob</dfn>
+        ::  The opaque byte string that was associated with the credential identified by {{PublicKeyCredential/rawId}}. Only valid if {{AuthenticationExtensionsLargeBlobInputs/read}} was `true`.
+
+        :   <dfn>written</dfn>
+        ::  A boolean that indicates that the contents of {{AuthenticationExtensionsLargeBlobInputs/write}} were successfully stored on the [=authenticator=], associated with the specified credential.
+    </div>
+
+
+: Authenticator extension processing
+:: This extension directs the user-agent to cause the large blob to be stored on, or retrieved from, the authenticator. It thus does not specify any direct authenticator interaction for [=[RPS]=].
 
 
 # User Agent Automation # {#sctn-automation}
