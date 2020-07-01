@@ -294,6 +294,10 @@ spec: RFC5280; urlPrefix: https://tools.ietf.org/html/rfc5280
     type: dfn
         text: SubjectPublicKeyInfo; url: section-4.1.2.7
 
+spec: RFC8610; urlPrefix: https://tools.ietf.org/html/rfc8610
+    type: dfn
+        text: group sockets; url: section-3.9
+
 </pre> <!-- class=anchors -->
 
 <!-- L128 spec:webappsec-credential-management-1; type:dictionary; for:/; text:CredentialRequestOptions -->
@@ -866,7 +870,7 @@ below and in [[#index-defined-elsewhere]].
     as defined in [[!FIDO-CTAP]].
 
 : CDDL
-:: This specification describes the syntax of all [=CBOR=]-encoded data using the CBOR Data Definition Language (CDDL) [[!RFC8610]].
+:: This specification describes the syntax of all [=CBOR=]-encoded data using the CBOR Data Definition Language (<dfn>CDDL</dfn>) [[!RFC8610]].
 
 : COSE
 :: CBOR Object Signing and Encryption (COSE) [[!RFC8152]].  The IANA COSE Algorithms registry established by this specification is also used.
@@ -2873,7 +2877,7 @@ The subsections below define the data types used for conveying [=WebAuthn extens
 
 Note: [=Authenticator extension outputs=] are conveyed as a part of [=Authenticator data=] (see [Table 1](#table-authData)).
 
-Note: The types defined below&mdash;{{AuthenticationExtensionsClientInputs}}, {{AuthenticationExtensionsClientOutputs}}, and {{AuthenticationExtensionsAuthenticatorInputs}}&mdash;are applicable to both [=registration extensions=] and [=authentication extensions=]. The "Authentication..." portion of their names should be regarded as meaning "WebAuthentication..."
+Note: The types defined below &mdash; {{AuthenticationExtensionsClientInputs}} and {{AuthenticationExtensionsClientOutputs}} &mdash; are applicable to both [=registration extensions=] and [=authentication extensions=]. The "Authentication..." portion of their names should be regarded as meaning "WebAuthentication..."
 
 
 ### Authentication Extensions Client Inputs (dictionary {{AuthenticationExtensionsClientInputs}}) ### {#iface-authentication-extensions-client-inputs}
@@ -2896,13 +2900,32 @@ This is a dictionary containing the [=client extension input=] values for zero o
 This is a dictionary containing the [=client extension output=] values for zero or more [=WebAuthn Extensions=].
 
 
-### Authentication Extensions Authenticator Inputs (typedef {{AuthenticationExtensionsAuthenticatorInputs}}) ### {#iface-authentication-extensions-authenticator-inputs}
+### Authentication Extensions Authenticator Inputs (CDDL type `AuthenticationExtensionsAuthenticatorInputs`) ### {#iface-authentication-extensions-authenticator-inputs}
 
-<xmp class="idl">
-    typedef record<DOMString, DOMString> AuthenticationExtensionsAuthenticatorInputs;
-</xmp>
+```
+AuthenticationExtensionsAuthenticatorInputs = {
+  * $$extensionInput .within ( tstr => any )
+}
+```
 
-This is a dictionary containing the [=authenticator extension input=] values for zero or more [=WebAuthn Extensions=].
+The [=CDDL=] type `AuthenticationExtensionsAuthenticatorInputs` defines a [=CBOR=] map
+containing the [=authenticator extension input=] values for zero or more [=WebAuthn Extensions=].
+Extensions can add members as described in [[#sctn-extension-request-parameters]].
+
+This type is not exposed to the [=[RP]=], but is used by the [=client=] and [=authenticator=].
+
+
+### Authentication Extensions Authenticator Outputs (CDDL type `AuthenticationExtensionsAuthenticatorOutputs`) ### {#iface-authentication-extensions-authenticator-outputs}
+
+```
+AuthenticationExtensionsAuthenticatorOutputs = {
+  * $$extensionOutput .within ( tstr => any )
+}
+```
+
+The [=CDDL=] type `AuthenticationExtensionsAuthenticatorOutputs` defines a [=CBOR=] map
+containing the [=authenticator extension output=] values for zero or more [=WebAuthn Extensions=].
+Extensions can add members as described in [[#sctn-extension-request-parameters]].
 
 
 ## Supporting Data Structures ## {#sctn-supporting-data-structures}
@@ -5275,9 +5298,29 @@ as taking a Boolean client argument, set to [TRUE] to signify that the extension
 
 Extensions that only affect client processing need not specify [=authenticator extension input=]. Extensions that have
 authenticator processing MUST specify the method of computing the [=authenticator extension input=] from the [=client extension
-input=]. For extensions that do not require input parameters and are defined as taking a Boolean [=client extension input=]
-value set to [TRUE], this method SHOULD consist of passing an [=authenticator extension input=] value of [TRUE] (CBOR major type
+input=],
+and MUST define extensions for the [=CDDL=] types
+<code>[[#iface-authentication-extensions-authenticator-inputs|AuthenticationExtensionsAuthenticatorInputs]]</code>
+and <code>[[#iface-authentication-extensions-authenticator-outputs|AuthenticationExtensionsAuthenticatorOutputs]]</code>
+by defining an additional choice for the `$$extensionInput` and `$$extensionOutput` [=group sockets=]
+using the [=extension identifier=] as the entry key.
+Extensions that do not require input parameters, and are thus defined as taking a Boolean [=client extension input=]
+value set to [TRUE],
+SHOULD define the [=authenticator extension input=] also as the constant Boolean value [TRUE] (CBOR major type
 7, value 21).
+
+The following example defines that an extension with [=extension identifier|identifier=] `webauthnExample_foobar`
+takes an unsigned integer as [=authenticator extension input=],
+and returns an array of at least one byte string as [=authenticator extension output=]:
+
+<pre class="example">
+    $$extensionInput //= (
+      webauthnExample_foobar: uint
+    )
+    $$extensionOutput //= (
+      webauthnExample_foobar: [+ bytes]
+    )
+</pre>
 
 Note: Extensions should aim to define authenticator arguments that are as small as possible. Some authenticators communicate
     over low-bandwidth links such as Bluetooth Low-Energy or NFC.
@@ -5532,6 +5575,12 @@ This extension enables use of a user verification method.
 : Authenticator extension input
 :: The Boolean value [TRUE], encoded in CBOR (major type 7, value 21).
 
+    ```
+    $$extensionInput //= (
+      uvm: true,
+    )
+    ```
+
 : Authenticator extension processing
 :: The [=authenticator=] sets the [=authenticator extension output=] to be one or more user verification methods indicating the method(s) used
     by the user to authorize the operation, as defined below. This extension can be added to attestation objects and assertions.
@@ -5541,7 +5590,10 @@ This extension enables use of a user verification method.
     using the CBOR syntax defined below:
 
     ```
-    uvmFormat = [ 1*3 uvmEntry ]
+    $$extensionOutput //= (
+      uvm: [ 1*3 uvmEntry ],
+    )
+
     uvmEntry = [
                    userVerificationMethod: uint .size 4,
                    keyProtectionType: uint .size 2,
