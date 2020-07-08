@@ -225,6 +225,7 @@ spec: FIDO-CTAP; urlPrefix: https://fidoalliance.org/specs/fido-v2.0-ps-20190130
     type: dfn
         text: CTAP2 canonical CBOR encoding form; url: ctap2-canonical-cbor-encoding-form
         text: §6.2. Responses; url: responses
+        text: large, per-credential blobs; url: large-blob
 
 spec: FIDO-APPID; urlPrefix: https://fidoalliance.org/specs/fido-v2.0-id-20180227/fido-appid-and-facets-v2.0-id-20180227.html
     type: dfn
@@ -293,6 +294,10 @@ spec: RFC5280; urlPrefix: https://tools.ietf.org/html/rfc5280
     type: dfn
         text: SubjectPublicKeyInfo; url: section-4.1.2.7
 
+spec: RFC8610; urlPrefix: https://tools.ietf.org/html/rfc8610
+    type: dfn
+        text: group sockets; url: section-3.9
+
 </pre> <!-- class=anchors -->
 
 <!-- L128 spec:webappsec-credential-management-1; type:dictionary; for:/; text:CredentialRequestOptions -->
@@ -308,6 +313,7 @@ spec:url; type:dfn; text:domain
 spec:url; type:dfn; for:url; text:host
 spec:url; type:dfn; text:valid domain;
 spec:webidl; type:dfn; text:DOMString
+spec:webidl; type:dfn; text:USVString
 spec:webidl; type:interface; text:Promise
 </pre>
 
@@ -864,7 +870,7 @@ below and in [[#index-defined-elsewhere]].
     as defined in [[!FIDO-CTAP]].
 
 : CDDL
-:: This specification describes the syntax of all [=CBOR=]-encoded data using the CBOR Data Definition Language (CDDL) [[!RFC8610]].
+:: This specification describes the syntax of all [=CBOR=]-encoded data using the CBOR Data Definition Language (<dfn>CDDL</dfn>) [[!RFC8610]].
 
 : COSE
 :: CBOR Object Signing and Encryption (COSE) [[!RFC8152]].  The IANA COSE Algorithms registry established by this specification is also used.
@@ -1806,8 +1812,7 @@ a numbered step. If outdented, it (today) is rendered either as a bullet in the 
                 ::  whose value is an {{AuthenticationExtensionsClientOutputs}} object containing [=extension identifier=] →
                     [=client extension output=] entries. The entries are created by running each extension's
                     [=client extension processing=] algorithm to create the [=client extension outputs=], for each
-                    [=client extension=] in |options|.{{PublicKeyCredentialCreationOptions/extensions}}.
-
+                    [=client extension=] in <code>|options|.{{PublicKeyCredentialCreationOptions/extensions}}</code>.
 
             1.  Let |constructCredentialAlg| be an algorithm that takes a [=global object=]
                 |global|, and whose steps are:
@@ -2200,7 +2205,7 @@ When this method is invoked, the user agent MUST execute the following algorithm
                 ::  whose value is an {{AuthenticationExtensionsClientOutputs}} object containing [=extension identifier=] →
                     [=client extension output=] entries. The entries are created by running each extension's
                     [=client extension processing=] algorithm to create the [=client extension outputs=], for each
-                    [=client extension=] in |options|.{{PublicKeyCredentialRequestOptions/extensions}}.
+                    [=client extension=] in <code>|options|.{{PublicKeyCredentialRequestOptions/extensions}}</code>.
 
             1.  Let |constructAssertionAlg| be an algorithm that takes a [=global object=]
                 |global|, and whose steps are:
@@ -2871,7 +2876,7 @@ The subsections below define the data types used for conveying [=WebAuthn extens
 
 Note: [=Authenticator extension outputs=] are conveyed as a part of [=Authenticator data=] (see [Table 1](#table-authData)).
 
-Note: The types defined below&mdash;{{AuthenticationExtensionsClientInputs}}, {{AuthenticationExtensionsClientOutputs}}, and {{AuthenticationExtensionsAuthenticatorInputs}}&mdash;are applicable to both [=registration extensions=] and [=authentication extensions=]. The "Authentication..." portion of their names should be regarded as meaning "WebAuthentication..."
+Note: The types defined below &mdash; {{AuthenticationExtensionsClientInputs}} and {{AuthenticationExtensionsClientOutputs}} &mdash; are applicable to both [=registration extensions=] and [=authentication extensions=]. The "Authentication..." portion of their names should be regarded as meaning "WebAuthentication..."
 
 
 ### Authentication Extensions Client Inputs (dictionary {{AuthenticationExtensionsClientInputs}}) ### {#iface-authentication-extensions-client-inputs}
@@ -2894,13 +2899,32 @@ This is a dictionary containing the [=client extension input=] values for zero o
 This is a dictionary containing the [=client extension output=] values for zero or more [=WebAuthn Extensions=].
 
 
-### Authentication Extensions Authenticator Inputs (typedef {{AuthenticationExtensionsAuthenticatorInputs}}) ### {#iface-authentication-extensions-authenticator-inputs}
+### Authentication Extensions Authenticator Inputs (CDDL type `AuthenticationExtensionsAuthenticatorInputs`) ### {#iface-authentication-extensions-authenticator-inputs}
 
-<xmp class="idl">
-    typedef record<DOMString, DOMString> AuthenticationExtensionsAuthenticatorInputs;
-</xmp>
+```
+AuthenticationExtensionsAuthenticatorInputs = {
+  * $$extensionInput .within ( tstr => any )
+}
+```
 
-This is a dictionary containing the [=authenticator extension input=] values for zero or more [=WebAuthn Extensions=].
+The [=CDDL=] type `AuthenticationExtensionsAuthenticatorInputs` defines a [=CBOR=] map
+containing the [=authenticator extension input=] values for zero or more [=WebAuthn Extensions=].
+Extensions can add members as described in [[#sctn-extension-request-parameters]].
+
+This type is not exposed to the [=[RP]=], but is used by the [=client=] and [=authenticator=].
+
+
+### Authentication Extensions Authenticator Outputs (CDDL type `AuthenticationExtensionsAuthenticatorOutputs`) ### {#iface-authentication-extensions-authenticator-outputs}
+
+```
+AuthenticationExtensionsAuthenticatorOutputs = {
+  * $$extensionOutput .within ( tstr => any )
+}
+```
+
+The [=CDDL=] type `AuthenticationExtensionsAuthenticatorOutputs` defines a [=CBOR=] map
+containing the [=authenticator extension output=] values for zero or more [=WebAuthn Extensions=].
+Extensions can add members as described in [[#sctn-extension-request-parameters]].
 
 
 ## Supporting Data Structures ## {#sctn-supporting-data-structures}
@@ -5273,9 +5297,29 @@ as taking a Boolean client argument, set to [TRUE] to signify that the extension
 
 Extensions that only affect client processing need not specify [=authenticator extension input=]. Extensions that have
 authenticator processing MUST specify the method of computing the [=authenticator extension input=] from the [=client extension
-input=]. For extensions that do not require input parameters and are defined as taking a Boolean [=client extension input=]
-value set to [TRUE], this method SHOULD consist of passing an [=authenticator extension input=] value of [TRUE] (CBOR major type
+input=],
+and MUST define extensions for the [=CDDL=] types
+<code>[[#iface-authentication-extensions-authenticator-inputs|AuthenticationExtensionsAuthenticatorInputs]]</code>
+and <code>[[#iface-authentication-extensions-authenticator-outputs|AuthenticationExtensionsAuthenticatorOutputs]]</code>
+by defining an additional choice for the `$$extensionInput` and `$$extensionOutput` [=group sockets=]
+using the [=extension identifier=] as the entry key.
+Extensions that do not require input parameters, and are thus defined as taking a Boolean [=client extension input=]
+value set to [TRUE],
+SHOULD define the [=authenticator extension input=] also as the constant Boolean value [TRUE] (CBOR major type
 7, value 21).
+
+The following example defines that an extension with [=extension identifier|identifier=] `webauthnExample_foobar`
+takes an unsigned integer as [=authenticator extension input=],
+and returns an array of at least one byte string as [=authenticator extension output=]:
+
+<pre class="example">
+    $$extensionInput //= (
+      webauthnExample_foobar: uint
+    )
+    $$extensionOutput //= (
+      webauthnExample_foobar: [+ bytes]
+    )
+</pre>
 
 Note: Extensions should aim to define authenticator arguments that are as small as possible. Some authenticators communicate
     over low-bandwidth links such as Bluetooth Low-Energy or NFC.
@@ -5530,6 +5574,12 @@ This extension enables use of a user verification method.
 : Authenticator extension input
 :: The Boolean value [TRUE], encoded in CBOR (major type 7, value 21).
 
+    ```
+    $$extensionInput //= (
+      uvm: true,
+    )
+    ```
+
 : Authenticator extension processing
 :: The [=authenticator=] sets the [=authenticator extension output=] to be one or more user verification methods indicating the method(s) used
     by the user to authorize the operation, as defined below. This extension can be added to attestation objects and assertions.
@@ -5539,7 +5589,10 @@ This extension enables use of a user verification method.
     using the CBOR syntax defined below:
 
     ```
-    uvmFormat = [ 1*3 uvmEntry ]
+    $$extensionOutput //= (
+      uvm: [ 1*3 uvmEntry ],
+    )
+
     uvmEntry = [
                    userVerificationMethod: uint .size 4,
                    keyProtectionType: uint .size 2,
@@ -5643,6 +5696,169 @@ At this time, one [=credential property=] is defined: the [=resident key credent
 
 : Authenticator extension output
 :: None.
+
+## Pseudo-random function extension (<dfn>prf</dfn>) ## {#prf-extension}
+
+This [=client extension|client=] [=registration extension=] and [=authentication extension=] allows a [=[RP]=] to evaluate outputs from a pseudo-random function (PRF) associated with a [=credential=]. The PRFs provided by this extension map from {{USVString}}s of any length to 32-byte {{ArrayBuffer}}s.
+
+When requested, if a [=credential=] is created on an [=authenticator=] that supports this extension then either one or two freshly-seeded PRFs are associated with it. If two PRFs are associated then, when outputs are requested, one PRF is evaluated if [=user verification=] is performed and the other is evaluated if only a [=test of user presence|user presence test=] is performed. It is the responsibility of the [=[RP]=] to set the {{PublicKeyCredentialRequestOptions/userVerification}} parameter accordingly: [=[RPS]=] SHOULD *consistently* use either the {{UserVerificationRequirement/required}} or {{UserVerificationRequirement/discouraged}} values of {{UserVerificationRequirement}} when using this extension, otherwise the outputs may vary for a given input. To avoid mistakes, the default value of {{UserVerificationRequirement/preferred}} is prohibited when using this extension during [=assertion=] because that could cause the PRF used to vary between operations if [=user verification=] is later enabled on an [=authenticator=].
+
+As a motivating example, PRF outputs could be used as symmetric keys to encrypt user data. Such encrypted data would be inaccessible without the ability to get assertions from the associated [=credential=]. By using the provision below to evaluate the PRF at two inputs in a single [=assertion=] operation, the encryption key could be periodically rotated during [=assertions=] by choosing a fresh, random input and reencrypting under the new output. If the evaluation inputs are unpredictable then even an attacker who could satisfy [=user verification=], and who had time-limited access to the authenticator, could not learn the encryption key without also knowing the correct PRF input.
+
+This extension is implemented on top of the [[FIDO-CTAP]] `hmac-secret` extension. It is a separate [=client extension=] because `hmac-secret` requires that inputs and outputs be encrypted in a manner that only the user agent can perform, and to provide separation between uses by WebAuthn and any uses by the underlying platform. This separation is achieved by hashing the provided PRF inputs with a context string to prevent evaluation of the PRFs for arbitrary inputs.
+
+Note: this extension may be implemented for [=authenticators=] that do not use [[FIDO-CTAP]] so long as the behavior observed by a [=[RP]=] is identical.
+
+: Extension identifier
+:: `prf`
+
+: Operation applicability
+:: [=registration extension|Registration=] and [=authentication extension|authentication=]
+
+: Client extension input
+::  <xmp class="idl">
+    dictionary AuthenticationExtensionsPRFValues {
+        required ArrayBuffer first;
+        ArrayBuffer second;
+    };
+
+    dictionary AuthenticationExtensionsPRFInputs {
+        AuthenticationExtensionsPRFValues eval;
+        record<USVString, AuthenticationExtensionsPRFValues> evalByCredential;
+    };
+
+    partial dictionary AuthenticationExtensionsClientInputs {
+        AuthenticationExtensionsPRFInputs prf;
+    };
+    </xmp>
+
+    <div dfn-type="dict-member" dfn-for="AuthenticationExtensionsPRFInputs">
+        :   <dfn>eval</dfn>
+        ::  One or two inputs on which to evaluate PRF. Not all [=authenticators=] support evaluating the PRFs during credential creation so outputs may, or may not, be provided. If not, then an [=assertion=] is needed in order to obtain the outputs.
+
+        :   <dfn>evalByCredential</dfn>
+        ::  A record mapping [=base64url encoding|base64url encoded=] [=credential IDs=] to PRF inputs to evaluate for that credential. Only applicable during [=assertions=] when {{PublicKeyCredentialRequestOptions/allowCredentials}} is not empty.
+    </div>
+
+: Client extension processing ([=registration extension|registration=])
+::
+       1. If {{AuthenticationExtensionsPRFInputs/evalByCredential}} is present, return a {{DOMException}} whose name is “{{NotSupportedError}}”.
+       1. Set `hmac-secret` to [TRUE] in the authenticator extensions input.
+       1. If {{AuthenticationExtensionsPRFInputs/eval}} is present and a future extension to [[FIDO-CTAP]] permits evaluation of the PRF at creation time, configure `hmac-secret` inputs accordingly:
+           * Let `salt1` be the value of <code>SHA-256(UTF8Encode("WebAuthn PRF") || 0x00 || {{AuthenticationExtensionsPRFInputs/eval}}.{{AuthenticationExtensionsPRFValues/first}})</code>.
+           * If <code>{{AuthenticationExtensionsPRFInputs/eval}}.{{AuthenticationExtensionsPRFValues/second}}</code> is present, let `salt2` be the value of <code>SHA-256(UTF8Encode("WebAuthn PRF") || 0x00 || {{AuthenticationExtensionsPRFInputs/eval}}.{{AuthenticationExtensionsPRFValues/second}})</code>.
+       1. Set {{AuthenticationExtensionsPRFOutputs/enabled}} to the value of `hmac-secret` in the authenticator extensions output. If not present, set {{AuthenticationExtensionsPRFOutputs/enabled}} to [FALSE].
+       1. Set {{AuthenticationExtensionsPRFOutputs/results}} to the decrypted PRF result(s), if any.
+
+Note: If PRF results are obtained during [=registration=] then the [=[RP]=] MUST inspect the [=UV=] bit in the [=flags=] of the response in order to determine the correct value of {{PublicKeyCredentialRequestOptions/userVerification}} for future [=assertions=]. Otherwise results from [=assertions=] may be inconsistent with those from the [=registration=].
+
+: Client extension processing ([=authentication extension|authentication=])
+::
+      1. If {{PublicKeyCredentialRequestOptions/userVerification}} has the value {{UserVerificationRequirement/preferred}}, return a {{DOMException}} whose name is “{{NotSupportedError}}”.
+      1. If {{AuthenticationExtensionsPRFInputs/evalByCredential}} is not empty but {{PublicKeyCredentialRequestOptions/allowCredentials}} is empty, return a {{DOMException}} whose name is “{{NotSupportedError}}”.
+      1. Initialize the {{AuthenticationExtensionsClientOutputs/prf}} extension output to an empty dictionary.
+      1. Let |ev| be null, and try to find any applicable PRF input(s):
+          1. If {{AuthenticationExtensionsPRFInputs/evalByCredential}} is present and [=map/exists|contains=] an [=map/entry=] whose [=map/key=] is the [=base64url encoding=] of the [=credential ID=] that will be returned, let |ev| be the [=map/value=] of that entry.
+          1. If |ev| is null and {{AuthenticationExtensionsPRFInputs/eval}} is present, then let |ev| be the value of {{AuthenticationExtensionsPRFInputs/eval}}.
+      1. If |ev| is not null:
+          1. Let `salt1` be the value of <code>SHA-256(UTF8Encode("WebAuthn PRF") || 0x00 || |ev|.{{AuthenticationExtensionsPRFValues/first}})</code>.
+          1. If <code>|ev|.{{AuthenticationExtensionsPRFValues/second}}</code> is present, let `salt2` be the value of <code>SHA-256(UTF8Encode("WebAuthn PRF") || 0x00 || |ev|.{{AuthenticationExtensionsPRFValues/second}})</code>.
+          1. Send an `hmac-secret` extension to the [=authenticator=] using the values of `salt1` and, if set, `salt2` as the parameters of the same name in that process.
+          1. Decrypt the extension result and set {{AuthenticationExtensionsPRFOutputs/results}} to the PRF result(s), if any.
+
+: Authenticator extension input / processing / output
+:: This extension uses the [[FIDO-CTAP]] `hmac-secret` extension when communicating with the authenticator. It thus does not specify any direct authenticator interaction for [=[RPS]=].
+
+: Client extension output
+:: <xmp class="idl">
+    dictionary AuthenticationExtensionsPRFOutputs {
+        boolean enabled;
+        AuthenticationExtensionsPRFValues results;
+    };
+
+    partial dictionary AuthenticationExtensionsClientOutputs {
+        AuthenticationExtensionsPRFOutputs prf;
+    };
+    </xmp>
+
+    <div dfn-type="dict-member" dfn-for="AuthenticationExtensionsPRFOutputs">
+        :   <dfn>enabled</dfn>
+        ::  [TRUE] if, and only if, the one or two PRFs are available for use with the created credential. This is only reported during [=registration=] and is not present in the case of [=authentication=].
+
+        :   <dfn>results</dfn>
+        ::  The results of evaluating the PRF for the inputs given in {{AuthenticationExtensionsPRFInputs/eval}} or {{AuthenticationExtensionsPRFInputs/evalByCredential}}. Outputs may not be available during [=registration=]; see comments in {{AuthenticationExtensionsPRFInputs/eval}}.
+    </div>
+
+## Large blob storage extension (<dfn>largeBlob</dfn>) ## {#sctn-large-blob-extension}
+
+This [=client extension|client=] [=authentication extension=] allows a [=[RP]=] to store opaque data associated with a credential. Since [=authenticators=] can only store small amounts of data, and most [=[RPS]=] are online services that can store arbitrary amounts of state for a user, this is only useful in specific cases. For example, the [=[RP]=] might wish to issue certificates rather than run a centralised authentication service.
+
+Note: [=[RPS]=] can assume that the opaque data will be compressed when being written to a space-limited device and so need not compress it themselves.
+
+Since a certificate system needs to sign over the public key of the credential, and that public key is only available after creation, this extension is not defined in the [=registration extension|registration=] context.
+
+Since certificates are sizable relative to the storage capabilities of typical authenticators, user agents SHOULD consider what indications and confirmations are suitable to best guide the user in allocating this limited resource and prevent abuse.
+
+Note: In order to interoperate, user agents storing large blobs on authenticators using [[!FIDO-CTAP]] are expected to use the provisions detailed in that specification for storing [=large, per-credential blobs=].
+
+: Extension identifier
+:: `largeBlob`
+
+: Operation applicability
+:: [=authentication extension|Authentication=]
+
+: Client extension input
+::  <xmp class="idl">
+    partial dictionary AuthenticationExtensionsClientInputs {
+        AuthenticationExtensionsLargeBlobInputs largeBlob;
+    };
+
+    dictionary AuthenticationExtensionsLargeBlobInputs {
+        boolean read;
+        ArrayBuffer write;
+    };
+    </xmp>
+
+    <div dfn-type="dict-member" dfn-for="AuthenticationExtensionsLargeBlobInputs">
+        :   <dfn>read</dfn>
+        ::  A boolean that indicates that the [=[RP]=] would like to fetch the previously-written blob associated with the asserted credential.
+
+        :   <dfn>write</dfn>
+        ::  An opaque byte string that the [=[RP]=] wishes to store with the existing credential.
+    </div>
+
+: Client extension processing ([=authentication extension|authentication=])
+::
+       1. If {{AuthenticationExtensionsLargeBlobInputs/read}} is present and has the value `true`:
+           1. If the [[#sctn-getAssertion|assertion]] operation is successful, attempt to read any data associated with the asserted credential.
+           1. If successful, set {{AuthenticationExtensionsLargeBlobOutputs/blob}} to the result.
+       1. If {{AuthenticationExtensionsLargeBlobInputs/write}} is present, {{PublicKeyCredentialRequestOptions/allowCredentials}} contains exactly one element, and {{AuthenticationExtensionsLargeBlobInputs/read}} is not present, or has the value `false`:
+           1. If the [[#sctn-getAssertion|assertion]] operation is successful, attempt to store the contents of {{AuthenticationExtensionsLargeBlobInputs/write}} on the [=authenticator=], associated with the indicated credential.
+           1. Set {{AuthenticationExtensionsLargeBlobOutputs/written}} to `true` if successful and `false` otherwise.
+
+: Client extension output
+:: <xmp class="idl">
+    partial dictionary AuthenticationExtensionsClientOutputs {
+        AuthenticationExtensionsLargeBlobOutputs largeBlob;
+    };
+
+    dictionary AuthenticationExtensionsLargeBlobOutputs {
+        ArrayBuffer blob;
+        boolean written;
+    };
+    </xmp>
+
+    <div dfn-type="dict-member" dfn-for="AuthenticationExtensionsLargeBlobOutputs">
+        :   <dfn>blob</dfn>
+        ::  The opaque byte string that was associated with the credential identified by {{PublicKeyCredential/rawId}}. Only valid if {{AuthenticationExtensionsLargeBlobInputs/read}} was `true`.
+
+        :   <dfn>written</dfn>
+        ::  A boolean that indicates that the contents of {{AuthenticationExtensionsLargeBlobInputs/write}} were successfully stored on the [=authenticator=], associated with the specified credential.
+    </div>
+
+
+: Authenticator extension processing
+:: This extension directs the user-agent to cause the large blob to be stored on, or retrieved from, the authenticator. It thus does not specify any direct authenticator interaction for [=[RPS]=].
 
 
 # User Agent Automation # {#sctn-automation}
