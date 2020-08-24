@@ -2658,8 +2658,8 @@ attributes.
 <xmp class="idl">
     dictionary AuthenticatorSelectionCriteria {
         DOMString                    authenticatorAttachment;
-        boolean                      requireResidentKey = false;
         DOMString                    residentKey;
+        boolean                      requireResidentKey = false;
         DOMString                    userVerification = "preferred";
     };
 </xmp>
@@ -2669,20 +2669,13 @@ attributes.
     ::  If this member is present, eligible authenticators are filtered to only authenticators attached with the
         specified [[#enum-attachment]]. The value SHOULD be a member of {{AuthenticatorAttachment}} but [=client platforms=] MUST ignore unknown values, treating an unknown value as if the [=map/exist|member does not exist=].
 
-    :   <dfn>requireResidentKey</dfn>
-    ::  Note: This member is retained for backwards compatibility with WebAuthn Level 1 but is deprecated in favour of {{residentKey}}.
-        {{requireResidentKey}} is ignored if the caller supplies {{residentKey}} and the latter is understood by the [=client=].
-        Otherwise, {{requireResidentKey}}'s value is used. Note that {{requireResidentKey}}'s value defaults to [FALSE].
-
-        If used in absence of {{residentKey}}, it describes the [=[RP]=]'s requirements regarding [=client-side discoverable credentials=].
-        If {{requireResidentKey}} is set to [TRUE], the authenticator MUST create a [=client-side discoverable public key credential source=]
-        when creating a [=public key credential=].
-
     :   <dfn>residentKey</dfn>
-    ::  Note: This member supersedes {{requireResidentKey}}. If both are present and the [=client=] understands {{residentKey}}, then
-        {{residentKey}} is used and {{requireResidentKey}} is ignored.
+    ::  Specifies the extent to which the [=[RP]=] desires to create a [=client-side discoverable credential=]. For historical reasons the naming retains the deprecated “resident” terminology. The value SHOULD be a member of {{ResidentKeyRequirement}} but [=client platforms=] MUST ignore unknown values, treating an unknown value as if the [=map/exist|member does not exist=]. If no value is given then the effective value is {{ResidentKeyRequirement/required}} if {{requireResidentKey}} is [TRUE] or {{ResidentKeyRequirement/discouraged}} if it is [FALSE] or absent.
 
-        The value SHOULD be a member of {{ResidentKeyRequirement}} but [=client platforms=] MUST ignore unknown values, treating an unknown value as if the [=map/exist|member does not exist=]. See {{ResidentKeyRequirement}} for the description of {{residentKey}}'s values and semantics.
+        See {{ResidentKeyRequirement}} for the description of {{residentKey}}'s values and semantics.
+
+    :   <dfn>requireResidentKey</dfn>
+    ::  This member is retained for backwards compatibility with WebAuthn Level 1 and, for historical reasons, its naming retains the deprecated “resident” terminology for [=discoverable credentials=]. [=[RPS]=] SHOULD set it to [TRUE] if, and only if, {{residentKey}} is set to {{ResidentKeyRequirement/required}}.
 
     :   <dfn>userVerification</dfn>
     ::  This member describes the [=[RP]=]'s requirements regarding [=user verification=] for the
@@ -2742,6 +2735,8 @@ This enumeration's values describe the [=[RP]=]'s requirements for [=client-side
     ::  This value indicates the [=[RP]=] prefers creating a [=server-side credential=], but will accept a
         [=client-side discoverable credential=].
 
+        Note: A [=[RP]=] cannot require that a created credential is a [=server-side credential=] and the [=credProps|Credential Properties Extension=] may not return a value for the {{CredentialPropertiesOutput/rk}} property. Because of this, it may be the case that it does not know if a credential is a [=server-side credential=] or not and thus does not know whether creating a second credential with the same [=user handle=] will evict the first.
+
     :   <dfn>preferred</dfn>
     ::  This value indicates the [=[RP]=] strongly prefers creating a [=client-side discoverable credential=], but will accept a
         [=server-side credential=]. For example, user agents SHOULD guide the user through setting up [=user verification=] if needed to create a [=client-side discoverable credential=] in this case. This takes precedence over the setting of {{PublicKeyCredentialCreationOptions/userVerification}}.
@@ -2751,7 +2746,7 @@ This enumeration's values describe the [=[RP]=]'s requirements for [=client-side
         if a [=client-side discoverable credential=] cannot be created.
 </div>
 
-Note: [=[RPS]=] can determine whether or not the authenticator created a [=client-side discoverable credential=] by inspecting the [=credProps|Credential Properties Extension=]'s return value in light of
+Note: [=[RPS]=] can seek information on whether or not the authenticator created a [=client-side discoverable credential=] by inspecting the [=credProps|Credential Properties Extension=]'s return value in light of
 the value provided for <code>|options|.{{PublicKeyCredentialCreationOptions/authenticatorSelection}}.{{residentKey}}</code>.
 This is useful when values of {{ResidentKeyRequirement/discouraged}} or {{ResidentKeyRequirement/preferred}} are used for
 <code>|options|.{{PublicKeyCredentialCreationOptions/authenticatorSelection}}.{{residentKey}}</code>, because in those cases it is possible for an
@@ -5697,9 +5692,11 @@ At this time, one [=credential property=] is defined: the [=resident key credent
             (i.e., <dfn dfn-type="dfn">client-side discoverable credential property</dfn>),
             is a Boolean value indicating whether the {{PublicKeyCredential}} returned as a result of a [=registration ceremony=]
             is a [=client-side discoverable credential=].
-            If {{rk}} is [TRUE], the credential is a [=discoverable credential=];
+            If {{rk}} is [TRUE], the credential is a [=discoverable credential=].
             if {{rk}} is [FALSE], the credential is a [=server-side credential=].
             If {{rk}} is not present, it is not known whether the credential is a [=discoverable credential=] or a [=server-side credential=].
+
+            Note: some [=authenticators=] create [=discoverable credentials=] even when not requested by the [=client platform=]. Because of this, [=client platforms=] may be forced to omit the {{rk}} property because they lack the assurance to be able to set it to [FALSE]. [=[RPS]=] should assume that, if the `credProps` extension is supported, then [=client platforms=] will endeavour to populate the {{rk}} property. Therefore a missing {{rk}} indicates that the created credential is most likely a [=non-discoverable credential=].
     </div>
 
 
