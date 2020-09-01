@@ -5469,7 +5469,7 @@ Instead, in step three, the comparison on the host is relaxed to accept hosts on
 : Authenticator extension output
 :: None.
 
-## FIDO <dfn>AppID Exclusion</dfn> Extension (appidExclude) ## {#sctn-appid-exclude-extension}
+## FIDO AppID Exclusion Extension (appidExclude) ## {#sctn-appid-exclude-extension}
 
 This registration extension allows [=[WRPS]=] to exclude authenticators that contain specified credentials that were created with the legacy FIDO U2F JavaScript API [[FIDOU2FJavaScriptAPI]].
 
@@ -5933,38 +5933,20 @@ Additionally, [=extension capabilities=] are defined for every [=authenticator e
         </thead>
         <tbody>
             <tr>
-                <td>FIDO AppID Extension Support</td>
-                <td>`"webauthn:appid"`</td>
-                <td>boolean</td>
-                <td>Indicates whether the [=endpoint node=] WebAuthn WebDriver implementation supports the [=AppID=] extension.</td>
-            </tr>
-            <tr>
-                <td>FIDO AppID Exclusion Extension Support</td>
-                <td>`"webauthn:appidExclude"`</td>
-                <td>boolean</td>
-                <td>Indicates whether the [=endpoint node=] WebAuthn WebDriver implementation supports the [=AppID Exclusion=] extension.</td>
-            </tr>
-            <tr>
                 <td>User Verification Method Extension Support</td>
-                <td>`"webauthn:uvm"`</td>
+                <td>`"webauthn:extension:uvm"`</td>
                 <td>boolean</td>
                 <td>Indicates whether the [=endpoint node=] WebAuthn WebDriver implementation supports the [=User Verification Method=] extension.</td>
             </tr>
             <tr>
-                <td>Credential Properties Extension Support</td>
-                <td>`"webauthn:credProps"`</td>
-                <td>boolean</td>
-                <td>Indicates whether the [=endpoint node=] WebAuthn WebDriver implementation supports the [=credProps=] extension.</td>
-            </tr>
-            <tr>
                 <td>Pseudo-Random Function Extension Support</td>
-                <td>`"webauthn:prf"`</td>
+                <td>`"webauthn:extension:prf"`</td>
                 <td>boolean</td>
                 <td>Indicates whether the [=endpoint node=] WebAuthn WebDriver implementation supports the [=prf=] extension.</td>
             </tr>
             <tr>
                 <td>Large Blob Storage Extension Support</td>
-                <td>`"webauthn:largeBlob"`</td>
+                <td>`"webauthn:extension:largeBlob"`</td>
                 <td>boolean</td>
                 <td>Indicates whether the [=endpoint node=] WebAuthn WebDriver implementation supports the [=largeBlob=] extension.</td>
             </tr>
@@ -6015,8 +5997,12 @@ Each stored [=virtual authenticator=] has the following properties:
 : |extensions|
 :: A string array containing the [=extension identifiers=] supported by the [=Virtual Authenticator=].
 
-[=Virtual authenticators=] MUST support all [=authenticator extensions=] present in its |extensions| array.
-They MUST NOT support any [=authenticator extension=] not present in its |extensions| array.
+    A [=Virtual authenticator=] MUST support all [=authenticator extensions=] present in its |extensions| array.
+    It MUST NOT support any [=authenticator extension=] not present in its |extensions| array.
+: |uvm|
+:: A {{UvmEntries}} array to be set as the [=authenticator extension output=] when processing the [=User Verification Method=] extension.
+
+   Note: This property has no effect if the [=Virtual Authenticator=] does not support the [=User Verification Method=] extension.
 
 ## <dfn>Add Virtual Authenticator</dfn> ## {#sctn-automation-add-virtual-authenticator}
 
@@ -6093,6 +6079,12 @@ The <dfn>Authenticator Configuration</dfn> is a JSON [=Object=] passed to the [=
                 <td>|extensions|</td>
                 <td>string array</td>
                 <td>An array containing [=extension identifiers=]</td>
+                <td>Empty array</td>
+            </tr>
+            <tr>
+                <td>|uvm|</td>
+                <td>{{UvmEntries}}</td>
+                <td>Up to 3 [=User Verification Method=] entries</td>
                 <td>Empty array</td>
             </tr>
         </tbody>
@@ -6229,6 +6221,14 @@ The <dfn>Credential Parameters</dfn> is a JSON [=Object=] passed to the [=remote
                 <td>The initial value for a [=signature counter=] associated to the [=public key credential source=].</td>
                 <td>number</td>
             </tr>
+            <tr>
+                <td>|largeBlob|</td>
+                <td>
+                    The [=large, per-credential blob=] associated to the [=public key credential source=], encoded using [=Base64url Encoding=].
+                    This property may not be defined.
+                </td>
+                <td>string</td>
+            </tr>
         </tbody>
     </table>
 </figure>
@@ -6260,6 +6260,11 @@ The [=remote end steps=] are:
  1. Let |authenticator| be the [=Virtual Authenticator=] matched by |authenticatorId|.
  1. If |isResidentCredential| is [TRUE] and the |authenticator|'s |hasResidentKey| property is [FALSE], return a
      [=WebDriver error=] with [=WebDriver error code=] [=invalid argument=].
+ 1. If the |authenticator| supports the [=largeBlob=] extension and the |parameters|' |largeBlob| feature is defined:
+     1. Let |largeBlob| be the result of decoding [=Base64url Encoding=] on the |parameters|' |largeBlob| property.
+     1. If |largeBlob| is failure, return a [=WebDriver error=] with [=WebDriver error code=] [=invalid argument=].
+ 1. Otherwise:
+     1. Let |largeBlob| be `null`.
  1. Let |credential| be a new [=Client-side discoverable Public Key Credential Source=] if |isResidentCredential| is [TRUE]
      or a [=Server-side Public Key Credential Source=] otherwise whose items are:
     : [=public key credential source/type=]
@@ -6274,6 +6279,7 @@ The [=remote end steps=] are:
     :: |userHandle|
  1. Associate a [=signature counter=] |counter| to the |credential| with a starting value equal to the |parameters|'
      |signCount| or `0` if |signCount| is `null`.
+ 1. If |largeBlob| is not `null`, set the [=large, per-credential blob=] associated to the |credential| to |largeBlob|.
  1. Store the |credential| and |counter| in the database of the |authenticator|.
  1. Return [=success=].
 
