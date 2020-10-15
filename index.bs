@@ -4247,6 +4247,9 @@ calling {{CredentialsContainer/create()|navigator.credentials.create()}} they se
 
     [=Basic attestation=] is sometimes also called <dfn>batch attestation</dfn>.
 
+: <dfn>Self-Signed Basic Attestation</dfn> (<dfn>SSBasic</dfn>)
+:: This is attestation where, similar to the [=Basic=] attestation type, the authenticator's [=attestation key pair=] is specific to an authenticator model or a series of models. Though, [=SSBasic=]'s difference is that the attestation certificate is signed by the private key associated with the public key in the certificate, thus the attestation certificate is essentially the "(CA) root certificate". Verifying such an attestation certificate can include verifying the certificate's signature, although this may be of little value to an [=[RP]=]. If the RP has obtained the putative "root certificate" via out-of-band means (e.g., via the FIDO Alliance Metadata Service), they can also verfiy the returned attestation cert against the putative "root certificate" by a simple byte-by-byte comparison (once the certificates are both represented in the same format, e.g., DER or PEM). Note also that [[=RFC5280=]] defines specific requirements for various fields of a "self-signed" certificate. This attestation type does not require a [=SSBasic=] attestation certificate to adhere to those latter requirements.
+
 : <dfn>Self Attestation</dfn> (<dfn>Self</dfn>)
 :: In the case of [=self attestation=], also known as surrogate basic attestation [[UAFProtocol]], the Authenticator does not have
     any specific [=attestation key pair=]. Instead it uses the [=credential private key=] to create the [=attestation signature=].
@@ -4651,7 +4654,7 @@ implementable by [=authenticators=] with limited resources (e.g., secure element
 :: packed
 
 : Attestation types supported
-:: [=Basic=], [=Self=], [=AttCA=]
+:: [=Basic=], [=SSBasic=], [=Self=], [=AttCA=]
 
 : Syntax
 :: The syntax of a Packed Attestation statement is defined by the following CDDL:
@@ -4694,10 +4697,10 @@ implementable by [=authenticators=] with limited resources (e.g., secure element
         1. Let |authenticatorData| denote the [=authenticator data for the attestation=],
             and let |clientDataHash| denote the [=hash of the serialized client data=].
 
-        1. If [=Basic=] or [=AttCA=] [=attestation=] is in use, the authenticator produces the |sig| by concatenating |authenticatorData| and
+        1. If [=Basic=], [=SSBasic=], or [=AttCA=] [=attestation=] is in use, the authenticator produces the |sig| by concatenating |authenticatorData| and
             |clientDataHash|, and signing the result using an [=attestation private key=] selected through an authenticator-specific
             mechanism. It sets |x5c| to the certificate chain of the [=attestation public key=] and |alg| to the algorithm of the
-            attestation private key.
+            attestation private key. In the case of [=SSBasic=], |x5c| will have a single element containing the attestation certificate.
 
         1. If [=self attestation=] is in use, the authenticator produces |sig| by concatenating |authenticatorData| and |clientDataHash|,
             and signing the result using the credential private key. It sets |alg| to the algorithm of the credential private key and
@@ -4717,7 +4720,7 @@ implementable by [=authenticators=] with limited resources (e.g., secure element
             - If |attestnCert| contains an extension with OID 1.3.6.1.4.1.45724.1.1.4 (`id-fido-gen-ce-aaguid`) verify that the
                 value of this extension matches the <code>[=aaguid=]</code> in |authenticatorData|.
             - Optionally, inspect |x5c| and consult externally provided knowledge to determine whether |attStmt| conveys a
-                [=Basic=] or [=AttCA=] attestation.
+                [=Basic=], [=SSBasic=], or [=AttCA=] attestation.
             - If successful, return implementation-specific values representing [=attestation type=] [=Basic=], [=AttCA=] or
                 uncertainty, and [=attestation trust path=] |x5c|.
 
@@ -5038,7 +5041,7 @@ This attestation statement format is used with FIDO U2F authenticators using the
 :: fido-u2f
 
 : Attestation types supported
-:: [=Basic=], [=AttCA=]
+:: [=Basic=], [=SSBasic=], or [=AttCA=]
 
 : Syntax
 :: The syntax of a FIDO U2F attestation statement is defined as follows:
@@ -5101,9 +5104,9 @@ This attestation statement format is used with FIDO U2F authenticators using the
     1. Let |verificationData| be the concatenation of (0x00 || |rpIdHash| ||
         |clientDataHash| || |credentialId| || |publicKeyU2F|) (see [=Section 4.3=] of [[!FIDO-U2F-Message-Formats]]).
     1. Verify the |sig| using |verificationData| and the |certificate public key| per section 4.1.4 of [[!SEC1]] with SHA-256 as the hash function used in step two.
-    1. Optionally, inspect |x5c| and consult externally provided knowledge to determine whether |attStmt| conveys a [=Basic=] or
+    1. Optionally, inspect |x5c| and consult externally provided knowledge to determine whether |attStmt| conveys a [=Basic=], [=SSBasic=], or
         [=AttCA=] attestation.
-    1. If successful, return implementation-specific values representing [=attestation type=] [=Basic=], [=AttCA=] or uncertainty,
+    1. If successful, return implementation-specific values representing [=attestation type=] [=Basic=], [=SSBasic=], [=AttCA=], or uncertainty,
         and [=attestation trust path=] |x5c|.
 
 ## None Attestation Statement Format ## {#sctn-none-attestation}
@@ -6722,7 +6725,7 @@ or link various online identities of the same user together.
 This can be mitigated in several ways, including:
 
 - A [=[WAA]=] manufacturer may choose to ship [=authenticators=] in batches
-    where [=authenticators=] in a batch share the same [=attestation certificate=] (called [=Basic Attestation=] or [=batch attestation=]).
+    where [=authenticators=] in a batch share the same [=attestation certificate=] (this is the case with [=Basic Attestation=] or [=batch attestation=], and also [=Self-Signed Basic Attestation=]).
     This will anonymize the user at the risk of not being able to revoke a particular [=attestation certificate=]
     if its [=attestation private key|private key=] is compromised.
     The [=authenticator=] manufacturer SHOULD then ensure that such batches are large enough to provide meaningful anonymization,
