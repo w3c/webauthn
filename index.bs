@@ -45,6 +45,7 @@ Former Editor: Angelo Liao, w3cid 94342, Microsoft, huliao@microsoft.com
 !Contributors: <a href="mailto:agl@google.com">Adam Langley</a> (Google)
 !Contributors: <a href="mailto:mandyam@qti.qualcomm.com">Giridhar Mandyam</a> (Qualcomm)
 !Contributors: <a href="mailto:nsatragno@google.com">Nina Satragno</a> (Google)
+!Contributors: <a href="mailto:jiewen_tan@apple.com">Jiewen Tan</a> (Apple)
 !Contributors: <a href="mailto:sweeden@au1.ibm.com">Shane Weeden</a> (IBM)
 !Contributors: <a href="mailto:mkwst@google.com">Mike West</a> (Google)
 !Contributors: <a href="mailto:jyasskin@google.com">Jeffrey Yasskin</a> (Google)
@@ -5142,6 +5143,55 @@ if the [=authenticator=] does not support [=attestation=].
 : Verification procedure
 :: Return implementation-specific values representing [=attestation type=] [=None=] and an empty [=attestation trust path=].
 
+## Apple Anonymous Attestation Statement Format ## {#sctn-apple-anonymous-attestation}
+
+This attestation statement format is exclusively used by Apple for certain types of Apple devices that support WebAuthn.
+
+: Attestation statement format identifier
+:: apple
+
+: Attestation types supported
+:: [=Anonymization CA=]
+
+: Syntax
+:: The syntax of an Apple attestation statement is defined as follows:
+
+    ```
+    $$attStmtType //= (
+                          fmt: "apple",
+                          attStmt: appleStmtFormat
+                      )
+
+    appleStmtFormat = {
+                          x5c: [ credCert: bytes, * (caCert: bytes) ]
+                      }
+    ```
+
+    The semantics of the above fields are as follows:
+
+    : x5c
+    :: |credCert| followed by its certificate chain, each encoded in X.509 format.
+
+    : credCert
+    :: The credential public key certificate used for attestation, encoded in X.509 format.
+
+: Signing procedure
+::
+    1. Let |authenticatorData| denote the authenticator data for the attestation, and let |clientDataHash| denote the [=hash of the serialized client data=].
+    2. Concatenate |authenticatorData| and |clientDataHash| to form |nonceToHash|.
+    3. Perform SHA-256 hash of |nonceToHash| to produce |nonce|.
+    4. Let Apple anonymous attestation CA generate an X.509 certificate for the [=credential public key=] and include the |nonce| as a certificate extension with OID ( 1.2.840.113635.100.8.2 ). |credCert| denotes this certificate. The |credCert| thus serves as a proof of the attestation, and the included |nonce| proves the attestation is live. In addition to that, the |nonce| also protects the integrity of the |authenticatorData| and [=client data=].
+    5. Set |x5c| to |credCert| followed by its certificate chain.
+
+: Verification procedure
+:: Given the verification procedure inputs |attStmt|, |authenticatorData| and |clientDataHash|, the verification procedure is as follows:
+    1. Verify that |attStmt| is valid CBOR conforming to the syntax defined above and perform CBOR decoding on it to extract the contained fields.
+    2. Concatenate |authenticatorData| and |clientDataHash| to form |nonceToHash|.
+    3. Perform SHA-256 hash of |nonceToHash| to produce |nonce|.
+    4. Verify that |nonce| equals the value of the extension with OID ( 1.2.840.113635.100.8.2 ) in |credCert|.
+    5. Verify that the [=credential public key=] equals the Subject Public Key of |credCert|.
+    6. If successful, return implementation-specific values representing attestation type [=Anonymization CA=] and attestation trust path |x5c|.
+
 # <dfn>WebAuthn Extensions</dfn> # {#sctn-extensions}
 
 The mechanism for generating [=public key credentials=], as well as requesting and generating Authentication assertions, as
@@ -6390,6 +6440,10 @@ IANA "WebAuthn Attestation Statement Format Identifiers" registry [[!IANA-WebAut
 - WebAuthn Attestation Statement Format Identifier: fido-u2f
 - Description: Used with FIDO U2F authenticators
 - Specification Document: Section [[#sctn-fido-u2f-attestation]] of this specification
+    <br/><br/>
+- WebAuthn Attestation Statement Format Identifier: apple
+- Description: Used with Apple devices' [=platform authenticators=]
+- Specification Document: Section [[#sctn-apple-anonymous-attestation]] of this specification
 
 ## WebAuthn Extension Identifier Registrations ## {#sctn-extensions-reg}
 
