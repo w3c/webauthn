@@ -294,6 +294,10 @@ spec: RFC8610; urlPrefix: https://tools.ietf.org/html/rfc8610
     type: dfn
         text: group sockets; url: section-3.9
 
+spec: BCP47; urlPrefix: https://tools.ietf.org/html/bcp47
+    type: dfn
+        text: language tag; url: section-2.1
+
 </pre> <!-- class=anchors -->
 
 <!-- L128 spec:webappsec-credential-management-1; type:dictionary; for:/; text:CredentialRequestOptions -->
@@ -2562,6 +2566,8 @@ associated with or [=scoped=] to, respectively.
                 [[!RFC8266]] for the Nickname Profile of the PRECIS FreeformClass [[!RFC8264]],
                 when setting {{PublicKeyCredentialEntity/name}}'s value, or displaying the value to the user.
 
+              - This string MAY contain language and direction metadata. [=[RPS]=] SHOULD consider providing this information. See [[#sctn-strings-langdir]] about how this metadata is encoded.
+
               - [=Clients=] SHOULD perform enforcement, as prescribed in Section 2.3 of
                 [[!RFC8266]] for the Nickname Profile of the PRECIS FreeformClass [[!RFC8264]],
                 on {{PublicKeyCredentialEntity/name}}'s value prior to displaying the value to the user or
@@ -2577,6 +2583,8 @@ associated with or [=scoped=] to, respectively.
                 IdentifierClass [[!RFC8264]], when setting {{PublicKeyCredentialEntity/name}}'s value, or displaying the value
                 to the user.
 
+              - This string MAY contain language and direction metadata. [=[RPS]=] SHOULD consider providing this information. See [[#sctn-strings-langdir]] about how this metadata is encoded.
+
               - [=Clients=] SHOULD perform enforcement, as prescribed in Section 3.4.3 of [[!RFC8265]]
                 for the UsernameCasePreserved Profile of the PRECIS IdentifierClass [[!RFC8264]],
                 on {{PublicKeyCredentialEntity/name}}'s value prior to displaying the value to the user or
@@ -2585,7 +2593,7 @@ associated with or [=scoped=] to, respectively.
 
         When [=clients=], [=client platforms=], or [=authenticators=] display a {{PublicKeyCredentialEntity/name}}'s value, they should always use UI elements to provide a clear boundary around the displayed value, and not allow overflow into other elements [[css-overflow-3]].
 
-        Authenticators MAY truncate a {{PublicKeyCredentialEntity/name}} member's value so that it fits within 64 bytes, if the authenticator stores the value. See [[#sctn-strings]] about truncation and other considerations.
+        Authenticators MAY truncate a {{PublicKeyCredentialEntity/name}} member's value so that it fits within 64 bytes, if the authenticator stores the value. See [[#sctn-strings-truncation]] about truncation and other considerations.
 </div>
 
 
@@ -2640,6 +2648,8 @@ credential.
             [[!RFC8266]] for the Nickname Profile of the PRECIS FreeformClass [[!RFC8264]],
             when setting {{PublicKeyCredentialUserEntity/displayName}}'s value, or displaying the value to the user.
 
+        - This string MAY contain language and direction metadata. [=[RPS]=] SHOULD consider providing this information. See [[#sctn-strings-langdir]] about how this metadata is encoded.
+
         - [=Clients=] SHOULD perform enforcement, as prescribed in Section 2.3 of
             [[!RFC8266]] for the Nickname Profile of the PRECIS FreeformClass [[!RFC8264]],
             on {{PublicKeyCredentialUserEntity/displayName}}'s value prior to displaying the value to the user or
@@ -2648,7 +2658,7 @@ credential.
         When [=clients=], [=client platforms=], or [=authenticators=] display a {{PublicKeyCredentialUserEntity/displayName}}'s value, they should always use UI elements to provide a clear boundary around the displayed value, and not allow overflow into other elements [[css-overflow-3]].
 
         [=Authenticators=] MUST accept and store a 64-byte minimum length for a {{PublicKeyCredentialUserEntity/displayName}}
-        member's value. Authenticators MAY truncate a {{PublicKeyCredentialUserEntity/displayName}} member's value so that it fits within 64 bytes. See [[#sctn-strings]] about truncation and other considerations.
+        member's value. Authenticators MAY truncate a {{PublicKeyCredentialUserEntity/displayName}} member's value so that it fits within 64 bytes. See [[#sctn-strings-truncation]] about truncation and other considerations.
 </div>
 
 
@@ -3991,9 +4001,11 @@ or [=authenticatorGetAssertion=] operation currently in progress.
 
 ## String Handling ## {#sctn-strings}
 
-Authenticators may be required to store arbitrary strings chosen by a [=[RP]=], for example the {{PublicKeyCredentialEntity/name}} and {{PublicKeyCredentialUserEntity/displayName}} in a {{PublicKeyCredentialUserEntity}}. Each will have some accommodation for the potentially limited resources available to an [=authenticator=].
+Authenticators may be required to store arbitrary strings chosen by a [=[RP]=], for example the {{PublicKeyCredentialEntity/name}} and {{PublicKeyCredentialUserEntity/displayName}} in a {{PublicKeyCredentialUserEntity}}. This section discusses some practical consequences of handling arbitrary strings that may be presented to humans.
 
-If string value truncation is the chosen accommodation then authenticators MAY truncate in order to make the string fit within a length equal or greater than the specified minimum supported length. Such truncation MAY also respect UTF-8 sequence boundaries or [=grapheme cluster=] boundaries [[UTR29]]. This defines the maximum truncation permitted and authenticators MUST NOT truncate further.
+### String Truncation ### {#sctn-strings-truncation}
+
+Each arbitrary string in the API will have some accommodation for the potentially limited resources available to an [=authenticator=]. If string value truncation is the chosen accommodation then authenticators MAY truncate in order to make the string fit within a length equal or greater than the specified minimum supported length. Such truncation SHOULD also respect UTF-8 sequence boundaries or [=grapheme cluster=] boundaries [[UTR29]]. This defines the maximum truncation permitted and authenticators MUST NOT truncate further.
 
 For example, in <a href="#fig-stringTruncation">figure <span class="figure-num-following"/></a> the string is 65 bytes long. If truncating to 64 bytes then the final 0x88 byte must be removed purely because of space reasons. Since that leaves a partial UTF-8 sequence the remainder of that sequence may also be removed. Since that leaves a partial [=grapheme cluster=] an authenticator may remove the remainder of that cluster.
 
@@ -4010,6 +4022,23 @@ In addition to that, truncating on byte boundaries alone causes a known issue th
 
 1. Ensure that any strings sent to authenticators are validly encoded.
 1. Handle the case where strings have been truncated resulting in an invalid encoding. For example, any partial code point at the end may be dropped or replaced with [U+FFFD](http://unicode.org/cldr/utility/character.jsp?a=FFFD).
+
+### Language and Direction Encoding ### {#sctn-strings-langdir}
+
+In order to be correctly displayed in context, the language and base direction of a string [may be required](https://www.w3.org/TR/string-meta/#why-is-this-important). Strings in this API may have to be written to fixed-function [=authenticators=] and then later read back and displayed on a different platform. Thus language and direction metadata is encoded in the string itself to ensure that it is transported atomically.
+
+To encode language and direction metadata in a string that is documented as permitting it, suffix its code points with two sequences of code points:
+
+The first encodes a [=language tag=] with the code point U+E0001 followed by the ASCII values of the [=language tag=] each shifted up by U+E0000. For example, the [=language tag=] “en-US” becomes the code points U+E0001, U+E0065, U+E006E, U+E002D, U+E0055, U+E0053.
+
+The second consists of a single code point which is either U+200E (“LEFT-TO-RIGHT MARK”), U+200F (“RIGHT-TO-LEFT MARK”), or U+E007F (“CANCEL TAG”). The first two can be used to indicate directionality but SHOULD only be used when neccessary to produce the correct result. (E.g. an RTL string that starts with LTR-strong characters.) The value U+E007F is a direction-agnostic indication of the end of the [=language tag=].
+
+So the string “حبیب الرحمان” could have two different DOMString values, depending on whether the language was encoded or not. (Since the direction is unambigous a directionality marker is not needed in this example.)
+
+   * Unadorned string: U+FEA2, U+FE92, U+FBFF, U+FE91, U+20, U+FE8E, U+FEDF, U+FEAE, U+FEA4, U+FEE3, U+FE8E, U+FEE7
+   * With language “ar-SA” encoded: U+FEA2, U+FE92, U+FBFF, U+FE91, U+20, U+FE8E, U+FEDF, U+FEAE, U+FEA4, U+FEE3, U+FE8E, U+FEE7, U+E0001, U+E0061, U+E0072, U+E002D, U+E0053, U+E0041, U+E007F
+
+Consumers of strings that may have language and direction encoded should be aware that truncation could truncate a [=language tag=] into a different, but still valid, language. The final directionality marker or CANCEL TAG code point provide an unambigous indication of truncation.
 
 ## Attestation ## {#sctn-attestation}
 
