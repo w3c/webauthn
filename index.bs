@@ -165,6 +165,8 @@ spec: html; urlPrefix: https://html.spec.whatwg.org/multipage/
             text: opaque origin; url: concept-origin-opaque
             text: tuple origin; url: concept-origin-tuple
             text: document.domain; url:dom-document-domain
+        urlPrefix: form-control-infrastructure.html
+            text: autofill detail token; url: autofill-detail-tokens
 
 spec: url; urlPrefix: https://url.spec.whatwg.org
     type: dfn
@@ -1153,8 +1155,8 @@ The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "S
 
         :   <dfn>otherUI</dfn>
         ::  OPTIONAL other information used by the [=authenticator=] to inform its UI. For example, this might include the user's
-            {{displayName}}. [=otherUI=] is a <dfn>mutable item</dfn> and SHOULD NOT be bound to the [=public key credential source=]
-            in a way that prevents [=otherUI=] from being updated.
+            {{displayName}}. [=public key credential source/otherUI=] is a <dfn>mutable item</dfn> and SHOULD NOT be bound to the
+            [=public key credential source=] in a way that prevents [=public key credential source/otherUI=] from being updated.
     </dl>
 
     The [=authenticatorMakeCredential=] operation creates a [=public key credential source=] [=bound credential|bound=] to a <dfn for="public key
@@ -1432,6 +1434,7 @@ that are returned to the caller when a new credential is created, or a new asser
         [SameObject] readonly attribute AuthenticatorResponse    response;
         [SameObject] readonly attribute DOMString?               authenticatorAttachment;
         AuthenticationExtensionsClientOutputs getClientExtensionResults();
+        static boolean isConditionalMediationAvailable();
     };
 </xmp>
 <dl dfn-type="attribute" dfn-for="PublicKeyCredential">
@@ -1474,6 +1477,18 @@ that are returned to the caller when a new credential is created, or a new asser
     ::  This operation returns the value of {{PublicKeyCredential/[[clientExtensionsResults]]}}, which is a [=map=] containing
         [=extension identifier=] → [=client extension output=] entries produced by the extension's
         [=client extension processing=].
+
+    :   {{PublicKeyCredential/isConditionalMediationAvailable()}}
+    ::  {{PublicKeyCredential}} overrides this method to indicate availability for {{CredentialMediationRequirement/conditional}}
+        mediation. [=[WRPS]=] SHOULD verify availability before attempting to set
+        <code>|options|.{{CredentialRequestOptions/mediation}}</code> to {{CredentialMediationRequirement/conditional}}.
+
+        Upon invocation, [TRUE] is returned if {{CredentialMediationRequirement/conditional}} [=user mediation=] is available, [FALSE]
+        otherwise.
+
+        This method has no arguments and returns a Boolean value.
+
+        Note: If this method is not present, {{CredentialMediationRequirement/conditional}} [=user mediation=] is not available.
 
     :   <dfn>\[[type]]</dfn>
     ::  The {{PublicKeyCredential}} [=interface object=]'s {{Credential/[[type]]}} [=internal slot=]'s value is the string
@@ -1984,7 +1999,7 @@ decline the entire interaction even if a [=credential source=] is present, for e
 [[#sctn-op-get-assertion]] to sign a [=[RP]=]-provided challenge and other collected data into an [=authentication assertion=], which is used as a
 [=credential=].
 
-The {{CredentialsContainer/get()}} implementation [[!CREDENTIAL-MANAGEMENT-1]] calls
+The {{CredentialsContainer/get()|navigator.credentials.get()}} implementation [[!CREDENTIAL-MANAGEMENT-1]] calls
 <code>PublicKeyCredential.{{PublicKeyCredential/[[CollectFromCredentialStore]]()}}</code> to collect any [=credentials=] that
 should be available without [=user mediation=] (roughly, this specification's [=authorization gesture=]), and if it does not find
 exactly one of those, it then calls <code>PublicKeyCredential.{{PublicKeyCredential/[[DiscoverFromExternalSource]]()}}</code> to have
@@ -1993,6 +2008,12 @@ the user select a [=credential source=].
 Since this specification requires an [=authorization gesture=] to create any [=assertions=], the <code>PublicKeyCredential.<dfn
 for="PublicKeyCredential" method>\[[CollectFromCredentialStore]](origin, options, sameOriginWithAncestors)</dfn></code> [=internal method=] inherits the default behavior of
 {{Credential/[[CollectFromCredentialStore]]()|Credential.[[CollectFromCredentialStore]]()}}, of returning an empty set.
+
+In general, the user agent SHOULD show some UI to the user to guide them in selecting and authorizing an authenticator with which
+to complete the operation. By setting <code>|options|.{{CredentialRequestOptions/mediation}}</code> to {{CredentialMediationRequirement/conditional}}, [=[RPS]=] can indicate that a prominent modal UI should <i>not</i> be shown <i>unless</i> credentials are discovered. [=[RP]=]
+script SHOULD first check that {{PublicKeyCredential/isConditionalMediationAvailable()}} returns [TRUE] in order to avoid
+the possibility of causing a user-visible error to be returned if the user agent does not support
+{{CredentialMediationRequirement/conditional}} [=user mediation=].
 
 This
 {{CredentialsContainer/get()|navigator.credentials.get()}} operation can be aborted by leveraging the {{AbortController}};
@@ -2037,24 +2058,37 @@ When this method is invoked, the user agent MUST execute the following algorithm
 
 1. Let |options| be the value of <code>|options|.{{CredentialRequestOptions/publicKey}}</code>.
 
-1. If the {{PublicKeyCredentialRequestOptions/timeout}} member of |options| is present, check if its value lies
-    within a reasonable range as defined by the [=client=] and if not, correct it to the closest value lying within that range.
-    Set a timer |lifetimeTimer| to this adjusted value. If the {{PublicKeyCredentialRequestOptions/timeout}} member of
-    |options| is not present, then set |lifetimeTimer| to a [=client=]-specific default.
+1. If <code>|options|.{{CredentialRequestOptions/mediation}}</code> is present with the value
+    {{CredentialMediationRequirement/conditional}}:
 
-        Recommended ranges and defaults for the {{PublicKeyCredentialRequestOptions/timeout}} member of |options| are as follows.
-          If <code>|options|.{{PublicKeyCredentialRequestOptions/userVerification}}</code>
-            <dl class="switch">
-                :   is set to {{UserVerificationRequirement/discouraged}}
-                ::  Recommended range: 30000 milliseconds to 180000 milliseconds.
-                ::  Recommended default value: 120000 milliseconds (2 minutes).
+    1. If <code>|options|.{{PublicKeyCredentialRequestOptions/allowCredentials}}</code> is not [=list/empty=],
+        return a {{DOMException}} whose name is "{{NotSupportedError}}", and terminate this algorithm.
 
-                :   is set to {{UserVerificationRequirement/required}} or {{UserVerificationRequirement/preferred}}
-                ::  Recommended range: 30000 milliseconds to 600000 milliseconds.
-                ::  Recommended default value: 300000 milliseconds (5 minutes).
-            </dl>
+    1. Set a timer |lifetimeTimer| to a value of infinity.
 
-        Note: The user agent should take cognitive guidelines into considerations regarding timeout for users with special needs.
+        Note: |lifetimeTimer| is set to a value of infinity so that the user has the entire lifetime of
+        the [=Document=] to interact with any <{input}> form control tagged with a `"webauthn"` [=autofill detail token=]. For example, upon the user clicking in such an input field, the user agent can render a list of discovered credentials for the user to select from, and perhaps also give the user the option to "try another way".
+
+1. Else:
+
+    1. If the {{PublicKeyCredentialRequestOptions/timeout}} member of |options| is present, check if its value lies
+        within a reasonable range as defined by the [=client=] and if not, correct it to the closest value lying within that range.
+        Set a timer |lifetimeTimer| to this adjusted value. If the {{PublicKeyCredentialRequestOptions/timeout}} member of
+        |options| is not present, then set |lifetimeTimer| to a [=client=]-specific default.
+
+            Recommended ranges and defaults for the {{PublicKeyCredentialRequestOptions/timeout}} member of |options| are as follows.
+              If <code>|options|.{{PublicKeyCredentialRequestOptions/userVerification}}</code>
+                <dl class="switch">
+                    :   is set to {{UserVerificationRequirement/discouraged}}
+                    ::  Recommended range: 30000 milliseconds to 180000 milliseconds.
+                    ::  Recommended default value: 120000 milliseconds (2 minutes).
+
+                    :   is set to {{UserVerificationRequirement/required}} or {{UserVerificationRequirement/preferred}}
+                    ::  Recommended range: 30000 milliseconds to 600000 milliseconds.
+                    ::  Recommended default value: 300000 milliseconds (5 minutes).
+                </dl>
+
+            Note: The user agent should take cognitive guidelines into considerations regarding timeout for users with special needs.
 
 1. Let |callerOrigin| be {{PublicKeyCredential/[[DiscoverFromExternalSource]](origin, options, sameOriginWithAncestors)/origin}}. If |callerOrigin| is
     an [=opaque origin=], throw a "{{NotAllowedError}}" {{DOMException}}.
@@ -2130,6 +2164,8 @@ When this method is invoked, the user agent MUST execute the following algorithm
     [=authenticators=] can be <a href="https://en.wikipedia.org/w/index.php?title=Hot_plug">hot-plugged</a> into (e.g., via USB)
     or discovered (e.g., via NFC or Bluetooth) by the [=client=] by various mechanisms, or permanently built into the [=client=].
 
+1. Let |silentlyDiscoveredCredentials| be a new [=map=] whose [=map/entry|entries=] are of the form: [=DiscoverableCredentialMetadata=] → [=authenticator=].
+
 1. Start |lifetimeTimer|.
 
 1. [=While=] |lifetimeTimer| has not expired, perform the following actions depending upon |lifetimeTimer|,
@@ -2146,11 +2182,43 @@ When this method is invoked, the user agent MUST execute the following algorithm
             and [=set/remove=] |authenticator| from |issuedRequests|. Throw a "{{NotAllowedError}}" {{DOMException}}.
 
         :   If <code>|options|.{{CredentialRequestOptions/signal}}</code> is present and [=AbortSignal/aborted=],
+
         ::  [=set/For each=] |authenticator| in |issuedRequests| invoke the [=authenticatorCancel=] operation on |authenticator|
             and [=set/remove=] |authenticator| from |issuedRequests|. Then
             throw the <code>|options|.{{CredentialRequestOptions/signal}}</code>'s [=AbortSignal/abort reason=].
 
-        :   If |issuedRequests| is empty, <code>|options|.{{PublicKeyCredentialRequestOptions/allowCredentials}}</code> is not empty, and no |authenticator| will become available for any [=public key credentials=] therein,
+        :   <dt id="GetAssn-ConditionalMediation-Interact-FormControl">
+              If <code>|options|.{{CredentialRequestOptions/mediation}}</code> is {{CredentialMediationRequirement/conditional}}
+              and the user interacts with an <{input}> form control with an <{input/autocomplete}> attribute whose value
+              contains a `"webauthn"` [=autofill detail token=],
+            </dt>
+
+        ::  1. If |silentlyDiscoveredCredentials| is not [=list/empty=]:
+
+                1. Prompt the user to optionally select a [=DiscoverableCredentialMetadata=] (|credentialMetadata|) from |silentlyDiscoveredCredentials|.
+
+                    Note: The prompt shown SHOULD include values from |credentialMetadata|'s [=DiscoverableCredentialMetadata/otherUI=]
+                    such as {{PublicKeyCredentialEntity/name}} and {{PublicKeyCredentialUserEntity/displayName}}.
+
+                1. If the user selects a |credentialMetadata|,
+
+                    1. Let |optionsCopy| be a temporary copy of |options|.
+
+                    1. Let |authenticator| be the value of |silentlyDiscoveredCredentials|[|credentialMetadata|].
+
+                    1. Set <code>|optionsCopy|.{{PublicKeyCredentialRequestOptions/allowCredentials}}</code> to be a [=list=] containing a
+                        single {{PublicKeyCredentialDescriptor}} [=list/item=] whose  {{PublicKeyCredentialDescriptor/id}}'s value is set to
+                        |credentialMetadata|'s [=DiscoverableCredentialMetadata/id=]'s value.
+
+                    1. Execute the [=issuing a credential request to an authenticator=] algorithm with |authenticator|, |savedCredentialIds| and |optionsCopy|.
+
+                    1. [=set/Append=] |authenticator| to |issuedRequests|.
+
+            Issue: Nina to submit a PR to the HTML spec to add the "webauthn" autofill detail token.
+
+        :   If <code>|options|.{{CredentialRequestOptions/mediation}}</code> is not {{CredentialMediationRequirement/conditional}},
+            |issuedRequests| is empty, <code>|options|.{{PublicKeyCredentialRequestOptions/allowCredentials}}</code> is not empty,
+            and no |authenticator| will become available for any [=public key credentials=] therein,
         ::  Indicate to the user that no eligible credential could be found. When the user acknowledges the dialog, throw a "{{NotAllowedError}}" {{DOMException}}.
 
             Note: One way a [=client platform=] can determine that no |authenticator| will become available is by examining the <code>{{transports}}</code> members of the present <code>{{PublicKeyCredentialDescriptor}}</code> [=list/items=] of <code>|options|.{{PublicKeyCredentialRequestOptions/allowCredentials}}</code>, if any. For example, if all <code>{{PublicKeyCredentialDescriptor}}</code> [=list/items=] list only <code>{{AuthenticatorTransport/internal}}</code>, but all [=platform authenticator|platform=] |authenticator|s have been tried, then there is no possibility of satisfying the request. Alternatively, all <code>{{PublicKeyCredentialDescriptor}}</code> [=list/items=] may list <code>{{transports}}</code> that the [=client platform=] does not support.
@@ -2158,91 +2226,28 @@ When this method is invoked, the user agent MUST execute the following algorithm
         :   If an |authenticator| becomes available on this [=client device=],
         ::  Note:  This includes the case where an |authenticator| was available upon |lifetimeTimer| initiation.
 
-            1. If <code>|options|.{{PublicKeyCredentialRequestOptions/userVerification}}</code> is set to
-                {{UserVerificationRequirement/required}} and the |authenticator| is not capable of performing [=user verification=],
-                [=iteration/continue=].
+            1. If <code>|options|.{{CredentialRequestOptions/mediation}}</code> is {{CredentialMediationRequirement/conditional}}
+                and the |authenticator| supports the [=silentCredentialDiscovery=] operation:
 
-            1. Let |userVerification| be the <dfn>effective user verification requirement for assertion</dfn>, a Boolean value, as
-                follows. If <code>|options|.{{PublicKeyCredentialRequestOptions/userVerification}}</code>
+                1. Let |collectedDiscoveredCredentialMetadata| be the result of invoking the [=silentCredentialDiscovery=] operation on |authenticator| with |rpId| as parameter.
 
-                    <dl class="switch">
+                1. [=list/For each=] |credentialMetadata| of |collectedDiscoveredCredentialMetadata|:
 
-                        :   is set to {{UserVerificationRequirement/required}}
-                        ::  Let |userVerification| be [TRUE].
+                    1. [=map/Set=] |silentlyDiscoveredCredentials|[|credentialMetadata|] to |authenticator|.
 
-                        :   is set to {{UserVerificationRequirement/preferred}}
-                        ::  If the |authenticator|
+                        Note: A request will be issued to this authenticator upon user selection of a credential via
+                        interaction with a particular UI context
+                        (see [here](#GetAssn-ConditionalMediation-Interact-FormControl) for details).
 
-                            <dl class="switch">
-                                :   is capable of [=user verification=]
-                                ::  Let |userVerification| be [TRUE].
+            1. Else:
 
-                                :   is not capable of [=user verification=]
-                                ::  Let |userVerification| be [FALSE].
-                            </dl>
+                1. Execute the [=issuing a credential request to an authenticator=] algorithm with |authenticator|, |savedCredentialIds| and |options|.
 
-                        :   is set to {{UserVerificationRequirement/discouraged}}
-                        ::  Let |userVerification| be [FALSE].
+                    Note: This branch is taken if <code>|options|.{{CredentialRequestOptions/mediation}}</code> is {{CredentialMediationRequirement/conditional}}
+                    and the |authenticator| does not support the [=silentCredentialDiscovery=] operation to allow use of such authenticators during a
+                    {{CredentialMediationRequirement/conditional}} [=user mediation=] request.
 
-                    </dl>
-
-            1. <span id="allowCredentialDescriptorListCreation"></span>
-                If <code>|options|.{{PublicKeyCredentialRequestOptions/allowCredentials}}</code>
-                <dl class="switch">
-                    :   [=list/is not empty=]
-                    ::  1. Let |allowCredentialDescriptorList| be a new [=list=].
-
-                        1. Execute a [=client platform=]-specific procedure to determine which, if any, [=public key credentials=] described by
-                            <code>|options|.{{PublicKeyCredentialRequestOptions/allowCredentials}}</code> are [=bound credential|bound=] to this
-                            |authenticator|, by matching with |rpId|,
-                            <code>|options|.{{PublicKeyCredentialRequestOptions/allowCredentials}}.{{PublicKeyCredentialDescriptor/id}}</code>,
-                            and
-                            <code>|options|.{{PublicKeyCredentialRequestOptions/allowCredentials}}.{{PublicKeyCredentialDescriptor/type}}</code>.
-                            Set |allowCredentialDescriptorList| to this filtered list.
-
-                        1. If |allowCredentialDescriptorList| [=list/is empty=], [=continue=].
-
-                        1. Let |distinctTransports| be a new [=ordered set=].
-
-                        1. If |allowCredentialDescriptorList| has exactly one value, set
-                            <code>|savedCredentialIds|[|authenticator|]</code> to <code>|allowCredentialDescriptorList|[0].id</code>'s
-                            value (see [here](#authenticatorGetAssertion-return-values) in [[#sctn-op-get-assertion]] for more information).
-
-                        1. [=list/For each=] credential descriptor |C| in |allowCredentialDescriptorList|,
-                            [=set/append=] each value, if any, of <code>|C|.{{transports}}</code> to |distinctTransports|.
-
-                            Note: This will aggregate only distinct values of {{transports}} (for this [=authenticator=]) in
-                                |distinctTransports| due to the properties of [=ordered sets=].
-
-                        1. If |distinctTransports|
-                            <dl class="switch">
-                                :   [=list/is not empty=]
-                                ::  The client selects one |transport| value from |distinctTransports|, possibly incorporating local
-                                    configuration knowledge of the appropriate transport to use with |authenticator| in making its
-                                    selection.
-
-                                    Then, using |transport|, invoke the [=authenticatorGetAssertion=] operation on
-                                    |authenticator|, with |rpId|, |clientDataHash|, |allowCredentialDescriptorList|,
-                                    |userVerification|, and |authenticatorExtensions| as parameters.
-
-                                :   [=list/is empty=]
-                                ::  Using local configuration knowledge of the appropriate transport to use with |authenticator|,
-                                    invoke the [=authenticatorGetAssertion=] operation on |authenticator| with |rpId|,
-                                    |clientDataHash|, |allowCredentialDescriptorList|, |userVerification|, and
-                                    |authenticatorExtensions| as parameters.
-                            </dl>
-
-                    :   [=list/is empty=]
-                    ::  Using local configuration knowledge of the appropriate transport to use with |authenticator|, invoke the
-                        [=authenticatorGetAssertion=] operation on |authenticator| with |rpId|, |clientDataHash|,
-                        |userVerification| and |authenticatorExtensions| as parameters.
-
-                        Note: In this case, the [=[RP]=] did not supply a list of acceptable credential descriptors. Thus, the
-                            authenticator is being asked to exercise any credential it may possess that is [=scoped=] to
-                            the [=[RP]=], as identified by |rpId|.
-                </dl>
-
-            1. [=set/Append=] |authenticator| to |issuedRequests|.
+                1. [=set/Append=] |authenticator| to |issuedRequests|.
 
         :   If an |authenticator| ceases to be available on this [=client device=],
         ::  [=set/Remove=] |authenticator| from |issuedRequests|.
@@ -2338,9 +2343,115 @@ When this method is invoked, the user agent MUST execute the following algorithm
     user without [=user consent|consent=], this step MUST NOT be executed before |lifetimeTimer| has expired. See
     [[#sctn-assertion-privacy]] for details.
 
-During the above process, the user agent SHOULD show some UI to the user to guide them in the process of selecting and
-authorizing an authenticator with which to complete the operation.
 </div>
+
+#### <dfn for="PublicKeyCredential" algorithm="Issuing a credential request to an authenticator">Issuing a Credential Request to an Authenticator</dfn> #### {#sctn-issuing-cred-request-to-authenticator}
+
+This sub-algorithm of {{PublicKeyCredential/[[DiscoverFromExternalSource]]()}} encompasses the specific UI context-independent
+steps necessary for requesting a [=credential=] from a given [=authenticator=], using given {{CredentialRequestOptions}}. It is called by
+{{PublicKeyCredential/[[DiscoverFromExternalSource]]()}} from various points depending on which [=user mediation=] the
+present [=authentication ceremony=] is subject to (e.g.: {{CredentialMediationRequirement/conditional}} mediation).
+
+This algorithm accepts the following arguments:
+
+<dl dfn-type="argument" dfn-for="Issuing a credential request to an authenticator">
+    :   <dfn>authenticator</dfn>
+    ::  A [=client platform=]-specific handle identifying an [=authenticator=] presently available on this [=client platform=].
+
+    :   <dfn>savedCredentialIds</dfn>
+    ::  A [=map=] containing [=authenticator=] → [=credential ID=]. This argument will be modified in this algorithm.
+
+    :   <dfn>options</dfn>
+    ::  This argument is a {{CredentialRequestOptions}} object whose
+        <code>|options|.{{CredentialRequestOptions/publicKey}}</code> member contains a {{PublicKeyCredentialRequestOptions}}
+        object specifying the desired attributes of the [=public key credential=] to discover.
+</dl>
+
+The steps for [=issuing a credential request to an authenticator=] are as follows:
+
+    1. If <code>|options|.{{PublicKeyCredentialRequestOptions/userVerification}}</code> is set to
+        {{UserVerificationRequirement/required}} and the |authenticator| is not capable of performing [=user verification=],
+        [=iteration/continue=].
+
+    1. Let |userVerification| be the <dfn>effective user verification requirement for assertion</dfn>, a Boolean value, as
+        follows. If <code>|options|.{{PublicKeyCredentialRequestOptions/userVerification}}</code>
+
+            <dl class="switch">
+
+                :   is set to {{UserVerificationRequirement/required}}
+                ::  Let |userVerification| be [TRUE].
+
+                :   is set to {{UserVerificationRequirement/preferred}}
+                ::  If the |authenticator|
+
+                    <dl class="switch">
+                        :   is capable of [=user verification=]
+                        ::  Let |userVerification| be [TRUE].
+
+                        :   is not capable of [=user verification=]
+                        ::  Let |userVerification| be [FALSE].
+                    </dl>
+
+                :   is set to {{UserVerificationRequirement/discouraged}}
+                ::  Let |userVerification| be [FALSE].
+
+            </dl>
+
+    1. <span id="allowCredentialDescriptorListCreation"></span>
+        If <code>|options|.{{PublicKeyCredentialRequestOptions/allowCredentials}}</code>
+        <dl class="switch">
+            :   [=list/is not empty=]
+            ::  1. Let |allowCredentialDescriptorList| be a new [=list=].
+
+                1. Execute a [=client platform=]-specific procedure to determine which, if any, [=public key credentials=] described by
+                    <code>|options|.{{PublicKeyCredentialRequestOptions/allowCredentials}}</code> are [=bound credential|bound=] to this
+                    |authenticator|, by matching with |rpId|,
+                    <code>|options|.{{PublicKeyCredentialRequestOptions/allowCredentials}}.{{PublicKeyCredentialDescriptor/id}}</code>,
+                    and
+                    <code>|options|.{{PublicKeyCredentialRequestOptions/allowCredentials}}.{{PublicKeyCredentialDescriptor/type}}</code>.
+                    Set |allowCredentialDescriptorList| to this filtered list.
+
+                1. If |allowCredentialDescriptorList| [=list/is empty=], [=continue=].
+
+                1. Let |distinctTransports| be a new [=ordered set=].
+
+                1. If |allowCredentialDescriptorList| has exactly one value, set
+                    <code>|savedCredentialIds|[|authenticator|]</code> to <code>|allowCredentialDescriptorList|[0].id</code>'s
+                    value (see [here](#authenticatorGetAssertion-return-values) in [[#sctn-op-get-assertion]] for more information).
+
+                1. [=list/For each=] credential descriptor |C| in |allowCredentialDescriptorList|,
+                    [=set/append=] each value, if any, of <code>|C|.{{transports}}</code> to |distinctTransports|.
+
+                    Note: This will aggregate only distinct values of {{transports}} (for this [=authenticator=]) in
+                        |distinctTransports| due to the properties of [=ordered sets=].
+
+                1. If |distinctTransports|
+                    <dl class="switch">
+                        :   [=list/is not empty=]
+                        ::  The client selects one |transport| value from |distinctTransports|, possibly incorporating local
+                            configuration knowledge of the appropriate transport to use with |authenticator| in making its
+                            selection.
+
+                            Then, using |transport|, invoke the [=authenticatorGetAssertion=] operation on
+                            |authenticator|, with |rpId|, |clientDataHash|, |allowCredentialDescriptorList|,
+                            |userVerification|, and |authenticatorExtensions| as parameters.
+
+                        :   [=list/is empty=]
+                        ::  Using local configuration knowledge of the appropriate transport to use with |authenticator|,
+                            invoke the [=authenticatorGetAssertion=] operation on |authenticator| with |rpId|,
+                            |clientDataHash|, |allowCredentialDescriptorList|, |userVerification|, and
+                            |authenticatorExtensions| as parameters.
+                    </dl>
+
+            :   [=list/is empty=]
+            ::  Using local configuration knowledge of the appropriate transport to use with |authenticator|, invoke the
+                [=authenticatorGetAssertion=] operation on |authenticator| with |rpId|, |clientDataHash|,
+                |userVerification| and |authenticatorExtensions| as parameters.
+
+                Note: In this case, the [=[RP]=] did not supply a list of acceptable credential descriptors. Thus, the
+                    authenticator is being asked to exercise any credential it may possess that is [=scoped=] to
+                    the [=[RP]=], as identified by |rpId|.
+        </dl>
 
 
 ### Store an Existing Credential - PublicKeyCredential's `[[Store]](credential, sameOriginWithAncestors)` Method ### {#sctn-storeCredential}
@@ -3022,7 +3133,7 @@ See [[dom#abortcontroller-api-integration]] section for detailed instructions.
 
 The [=visibility states|visibility=] and [=focus=] state of the [=Window=] object determines whether the
 {{PublicKeyCredential/[[Create]](origin, options, sameOriginWithAncestors)}} and {{PublicKeyCredential/[[DiscoverFromExternalSource]](origin, options, sameOriginWithAncestors)}} operations
-should continue. When the [=Window=] object associated with the [[=Document=] loses focus,
+should continue. When the [=Window=] object associated with the [=Document=] loses focus,
 {{PublicKeyCredential/[[Create]](origin, options, sameOriginWithAncestors)}} and {{PublicKeyCredential/[[DiscoverFromExternalSource]](origin, options, sameOriginWithAncestors)}} operations
 SHOULD be aborted.
 
@@ -4245,6 +4356,50 @@ client ignores any further responses from the authenticator for the canceled ope
 
 This operation is ignored if it is invoked in an [=authenticator session=] which does not have an [=authenticatorMakeCredential=]
 or [=authenticatorGetAssertion=] operation currently in progress.
+
+
+### The <dfn>silentCredentialDiscovery</dfn> operation ### {#sctn-op-silent-discovery}
+
+This is an OPTIONAL operation authenticators MAY support to enable {{CredentialMediationRequirement/conditional}}
+[=user mediation=].
+
+It takes the following input parameter:
+
+: |rpId|
+:: The caller's [=RP ID=], as <a href='#GetAssn-DetermineRpId'>determined</a> by the user agent and the client.
+
+When this operation is invoked, the [=authenticator=] MUST perform the following procedure:
+
+1. Let |collectedDiscoverableCredentialMetadata| be a new [=list=] whose [=list/items=] are
+    <dfn>DiscoverableCredentialMetadata</dfn> [=structs=] with the following [=struct/items=]:
+
+    <dl dfn-for="DiscoverableCredentialMetadata">
+        :   <dfn>id</dfn>
+        ::  A [=Credential ID=].
+
+        :   rpId
+        ::  A [=Relying Party Identifier=].
+
+        :   userHandle
+        ::  A [=user handle=].
+
+        :   <dfn>otherUI</dfn>
+        ::  Other information used by the [=authenticator=] to inform its UI.
+    </dl>
+
+1. [=map/For each=] [=public key credential source=] |credSource| of |authenticator|'s [=credentials map=]:
+
+    1. If |credSource| is not a [=client-side discoverable credential=], [=iteration/continue=].
+
+    1. If |credSource|.[=public key credential source/rpId=] is not |rpId|, [=iteration/continue=].
+
+    1. Let |discoveredCredentialMetadata| be a new [=DiscoverableCredentialMetadata=] [=struct=] whose [=struct/items=]
+        are copies of |credSource|'s [=public key credential source/id=], [=public key credential source/rpId=],
+        [=public key credential source/userHandle=] and [=public key credential source/otherUI=].
+
+    1. [=list/Append=] |discoveredCredentialMetadata| to |collectedDiscoverableCredentialMetadata|.
+
+1. Return |collectedDiscoverableCredentialMetadata|.
 
 
 ## String Handling ## {#sctn-strings}
