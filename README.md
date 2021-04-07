@@ -32,7 +32,7 @@ $ bikeshed watch
 You will need to have the Python tools `pygments` and `bikeshed` to build the draft. Pygments can be obtained via `pip`, but Bikeshed will need to be downloaded with `git`:
 
 ```
-git clone --depth=1 --branch=master https://github.com/tabatkins/bikeshed.git ./bikeshed
+git clone --depth=1 --branch=main https://github.com/tabatkins/bikeshed.git ./bikeshed
 pip install pygments
 pip install --editable ./bikeshed
 cp -R .spec-data/* ./bikeshed/bikeshed/spec-data
