@@ -1095,7 +1095,7 @@ The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "S
 : <dfn>Device-bound Key</dfn>
 : <dfn>Device Private Key</dfn>
 : <dfn>Device Public Key</dfn>
-:: A [=hardware-bound device key pair=] is a [=[RP]=]-specific and [=user credential=]-specific public key pair created upon a [=[RP]=]'s request via the [=devicePublicKey=] [=WebAuthn extension=].
+:: A [=hardware-bound device key pair=], also known as a [=device-bound key=], is a [=[RP]=]-specific and [=user credential=]-specific public key pair created upon a [=[RP]=]'s request via the [=devicePublicKey=] [=WebAuthn extension=].
     The [=[RP]=] may supply this extension during both [=registration=] and [=authentication=].
     The [=authenticator=] that a [=hardware-bound device key pair=] is created upon guarantees that the [=device private key=] is securely stored in hardware, i.e., it is unextractable. The [=device public key=] is returned only to the [=[RP]=] that created the [=hardware-bound device key pair=].
     Thus a [=user credential=], on an [=authenticator=] supporting the [=devicePublicKey=] extension, may have many associated [=[RP]=]-specific [=hardware-bound device key pairs=].
@@ -5933,7 +5933,7 @@ Note: In order to interoperate, user agents storing large blobs on authenticator
 
 ## Device-bound public key extension (<dfn>devicePublicKey</dfn>) ## {#sctn-device-publickey-extension}
 
-This [=client extension|client=] [=registration extension=] and [=authentication extension=] provides a [=[RP]=] with a "device continuity" signal. This is done by creating a [=[RP]=]-specific [=hardware-bound device key pair=] on the [=client device=], if such a key pair does not already exist for the [=user credential=] being created or exercised, and returning the [=device public key=]  along with a signature to the [=[RP]=]. This is done each time this [=devicePublicKey=] extension is included with either a <code>{{CredentialsContainer/create()|navigator.credentials.create()}}</code> or <code>{{CredentialsContainer/create()|navigator.credentials.get()}}</code> call.
+This [=client extension|client=] [=registration extension=] and [=authentication extension=] provides a [=[RP]=] with a "device continuity" signal. This is done by creating a [=[RP]=]-specific [=hardware-bound device key pair=] on the [=client device=], if such a key pair does not already exist for the [=user credential=] being created or exercised, and returning the attested [=device public key=] along with a signature by the [=device private key=] to the [=[RP]=]. This is done each time this [=devicePublicKey=] extension is included with either a <code>{{CredentialsContainer/create()|navigator.credentials.create()}}</code> or <code>{{CredentialsContainer/create()|navigator.credentials.get()}}</code> call.
 
 If the [=client device=] is incapable of generating a [=hardware-bound device key pair=], or the registration or authentication operation fails for any reason, this extension is ignored and no [=hardware-bound device key pair=] is created. In this case, there is no [=devicePublicKey=] extension output generated.
 
@@ -5984,14 +5984,33 @@ If the [=client device=] is incapable of generating a [=hardware-bound device ke
 :: The [fill-in here as appropriate.  NOTE: devicePublicKeyAndSignature NEEDS TO BE UPDATED TO ACCOMODATE CONVEYING ATTESTATION OF THE hardware-bound device key pair. ]
     ```
     $$extensionOutput //= (
-      devicePublicKey: devicePublicKeyAndSignature,
+        devicePublicKey: attObjForDevicePublicKey,
     )
-
-    devicePublicKeyAndSignature = [ ; Note: The element labels are annotations and do not appear
-                                   ;       in an encoded record.
-      devicePublicKey: bstr,    ; COSE_Key format
-      signatureValue:  bstr,    ; sign(devicePrivateKey, {clientDataHash || devicePublicKey})
+    
+    
+    AuthDataForDevicePublicKeyAttestation = [ ; Note: The element labels are annotations and  
+                                              ;       do not appear in an encoded record.
+    
+        rpIdHash:              bstr,    ; SHA-256 hash of the user credential's RP ID
+        credentialId:          bstr,    ; CredentialId of the user credential
+        devicePublicKey:       bstr,    ; COSE_Key format
+        dpkSignatureValue:     bstr,    ; sign(devicePrivateKey, (clientDataHash || devicePublicKey))
     ]
+    
+    
+    attObjForDevicePublicKey = { ; Note: This object conveys an attested device public key
+                                 ;       and is analogous to `attObj`.
+    
+        authDataForDevicePublicKeyAttestation: AuthDataForDevicePublicKeyAttestation,
+        
+        $$attStmtType,  ; see section 6.5.4 "Generating an Attestation Object".
+                        ; Attestation statement formats define the `fmt` and `attStmt` members of
+                        ; $$attStmtType. In summary, it contains a signature value calculated over
+                        ; the bytes of authDataForDevicePublicKeyAttestation, the attestation
+                        ; certificate or public key, and supporting certificates, if any. Note
+                        ; that the details are dependent upon the particular attestation statement
+                        ; format. See section 8 "Defined Attestation Statement Formats"
+    }
     ```
 
 
