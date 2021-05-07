@@ -1092,8 +1092,8 @@ The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "S
 : <dfn>Device Public Key</dfn>
 :: A [=hardware-bound device key pair=], also known as a [=device-bound key=], is a [=[RP]=]-specific and [=user credential=]-specific public key pair created upon a [=[RP]=]'s request via the [=devicePublicKey=] [=WebAuthn extension=].
     The [=[RP]=] may supply this extension during both [=registration=] and [=authentication=].
-    The [=authenticator=] that a [=hardware-bound device key pair=] is created upon guarantees that the [=device private key=] is securely stored in hardware, i.e., it is unextractable. The [=device public key=] is returned only to the [=[RP]=] that created the [=hardware-bound device key pair=].
-    Thus a [=user credential=], on an [=authenticator=] supporting the [=devicePublicKey=] extension, may have many associated [=[RP]=]-specific [=hardware-bound device key pairs=].
+    The [=authenticator=] that a [=hardware-bound device key pair=] is created upon guarantees that the [=device private key=] is securely stored in hardware, i.e., it is unextractable. The [=device public key=] is returned only to the [=[RP]=] that created the [=hardware-bound device key pair=]. See [[#sctn-device-publickey-extension]].
+
     
 : <dfn>Human Palatability</dfn>
 :: An identifier that is [=human palatability|human-palatable=] is intended to be rememberable and reproducible by typical human
@@ -5943,7 +5943,7 @@ If the [=client device=] is incapable of generating a [=hardware-bound device ke
 :: The Boolean value [TRUE] to indicate that this extension is requested by the [=[RP]=].
     <xmp class="idl">
     partial dictionary AuthenticationExtensionsClientInputs {
-        boolean devicePublicKey;  // Explicitly set this to \`true\`! 
+        boolean devicePublicKey;  // Explicitly set this to \`true\`!
     };
     </xmp>
 
@@ -5951,10 +5951,10 @@ If the [=client device=] is incapable of generating a [=hardware-bound device ke
 :: If {{AuthenticationExtensionsClientInputs/devicePublicKey}} is [TRUE], then there is no processing, except for creating the authenticator extension input from the client extension input. Otherwise, the platform ignores this extension.
 
 : Client extension output
-:: An ArrayBuffer containing the [=device public key attestation object=] returned in the authenticator extension output.
+:: An ArrayBuffer containing the [=device public key attestation object=] that was returned in the authenticator extension output.
     <xmp class="idl">
     partial dictionary AuthenticationExtensionsClientOutputs {
-    ArrayBuffer devicePublicKeyAttestationObject;
+        ArrayBuffer devicePublicKeyAttestationObject;
     };
     </xmp>
 
@@ -5972,36 +5972,37 @@ If the [=client device=] is incapable of generating a [=hardware-bound device ke
 :: For both [=authenticatorMakeCredential=] and [=authenticatorGetAssertion=] operations:
     1. Create or select the [=user credential=] as usual.
     1. If a [=hardware-bound device key pair=] does not already exist for this [=user credential=] on the [=authenticator=], create it using the same public key algorithm as that used by the [=user credential=]'s [=credential key pair=], otherwise locate the existing [=device-bound key=].
-    1. Let `devicePublicKey` be the newly created or existing [=device public key=], in COSE_Key format.
+    1. Let `devicePublicKey` be the newly created or existing [=device public key=], in COSE_Key format [=credentialPublicKey|in the same fashion as for the user credential's credentialPublicKey=] when conveyed in [=attested credential data=].
     1. Let `devicePrivateKey` be the newly created or existing [=device private key=].
     1. Let `clientDataHash` be the [=hash of the serialized client data=].
     1. Let `dpkSignatureValue` be the result of `sign(devicePrivateKey, (clientDataHash || devicePublicKey))` using the signature algorithm appropriate for the `devicePrivateKey`'s public key algorithm.
     1. Let `rpIdHash` be the [=user credential=]'s [=rpIdHash=].
     1. Let `credentialId` be [=user credential=]'s [=credentialId=].
-    1. Let `AuthDataForDevicePublicKeyAttestation` be a CBOR record containing `rpIdHash`, `credentialId`, `devicePublicKey`, and `dpkSignatureValue`:
+    1. Let `AuthDataForDevicePublicKeyAttestation` be a [=CBOR=] record containing `rpIdHash`, `credentialId`, `devicePublicKey`, and `dpkSignatureValue`. This is expressed in [=CDDL=] as:
 
     ```
-    AuthDataForDevicePublicKeyAttestation = [ ; Note: The element labels are annotations and  
-                                              ;       do not appear in an encoded record.
-    
+    AuthDataForDevicePublicKeyAttestation = [ ; Note: The element labels are annotations
+                                              ;       and do not appear in an encoded
+                                              ;       record.
+
         rpIdHash:              bstr,    ; SHA-256 hash of the user credential's RP ID
         credentialId:          bstr,    ; CredentialId of the user credential
         devicePublicKey:       bstr,    ; COSE_Key format
-        dpkSignatureValue:     bstr,    ; sign(devicePrivateKey, 
+        dpkSignatureValue:     bstr,    ; sign(devicePrivateKey,
                                         ;      (clientDataHash || devicePublicKey))
     ]
     ```
     
-    10. Let `$$attStmtType` be the result of generating the appropriate attestation statement, using `AuthDataForDevicePublicKeyAttestation`, see [[#sctn-generating-an-attestation-object]]. Attestation statement formats define the `fmt` and `attStmt` members of `$$attStmtType`'s values. In summary, it typically contains a signature value calculated over the bytes of `AuthDataForDevicePublicKeyAttestation`, the attestation certificate or public key, and supporting certificates, if any. Note that the details are dependent upon the particular attestation statement format. See [[#sctn-attestation-formats]].
+    10. Let `$$attStmtType` be the result of generating the appropriate attestation statement, using `AuthDataForDevicePublicKeyAttestation`, see [[#sctn-generating-an-attestation-object]]. Attestation statement formats define the `fmt` and `attStmt` members of `$$attStmtType`'s value. In summary, it typically contains a signature value calculated over the bytes of `AuthDataForDevicePublicKeyAttestation`, the attestation certificate or public key, and supporting certificates, if any. Note that the details are dependent upon the particular attestation statement format. See [[#sctn-attestation-formats]].
     1. Let `attObjForDevicePublicKey` be a CBOR object containing a `dpkAuthData` member whose value is the `AuthDataForDevicePublicKeyAttestation` record constructed above, and the attestation statement constructed in the prior step as the value of `$$attStmtType`:
 
     ```
     attObjForDevicePublicKey = { ; Note: This object conveys an attested
                                  ;       device public key and is
                                  ;       analogous to \`attObj\`.
-    
+
         dpkAuthData: AuthDataForDevicePublicKeyAttestation,
-        
+
         $$attStmtType,
      }
    ```
