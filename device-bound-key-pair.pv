@@ -52,20 +52,20 @@ Where:
 
 **** WebAuthn Signed Objects Hierarchy ****
 
-Encompassing Attestation Object (https://www.w3.org/TR/webauthn/#sctn-generating-an-attestation-object) returned by Registration Operation when returning a device-bound public key. This `attObj` attests the user credential, and signs over `AuthDataForRegistrationReturningDevicePublicKey`. The latter object's `extensions` field contains the `devicePublicKey` extension output (see above):
+Encompassing Attestation Object `attObj` (https://www.w3.org/TR/webauthn/#sctn-generating-an-attestation-object) returned by Registration Operation when returning a device-bound public key. This `attObj` attests the user credential, and signs over `AuthDataForRegistrationReturningDevicePublicKey`. The latter object's `extensions` field contains the `devicePublicKey` extension output (see above):
 
-        attObj = {
+    attObj = {
                 AuthDataForRegistrationReturningDevicePublicKey: bytes,
                 $$attStmtType
-             }
+            }
 
-    attStmtTemplate = (
+    attStmtTemplate .within $$attStmtType
+
+    attStmtTemplate = ( ; Every attestation statement format must have these fields:
                           fmt: text,
                           attStmt: { * tstr => any } ; Map is filled in by each concrete attStmtType
                       )
 
-    ; Every attestation statement format must have the above fields
-    attStmtTemplate .within $$attStmtType
 
 
 AuthData for Registration and Authentication Operations returning a devicePublicKey extension response (expressed in RFC5234 ABNF; https://www.w3.org/TR/webauthn/#sctn-authenticator-data ):
@@ -83,25 +83,110 @@ AuthData for Registration and Authentication Operations returning a devicePublic
     attestedCredentialData  = AAGUID CredIDLength CredentialID CredentialPublicKey
 
         AAGUID                  = 16OCTET   ; 16 octets
-        CredIDLength            = 2OCTET    ; 2 octets
+        CredIDLength            = 2OCTET    ; 16-bit unsigned big-endian integer
         CredentialID            = 16*OCTET  ; CredIDLength octets, at least 16 bytes long
-        CredentialPublicKey     = 1*OCTET   ; self-describing variable length, COSE_Key format (CBOR-endoded)
+        CredentialPublicKey     = 1*OCTET   ; "user credential": self-describing variable length,
+                                            ;  COSE_Key format (CBOR-endoded)
 
     extensions              = 1*OCTET   ; variable-length CBOR map of extension outputs
                                         ; `devicePublicKey` extension ouput is in here
 
 
 
+EncompassingRegistrationAttestationToBeSigned: {     // signed by the attestation private key
+
+    AuthDataForRegistrationReturningDevicePublicKey: {
+
+        rpIdHash
+        flags
+        signCount
+
+        attestedCredentialData: {
+            AAGUID
+            CredIDLength
+            CredentialID        // user credential ID
+            CredentialPublicKey // "user credential"
+        }
+
+        extensions: {
+
+            devicePublicKeyExtensionResult: {
+
+                dpkSignatureValue { // signed by devicePrivateKey
+                    // over...
+                    clientDataHash || userCredentialId  // userCredentialId is second because it is variable length
+                }
+
+                AuthDataForDevicePublicKeyAttestationToBeSigned: {
+                    rpIdHash
+                    AAGUID
+                    userCredentialIdLength
+                    userCredentialId
+                    devicePublicKey
+                }
+
+                fmt: "...attestation statement format identifier..."
+
+                attStmt: {  // contains various items depending upon the attestation statement format,
+                            // crucially containing a signature value, generated using
+                            // the device's AttestationPrivatekey, over this to-be-signed data:
+
+                    AuthDataForDevicePublicKeyAttestation || clientDataHash
+                }
+            }
+
+            // potentially other extension results...
+
+        } // extensions
+
+    } // AuthDataForRegistrationReturningDevicePublicKey
+
+} // EncompassingRegistrationAttestationToBeSigned
 
 
 
+EncompassingAuthenticationAssertionToBeSigned: {     // signed by the user credential private key
 
+    AuthDataForAuthenticationReturningDevicePublicKey: {
 
+        rpIdHash
+        flags
+        signCount
 
+        extensions: {
 
+            devicePublicKeyExtensionResult: {
 
+                dpkSignatureValue { // signed by devicePrivateKey
+                    // over...
+                    clientDataHash || userCredentialId  // userCredentialId is second because it is variable length
+                }
 
+                AuthDataForDevicePublicKeyAttestationToBeSigned: {
+                    rpIdHash
+                    AAGUID                  // where do we get this from?
+                    userCredentialIdLength  //   "   "  "   "   "    "
+                    userCredentialId        //   "   "  "   "   "    "
+                    devicePublicKey         //   "   "  "   "   "    "
+                }
 
+                fmt: "...attestation statement format identifier..."
+
+                attStmt: {  // contains various items depending upon the attestation statement format,
+                            // crucially containing a signature value, generated using
+                            // the device's AttestationPrivatekey, over this to-be-signed data:
+
+                    AuthDataForDevicePublicKeyAttestation || clientDataHash
+                }
+            }
+
+            // potentially other extension results...
+
+        } // extensions
+
+    } // AuthDataForRegistrationReturningDevicePublicKey
+
+} // EncompassingRegistrationAttestationToBeSigned
 
 
 
