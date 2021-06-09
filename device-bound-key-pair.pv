@@ -1,0 +1,208 @@
+(* ProVerif Web Authentication Formal Model
+   originally by Iness Ben Guirat and Harry Halpin
+   https://dl.acm.org/doi/10.1145/3190619.3190640
+   github: https://github.com/hhalpin/weauthn-model
+*)
+
+(**** Collected syntax for devicePublicKey aka "dpk" ****
+
+$$extensionOutput //= (
+  devicePublicKey: AttObjForDevicePublicKey,
+)
+
+AuthDataForDevicePublicKeyAttestation = rpIdHash AAGUID userCredentialIdLength userCredentialId devicePublicKey
+                                        ; (expressed in RFC5234 ABNF)
+
+  rpIdHash                  = 32OCTET   ; SHA-256 hash of the RP ID the credential is scoped to
+  AAGUID                    = 16OCTET   ; 16 octets, authenticator's AAGUID
+  userCredentialIdLength    = 2OCTET    ; 2 octets, Credential ID length, 16-bit unsigned big-endian integer
+  userCredentialId          = 16*OCTET  ; credentialIdLength octets, at least 16 bytes long
+  devicePublicKey           = 1*OCTET   ; self-describing variable length, COSE_Key format (CBOR-endoded)
+]
+
+AttObjForDevicePublicKey = { ; Note: This object conveys an attested device public key
+                             ; and is analogous to `attObj`.
+
+  dpkSignatureValue: bstr,   ; result of sign(devicePrivateKey, (clientDataHash || userCredentialId))
+
+  authDataForDevicePublicKeyAttestation: AuthDataForDevicePublicKeyAttestation,
+
+  $$attStmtType,     ; see section 6.5.4 "Generating an Attestation Object".
+                     ; Attestation statement formats define the `fmt` and `attStmt` members of
+                     ; $$attStmtType. In summary, it contains a signature value calculated over
+                     ; the bytes of authDataForDevicePublicKeyAttestation, the attestation
+                     ; certificate or public key, and supporting certificates, if any. Note
+                     ; that the details are dependent upon the particular attestation statement
+                     ; format. See section 8 "Defined Attestation Statement Formats"
+}
+
+
+Where:
+
+`clientDataHash` is the hash of the serialized CollectedClientData object for the current registration or authentication operation (expressed in WebIDL):
+
+    dictionary CollectedClientData {
+        required DOMString           type;
+        required DOMString           challenge;
+        required DOMString           origin; // https://html.spec.whatwg.org/#ascii-serialisation-of-an-origin
+        boolean                      crossOrigin;
+        // tokenBinding optionally goes here
+    }
+
+
+**** WebAuthn Signed Objects Hierarchy ****
+
+Encompassing Attestation Object (https://www.w3.org/TR/webauthn/#sctn-generating-an-attestation-object) returned by Registration Operation when returning a device-bound public key. This `attObj` attests the user credential, and signs over `AuthDataForRegistrationReturningDevicePublicKey`. The latter object's `extensions` field contains the `devicePublicKey` extension output (see above):
+
+        attObj = {
+                AuthDataForRegistrationReturningDevicePublicKey: bytes,
+                $$attStmtType
+             }
+
+    attStmtTemplate = (
+                          fmt: text,
+                          attStmt: { * tstr => any } ; Map is filled in by each concrete attStmtType
+                      )
+
+    ; Every attestation statement format must have the above fields
+    attStmtTemplate .within $$attStmtType
+
+
+AuthData for Registration and Authentication Operations returning a devicePublicKey extension response (expressed in RFC5234 ABNF; https://www.w3.org/TR/webauthn/#sctn-authenticator-data ):
+
+    AuthDataForRegistrationReturningDevicePublicKey   = rpIdHash flags signCount attestedCredentialData extensions
+
+    AuthDataForAuthenticationReturningDevicePublicKey = rpIdHash flags signCount extensions
+
+    ; Where:
+
+    rpIdHash                = 32OCTET   ; SHA-256 hash of the RP ID the credential is scoped to
+    flags                   = OCTET
+    signCount               = 4OCTET    ; 32-bit unsigned big-endian integer
+
+    attestedCredentialData  = AAGUID CredIDLength CredentialID CredentialPublicKey
+
+        AAGUID                  = 16OCTET   ; 16 octets
+        CredIDLength            = 2OCTET    ; 2 octets
+        CredentialID            = 16*OCTET  ; CredIDLength octets, at least 16 bytes long
+        CredentialPublicKey     = 1*OCTET   ; self-describing variable length, COSE_Key format (CBOR-endoded)
+
+    extensions              = 1*OCTET   ; variable-length CBOR map of extension outputs
+                                        ; `devicePublicKey` extension ouput is in here
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+****)
+
+free c:channel.
+
+type AttestationPublicKey.
+type AttestationPrivatekey.
+type nonce.
+type pkey.
+type skey.
+type host.
+type key.
+type RP_id.
+
+
+(*For Digital Signatures *)
+
+fun spk(skey):pkey.
+fun sign(bitstring, skey):bitstring.
+reduc forall x:bitstring, y:skey; getmess(sign(x, y)) = x.
+reduc forall x:bitstring, y:skey; checksign(sign(x, y), spk(y)) = x.
+
+(*For nonces*)
+
+fun nonce_to_bitstring ( nonce ) : bitstring [ data , typeConverter ] .
+table nonceTable(nonce) .
+
+(*For Digital signature over Attestation Credentials*)
+
+fun spkAtt(AttestationPrivatekey):AttestationPublicKey.
+fun signAtt(bitstring, AttestationPrivatekey):bitstring.
+reduc forall x:bitstring, y:AttestationPrivatekey; getmessAtt(signAtt(x, y)) = x.
+reduc forall x:bitstring, y:AttestationPrivatekey; checksignAtt(signAtt(x, y), spkAtt(y)) = x.
+
+(*Symetric encryption*)
+
+fun senc(bitstring, key): bitstring.
+reduc forall x: bitstring, k: key; sdec(senc(x,k),k) = x.
+
+
+(*User's ID  and Server's ID*)
+const cert:bitstring [private].
+const a:RP_id [private].
+const credentialID2:bitstring [private].
+
+(*Table*)
+table tableAtt(AttestationPublicKey).
+
+(*Events and Queries*)
+
+event reachSameKey(AttestationPublicKey).
+
+
+query N1:AttestationPublicKey; event(reachSameKey(N1)).
+
+free attskU: AttestationPrivatekey[private].
+query attacker(attskU).
+free attpkU: AttestationPublicKey[private].
+query attacker(attpkU).
+
+const k:key.
+let processUser ( k: key,cert:bitstring, attskA: AttestationPrivatekey, attpkA:AttestationPublicKey) =
+    (*Registration*)
+    in(c,s:bitstring);
+    let(challengeU:nonce, aU:RP_id)= sdec(s,k) in
+    new skU:skey;
+    let pkU = spk(skU) in
+
+    out(c,senc(signAtt((pkU, attpkU, cert,challengeU), attskU),k))
+    .
+
+
+let processServer (k: key, a:RP_id) =
+
+    (*Registration*)
+    new challenge:nonce;
+
+    new attpkU3: AttestationPublicKey;
+    let ver1=(challenge,a) in
+    out(c, senc((challenge,a),k));
+
+    in(c, s:bitstring);
+
+    let m= sdec(s,k) in
+    let (pkY1: pkey, attpkU1:AttestationPublicKey, cert: bitstring, Nt:nonce) = getmessAtt(m) in
+    let ver = checksignAtt(m, attpkU1) in
+
+   get tableAtt(= attpkU1) in event reachSameKey(attpkU1)
+   else insert tableAtt(attpkU1).
+
+process
+  new attskU:AttestationPrivatekey;
+  let attpkU = spkAtt(attskU) in
+  (
+    !processUser( k, cert, attskU,attpkU) | !processServer(k, a)
+  )
+
