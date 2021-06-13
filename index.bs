@@ -1117,6 +1117,8 @@ The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "S
 
         :   <dfn>rpId</dfn>
         ::  The [=Relying Party Identifier=], for the [=[RP]=] this [=public key credential source=] is [=scoped=] to.
+            This is determined by the <code>{{PublicKeyCredentialCreationOptions/rp}}.{{PublicKeyCredentialRpEntity/id}}</code>
+            parameter of the [=registration ceremony=].
 
         :   <dfn>userHandle</dfn>
         ::  The [=user handle=] associated when this [=public key credential source=] was created. This [=struct/item=] is
@@ -2503,7 +2505,7 @@ optionally evidence of [=user consent=] to a specific transaction.
 </xmp>
 <div dfn-type="dict-member" dfn-for="PublicKeyCredentialCreationOptions">
     :   <dfn>rp</dfn>
-    ::  This member contains data about the [=[RP]=] responsible for the request.
+    ::  This member contains identifiers for the [=[RP]=] responsible for the request.
 
         Its value's {{PublicKeyCredentialEntity/name}} member is REQUIRED. See [[#dictionary-pkcredentialentity]] for further
         details.
@@ -2514,44 +2516,55 @@ optionally evidence of [=user consent=] to a specific transaction.
         for further details.
 
     :   <dfn>user</dfn>
-    ::  This member contains data about the user account for which the [=[RP]=] is requesting attestation.
+    ::  This member contains identifiers for the user account performing the [=registration=].
 
         Its value's {{PublicKeyCredentialEntity/name}}, {{PublicKeyCredentialUserEntity/displayName}} and
-        {{PublicKeyCredentialUserEntity/id}} members are REQUIRED. See [[#dictionary-pkcredentialentity]] and
-        [[#dictionary-user-credential-params]] for further details.
+        {{PublicKeyCredentialUserEntity/id}} members are REQUIRED.
+        {{PublicKeyCredentialUserEntity/id}} can be returned as the {{AuthenticatorAssertionResponse/userHandle}}
+        in some future [=authentication ceremonies=],
+        and is used to overwrite existing [=discoverable credentials=]
+        with the same {{PublicKeyCredentialUserEntity/id}} on the same [=authenticator=].
+        {{PublicKeyCredentialEntity/name}} and {{PublicKeyCredentialUserEntity/displayName}}
+        MAY be used by the [=authenticator=] and [=client=] in future [=authentication ceremonies=]
+        to help the user select a [=credential=], but are not returned to the [=[RP]=].
+
+        For further details, see [[#dictionary-pkcredentialentity]] and [[#dictionary-user-credential-params]].
 
     :   <dfn>challenge</dfn>
-    ::  This member contains a challenge intended to be used for generating the newly created credential's [=attestation
+    ::  This member contains a challenge to be used for generating the newly created credential's [=attestation
         object=]. See the [[#sctn-cryptographic-challenges]] security consideration.
 
     :   <dfn>pubKeyCredParams</dfn>
-    ::  This member contains information about the desired properties of the credential to be created. The sequence is ordered
-        from most preferred to least preferred. The [=client=] makes a best-effort to create the most preferred credential that it
-        can.
+    ::  This member lists the key types and signature algorithms the [=[RP]=] supports,
+        ordered from most preferred to least preferred.
+        The [=client=] and [=authenticator=] make a best-effort to create a credential of the most preferred type possible.
 
     :   <dfn>timeout</dfn>
-    ::  This member specifies a time, in milliseconds, that the caller is willing to wait for the call to complete. This is
+    ::  This member specifies a time, in milliseconds, that the [=[RP]=] is willing to wait for the call to complete. This is
         treated as a hint, and MAY be overridden by the [=client=].
 
     :   <dfn>excludeCredentials</dfn>
-    ::  This member is intended for use by [=[RPS]=] that wish to limit the creation of multiple credentials for the same
-        account on a single authenticator. The [=client=] is requested to return an error if the new credential would be created
-        on an authenticator that also contains one of the credentials enumerated in this parameter.
+    ::  This member lists [=credentials=] the user has already registered,
+        and is used to ensure that the new credential is [=created on=] an [=authenticator=] not already registered.
+        The [=client=] and [=authenticators=] will prevent the user from creating the new credential on an authenticator
+        that also [=contains=] one of the credentials listed in {{PublicKeyCredentialCreationOptions/excludeCredentials}}.
 
     :   <dfn>authenticatorSelection</dfn>
-    ::  This member is intended for use by [=[RPS]=] that wish to select the appropriate authenticators to participate in
-        the {{CredentialsContainer/create()}} operation.
+    ::  This member specifies capabilities and settings
+        that the [=authenticator=] MUST or SHOULD satisfy to participate in the {{CredentialsContainer/create()}} operation.
+        See [[#dictionary-authenticatorSelection]].
 
     :   <dfn>attestation</dfn>
-    ::  This member is intended for use by [=[RPS]=] that wish to express their preference for [=attestation conveyance=].
-        Its values SHOULD be members of {{AttestationConveyancePreference}}.
+    ::  This member specifies the [=[RP]=]'s preference for [=attestation conveyance=].
+        Its value SHOULD be a member of {{AttestationConveyancePreference}}.
         [=Client platforms=] MUST ignore unknown values, treating an unknown value as if the [=map/exist|member does not exist=].
-        Its default value is "none".
+
+        The default value is {{AttestationConveyancePreference/none}}.
 
     :   <dfn>extensions</dfn>
-    ::  This member contains additional parameters requesting additional processing by the client and authenticator. For
-        example, the caller may request that only authenticators with certain capabilities be used to create the credential, or
-        that particular information be returned in the [=attestation object=]. Some extensions are defined in [[#sctn-extensions]];
+    ::  This member contains [=client extension inputs=] requesting additional processing by the [=client=] and [=authenticator=].
+        For example, the [=[RP]=] may request that the client returns additional information about the [=credential=] that was created.
+        Some extensions are defined in [[#sctn-extensions]];
         consult the IANA "WebAuthn Extension Identifiers" registry [[!IANA-WebAuthn-Registries]] established by [[!RFC8809]] for an up-to-date list
         of registered [=WebAuthn Extensions=].
 </div>
@@ -2690,7 +2703,12 @@ attributes.
 <div dfn-type="dict-member" dfn-for="AuthenticatorSelectionCriteria">
     :   <dfn>authenticatorAttachment</dfn>
     ::  If this member is present, eligible authenticators are filtered to only authenticators attached with the
-        specified [[#enum-attachment]]. The value SHOULD be a member of {{AuthenticatorAttachment}} but [=client platforms=] MUST ignore unknown values, treating an unknown value as if the [=map/exist|member does not exist=].
+        specified [=authenticator attachment modality=]. The value SHOULD be a member of {{AuthenticatorAttachment}} but [=client platforms=] MUST ignore unknown values, treating an unknown value as if the [=map/exist|member does not exist=].
+
+        If this member is not specified,
+        the resulting [=authenticator attachment modality|attachment=] for the created credential might instead be determinable
+        using the {{AuthenticatorAttestationResponse/getTransports()}} method of the [=registration=] result.
+        See [[#enum-transport]] for details.
 
     :   <dfn>residentKey</dfn>
     ::  Specifies the extent to which the [=[RP]=] desires to create a [=client-side discoverable credential=]. For historical reasons the naming retains the deprecated “resident” terminology. The value SHOULD be a member of {{ResidentKeyRequirement}} but [=client platforms=] MUST ignore unknown values, treating an unknown value as if the [=map/exist|member does not exist=]. If no value is given then the effective value is {{ResidentKeyRequirement/required}} if {{requireResidentKey}} is [TRUE] or {{ResidentKeyRequirement/discouraged}} if it is [FALSE] or absent.
@@ -2701,9 +2719,11 @@ attributes.
     ::  This member is retained for backwards compatibility with WebAuthn Level 1 and, for historical reasons, its naming retains the deprecated “resident” terminology for [=discoverable credentials=]. [=[RPS]=] SHOULD set it to [TRUE] if, and only if, {{residentKey}} is set to {{ResidentKeyRequirement/required}}.
 
     :   <dfn>userVerification</dfn>
-    ::  This member describes the [=[RP]=]'s requirements regarding [=user verification=] for the
-        {{CredentialsContainer/create()}} operation. Eligible authenticators are filtered to only those capable of satisfying this
-        requirement. The value SHOULD be a member of {{UserVerificationRequirement}} but [=client platforms=] MUST ignore unknown values, treating an unknown value as if the [=map/exist|member does not exist=].
+    ::  This member specifies the [=[RP]=]'s requirements regarding [=user verification=] for the
+        {{CredentialsContainer/create()}} operation.
+        The value SHOULD be a member of {{UserVerificationRequirement}} but [=client platforms=] MUST ignore unknown values, treating an unknown value as if the [=map/exist|member does not exist=].
+
+        See {{UserVerificationRequirement}} for the description of {{AuthenticatorSelectionCriteria/userVerification}}'s values and semantics.
 </div>
 
 
@@ -2755,22 +2775,25 @@ This enumeration's values describe the [=[RP]=]'s requirements for [=client-side
 
 <div dfn-type="enum-value" dfn-for="ResidentKeyRequirement">
     :   <dfn>discouraged</dfn>
-    ::  This value indicates the [=[RP]=] prefers creating a [=server-side credential=], but will accept a
+    ::  The [=[RP]=] prefers creating a [=server-side credential=], but will accept a
         [=client-side discoverable credential=].
+        The [=client=] and [=authenticator=] SHOULD create a [=server-side credential=] if possible.
 
         Note: A [=[RP]=] cannot require that a created credential is a [=server-side credential=] and the [=credProps|Credential Properties Extension=] may not return a value for the {{CredentialPropertiesOutput/rk}} property. Because of this, it may be the case that it does not know if a credential is a [=server-side credential=] or not and thus does not know whether creating a second credential with the same [=user handle=] will evict the first.
 
     :   <dfn>preferred</dfn>
-    ::  This value indicates the [=[RP]=] strongly prefers creating a [=client-side discoverable credential=], but will accept a
-        [=server-side credential=]. For example, user agents SHOULD guide the user through setting up [=user verification=] if needed to create a [=client-side discoverable credential=] in this case. This takes precedence over the setting of {{AuthenticatorSelectionCriteria/userVerification}}.
+    ::  The [=[RP]=] strongly prefers creating a [=client-side discoverable credential=], but will accept a
+        [=server-side credential=].
+        The [=client=] and [=authenticator=] SHOULD create a [=discoverable credential=] if possible.
+        For example, the client SHOULD guide the user through setting up [=user verification=] if needed to create a [=discoverable credential=]. This takes precedence over the setting of {{AuthenticatorSelectionCriteria/userVerification}}.
 
     :   <dfn>required</dfn>
-    ::  This value indicates the [=[RP]=] requires a [=client-side discoverable credential=], and is prepared to receive an error
-        if a [=client-side discoverable credential=] cannot be created.
+    ::  The [=[RP]=] requires a [=client-side discoverable credential=].
+        The [=client=] MUST return an error if a [=client-side discoverable credential=] cannot be created.
 </div>
 
-Note: [=[RPS]=] can seek information on whether or not the authenticator created a [=client-side discoverable credential=] by inspecting the [=credProps|Credential Properties Extension=]'s return value in light of
-the value provided for <code>|options|.{{PublicKeyCredentialCreationOptions/authenticatorSelection}}.{{residentKey}}</code>.
+Note: The [=[RP]=] can seek information on whether or not the authenticator created a [=client-side discoverable credential=]
+using the [=resident key credential property=] of the [=credProps|Credential Properties Extension=].
 This is useful when values of {{ResidentKeyRequirement/discouraged}} or {{ResidentKeyRequirement/preferred}} are used for
 <code>|options|.{{PublicKeyCredentialCreationOptions/authenticatorSelection}}.{{residentKey}}</code>, because in those cases it is possible for an
 [=authenticator=] to create <em>either</em> a [=client-side discoverable credential=] or a [=server-side credential=].
@@ -2794,27 +2817,28 @@ Note: The {{AttestationConveyancePreference}} enumeration is deliberately not re
 
 <div dfn-type="enum-value" dfn-for="AttestationConveyancePreference">
     :   <dfn>none</dfn>
-    ::  This value indicates that the [=[RP]=] is not interested in [=authenticator=] [=attestation=]. For example, in order to
+    ::  The [=[RP]=] is not interested in [=authenticator=] [=attestation=]. For example, in order to
         potentially avoid having to obtain [=user consent=] to relay identifying information to the [=[RP]=], or to save a
         roundtrip to an [=Attestation CA=] or [=Anonymization CA=].
+        If the [=authenticator=] generates an [=attestation statement=] that is not a [=self attestation=],
+        the [=client=] will replace it with a [=None=] attestation statement.
 
-        This is the default value.
+        This is the default, and unknown values fall back to the behavior of this value.
 
     :   <dfn>indirect</dfn>
-    ::  This value indicates that the [=[RP]=] prefers an [=attestation=] conveyance yielding verifiable [=attestation
-        statements=], but allows the client to decide how to obtain such [=attestation statements=].  The client MAY replace the
-        authenticator-generated [=attestation statements=] with [=attestation statements=] generated by an [=Anonymization CA=],
+    ::  The [=[RP]=] wants to receive a verifiable [=attestation statement=],
+        but allows the client to decide how to obtain such an [=attestation statement=].
+        The client MAY replace an authenticator-generated [=attestation statement=] with one generated by an [=Anonymization CA=],
         in order to protect the user's privacy, or to assist [=[RPS]=] with attestation verification in a heterogeneous ecosystem.
 
         Note: There is no guarantee that the [=[RP]=] will obtain a verifiable [=attestation statement=] in this case.
         For example, in the case that the authenticator employs [=self attestation=].
 
     :   <dfn>direct</dfn>
-    ::  This value indicates that the [=[RP]=] wants to receive the [=attestation statement=] as generated by the
-        [=authenticator=].
+    ::  The [=[RP]=] wants to receive the [=attestation statement=] as generated by the [=authenticator=].
 
     :   <dfn>enterprise</dfn>
-    ::  This value indicates that the [=[RP]=] wants to receive an [=attestation statement=] that may include uniquely identifying information. This is intended for controlled deployments within an enterprise where the organization wishes to tie registrations to specific authenticators. User agents MUST NOT provide such an attestation unless the user agent or authenticator configuration permits it for the requested [=RP ID=].
+    ::  The [=[RP]=] wants to receive an [=attestation statement=] that may include uniquely identifying information. This is intended for controlled deployments within an enterprise where the organization wishes to tie registrations to specific authenticators. User agents MUST NOT provide such an attestation unless the user agent or authenticator configuration permits it for the requested [=RP ID=].
 
         If permitted, the user agent SHOULD signal to the authenticator (at [invocation time](#CreateCred-InvokeAuthnrMakeCred)) that enterprise attestation is requested, and convey the resulting [=AAGUID=] and [=attestation statement=], unaltered, to the [=[RP]=].
 </div>
@@ -2838,31 +2862,47 @@ an assertion. Its {{PublicKeyCredentialRequestOptions/challenge}} member MUST be
 
 <dl dfn-type="dict-member" dfn-for="PublicKeyCredentialRequestOptions">
     :   <dfn>challenge</dfn>
-    ::  This member represents a challenge that the selected [=authenticator=] signs, along with other data, when producing an
+    ::  This member specifies a challenge that the selected [=authenticator=] signs, along with other data, when producing an
         [=authentication assertion=]. See the [[#sctn-cryptographic-challenges]] security consideration.
 
     :   <dfn>timeout</dfn>
-    ::  This OPTIONAL member specifies a time, in milliseconds, that the caller is willing to wait for the call to complete.
+    ::  This OPTIONAL member specifies a time, in milliseconds, that the [=[RP]=] is willing to wait for the call to complete.
         The value is treated as a hint, and MAY be overridden by the [=client=].
 
     :   <dfn>rpId</dfn>
-    ::  This OPTIONAL member specifies the [=relying party identifier=] claimed by the caller. If omitted, its value will
+    ::  This OPTIONAL member specifies the [=RP ID=] claimed by the [=[RP]=].
+        The [=client=] and [=authenticator=] MUST verify that
+        the [=[RP]=]'s [=origin=] matches the [=scope=] of this [=RP ID=],
+        and that this [=RP ID=] exactly equals the [=rpId=] of the [=credential=] to be used for the [=authentication ceremony=].
+
+        If not specified, its value will
         be the {{CredentialsContainer}} object's [=relevant settings object=]'s [=environment settings object/origin=]'s
         [=effective domain=].
 
     :   <dfn>allowCredentials</dfn>
-    ::  This OPTIONAL member contains a list of {{PublicKeyCredentialDescriptor}} objects representing [=public key credentials=]
-        acceptable to the caller, in descending order of the caller's preference (the first item in the list is the most
-        preferred credential, and so on down the list).
+    ::  This OPTIONAL member lists [=credentials=] the user has [=registration ceremony|registered=],
+        and is used by the [=client=] to find [=authenticators=] eligible for this [=authentication ceremony=].
+        This MAY include all or a subset of the user's credentials, at the [=[RP]=]'s discretion.
+
+        If [=list/empty=] or not specified, only a [=client-side discoverable credential=] can be used for this [=authentication ceremony=].
+        If not [=list/empty=], the client MUST return an error if none of the listed credentials can be used.
+
+        The list is ordered in descending order of preference: the first item in the list is the most
+        preferred credential, and the last is the least preferred.
 
     :   <dfn>userVerification</dfn>
-    ::  This OPTIONAL member describes the [=[RP]=]'s requirements regarding [=user verification=] for the
+    ::  This OPTIONAL member specifies the [=[RP]=]'s requirements regarding [=user verification=] for the
         {{CredentialsContainer/get()}} operation. The value SHOULD be a member of {{UserVerificationRequirement}} but [=client platforms=] MUST ignore unknown values, treating an unknown value as if the [=map/exist|member does not exist=]. Eligible authenticators are filtered to only those capable of satisfying this requirement.
 
+        See {{UserVerificationRequirement}} for the description of {{AuthenticatorSelectionCriteria/userVerification}}'s values and semantics.
+
     :   <dfn>extensions</dfn>
-    ::  This OPTIONAL member contains additional parameters requesting additional processing by the client and authenticator.
-        For example, if transaction confirmation is sought from the user, then the prompt string might be included as an
-        extension.
+    ::  This OPTIONAL member contains [=client extension inputs=] requesting additional processing by the [=client=] and [=authenticator=].
+        For example, the [=[RP]=] may request that the authenticator returns additional information
+        about what kind of [=user verification=] was performed.
+        Some extensions are defined in [[#sctn-extensions]];
+        consult the IANA "WebAuthn Extension Identifiers" registry [[!IANA-WebAuthn-Registries]] established by [[!RFC8809]] for an up-to-date list
+        of registered [=WebAuthn Extensions=].
 </dl>
 
 
@@ -3173,7 +3213,7 @@ parameter to the {{CredentialsContainer/create()}} or {{CredentialsContainer/get
     ::  This OPTIONAL member contains a hint as to how the [=client=] might communicate with the [=managing authenticator=] of the
         [=public key credential=] the caller is referring to. The values SHOULD be members of {{AuthenticatorTransport}} but [=client platforms=] MUST ignore unknown values.
 
-        The {{AuthenticatorAttestationResponse/getTransports()}} operation can provide suitable values for this member.
+        The {{AuthenticatorAttestationResponse/getTransports()}} method can provide suitable values for this member.
         When [[#sctn-registering-a-new-credential|registering a new credential]],
         the [=[RP]=] SHOULD store the value returned from {{AuthenticatorAttestationResponse/getTransports()}}.
         When creating a {{PublicKeyCredentialDescriptor}} for that credential,
@@ -3255,15 +3295,19 @@ Note: The {{UserVerificationRequirement}} enumeration is deliberately not refere
 
 <div dfn-type="enum-value" dfn-for="UserVerificationRequirement">
     :   <dfn>required</dfn>
-    ::  This value indicates that the [=[RP]=] requires [=user verification=] for the operation and will fail the operation if the
+    ::  The [=[RP]=] requires [=user verification=] for the operation and will fail the operation if the
         response does not have the [=UV=] [=flag=] set.
+        The [=client=] MUST return an error if [=user verification=] cannot be performed.
+
+        Note: The value of the [=UV=] [=flag=] might not be reliable without a trusted [=authenticator=] [=attestation=].
 
     :   <dfn>preferred</dfn>
-    ::  This value indicates that the [=[RP]=] prefers [=user verification=] for the operation if possible, but will not fail the
+    ::  The [=[RP]=] prefers [=user verification=] for the operation if possible, but will not fail the
         operation if the response does not have the [=UV=] [=flag=] set.
+        For example, the client SHOULD guide the user through setting up [=user verification=] if needed.
 
     :   <dfn>discouraged</dfn>
-    ::  This value indicates that the [=[RP]=] does not want [=user verification=] employed during the operation (e.g., in the
+    ::  The [=[RP]=] does not want [=user verification=] employed during the operation (e.g., in the
         interest of minimizing disruption to the user interaction flow).
 </div>
 
