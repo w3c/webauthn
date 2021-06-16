@@ -1,58 +1,56 @@
-(****** for the proverif model, search for "ProVerif Web Authentication Formal Model" below...  ******)
+(****** for the proverif model, find "ProVerif Web Authentication Formal Model" below...  ******)
 
 
-(**** Collected syntax for devicePublicKey aka "dpk" ****
-
-$$extensionOutput //= (
-  devicePublicKey: AttObjForDevicePublicKey,
-)
-
-AuthDataForDevicePublicKeyAttestation = rpIdHash AAGUID userCredentialIdLength userCredentialId devicePublicKey
-                                        ; (expressed in RFC5234 ABNF)
-
-  rpIdHash                  = 32OCTET   ; SHA-256 hash of the RP ID the credential is scoped to
-  AAGUID                    = 16OCTET   ; 16 octets, authenticator's AAGUID
-  userCredentialIdLength    = 2OCTET    ; 2 octets, Credential ID length, 16-bit unsigned big-endian integer
-  userCredentialId          = 16*OCTET  ; credentialIdLength octets, at least 16 bytes long
-  devicePublicKey           = 1*OCTET   ; self-describing variable length, COSE_Key format (CBOR-endoded)
-]
-
-AttObjForDevicePublicKey = { ; Note: This object conveys an attested device public key
-                             ; and is analogous to `attObj`.
-
-  dpkSignatureValue: bstr,   ; result of sign(devicePrivateKey, (clientDataHash || userCredentialId))
-
-  authDataForDevicePublicKeyAttestation: AuthDataForDevicePublicKeyAttestation,
-
-  $$attStmtType,     ; see section 6.5.4 "Generating an Attestation Object".
-                     ; Attestation statement formats define the `fmt` and `attStmt` members of
-                     ; $$attStmtType. In summary, it contains a signature value calculated over
-                     ; the bytes of authDataForDevicePublicKeyAttestation, the attestation
-                     ; certificate or public key, and supporting certificates, if any. Note
-                     ; that the details are dependent upon the particular attestation statement
-                     ; format. See section 8 "Defined Attestation Statement Formats"
-}
+(**** Device-bound Public Key | Device-bound key pair | Device key | Context Key ****
 
 
-Where:
+==== WebAuthn Authenticator Response Messages, which include:                       ====
+====   Collected Client Data, Attestation Object, and Authenticator Data Structures ====
 
-`clientDataHash` is the hash of the serialized CollectedClientData object for the current registration or authentication operation (expressed in WebIDL):
+    // Top-level WebAuthn response messages (in pared-down WebIDL):
 
-    dictionary CollectedClientData {
-        required DOMString           type;
-        required DOMString           challenge;
-        required DOMString           origin; // https://html.spec.whatwg.org/#ascii-serialisation-of-an-origin
-        boolean                      crossOrigin;
-        // tokenBinding optionally goes here
-    }
+    interface AuthenticatorResponse {
+        ArrayBuffer      clientDataJSON;     // serialized client data, included in both .create() and .get() responses
+    };
+
+    interface AuthenticatorAttestationResponse : AuthenticatorResponse {  // .create() "Registration" response
+        ArrayBuffer      attestationObject;  // `attObj` goes here, it contains the `authData` and other components
+        [...]
+    };
+
+    interface AuthenticatorAssertionResponse : AuthenticatorResponse {    // .get() "Authentication" response
+        ArrayBuffer      authenticatorData;  // `authData` goes here
+        ArrayBuffer      signature;          // ENCOMPASSING SIGNATURE VALUE over: authData || clientDataHash
+        [...] // userHandle
+    };
 
 
-**** WebAuthn Signed Objects Hierarchy: Encompassing Attestation Object `attObj` ****
 
-Encompassing Attestation Object `attObj` (https://www.w3.org/TR/webauthn/#sctn-generating-an-attestation-object) returned by Registration Operation when returning a device-bound public key. This `attObj` attests the user credential, and signs over `AuthDataForRegistrationReturningDevicePublicKey`. The latter object's `extensions` field contains the `devicePublicKey` extension output (see above):
+    // Authenticator Data (authData) in RFC5234 ABNF <https://www.w3.org/TR/webauthn/#authenticator-data>:
+
+    authData = rpIdHash flags signCount [attestedCredentialData] [extensions]
+
+        rpIdHash                = 32OCTET   ; SHA-256 hash of the RP ID the credential is scoped to
+        flags                   = OCTET
+        signCount               = 4OCTET    ; 32-bit unsigned big-endian integer
+
+        attestedCredentialData  = AAGUID CredIDLength CredentialID CredentialPublicKey
+
+            AAGUID                  = 16OCTET   ; 16 octets
+            CredIDLength            = 2OCTET    ; 16-bit unsigned big-endian integer
+            CredentialID            = 16*OCTET  ; CredIDLength octets, at least 16 bytes long
+            CredentialPublicKey     = 1*OCTET   ; "user credential": self-describing variable length,
+                                                ;  COSE_Key format (CBOR-endoded)
+
+        extensions              = 1*OCTET   ; variable-length CBOR map of extension outputs
+                                            ; `devicePublicKey` extension ouput is in here.
+
+
+
+    // Attestation Object (attObj) in CDDL <https://www.w3.org/TR/webauthn-2/#sctn-generating-an-attestation-object>
 
     attObj = {
-                AuthDataForRegistrationReturningDevicePublicKey: bytes,
+                authData: bytes,
                 $$attStmtType
             }
 
@@ -66,29 +64,80 @@ Encompassing Attestation Object `attObj` (https://www.w3.org/TR/webauthn/#sctn-g
                       )
 
 
+    // `clientDataHash` is the hash of the serialized CollectedClientData object for the current registration
+    // or authentication operation (expressed in WebIDL):
 
-AuthData for Registration and Authentication Operations returning a devicePublicKey extension response (expressed in RFC5234 ABNF; https://www.w3.org/TR/webauthn/#sctn-authenticator-data ):
+        dictionary CollectedClientData {
+            required DOMString           type;      // "webauthn.create" or "webauthn.get", as appropriate
+            required DOMString           challenge; // from RP's server
+            required DOMString           origin;    // https://html.spec.whatwg.org/#ascii-serialisation-of-an-origin
+            boolean                      crossOrigin;
+            // tokenBinding optionally goes here
+        }
 
-    AuthDataForRegistrationReturningDevicePublicKey   = rpIdHash flags signCount attestedCredentialData extensions
 
-    AuthDataForAuthenticationReturningDevicePublicKey = rpIdHash flags signCount extensions
 
-    ; Where:
+==== Proposed Collected syntax for devicePublicKey (dpk) Extension Output ====
 
-    rpIdHash                = 32OCTET   ; SHA-256 hash of the RP ID the credential is scoped to
-    flags                   = OCTET
-    signCount               = 4OCTET    ; 32-bit unsigned big-endian integer
+    $$extensionOutput //= (
+        devicePublicKey: AttObjForDevicePublicKey,
+    )
 
-    attestedCredentialData  = AAGUID CredIDLength CredentialID CredentialPublicKey
+    AttObjForDevicePublicKey = { ; Note: This object conveys an attested device public key
+                                 ; and is analogous to `attObj`.
 
-        AAGUID                  = 16OCTET   ; 16 octets
-        CredIDLength            = 2OCTET    ; 16-bit unsigned big-endian integer
-        CredentialID            = 16*OCTET  ; CredIDLength octets, at least 16 bytes long
-        CredentialPublicKey     = 1*OCTET   ; "user credential": self-describing variable length,
-                                            ;  COSE_Key format (CBOR-endoded)
+        dpkSignatureValue: bstr, ; result of sign(devicePrivateKey, (clientDataHash || userCredentialId))
 
-    extensions              = 1*OCTET   ; variable-length CBOR map of extension outputs
-                                        ; `devicePublicKey` extension ouput is in here
+        authDataForDevicePublicKeyAttestation: AuthDataForDevicePublicKeyAttestation,
+
+        $$attStmtType,      ; see <https://www.w3.org/TR/webauthn/#sctn-generating-an-attestation-object>.
+                            ;
+                            ; Attestation statement formats define the `fmt` and `attStmt` members of
+                            ; $$attStmtType. In summary, it contains a signature value calculated over
+                            ; the bytes of _authDataForDevicePublicKeyAttestation_, the attestation
+                            ; certificate or public key, and supporting certificates, if any. Note
+                            ; that the details are dependent upon the particular attestation statement
+                            ; format. See <https://www.w3.org/TR/webauthn/#sctn-defined-attestation-formats>.
+    }
+
+
+    AuthDataForDevicePublicKeyAttestation = rpIdHash AAGUID userCredentialIdLength userCredentialId devicePublicKey
+                                            ; (expressed in RFC5234 ABNF)
+
+        rpIdHash                  = 32OCTET   ; SHA-256 hash of the RP ID the credential is scoped to
+        AAGUID                    = 16OCTET   ; 16 octets, authenticator's AAGUID
+        userCredentialIdLength    = 2OCTET    ; 2 octets, Credential ID length, 16-bit unsigned big-endian integer
+        userCredentialId          = 16*OCTET  ; credentialIdLength octets, at least 16 bytes long
+        devicePublicKey           = 1*OCTET   ; self-describing variable length, COSE_Key format (CBOR-endoded)
+    ]
+
+
+
+==== WebAuthn Signed Objects Hierarchy: Encompassing Attestation Object `attObj` ====
+
+    AuthData for Registration and Authentication Operations returning a devicePublicKey extension response (expressed in RFC5234 ABNF; https://www.w3.org/TR/webauthn/#sctn-authenticator-data ):
+
+        ; See WebAuthn-standard `authData` (above) for details, though NOTE that in these two authData instantiations
+        ; `attestedCredentialData` and `extensions` components are always included (the AttObjForDevicePublicKey is conveyed
+        ; in the `extensions` component):
+
+        AuthDataForRegistrationReturningDevicePublicKey   = rpIdHash flags signCount attestedCredentialData extensions
+
+        AuthDataForAuthenticationReturningDevicePublicKey = rpIdHash flags signCount extensions
+
+
+    Registration:
+    Encompassing Attestation Object `attObj` (https://www.w3.org/TR/webauthn/#sctn-generating-an-attestation-object) is returned by the Registration Operation when returning a device-bound public key. This `attObj` attests the user credential, and signs over `AuthDataForRegistrationReturningDevicePublicKey`. The latter object's `extensions` field contains the `devicePublicKey` extension output (see above):
+
+        attObj = {
+                    AuthDataForRegistrationReturningDevicePublicKey: bytes,
+                    $$attStmtType ; as defined in WebAuthn
+                }
+
+    Authentication:
+
+
+
 
 
 
@@ -162,29 +211,29 @@ EncompassingAuthenticationAssertionToBeSigned: {     // signed by the user crede
 
             devicePublicKeyExtensionResult: {
 
-                dpkSignatureValue { // signed by devicePrivateKey
-                    // over...
+                dpkSignatureValue { // signed by devicePrivateKey..
+                    // ..over...
                     clientDataHash || userCredentialId  // userCredentialId is second because it is variable length
                 }
 
                 AuthDataForDevicePublicKeyAttestationToBeSigned: {
                     rpIdHash
-                    AAGUID                  // where do we get this from if it is not conveyed in authData?
-                    userCredentialIdLength  //   "   "  "   "   "    "
-                    userCredentialId        //   "   "  "   "   "    "
-                    devicePublicKey         //   "   "  "   "   "    "
+                    AAGUID                  // where do we get this from if it is not conveyed in authData? Thus must be here.
+                    userCredentialIdLength  //   "   "  "   "   "    "   "  "  "   "      "    "     "        "   "   "   "
+                    userCredentialId        //   "   "  "   "   "    "   "  "  "   "      "    "     "        "   "   "   "
+                    devicePublicKey         //   "   "  "   "   "    "   "  "  "   "      "    "     "        "   "   "   "
                 }
 
                 fmt: "...attestation statement format identifier..."
 
                 attStmt: {  // contains various items depending upon the attestation statement format,
-                            // crucially containing a signature value, generated using
-                            // the device's AttestationPrivatekey, over this to-be-signed data:
-
-                    AuthDataForDevicePublicKeyAttestation   // crucially, this to-be-signed data does not include
-                                                            // clientDataHash because the latter is specific to these
-                                                            // current request, e.g., the hashed clientData includes
-                                                            // the request challenge
+                            // crucially containing a signature value, generated using the device's
+                            // AttestationPrivatekey, over this to-be-signed data:
+                    AuthDataForDevicePublicKeyAttestation
+                            // crucially, this to-be-signed data does not include
+                            // `clientDataHash` because the latter is specific to this
+                            // current request, e.g., the hashed clientData includes
+                            // the request challenge.
                 }
             }
 
@@ -192,9 +241,9 @@ EncompassingAuthenticationAssertionToBeSigned: {     // signed by the user crede
 
         } // extensions
 
-    } // AuthDataForRegistrationReturningDevicePublicKey
+    } // AuthDataForAuthenticationReturningDevicePublicKey
 
-} // EncompassingRegistrationAttestationToBeSigned
+} // EncompassingAuthenticationAssertionToBeSigned
 
 
 
