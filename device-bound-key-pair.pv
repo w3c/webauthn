@@ -281,79 +281,82 @@
    github: https://github.com/hhalpin/weauthn-model
 *)
 
-
-free c:channel.
-
 type AttestationPublicKey.
 type AttestationPrivatekey.
 type nonce.
 type pkey.
 type skey.
-type host.
 type key.
 type RP_id.
 
+(* TLS channel *)
 
-(*For Digital Signatures *)
+free c: channel. (* TLS channel *)
 
-fun spk(skey):pkey.
-fun sign(bitstring, skey):bitstring.
+const k: key. (* TLS record layer symmetric encryption key.
+                 This model assumes an error-free TLS connection establishment
+                 resulting in this key |k| as the encryption key. *)
+
+
+(* For Digital Signatures *)
+
+fun spk(skey): pkey.
+fun sign(bitstring, skey): bitstring.
 reduc forall x:bitstring, y:skey; getmess(sign(x, y)) = x.
 reduc forall x:bitstring, y:skey; checksign(sign(x, y), spk(y)) = x.
 
-(*For nonces*)
+(* For nonces *)
 
 fun nonce_to_bitstring ( nonce ) : bitstring [ data , typeConverter ] .
 table nonceTable(nonce) .
 
-(*For Digital signature over Attestation Credentials*)
+(* For Digital signature over Attestation Credentials *)
 
 fun spkAtt(AttestationPrivatekey):AttestationPublicKey.
 fun signAtt(bitstring, AttestationPrivatekey):bitstring.
 reduc forall x:bitstring, y:AttestationPrivatekey; getmessAtt(signAtt(x, y)) = x.
 reduc forall x:bitstring, y:AttestationPrivatekey; checksignAtt(signAtt(x, y), spkAtt(y)) = x.
 
-(*Symetric encryption*)
+(* Symetric encryption *)
 
 fun senc(bitstring, key): bitstring.
 reduc forall x: bitstring, k: key; sdec(senc(x,k),k) = x.
 
 
-(*User's ID  and Server's ID*)
+(* User's ID  and Server's ID *)
 const cert:bitstring [private].
-const a:RP_id [private]. (* server's identity *)
-const credentialID2:bitstring [private].
+const a: RP_id [private]. (* server's identity *)
 
-(*Table*)
+(* Table *)
 table tableAtt(AttestationPublicKey).
 
-(*Events and Queries*)
+(* Events and Queries *)
 
 event reachSameKey(AttestationPublicKey).
 
-
 query N1:AttestationPublicKey; event(reachSameKey(N1)).
 
-free attskU: AttestationPrivatekey[private].
+free attskU: AttestationPrivatekey [private].
 query attacker(attskU).
-free attpkU: AttestationPublicKey[private].
+
+free attpkU: AttestationPublicKey [private].
 query attacker(attpkU).
 
-const k:key. (* TLS record layer symmetric encryption key *)
 
-
-let processUser ( k: key,cert:bitstring, attskA: AttestationPrivatekey, attpkA:AttestationPublicKey) =
+let processUser (k: key, cert: bitstring, attskA: AttestationPrivatekey, attpkA: AttestationPublicKey) =
 
     (*Registration*)
 
-    in(c,s:bitstring); (* server sent
+    in(c, s: bitstring); (* we expect server to send challenge & RP_id over encrypted TLS channel *)
 
-    let(challengeU:nonce, aU:RP_id)= sdec(s,k) in
-    new skU:skey;
+    let (challengeU: nonce, aU: RP_id) = sdec(s, k) in
+
+    new skU: skey;          (* user's authenticator mints new user credential key pair *)
     let pkU = spk(skU) in
 
-    out(c,senc(signAtt((pkU, attpkU, cert,challengeU), attskU),k))
-    .
+    out(c, senc(signAtt((pkU, attpkU, cert, challengeU), attskU), k)). (* return signed registration response
+                                                                          containing attestation object, over
+                                                                          encrypted TLS channel. *)
 
 
 let processServer (k: key, a:RP_id) =
@@ -362,21 +365,23 @@ let processServer (k: key, a:RP_id) =
 
     new challenge: nonce;
 
-    out(c, senc( (challenge, a), k) ); (* send challenge & RP_id over TLS *)
+    out(c, senc((challenge, a), k)); (* Reg request: send challenge & RP_id over TLS *)
 
-    in(c, s:bitstring);
+    in(c, s:bitstring);              (* Registration response *)
 
-    let m= sdec(s,k) in
-    let (pkY1: pkey, attpkU1:AttestationPublicKey, cert: bitstring, Nt:nonce) = getmessAtt(m) in
-    let ver = checksignAtt(m, attpkU1) in
+    let m = sdec(s, k) in
+    let (pkY1: pkey, attpkU1: AttestationPublicKey, cert: bitstring, Nt: nonce) = getmessAtt(m) in
+    let ver = checksignAtt(m, attpkU1) in  (* This verifies the attestation signature because `getmess()` does not. *)
 
-   get tableAtt(= attpkU1) in event reachSameKey(attpkU1)
-   else insert tableAtt(attpkU1).
+    get tableAtt(=attpkU1) in       (* Have we seen this registration before? *)
+        event reachSameKey(attpkU1) (* Yes.                                   *)
+    else
+        insert tableAtt(attpkU1).   (* No, remember it.                       *)
 
 process
-  new attskU:AttestationPrivatekey;
-  let attpkU = spkAtt(attskU) in
+  new attskU: AttestationPrivatekey;    (* The attestation key pair is a immutable property of     *)
+  let attpkU = spkAtt(attskU) in        (* the authenticator, so we mint it here at the beginning. *)
   (
-    !processUser( k, cert, attskU,attpkU) | !processServer(k, a)
+    !processUser(k, cert, attskU, attpkU) | !processServer(k, a)
   )
 
