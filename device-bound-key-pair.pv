@@ -323,8 +323,7 @@ fun senc(bitstring, key): bitstring.
 reduc forall x: bitstring, k: key; sdec(senc(x,k),k) = x.
 
 
-(* User's ID  and Server's ID *)
-const cert:bitstring [private].
+(* Server's ID *)
 const a: RP_id [private]. (* server's identity *)
 
 (* Table *)
@@ -343,7 +342,7 @@ free attpkU: AttestationPublicKey [private].
 query attacker(attpkU).
 
 
-let processUser (k: key, cert: bitstring, attskA: AttestationPrivatekey, attpkA: AttestationPublicKey) =
+let processUser (k: key, attskA: AttestationPrivatekey, attpkA: AttestationPublicKey) =
 
     (*Registration*)
 
@@ -354,7 +353,7 @@ let processUser (k: key, cert: bitstring, attskA: AttestationPrivatekey, attpkA:
     new skU: skey;          (* user's authenticator mints new user credential key pair *)
     let pkU = spk(skU) in
 
-    out(c, senc(signAtt((pkU, attpkU, cert, challengeU), attskU), k)). (* return signed registration response
+    out(c, senc(signAtt((pkU, attpkU, challengeU), attskU), k)). (* return signed registration response
                                                                           containing attestation object, over
                                                                           encrypted TLS channel. *)
 
@@ -370,11 +369,13 @@ let processServer (k: key, a:RP_id) =
     in(c, s:bitstring);              (* Registration response *)
 
     let m = sdec(s, k) in
-    let (pkY1: pkey, attpkU1: AttestationPublicKey, cert: bitstring, Nt: nonce) = getmessAtt(m) in
+    let (pkY1: pkey, attpkU1: AttestationPublicKey, Nt: nonce) = getmessAtt(m) in
     let ver = checksignAtt(m, attpkU1) in  (* This verifies the attestation signature because `getmess()` does not. *)
 
     get tableAtt(=attpkU1) in       (* Have we seen this registration before? *)
-        event reachSameKey(attpkU1) (* Yes.                                   *)
+        event reachSameKey(attpkU1) (* Yes, thus the user is re-identified,   *)
+                                    (* modulo the authenticator batch size    *)
+                                    (* having the same attestation key pair.  *)
     else
         insert tableAtt(attpkU1).   (* No, remember it.                       *)
 
@@ -382,6 +383,6 @@ process
   new attskU: AttestationPrivatekey;    (* The attestation key pair is a immutable property of     *)
   let attpkU = spkAtt(attskU) in        (* the authenticator, so we mint it here at the beginning. *)
   (
-    !processUser(k, cert, attskU, attpkU) | !processServer(k, a)
+    !processUser(k, attskU, attpkU) | !processServer(k, a)
   )
 
