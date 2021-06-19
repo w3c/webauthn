@@ -10,6 +10,12 @@
 
     // Top-level WebAuthn response messages (expressed in simplified WebIDL):
 
+    interface PublicKeyCredential : Credential {
+        USVString               id;        // User Credential ID
+        AuthenticatorResponse   response;
+        [...]
+    };
+
     interface AuthenticatorResponse {
         ArrayBuffer      clientDataJSON;    // serialized collected client data, included
                                             // in both .create() and .get() responses
@@ -26,6 +32,24 @@
                                              // Note that the signed-over authData conveys extension results
         [...] // userHandle
     };
+
+
+
+    Coalesced Registration PublicKeyCredential: {
+        USVString       id;                  // User Credential ID
+        ArrayBuffer     clientDataJSON;
+        ArrayBuffer     attestationObject;   // `attObj` goes here, it contains the `authData` and other component
+    }
+
+
+    Coalesced Authentication PublicKeyCredential: {
+        USVString       id;                  // User Credential ID
+        ArrayBuffer     clientDataJSON;
+        ArrayBuffer     authenticatorData;   // `authData` goes here
+        ArrayBuffer     signature;           // ENCOMPASSING SIGNATURE VALUE over: authData || clientDataHash
+                                             // Note that the signed-over authData conveys extension results
+        [...]
+    }
 
 
 
@@ -80,7 +104,7 @@
 
 
 
-==== Proposed Collected Syntax for devicePublicKey (dpk) aka Secondary Key aka Device Key Extension Output ====
+==== Proposed Collected Syntax for devicePublicKey (dpk) (aka Secondary Key aka Device Key) Extension Output ====
 
     $$extensionOutput //= (                         // Expressed in CDDL
         devicePublicKey: AttObjForDevicePublicKey,
@@ -90,6 +114,8 @@
                                  ; and is analogous to `attObj`.
 
         dpkSignatureValue: bstr, ; result of sign(devicePrivateKey, (clientDataHash || userCredentialId))
+                                 ; Note that this sig value is unique per-request because clientDataHash contains
+                                 ; the per-request challenge.
 
         authDataForDevicePublicKeyAttestation: bstr,    ; AuthDataForDevicePublicKeyAttestation goes here
 
@@ -98,16 +124,16 @@
                             ; Attestation statement formats define the `fmt` and `attStmt` members of
                             ; $$attStmtType.
                             ;
-                            ; In summary, it contains a signature value calculated over
-                            ; the bytes of `authDataForDevicePublicKeyAttestation`, the attestation
+                            ; In summary, it contains (1) a signature value calculated (using the attestation private key)
+                            ; over just the bytes of `authDataForDevicePublicKeyAttestation`, and (2) the attestation
                             ; certificate or public key, and supporting certificates, if any. Note
-                            ; that the details are dependent upon the particular attestation statement
+                            ; that there are details dependent upon the particular attestation statement
                             ; format. See <https://www.w3.org/TR/webauthn/#sctn-defined-attestation-formats>.
     }
 
 
     AuthDataForDevicePublicKeyAttestation = rpIdHash AAGUID userCredentialIdLength userCredentialId devicePublicKey
-                                            ; Expressed in RFC5234 ABNF
+                                            ; Expressed in RFC5234 ABNF:
 
         rpIdHash                  = 32OCTET   ; SHA-256 hash of the RP ID the credential is scoped to
         AAGUID                    = 16OCTET   ; 16 octets, authenticator's AAGUID
@@ -151,7 +177,7 @@
 
     Encompassing Authentication Assertion is returned by the Authentication Operation (as `AuthenticatorAssertionResponse`). The "assertion" is the `signature` value over the concatenation of the `AuthDataForAuthenticationReturningDevicePublicKey` and the hash of the collected client data containing the RP's challenge. `AuthDataForAuthenticationReturningDevicePublicKey`'s `extensions` field contains the `devicePublicKey` extension output:
 
-        AuthenticatorAssertionResponse: {
+        AuthenticatorAssertionResponse: {  // expressed in bespoke informal notation
             clientDataJSON
             AuthDataForAuthenticationReturningDevicePublicKey
             signature       // ENCOMPASSING SIGNATURE VALUE over:
@@ -159,9 +185,10 @@
         }
 
 
+    ==== To-Be-Signed Data for the ENCOMPASSING SIGNATURE VALUEs (expressed in bespoke informal notation):
 
-
-    EncompassingRegistrationAttestationToBeSigned: {     // SIGNED by the attestation private key
+    EncompassingRegistrationAttestationToBeSigned: {    // SIGNED by the attestation private key to form the signature
+                                                        // value returned in the top-level attestation statement.
 
         AuthDataForRegistrationReturningDevicePublicKey: {
 
@@ -180,32 +207,33 @@
 
                 devicePublicKeyExtensionResult: {
 
-                    dpkSignatureValue { // SIGNED by devicePrivateKey. Is a UNIQUE value per response.
-                        // over...
-                        clientDataHash || userCredentialId  // userCredentialId is second because it is variable length
+                    dpkSignatureValue { // Is a UNIQUE value per response.
+                        sign(devicePrivateKey, (clientDataHash || userCredentialId))
                     }
 
-                    AuthDataForDevicePublicKeyAttestationToBeSigned: {
-                        rpIdHash
-                        AAGUID
-                        userCredentialIdLength
-                        userCredentialId
-                        devicePublicKey
+                    AuthDataForDevicePublicKeyAttestation: {
+                        rpIdHash                // i.e., the "audience"
+                        AAGUID                  // This, and the next 3 data items, duplicate what's in
+                        userCredentialIdLength  // `attestedCredentialData`, but attested cred data is not present in
+                        userCredentialId        // authentication assertions, so it needs to be here IF we wish this
+                        devicePublicKey         // devicePublicKey extension result to be the same format whether its
+                                                // returned as result of a registration or authn request.
                     }
 
                     fmt: "...attestation statement format identifier..."
 
                     attStmt: {  // contains various items depending upon the attestation statement format,
-                                // crucially containing a signature value, generated using
-                                // the device's AttestationPrivatekey, over this to-be-signed data:
+                                // Crucially containing a signature value, generated using
+                                // the device's (effective) AttestationPrivatekey, over this to-be-signed data:
 
-                        AuthDataForDevicePublicKeyAttestation   // crucially, this to-be-signed data does not include
+                        AuthDataForDevicePublicKeyAttestation   // SIGNED by AttestationPrivatekey.
+                                                                // Crucially, this to-be-signed data does not include
                                                                 // clientDataHash because the latter is specific to these
                                                                 // current request, e.g., the hashed clientData includes
                                                                 // the request challenge.
                                                                 //
-                                                                // The `attStmt` is a CONSTANT value per context per device
-                                                                // per account per RP.
+                                                                // Note: This `attStmt` is a CONSTANT value per context
+                                                                // per device per account per RP.
                     }
                 }
 
@@ -215,11 +243,19 @@
 
         } // AuthDataForRegistrationReturningDevicePublicKey
 
+        ClientDataHash: {  // the following items are serialized then hashed to form this value:
+            type
+            challenge
+            origin
+            crossOrigin
+        }
+
     } // EncompassingRegistrationAttestationToBeSigned
 
 
 
-    EncompassingAuthenticationAssertionToBeSigned: {     // SIGNED by the user credential private key
+    EncompassingAuthenticationAssertionToBeSigned: {    // SIGNED by the user credential private key yielding the
+                                                        // `AuthenticatorAssertionResponse.signature` value.
 
         AuthDataForAuthenticationReturningDevicePublicKey: {
 
@@ -239,17 +275,17 @@
                     }
 
                     AuthDataForDevicePublicKeyAttestationToBeSigned: {
-                        rpIdHash                // i.e., the "audience"
-                        AAGUID                  // where do we get this from if it is not conveyed in authData? Thus must be here.
-                        userCredentialIdLength  //   "   "  "   "   "    "   "  "  "   "      "    "     "        "   "   "   "
-                        userCredentialId        //   "   "  "   "   "    "   "  "  "   "      "    "     "        "   "   "   "
-                        devicePublicKey         //   "   "  "   "   "    "   "  "  "   "      "    "     "        "   "   "   "
+                        rpIdHash               // i.e., the "audience"
+                        AAGUID                 // where do we get this from if it is not conveyed in authData? Thus must be here?
+                        userCredentialIdLength //   "   "  "   "   "    "   "  "  "   "      "    "     "        "   "   "   "
+                        userCredentialId       //   "   "  "   "   "    "   "  "  "   "      "    "     "        "   "   "   "
+                        devicePublicKey        //   "   "  "   "   "    "   "  "  "   "      "    "     "        "   "   "   "
                     }
 
                     fmt: "...attestation statement format identifier..."
 
-                    attStmt: {  // contains various items depending upon the attestation statement format,
-                                // crucially containing a signature value, generated using the device's
+                    attStmt: {  // Contains various items depending upon the attestation statement format,
+                                // crucially containing a signature value, generated using the device's (effective)
                                 // AttestationPrivatekey, over this to-be-signed data:
                         AuthDataForDevicePublicKeyAttestation
                                 //
@@ -258,7 +294,7 @@
                                 // current request, e.g., the hashed clientData includes
                                 // the request challenge.
                                 //
-                                // NOTE: The `attStmt` is a CONSTANT value per context per device
+                                // NOTE: This `attStmt` is a CONSTANT value per context per device
                                 // per account per RP.
                     }
                 }
@@ -269,6 +305,13 @@
 
         } // AuthDataForAuthenticationReturningDevicePublicKey
 
+        ClientDataHash: {  // the following items are serialized then hashed to form this value:
+            type
+            challenge
+            origin
+            crossOrigin
+        }
+
     } // EncompassingAuthenticationAssertionToBeSigned
 
 
@@ -277,9 +320,18 @@
 
 (* ProVerif Web Authentication Formal Model
    originally by Iness Ben Guirat and Harry Halpin
-   https://dl.acm.org/doi/10.1145/3190619.3190640
-   github: https://github.com/hhalpin/weauthn-model
+   Paper: https://dl.acm.org/doi/10.1145/3190619.3190640
+   github: https://github.com/hhalpin/weauthn-model [sic]
 *)
+
+(**** unlinkability.pv ****
+
+This model simply proves that if the same authenticator is used to authenticate with a given server in the context of different accounts, the server can correlate the authenticator use across those accounts because the attestation public key is the same. See
+
+To counter this, it is advised by the FIDO Alliance (fidoalliance.org) that authenticators use the same attestation key pair for large batches (100K) of authenticators.
+
+This version editorially cleaned up, as well as technically: removed unused types, variables, etc.
+****)
 
 type AttestationPublicKey.
 type AttestationPrivatekey.
@@ -385,4 +437,6 @@ process
   (
     !processUser(k, attskU, attpkU) | !processServer(k, a)
   )
+
+(* END *)
 
