@@ -1251,10 +1251,20 @@ The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "S
     An [=authorization gesture=] is a [=ceremony=] component often employed to indicate [=user consent=].
 
 : <dfn>User Handle</dfn>
-:: The user handle is specified by a [=[RP]=], as the value of
-    <code>{{PublicKeyCredentialCreationOptions/user}}.{{PublicKeyCredentialUserEntity/id}}</code>, and used to [=credentials map|map=] a specific [=public key credential=]
-    to a specific user account with the [=[RP]=].
-    [=Authenticators=] in turn [=credentials map|map=] pairs of [=RP ID=] and user handle to [=public key credential sources=].
+:: A user handle is an identifier for a user, specified by the [=[RP]=] as
+    <code>{{PublicKeyCredentialCreationOptions/user}}.{{PublicKeyCredentialUserEntity/id}}</code>
+    during [=registration=].
+    [=Discoverable credentials=] store this identifier and return it as
+    <code>{{PublicKeyCredential/response}}.{{AuthenticatorAssertionResponse/userHandle}}</code>
+    in [=authentication ceremonies=] started with an [=list/empty=]
+    <code>{{PublicKeyCredentialRequestOptions/allowCredentials}}</code> argument.
+    Its main use is to identify the user in such [=authentication ceremonies=],
+    but the [=credential ID=] could be used instead.
+    The main differences are
+    that the [=user handle=] is chosen by the [=[RP]=] and MAY be the same for all of a user's [=credentials=],
+    while the [=credential ID=] is chosen by the [=authenticator=] and unique for each credential.
+
+    [=Authenticators=] [=credentials map|map=] pairs of [=RP ID=] and user handle to [=public key credential sources=].
     As a consequence, an authenticator will store at most one [=discoverable credential=] per [=user handle=] per [=[RP]=].
 
     A user handle is an opaque [=byte sequence=] with a maximum size of 64 bytes, and is not meant to be displayed to the user.
@@ -2539,31 +2549,32 @@ optionally evidence of [=user consent=] to a specific transaction.
     ::  This member lists the key types and signature algorithms the [=[RP]=] supports,
         ordered from most preferred to least preferred.
         The [=client=] and [=authenticator=] make a best-effort to create a credential of the most preferred type possible.
+        If none of the listed types can be created, the [=registration ceremony=] fails.
 
     :   <dfn>timeout</dfn>
-    ::  This member specifies a time, in milliseconds, that the [=[RP]=] is willing to wait for the call to complete. This is
+    ::  This OPTIONAL member specifies a time, in milliseconds, that the [=[RP]=] is willing to wait for the call to complete. This is
         treated as a hint, and MAY be overridden by the [=client=].
 
     :   <dfn>excludeCredentials</dfn>
-    ::  This member lists [=credentials=] the user has already registered,
+    ::  This OPTIONAL member lists [=credentials=] the user has already registered,
         and is used to ensure that the new credential is [=created on=] an [=authenticator=] not already registered.
         The [=client=] and [=authenticators=] will prevent the user from creating the new credential on an authenticator
         that also [=contains=] one of the credentials listed in {{PublicKeyCredentialCreationOptions/excludeCredentials}}.
 
     :   <dfn>authenticatorSelection</dfn>
-    ::  This member specifies capabilities and settings
+    ::  This OPTIONAL member specifies capabilities and settings
         that the [=authenticator=] MUST or SHOULD satisfy to participate in the {{CredentialsContainer/create()}} operation.
         See [[#dictionary-authenticatorSelection]].
 
     :   <dfn>attestation</dfn>
-    ::  This member specifies the [=[RP]=]'s preference for [=attestation conveyance=].
+    ::  This OPTIONAL member specifies the [=[RP]=]'s preference for [=attestation conveyance=].
         Its value SHOULD be a member of {{AttestationConveyancePreference}}.
         [=Client platforms=] MUST ignore unknown values, treating an unknown value as if the [=map/exist|member does not exist=].
 
         The default value is {{AttestationConveyancePreference/none}}.
 
     :   <dfn>extensions</dfn>
-    ::  This member contains [=client extension inputs=] requesting additional processing by the [=client=] and [=authenticator=].
+    ::  This OPTIONAL member contains [=client extension inputs=] requesting additional processing by the [=client=] and [=authenticator=].
         For example, the [=[RP]=] may request that the client returns additional information about the [=credential=] that was created.
         Some extensions are defined in [[#sctn-extensions]];
         consult the IANA "WebAuthn Extension Identifiers" registry [[!IANA-WebAuthn-Registries]] established by [[!RFC8809]] for an up-to-date list
@@ -2706,8 +2717,7 @@ attributes.
     ::  If this member is present, eligible authenticators are filtered to only authenticators attached with the
         specified [=authenticator attachment modality=]. The value SHOULD be a member of {{AuthenticatorAttachment}} but [=client platforms=] MUST ignore unknown values, treating an unknown value as if the [=map/exist|member does not exist=].
 
-        If this member is not specified,
-        the resulting [=authenticator attachment modality|attachment=] for the created credential might instead be determinable
+        The resulting [=authenticator attachment modality|attachment=] for the created credential might be determinable
         using the {{AuthenticatorAttestationResponse/getTransports()}} method of the [=registration=] result.
         See [[#enum-transport]] for details.
 
@@ -2786,7 +2796,7 @@ This enumeration's values describe the [=[RP]=]'s requirements for [=client-side
     ::  The [=[RP]=] strongly prefers creating a [=client-side discoverable credential=], but will accept a
         [=server-side credential=].
         The [=client=] and [=authenticator=] SHOULD create a [=discoverable credential=] if possible.
-        For example, the client SHOULD guide the user through setting up [=user verification=] if needed to create a [=discoverable credential=]. This takes precedence over the setting of {{AuthenticatorSelectionCriteria/userVerification}}.
+        For example, the [=client=] SHOULD guide the user through setting up [=user verification=] if needed to create a [=discoverable credential=]. This takes precedence over the setting of {{AuthenticatorSelectionCriteria/userVerification}}.
 
     :   <dfn>required</dfn>
     ::  The [=[RP]=] requires a [=client-side discoverable credential=].
@@ -2828,12 +2838,13 @@ Note: The {{AttestationConveyancePreference}} enumeration is deliberately not re
 
     :   <dfn>indirect</dfn>
     ::  The [=[RP]=] wants to receive a verifiable [=attestation statement=],
-        but allows the client to decide how to obtain such an [=attestation statement=].
+        but allows the [=client=] to decide how to obtain such an [=attestation statement=].
         The client MAY replace an authenticator-generated [=attestation statement=] with one generated by an [=Anonymization CA=],
         in order to protect the user's privacy, or to assist [=[RPS]=] with attestation verification in a heterogeneous ecosystem.
 
         Note: There is no guarantee that the [=[RP]=] will obtain a verifiable [=attestation statement=] in this case.
-        For example, in the case that the authenticator employs [=self attestation=].
+        For example, in the case that the authenticator employs [=self attestation=]
+        and the [=client=] passes the [=attestation statement=] through unmodified.
 
     :   <dfn>direct</dfn>
     ::  The [=[RP]=] wants to receive the [=attestation statement=] as generated by the [=authenticator=].
@@ -2872,9 +2883,9 @@ an assertion. Its {{PublicKeyCredentialRequestOptions/challenge}} member MUST be
 
     :   <dfn>rpId</dfn>
     ::  This OPTIONAL member specifies the [=RP ID=] claimed by the [=[RP]=].
-        The [=client=] and [=authenticator=] MUST verify that
-        the [=[RP]=]'s [=origin=] matches the [=scope=] of this [=RP ID=],
-        and that this [=RP ID=] exactly equals the [=rpId=] of the [=credential=] to be used for the [=authentication ceremony=].
+        The [=client=] MUST verify that the [=[RP]=]'s [=origin=] matches the [=scope=] of this [=RP ID=].
+        The [=authenticator=] MUST verify
+        that this [=RP ID=] exactly equals the [=rpId=] of the [=credential=] to be used for the [=authentication ceremony=].
 
         If not specified, its value will
         be the {{CredentialsContainer}} object's [=relevant settings object=]'s [=environment settings object/origin=]'s
