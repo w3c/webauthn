@@ -114,7 +114,7 @@
     AttObjForDevicePublicKey = { ; Note: This object conveys an attested device public key
                                  ; and is analogous to `attObj`.
 
-        dpkSignatureValue: bstr, ; result of sign(devicePrivateKey, (clientDataHash || userCredentialId))
+        dpkSignatureValue: bstr, ; result of sign((clientDataHash || userCredentialId), devicePrivateKey)
                                  ; Note that this sig value changes per-request because clientDataHash contains
                                  ; the per-request challenge.
 
@@ -210,13 +210,13 @@
                 devicePublicKeyExtensionResult: {
 
                     dpkSignatureValue { // Is a UNIQUE value per response.
-                        sign(devicePrivateKey, (clientDataHash || userCredentialId))
+                        sign((clientDataHash || userCredentialId), devicePrivateKey)
                                                             // userCredentialId is second because it is variable length
                     }
 
                     AuthDataForDevicePublicKeyAttestation: {
                         rpIdHash                // i.e., the "audience"
-                        AAGUID                  // This is also in `attestedCredentialData`, but attested cred data
+                        AAGUID                  // This is in `attestedCredentialData`, but attested cred data
                                                 // is not present in authentication assertions, so it needs to be
                                                 // here IF we wish this devicePublicKey extension result to be the
                                                 // same format whether it is returned as result of a registration
@@ -277,14 +277,17 @@
                 devicePublicKeyExtensionResult: {
 
                     dpkSignatureValue { // Is a UNIQUE value per response. SIGNED
-                        sign(devicePrivateKey, (clientDataHash || userCredentialId))
-                                                            // userCredentialId is second because it is variable length
+                        sign((clientDataHash || userCredentialId), devicePrivateKey)
+                            // userCredentialId is second because it is variable length
                     }
 
                     AuthDataForDevicePublicKeyAttestationToBeSigned: {
-                        rpIdHash               // i.e., the "audience"
-                        AAGUID
-                        devicePublicKey
+                        rpIdHash                // i.e., the "audience"
+                        AAGUID                  // Needs to be here because if user cred is synced to "new" device
+                                                // a registration is not done on that device and the RP will receive
+                                                // a new devicePublicKey extension result from a get() call, and
+                                                // this will attest to the provenance of the authenticator.
+                        devicePublicKey         // The "attested" device public key.
                     }
 
                     fmt: "...attestation statement format identifier..."
@@ -434,6 +437,8 @@ const a: RP_id [private].
 
 event sentChallengeResponse(bitstring, bitstring).
 event validChallengeResponse(bitstring, bitstring).
+
+(* we can only receive a valid response if the user sent a response message *)
 query N:bitstring, s:bitstring; event(validChallengeResponse(N, s)) ==> event(sentChallengeResponse(N, s)).
 
 (* query N:bitstring; event(reachAuthentication(N)).
@@ -457,12 +462,13 @@ let processUser ( k: key, attskU: AttestationPrivatekey, attpkU:AttestationPubli
     new skU: skey;          (* mint new user credential "secret key user" |skU| *)
     let pkU = spk(skU) in   (* and "public key user" |pkU|                      *)
 
-    out(c,                  (* return
+    out(c,                  (* return attestation response                      *)
         senc( ( attestation_cert, signAtt( (pkU, attpkU, challengeU), attskU ) ), k)
        );
 
 
     (* Authentication *)
+
     in(c, s1:bitstring);
     let mess1 = sdec(s1, k) in
 
@@ -534,7 +540,7 @@ let processServer (k: key, a:RP_id) =
 
 
 process
-  new k: key; (* assume TLS handshake is error-free and yields this symmetric channel encryption key *)
+  new k: key; (* assume TLS handshake is error-free and yields this symmetric channel-encryption key *)
   new attskU: AttestationPrivatekey; (* assume a particular authenticator with a particular attestation
                                         private key *)
 
