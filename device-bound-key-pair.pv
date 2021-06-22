@@ -87,7 +87,8 @@
                           fmt: text,
                           attStmt: { * tstr => any } ; Map is filled in by each concrete attStmtType
 
-                        ; in most formats, the attStmt contains a signature value over:  authData || clientDataHash
+                        ; in most formats, the attStmt contains a signature value of:
+                        ;   sign (authData || clientDataHash
                       )
 
 
@@ -447,12 +448,16 @@ query attacker(k).
 (***** Processes *****)
 
 let processUser ( k: key, attskU: AttestationPrivatekey, attpkU:AttestationPublicKey, attestation_cert:bitstring) =
+
     (* Registration *)
+
     in(c, s:bitstring);
-    let(challengeU:nonce, a:RP_id) = sdec(s,k) in
-    new skU:skey;
-    let pkU = spk(skU) in
-    out(c,
+    let (challengeU:nonce, a:RP_id) = sdec(s,k) in
+
+    new skU: skey;          (* mint new user credential "secret key user" |skU| *)
+    let pkU = spk(skU) in   (* and "public key user" |pkU|                      *)
+
+    out(c,                  (* return
         senc( ( attestation_cert, signAtt( (pkU, attpkU, challengeU), attskU ) ), k)
        );
 
@@ -477,15 +482,18 @@ let processUser ( k: key, attskU: AttestationPrivatekey, attpkU:AttestationPubli
 let processServer (k: key, a:RP_id) =
 
     (* Registration *)
+
     new challenge1:nonce;
-    out(c, senc((challenge1,a),k));
-    in(c, s:bitstring);
+    out(c, senc((challenge1, a), k));   (* send registration request *)
+    in(c, s:bitstring);                 (* receive possible registration response *)
+
     let m = sdec(s,k) in
     let (cert:bitstring, pkY1: pkey, attpkU1:AttestationPublicKey, credUser: bitstring, Nt:nonce) = getmessAtt(m) in
-    let ver = checksignAtt(m, attpkU1) in
+                                            (* if the above succeeds, we received a registration response *)
+    let ver = checksignAtt(m, attpkU1) in   (* verify signature on attestation response *)
 
     if (Nt=challenge1) then (  (* if we got here, then the signature on the registration response msg verified,
-                                  and if the challenge returned is the one for this user, then we will proceed
+                                  and if the challenge returned matches the one we sent, then we will proceed
                                   to challenge the user to authenticate (not an actually typical server behavior,
                                   this just simplifies the model). *)
 
@@ -526,12 +534,13 @@ let processServer (k: key, a:RP_id) =
 
 
 process
-  new k:key;
-  new attskU:AttestationPrivatekey;
+  new k: key; (* assume TLS handshake is error-free and yields this symmetric channel encryption key *)
+  new attskU: AttestationPrivatekey; (* assume a particular authenticator with a particular attestation
+                                        private key *)
 
   let attpkU = spkAtt(attskU) in
   (
-    !processUser( k, attskU, attpkU, attestation_cert) | !processServer(k, a)
+    !processUser(k, attskU, attpkU, attestation_cert) | !processServer(k, a)
   )
 
 
