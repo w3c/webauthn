@@ -29,7 +29,7 @@
                      }
             fmt
             attStmt             // typically contains the ENCOMPASSING SIGNATURE VALUE of
-                                // sign((authData, clientDataHash), AttestationPrivatekey)
+                                // sign((authData || clientDataHash), AttestationPrivatekey)
         }
     }
 
@@ -42,7 +42,8 @@
             signCount
             extensions          // devicePublicKey extension output will be in here
         }
-        signature           // ENCOMPASSING SIGNATURE VALUE over: authData || clientDataHash
+        signature           // ENCOMPASSING SIGNATURE VALUE of
+                            // sign((authData || clientDataHash), CredentialPublicKey)
     }
 
 
@@ -126,7 +127,7 @@
 
 
 
-==== Proposed Collected Syntax for devicePublicKey (dpk) (aka Secondary Key aka Device Key) Extension Output ====
+==== Proposed Syntax for devicePublicKey (dpk) (aka Secondary Key aka Device Key) Extension Output ====
 
     $$extensionOutput //= (                         // Expressed in CDDL
         devicePublicKey: AttObjForDevicePublicKey,
@@ -136,31 +137,50 @@
                                  ; and is analogous to `attObj`.
 
         dpkSignatureValue: bstr, ; result of sign((clientDataHash || userCredentialId), devicePrivateKey)
-                                 ; Note that this sig value changes per-request because clientDataHash contains
+                                 ; Note that this sig value is unique per-request because clientDataHash contains
                                  ; the per-request challenge.
 
-        authDataForDevicePublicKeyAttestation: bstr,    ; AuthDataForDevicePublicKeyAttestation goes here
+        authDataForDevicePublicKeyAttestation: bstr, ; AuthDataForDevicePublicKeyAttestation goes here (see below)
 
         $$attStmtType,      ; see <https://www.w3.org/TR/webauthn/#sctn-generating-an-attestation-object>.
                             ;
                             ; Attestation statement formats define the `fmt` and `attStmt` members of
                             ; $$attStmtType.
                             ;
-                            ; In summary, it contains (1) a signature value calculated (using the attestation private key)
-                            ; over just the bytes of `authDataForDevicePublicKeyAttestation`, and (2) the attestation
-                            ; certificate or public key, and supporting certificates, if any. Note
-                            ; that there are details dependent upon the particular attestation statement
+                            ; In summary, the `attStmt` contains:
+                            ;   (1) a SIGNATURE value calculated (using the attestation private key)
+                            ;       over the bytes of (authDataForDevicePublicKeyAttestation || rpIdHash), and
+                            ;   (2) the attestation certificate or public key, and supporting certificates, if any.
+                            ;
+                            ; Note that there are details dependent upon the particular attestation statement
                             ; format. See <https://www.w3.org/TR/webauthn/#sctn-defined-attestation-formats>.
     }
 
 
-    AuthDataForDevicePublicKeyAttestation = rpIdHash AAGUID devicePublicKey
-                                            ; Expressed in RFC5234 ABNF:
+    AuthDataForDevicePublicKeyAttestation = AAGUID devicePublicKey ; Expressed in RFC5234 ABNF:
 
-        rpIdHash                  = 32OCTET   ; SHA-256 hash of the RP ID the device key pair is scoped to
+      ; A rationale for also including `rpIdHash` here is so `AttObjForDevicePublicKey.attStmt`
+      ; is "self contained", i.e., so that the verifier would not need to "look elsewhere" in order
+      ; to verify the signature.
+      ; rpIdHash                  = 32OCTET   ; SHA-256 hash of the RP ID the device key pair is scoped to
+      ; HOWEVER, including rpIdHash here can make a substitution of the authDataForDevicePublicKeyAttestation "easier" because
+      ; then it could differ from the rpIdHash in the top-level message.
+
+      ; Do we also include these next two items here such that the `AttObjForDevicePublicKey.attStmt` is self-contained?
+      ; I.e., the verifier would not need to "look elsewhere" in order to have the data necessary for signature
+      ; verification
+      ;
+      ; CredIDLength              = 2OCTET    ; 16-bit unsigned big-endian integer
+      ; CredentialID              = 16*OCTET  ; CredIDLength octets, at least 16 octets long
+      ;
+      ; note-to-self: ANSWER TO ABOVE IS "no" wrt CredID because otherwise we'd also need to include the clientDataHash
+      ; and this is just plain getting unnecessarily too large.  plus credID is only needed to validate dpkSignatureValue.
+
         AAGUID                    = 16OCTET   ; authenticator's AAGUID
-        devicePublicKey           = 1*OCTET   ; self-describing variable length, COSE_Key format (CBOR-endoded)
+        devicePublicKey           = 1*OCTET   ; self-describing variable length, COSE_Key format (CBOR-encoded)
 
+      ; Another question here is whether for this `AuthDataForDevicePublicKeyAttestation` continues the tradition of an
+      ; undelimited bespoke binary format, or whether we encode it in CBOR ?
 
 
 
