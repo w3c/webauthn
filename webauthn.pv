@@ -1,0 +1,191 @@
+(* ProVerif Web Authentication Formal Model
+   originally by Iness Ben Guirat and Harry Halpin
+   Paper: https://dl.acm.org/doi/10.1145/3190619.3190640
+   Slides: https://cps-vo.org/node/48511
+   github: https://github.com/hhalpin/weauthn-model
+*)
+
+(**** webauthn-basic.pv ****
+
+See the paper section 5.2 for a detailed description of this model.
+
+In summary: This models first registration of a WebAuthn user credential with a server (aka Relying Party) and then subsequent authentication using that registered credential.  The model seeks to prove various properties of the protocol.
+
+Updated by Jeff Hodges with corrections and comments, May 2021
+http://kingsmountain.com/people/jeff.hodges/
+****)
+
+#include "crypto.pvl"
+#include "named_tuples.pvl"
+
+free c:channel.  (* TLS channel *)
+
+
+type nonce.
+
+(***** Server's ID *****)
+
+type RP_id.
+const a: RP_id [private].
+
+(***** Attestation Key Pair *****
+
+free attSecretKey: SKey [private].
+free attPublicKey: PKey [private].
+
+
+(***** Server's and authnr+clientPlatform's tuple messages *****)
+
+(* authnr+clientPlatform returns this to server: *)
+DEFINE_DATA_TYPE4(RegResponseMsg,
+                  userCredPubKey, PKey,
+                  attPublicKey, PKey,
+                  receivedRegChallenge, nonce,
+                  attSignature, bitstring).
+
+fun RegResponseMsg2b( RegResponseMsg ): bitstring [data , typeConverter].
+fun B2RegResponseMsg( bitstring ): RegResponseMsg [data , typeConverter].
+
+
+(* server sends this: *)
+DEFINE_DATA_TYPE2(AuthnRequestMsg,
+                  authnChallenge, nonce,
+                  serverName, RP_id).
+
+fun AuthnRequestMsg2b( AuthnRequestMsg ): bitstring [data , typeConverter].
+fun B2AuthnRequestMsg( bitstring ): AuthnRequestMsg [data , typeConverter].
+
+
+(* user's authnr+clientPlatform returns this to server: *)
+DEFINE_DATA_TYPE3(AuthnResponseMsg,
+                  returnedAuthnChallenge, nonce,
+                  serverName, RP_id,
+                  assertSignature, bitstring).
+
+fun AuthnResponseMsg2b( AuthnResponseMsg ): bitstring [data , typeConverter].
+fun B2AuthnResponseMsg( bitstring ): AuthnResponseMsg [data , typeConverter].
+
+
+
+free tlsKey: Key [private].  (* TLS symmetric encryption key *)
+
+
+
+
+(***** Events and Queries *****)
+
+event sentChallengeResponse(bitstring, bitstring).
+event validChallengeResponse(bitstring, bitstring).
+
+(* we can only receive a valid response if the user sent a response message *)
+query N:bitstring, s:bitstring; event(validChallengeResponse(N, s)) ==> event(sentChallengeResponse(N, s)).
+
+(* query N:bitstring; event(reachAuthentication(N)).
+event reachAuthentication(bitstring). *)
+
+(* query attacker(attSecretKey). *)
+(* query attacker(attPublicKey). *)
+query attacker(tlsKey).
+
+
+
+(***** Processes *****)
+
+let processUser ( k: Key, attskU: SKey, attpkU: PKey) =
+
+    (* Registration *)
+
+    in(c, s:bitstring);
+    let (challengeU:nonce, a:RP_id) = dec(s,k) in
+
+    new skU: SKey;          (* mint new user credential "secret key user" |skU| *)
+    let pkU = pk(skU) in    (* and "public key user" |pkU|                      *)
+
+    let regResponseMsg = BuildRegResponseMsg(pkU, attpkU, challengeU, sign((pkU, challengeU), attskU)) in
+    let regResponseMsgb = RegResponseMsg2b(regResponseMsg) in
+
+    out(c,                  (* return registration response with attestation *)
+        enc(regResponseMsgb, k)
+       );
+
+
+    (* Authentication *)
+
+    in(c, encAuthnRequestMsg: bitstring);   (* receive server's challenge. *)
+    let authnRequestMsgb = dec(encAuthnRequestMsg, k) in
+    let authnRequestMsg = B2AuthnRequestMsg(authnRequestMsgb) in
+    let receivedAuthnChallenge = AuthnRequestMsg_authnChallenge(authnRequestMsg) in
+    let receivedServerName = AuthnRequestMsg_serverName(authnRequestMsg) in
+
+    let assertionSignature = sign((receivedAuthnChallenge, receivedServerName), skU) in
+    let authnResponseMsg = BuildAuthnResponseMsg(receivedAuthnChallenge, receivedServerName, assertionSignature) in
+    let authnResponseMsgb = AuthnResponseMsg2b(authnResponseMsg) in
+
+    event sentChallengeResponse( authnResponseMsgb, enc(authnResponseMsgb, k) );
+    out(c,
+        enc(authnResponseMsgb, k)
+       ).
+
+
+
+let processServer (k: Key, a: RP_id) =
+
+    (* Registration *)
+
+    new regChallenge: nonce;
+
+    out(c, enc((regChallenge, a), k));        (* send registration request *)
+    in(c, encRegResponseMsg: bitstring);      (* receive possible registration response *)
+
+    let regResponseMsgb = dec(encRegResponseMsg, k) in (* decrypt and parse |encRegResponseMsg| *)
+    let regResponseMsg = B2RegResponseMsg(regResponseMsgb) in
+    let userPK = RegResponseMsg_userCredPubKey(regResponseMsg) in
+    let attPK = RegResponseMsg_attPublicKey(regResponseMsg) in
+    let returnedRegChallenge = RegResponseMsg_receivedRegChallenge(regResponseMsg) in
+    let attSig = RegResponseMsg_attSignature(regResponseMsg) in
+
+    if checkSign(attSig, (userPK, returnedRegChallenge), attPK) then (* we have a registration response msg with
+                                                                        a valid signature... *)
+
+    if (regChallenge = returnedRegChallenge) then (  (* ...and if the challenge returned matches the  then we
+                                                          one we sent, will proceed to challenge the user to
+                                                          authenticate. *)
+
+        (* Authentication *)
+
+        new authnChallenge: nonce;
+
+        (* let authnChallengeBitstr = nonce_to_bitstring( authnChallenge ) in  -- do we need to do this type conversion? *)
+
+        let authnRequestMsg = BuildAuthnRequestMsg(authnChallenge, a) in
+        let authnRequestMsgb = AuthnRequestMsg2b(authnRequestMsg) in
+
+        out(c, enc( authnRequestMsgb, k) );     (* send authentication request *)
+
+        in(c, encAuthnResponseMsg: bitstring);
+        let authnResponseMsgb = dec(encAuthnResponseMsg, k) in
+        let authnResponseMsg = B2AuthnResponseMsg(authnResponseMsgb) in
+        let retAuthnChallenge = AuthnResponseMsg_returnedAuthnChallenge(authnResponseMsg) in
+        let retServerName = AuthnResponseMsg_serverName(authnResponseMsg) in
+        let retAssertSignature = AuthnResponseMsg_assertSignature(authnResponseMsg) in
+
+        if (authnChallenge = retAuthnChallenge) && (a = retServerName) then
+        if checkSign(retAssertSignature, (retAuthnChallenge, retServerName), userPK) then
+
+        event validChallengeResponse(authnResponseMsgb, encAuthnResponseMsg)
+        ).
+
+
+
+process
+  new tlsKey: Key; (* assume TLS handshake is error-free and yields this symmetric channel-encryption key *)
+  new attSecretKey: SKey; (* assume a particular authenticator with a particular attestation
+                                              private key *)
+
+  let attPublicKey = pk(attSecretKey) in
+  (
+    !processUser(tlsKey, attSecretKey, attPublicKey) | !processServer(tlsKey, a)
+  )
+
+
+(***** END *****)
