@@ -1,42 +1,53 @@
-(* ProVerif Web Authentication Formal Model
+(* ProVerif Web Authentication Formal Model: webauthn.pv
    based on webauthn-basic.pv by Iness Ben Guirat
    Paper: https://dl.acm.org/doi/10.1145/3190619.3190640 (by Iness Ben Guirat and Harry Halpin)
    Slides: https://cps-vo.org/node/48511
    github: https://github.com/hhalpin/weauthn-model
 *)
 
-(**** webauthn-basic.pv ****
+(* INTRODUCTION:
 
-See the paper section 5.2 for a detailed description of this model.
+See the paper section 5.2 for a detailed description of the original model.
 
-In summary: This models first registration of a WebAuthn user credential with a server (aka Relying Party) and then subsequent authentication using that registered credential.  The model seeks to prove various properties of the protocol.
+This models a regostration of a WebAuthn user credential with a server (aka Relying Party) and then models subsequent authentication using that registered credential.  The model seeks to prove various properties of the protocol.
 
-Updated by Jeff Hodges with corrections and comments, May 2021
+This current model is by Jeff Hodges, July 2021
 http://kingsmountain.com/people/jeff.hodges/
-****)
+
+*)
+
 
 #include "crypto.pvl"
 #include "named_tuples.pvl"
 
-free c:channel.  (* TLS channel *)
 
+(** Comms Channel **)
+
+free c: channel.  (* TLS channel *)
+
+free tlsKey: Key [private].  (* TLS symmetric encryption key *)
+
+
+(* Various locally-defined types                                            *)
+(* (see crypto.pvl and named_tuples.pvl for types not defined in this file) *)
 
 type nonce.
 
-(***** Server's ID *****)
+
+(** Server's ID **)
 
 type RP_id.
 const a: RP_id [private].
 
-(***** Attestation Key Pair *****)
+(** Attestation Key Pair **)
 
 free attSecretKey: SKey [private].
 free attPublicKey: PKey [private].
 
 
-(***** Server's and authnr+clientPlatform's tuple messages *****)
+(** Server's and authnr+clientPlatform's tuple messages **)
 
-(* authnr+clientPlatform returns this to server: *)
+(* Registration Response message -- authnr+clientPlatform returns this to server: *)
 DEFINE_DATA_TYPE4(RegResponseMsg,
                   userCredPubKey, PKey,
                   attPublicKey, PKey,
@@ -47,7 +58,7 @@ fun RegResponseMsg2b( RegResponseMsg ): bitstring [data , typeConverter].
 fun B2RegResponseMsg( bitstring ): RegResponseMsg [data , typeConverter].
 
 
-(* server sends this: *)
+(* Authentication Request message -- server sends this to the client: *)
 DEFINE_DATA_TYPE2(AuthnRequestMsg,
                   authnChallenge, nonce,
                   serverName, RP_id).
@@ -56,7 +67,7 @@ fun AuthnRequestMsg2b( AuthnRequestMsg ): bitstring [data , typeConverter].
 fun B2AuthnRequestMsg( bitstring ): AuthnRequestMsg [data , typeConverter].
 
 
-(* user's authnr+clientPlatform returns this to server: *)
+(* Authentication Response message -- user's authnr+clientPlatform returns this to server: *)
 DEFINE_DATA_TYPE3(AuthnResponseMsg,
                   returnedAuthnChallenge, nonce,
                   serverName, RP_id,
@@ -67,12 +78,7 @@ fun B2AuthnResponseMsg( bitstring ): AuthnResponseMsg [data , typeConverter].
 
 
 
-free tlsKey: Key [private].  (* TLS symmetric encryption key *)
-
-
-
-
-(***** Events and Queries *****)
+(** Events and Queries **)
 
 event sentChallengeResponse(bitstring, bitstring).
 event validChallengeResponse(bitstring, bitstring).
@@ -89,7 +95,7 @@ query attacker(tlsKey).
 
 
 
-(***** Processes *****)
+(** Processes **)
 
 let processUser ( k: Key, attskU: SKey, attpkU: PKey) =
 
@@ -148,7 +154,7 @@ let processServer (k: Key, a: RP_id) =
                                                                         a valid signature... *)
 
     if (regChallenge = returnedRegChallenge) then (  (* ...and if the challenge returned matches the  then we
-                                                          one we sent, will proceed to challenge the user to
+                                                          one we sent, we will proceed to challenge the user to
                                                           authenticate. *)
 
         (* Authentication *)
@@ -173,7 +179,7 @@ let processServer (k: Key, a: RP_id) =
         if checkSign(retAssertSignature, (retAuthnChallenge, retServerName), userPK) then
 
         event validChallengeResponse(authnResponseMsgb, encAuthnResponseMsg)
-        ).
+    ).
 
 
 
@@ -188,4 +194,4 @@ process
   )
 
 
-(***** END *****)
+(** END **)
