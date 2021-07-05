@@ -47,6 +47,15 @@ free attPublicKey: PKey [private].
 
 (** Server's and authnr+clientPlatform's tuple messages **)
 
+(* Registration Request message -- server sends this to the user's authnr+clientPlatform: *)
+DEFINE_DATA_TYPE2(RegRequestMsg,
+                  regChallenge, nonce,
+                  serverName, RP_id).
+
+fun RegRequestMsg2b( RegRequestMsg ): bitstring [data, typeConverter].
+fun B2RegRequestMsg( bitstring ): RegRequestMsg [data, typeConverter].
+
+
 (* Registration Response message -- authnr+clientPlatform returns this to server: *)
 DEFINE_DATA_TYPE4(RegResponseMsg,
                   userCredPubKey, PKey,
@@ -54,8 +63,9 @@ DEFINE_DATA_TYPE4(RegResponseMsg,
                   receivedRegChallenge, nonce,
                   attSignature, bitstring).
 
-fun RegResponseMsg2b( RegResponseMsg ): bitstring [data , typeConverter].
-fun B2RegResponseMsg( bitstring ): RegResponseMsg [data , typeConverter].
+fun RegResponseMsg2b( RegResponseMsg ): bitstring [data, typeConverter].
+fun B2RegResponseMsg( bitstring ): RegResponseMsg [data, typeConverter].
+
 
 
 (* Authentication Request message -- server sends this to the client: *)
@@ -63,8 +73,8 @@ DEFINE_DATA_TYPE2(AuthnRequestMsg,
                   authnChallenge, nonce,
                   serverName, RP_id).
 
-fun AuthnRequestMsg2b( AuthnRequestMsg ): bitstring [data , typeConverter].
-fun B2AuthnRequestMsg( bitstring ): AuthnRequestMsg [data , typeConverter].
+fun AuthnRequestMsg2b( AuthnRequestMsg ): bitstring [data, typeConverter].
+fun B2AuthnRequestMsg( bitstring ): AuthnRequestMsg [data, typeConverter].
 
 
 (* Authentication Response message -- user's authnr+clientPlatform returns this to server: *)
@@ -73,9 +83,8 @@ DEFINE_DATA_TYPE3(AuthnResponseMsg,
                   serverName, RP_id,
                   assertSignature, bitstring).
 
-fun AuthnResponseMsg2b( AuthnResponseMsg ): bitstring [data , typeConverter].
-fun B2AuthnResponseMsg( bitstring ): AuthnResponseMsg [data , typeConverter].
-
+fun AuthnResponseMsg2b( AuthnResponseMsg ): bitstring [data, typeConverter].
+fun B2AuthnResponseMsg( bitstring ): AuthnResponseMsg [data, typeConverter].
 
 
 (** Events and Queries **)
@@ -101,13 +110,16 @@ let processClientAndAuthnr ( k: Key, attskU: SKey, attpkU: PKey) =
 
     (* Registration *)
 
-    in(c, s:bitstring);
-    let (challengeU:nonce, a:RP_id) = dec(s,k) in
+    in(c, encRegRequestMsg:bitstring);
+    let regRequestMsgb = dec(encRegRequestMsg, k) in
+    let regRequestMsg = B2RegRequestMsg(regRequestMsgb) in
+    let receivedRegChallenge = RegRequestMsg_regChallenge(regRequestMsg) in
+    let receivedServerName = RegRequestMsg_serverName(regRequestMsg) in
 
     new skU: SKey;          (* mint new user credential "secret key user" |skU| *)
     let pkU = pk(skU) in    (* and "public key user" |pkU|                      *)
 
-    let regResponseMsg = BuildRegResponseMsg(pkU, attpkU, challengeU, sign((pkU, challengeU), attskU)) in
+    let regResponseMsg = BuildRegResponseMsg(pkU, attpkU, receivedRegChallenge, sign((pkU, receivedRegChallenge), attskU)) in
     let regResponseMsgb = RegResponseMsg2b(regResponseMsg) in
 
     out(c,                  (* return registration response with attestation *)
