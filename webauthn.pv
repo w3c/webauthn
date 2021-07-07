@@ -57,16 +57,46 @@ fun RegRequestMsg2b( RegRequestMsg ): bitstring [data, typeConverter].
 fun B2RegRequestMsg( bitstring ): RegRequestMsg [data, typeConverter].
 
 
-(** Registration Response message -- authnr+clientPlatform returns this to server: **)
-DEFINE_DATA_TYPE4(RegResponseMsg,
+(** Attestation Statement, Authenticator Data, and Attestation Object: **)
+
+DEFINE_DATA_TYPE2(AttStatement,
+                  attSignature, bitstring,
+                  attPublicKey, PKey).
+
+fun AttStatement2b( AttStatement ): bitstring [data, typeConverter].
+fun B2AttStatement( bitstring ): AttStatement [data, typeConverter].
+
+
+type Extensions. (* placeholder for now *)
+free extensions: Extensions [data, private].
+
+
+DEFINE_DATA_TYPE3(AuthData,
+                  serverName, RP_id,
                   userCredPubKey, PKey,
-                  attPublicKey, PKey,
-                  receivedRegChallenge, nonce,
-                  attSignature, bitstring).
+                  extensions, Extensions).
 
-fun RegResponseMsg2b( RegResponseMsg ): bitstring [data, typeConverter].
-fun B2RegResponseMsg( bitstring ): RegResponseMsg [data, typeConverter].
+fun AuthData2b( AuthData ): bitstring [data, typeConverter].
+fun B2AuthData( bitstring ): AuthData [data, typeConverter].
 
+
+DEFINE_DATA_TYPE2(AttObject,
+                  attStatement, AttStatement,
+                  authData, AuthData).
+
+fun AttObject2b( AttObject ): bitstring [data, typeConverter].
+fun B2AttObject( bitstring ): AttObject [data, typeConverter].
+
+
+
+(** Registration Response message: AuthenticatorAttestationResponse -- authnr+clientPlatform returns this to server: **)
+
+DEFINE_DATA_TYPE2(AuthnrAttResponseMsg,
+                  challenge, nonce,
+                  attObject, AttObject).
+
+fun AuthnrAttResponseMsg2b( AuthnrAttResponseMsg ): bitstring [data, typeConverter].
+fun B2AuthnrAttResponseMsg( bitstring ): AuthnrAttResponseMsg [data, typeConverter].
 
 
 (** Authentication Request message -- server sends this to the client: **)
@@ -121,11 +151,20 @@ let processClientAndAuthnr ( k: Key, attskU: SKey, attpkU: PKey) =
     new skU: SKey;          (* mint new user credential "secret key user" |skU| *)
     let pkU = pk(skU) in    (* and "public key user" |pkU|                      *)
 
-    let regResponseMsg = BuildRegResponseMsg(pkU, attpkU, receivedRegChallenge, sign((pkU, receivedRegChallenge), attskU)) in
-    let regResponseMsgb = RegResponseMsg2b(regResponseMsg) in
+    let authData = BuildAuthData(receivedServerName, pkU, extensions) in
+
+    let attSignature = sign( (authData, receivedRegChallenge), attskU) in
+
+    let attStatement = BuildAttStatement(attSignature, attpkU) in
+
+    let attObject = BuildAttObject(attStatement, authData) in
+
+    let authnrAttResponseMsg = BuildAuthnrAttResponseMsg(receivedRegChallenge, attObject) in
+
+    let authnrAttResponseMsgb = AuthnrAttResponseMsg2b(authnrAttResponseMsg) in
 
     out(c,                  (* return registration response with attestation *)
-        enc(regResponseMsgb, k)
+        enc(authnrAttResponseMsgb, k)
        );
 
 
@@ -155,14 +194,23 @@ let processServer (k: Key, a: RP_id) =
     new regChallenge: nonce;
 
     out(c, enc((regChallenge, a), k));        (* send registration request *)
-    in(c, encRegResponseMsg: bitstring);      (* receive possible registration response *)
 
-    let regResponseMsgb = dec(encRegResponseMsg, k) in (* decrypt and parse |encRegResponseMsg| *)
-    let regResponseMsg = B2RegResponseMsg(regResponseMsgb) in
-    let userPK = RegResponseMsg_userCredPubKey(regResponseMsg) in
-    let attPK = RegResponseMsg_attPublicKey(regResponseMsg) in
-    let returnedRegChallenge = RegResponseMsg_receivedRegChallenge(regResponseMsg) in
-    let attSig = RegResponseMsg_attSignature(regResponseMsg) in
+    (* ----- *)
+
+    in(c, encAuthnrAttResponseMsg: bitstring);      (* receive possible registration response *)
+
+    let authnrAttResponseMsgb = dec(encAuthnrAttResponseMsg, k) in (* decrypt and parse |encAuthnrAttResponseMsg| *)
+    let authnrAttResponseMsg = B2AuthnrAttResponseMsg(authnrAttResponseMsgb) in
+
+    let returnedRegChallenge = AuthnrAttResponseMsg_challenge(authnrAttResponseMsg) in
+    let returnedAttObject = AuthnrAttResponseMsg_attObject(authnrAttResponseMsg) in
+
+    let returnedAttStatement = AttObject_attStatement(
+
+
+    let userPK = AuthnrAttResponseMsg_userCredPubKey(authnrAttResponseMsg) in
+    let attPK = AuthnrAttResponseMsg_attPublicKey(authnrAttResponseMsg) in
+    let attSig = AuthnrAttResponseMsg_attSignature(authnrAttResponseMsg) in
 
     if checkSign(attSig, (userPK, returnedRegChallenge), attPK) then (* we have a registration response msg with
                                                                         a valid signature... *)
