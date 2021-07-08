@@ -38,7 +38,7 @@ type nonce.
 
 type RP_id.
 const a: RP_id (* [private] *).
-
+type Extensions. (* placeholder for now *)
 
 (* Attestation Key Pair *)
 
@@ -49,15 +49,17 @@ free attPublicKey: PKey (* [private] *). (* an attacker can obtain the attPublic
 (* Server's and authnr+clientPlatform's tuple messages *)
 
 (** Registration Request message -- server sends this to the user's authnr+clientPlatform: **)
-DEFINE_DATA_TYPE2(RegRequestMsg,
+
+DEFINE_DATA_TYPE3(RegRequestMsg,
                   regChallenge, nonce,
-                  serverName, RP_id).
+                  serverName, RP_id,
+                  extensions, Extensions).
 
 fun RegRequestMsg2b( RegRequestMsg ): bitstring [data, typeConverter].
 fun B2RegRequestMsg( bitstring ): RegRequestMsg [data, typeConverter].
 
 
-(** Attestation Statement, Authenticator Data, and Attestation Object: **)
+(** Registration Response message -- Attestation Statement, Authenticator Data, and Attestation Object: **)
 
 DEFINE_DATA_TYPE2(AttStatement,
                   attSignature, bitstring,
@@ -67,11 +69,11 @@ fun AttStatement2b( AttStatement ): bitstring [data, typeConverter].
 fun B2AttStatement( bitstring ): AttStatement [data, typeConverter].
 
 
-type Extensions. (* placeholder for now *)
+(*
 fun BuildExtensions(bitstring): Extensions [data].
 reduc forall devicePublicKey: bitstring;
     Extensions_devicePublicKey(BuildExtensions(devicePublicKey)) = devicePublicKey.
-
+*)
 
 DEFINE_DATA_TYPE3(AuthData,
                   serverName, RP_id,
@@ -122,15 +124,12 @@ fun B2AuthnResponseMsg( bitstring ): AuthnResponseMsg [data, typeConverter].
 
 (* Events and Queries *)
 
-event sentChallengeResponse(bitstring, bitstring).
-event validChallengeResponse(bitstring, bitstring).
+event sendingAuthnResponse(bitstring, bitstring).
+event receivedValidAuthnResponse(bitstring, bitstring).
 
 (** we can only receive a valid response if the user's authnr+clientPlatform sent a response message **)
-query N:bitstring, s:bitstring; event(validChallengeResponse(N, s)) ==> event(sentChallengeResponse(N, s)).
+query N:bitstring, s:bitstring; event(receivedValidAuthnResponse(N, s)) ==> event(sendingAuthnResponse(N, s)).
 
-(** This was in the original model, am not sure what the intent was...
-query N:bitstring; event(reachAuthentication(N)).
-event reachAuthentication(bitstring). **)
 
 query attacker(attSecretKey).
 query attacker(attPublicKey).
@@ -144,48 +143,49 @@ let processClientAndAuthnr ( k: Key, attskU: SKey, attpkU: PKey) =
 
     (** Registration **)
 
-    in(c, encRegRequestMsg:bitstring);
+    in(c, encRegRequestMsg: bitstring);             (* receive and parse registration request msg *)
     let regRequestMsgb = dec(encRegRequestMsg, k) in
     let regRequestMsg = B2RegRequestMsg(regRequestMsgb) in
     let receivedRegChallenge = RegRequestMsg_regChallenge(regRequestMsg) in
     let receivedServerName = RegRequestMsg_serverName(regRequestMsg) in
+    let receivedExtensions = RegRequestMsg_extensions(regRequestMsg) in
 
-    new skU: SKey;          (* mint new user credential "secret key user" |skU| *)
-    let pkU = pk(skU) in    (* and "public key user" |pkU|                      *)
+    new skU: SKey;                                  (* mint new user credential "secret key user" |skU| *)
+    let pkU = pk(skU) in                            (* and "public key user" |pkU|                      *)
+    new extensionsOutputs: Extensions;
 
-    let authData = BuildAuthData(receivedServerName, pkU, extensions) in
-
+    let authData = BuildAuthData(receivedServerName, pkU, extensionsOutputs) in  (* construct attestation object *)
     let attSignature = sign( (authData, receivedRegChallenge), attskU ) in
-
     let attStatement = BuildAttStatement(attSignature, attpkU) in
-
     let attObject = BuildAttObject(attStatement, authData) in
 
     let authnrAttResponseMsg = BuildAuthnrAttResponseMsg(receivedRegChallenge, attObject) in
-
     let authnrAttResponseMsgb = AuthnrAttResponseMsg2b(authnrAttResponseMsg) in
 
-    out(c,                  (* return registration response with attestation *)
+    out(c,                                          (* return registration response with attestation *)
         enc(authnrAttResponseMsgb, k)
        );
 
 
     (** Authentication **)
 
-    in(c, encAuthnRequestMsg: bitstring);   (* receive server's challenge. *)
+    in(c, encAuthnRequestMsg: bitstring);           (* receive server's challenge. *)
+
     let authnRequestMsgb = dec(encAuthnRequestMsg, k) in
     let authnRequestMsg = B2AuthnRequestMsg(authnRequestMsgb) in
     let receivedAuthnChallenge = AuthnRequestMsg_authnChallenge(authnRequestMsg) in
     let receivedServerName = AuthnRequestMsg_serverName(authnRequestMsg) in
 
     let assertionSignature = sign((receivedAuthnChallenge, receivedServerName), skU) in
+
     let authnResponseMsg = BuildAuthnResponseMsg(receivedAuthnChallenge, receivedServerName, assertionSignature) in
     let authnResponseMsgb = AuthnResponseMsg2b(authnResponseMsg) in
 
-    event sentChallengeResponse( authnResponseMsgb, enc(authnResponseMsgb, k) );
-    out(c,
-        enc(authnResponseMsgb, k)
-       ).
+    let encAuthnResponseMsgFromAuthnr = enc(authnResponseMsgb, k) in
+
+    event sendingAuthnResponse( authnResponseMsgb, encAuthnResponseMsgFromAuthnr );
+
+    out(c, encAuthnResponseMsgFromAuthnr).            (* return authn response *)
 
 
 
@@ -194,14 +194,18 @@ let processServer (k: Key, a: RP_id) =
     (** Registration **)
 
     new regChallenge: nonce;
+    new requestedExtensions: Extensions;
 
-    out(c, enc((regChallenge, a), k));        (* send registration request *)
+    let regRequestMsg = BuildRegRequestMsg(regChallenge, a, requestedExtensions) in
+    let regRequestMsgb = RegRequestMsg2b(regRequestMsg) in
+
+    out(c, enc(regRequestMsgb, k));        (* send registration request *)
 
     (* ----- *)
 
     in(c, encAuthnrAttResponseMsg: bitstring);      (* receive possible registration response *)
 
-    let authnrAttResponseMsgb = dec(encAuthnrAttResponseMsg, k) in (* decrypt and parse |encAuthnrAttResponseMsg| *)
+    let authnrAttResponseMsgb = dec(encAuthnrAttResponseMsg, k) in              (* decrypt and parse |encAuthnrAttResponseMsg| *)
     let authnrAttResponseMsg = B2AuthnrAttResponseMsg(authnrAttResponseMsgb) in
 
     let returnedRegChallenge = AuthnrAttResponseMsg_challenge(authnrAttResponseMsg) in
@@ -220,10 +224,9 @@ let processServer (k: Key, a: RP_id) =
     if checkSign(attSig, (returnedAuthData, returnedRegChallenge), attPK) then (* we have a registration response msg with
                                                                                   a valid signature... *)
 
-    if (regChallenge = returnedRegChallenge) then (  (* ...and if the challenge returned matches the  then we
-                                                          one we sent, we will proceed to challenge the user to
-                                                          authenticate. *)
-
+    if (regChallenge = returnedRegChallenge) then (                         (* ...and if the challenge returned matches the
+                                                                                  one we sent, we will proceed to challenge
+                                                                                  the user to authenticate. *)
         (** Authentication **)
 
         new authnChallenge: nonce;
@@ -233,10 +236,13 @@ let processServer (k: Key, a: RP_id) =
         let authnRequestMsg = BuildAuthnRequestMsg(authnChallenge, a) in
         let authnRequestMsgb = AuthnRequestMsg2b(authnRequestMsg) in
 
-        out(c, enc( authnRequestMsgb, k) );     (* send authentication request *)
+        out(c, enc(authnRequestMsgb, k) );                                  (* send authentication request *)
 
-        in(c, encAuthnResponseMsg: bitstring);
-        let authnResponseMsgb = dec(encAuthnResponseMsg, k) in
+        (* ----- *)
+
+        in(c, encAuthnResponseMsg: bitstring);                              (* receive authn response *)
+
+        let authnResponseMsgb = dec(encAuthnResponseMsg, k) in              (* decrypt and parse |encAuthnResponseMsg| *)
         let authnResponseMsg = B2AuthnResponseMsg(authnResponseMsgb) in
         let retAuthnChallenge = AuthnResponseMsg_returnedAuthnChallenge(authnResponseMsg) in
         let retServerName = AuthnResponseMsg_serverName(authnResponseMsg) in
@@ -245,7 +251,7 @@ let processServer (k: Key, a: RP_id) =
         if (authnChallenge = retAuthnChallenge) && (a = retServerName) then
         if checkSign(retAssertSignature, (retAuthnChallenge, retServerName), userPK) then
 
-        event validChallengeResponse(authnResponseMsgb, encAuthnResponseMsg)
+        event receivedValidAuthnResponse(authnResponseMsgb, encAuthnResponseMsg)
     ).
 
 
