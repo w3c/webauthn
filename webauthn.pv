@@ -3,6 +3,8 @@
    Paper: https://dl.acm.org/doi/10.1145/3190619.3190640 (by Iness Ben Guirat and Harry Halpin)
    Slides: https://cps-vo.org/node/48511
    github: https://github.com/hhalpin/weauthn-model
+   ------
+   [MANUAL]: The proverif manual is here: https://prosecco.gforge.inria.fr/personal/bblanche/proverif/manual.pdf
 *)
 
 (* INTRODUCTION:
@@ -43,7 +45,8 @@ type Extensions. (* placeholder for now *)
 (* Attestation Key Pair *)
 
 free attSecretKey: SKey [private].
-free attPublicKey: PKey (* [private] *). (* an attacker can obtain the attPublicKey from (eg) metadata *)
+free attPublicKey: PKey (* [private] *). (* an attacker can obtain the attPublicKey from several sources,
+                                            e.g.: an authenticator itself, or authenticator metadata *)
 
 
 (* Server's and authnr+clientPlatform's tuple messages *)
@@ -132,9 +135,12 @@ query msg:bitstring, msg':bitstring;
     inj-event(receivedValidAuthnResponse(msg)) ==> inj-event(sendingAuthnResponse(msg')).
 
 
-query attacker(attSecretKey).
-query attacker(attPublicKey).
-query attacker(tlsKey).
+query   attacker(attSecretKey).
+query   attacker(attPublicKey).
+query   attacker(tlsKey).
+
+query   secret regChallengeQ;   (* secrecy queries (see "5.1.2 Security properties" in [MANUAL]) *)
+        secret authnChallengeQ.
 
 
 
@@ -163,9 +169,9 @@ let processClientAndAuthnr ( k: Key, attskU: SKey, attpkU: PKey) =
     let authnrAttResponseMsg = BuildAuthnrAttResponseMsg(receivedRegChallenge, attObject) in
     let authnrAttResponseMsgb = AuthnrAttResponseMsg2b(authnrAttResponseMsg) in
 
-    out(c,                                          (* return registration response with attestation *)
-        enc(authnrAttResponseMsgb, k)
-       );
+    let encAuthnrAttResponseMsg = enc(authnrAttResponseMsgb, k) in
+
+    out(c, encAuthnrAttResponseMsg);                (* return registration response with attestation *)
 
 
     (** Authentication **)
@@ -252,7 +258,12 @@ let processServer (k: Key, a: RP_id) =
         if (authnChallenge = retAuthnChallenge) && (a = retServerName) then
         if checkSign(retAssertSignature, (retAuthnChallenge, retServerName), userPK) then
 
-        event receivedValidAuthnResponse(encAuthnResponseMsg)
+        event receivedValidAuthnResponse(encAuthnResponseMsg);
+
+        (* set up for secrecy queries (see "5.1.2 Security properties" in [MANUAL]) *)
+        let regChallengeQ = regChallenge in
+        let authnChallengeQ = authnChallenge
+
     ).
 
 
