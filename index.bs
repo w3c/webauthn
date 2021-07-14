@@ -1158,7 +1158,7 @@ The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "S
 
     At [=registration=] time, the [=authenticator=] creates an asymmetric key pair, and stores its [=credential private
     key|private key portion=] and information from the [=[RP]=] into a [=public key credential source=]. The [=credential public
-    key|public key portion=] is returned to the [=[RP]=], who then stores it in conjunction with the present user's account.
+    key|public key portion=] is returned to the [=[RP]=], which then stores it in the active [=user account=].
     Subsequently, only that [=[RP]=], as identified by its [=RP ID=], is able to employ the [=public key credential=] in
     [=authentication|authentication ceremonies=], via the {{CredentialsContainer/get()}} method. The [=[RP]=] uses its stored
     copy of the [=credential public key=] to verify the resultant [=authentication assertion=].
@@ -1173,7 +1173,7 @@ The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "S
 : <dfn>Registration</dfn>
 : <dfn>Registration Ceremony</dfn>
 :: The [=ceremony=] where a user, a [=[RP]=], and the user's [=client=] (containing at least one
-    [=authenticator=]) work in concert to create a [=public key credential=] and associate it with the user's [=[RP]=] account.
+    [=authenticator=]) work in concert to create a [=public key credential=] and associate it with a [=user account=].
     Note that this includes employing a [=test of user presence=] or [=user verification=].
     After a successful [=registration ceremony=], the user can be authenticated by an [=authentication ceremony=].
 
@@ -1246,25 +1246,35 @@ The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "S
     is not capable of [=biometric recognition=], nor does it involve the presentation of a shared secret such as a password or
     PIN.
 
+: <dfn>User Account</dfn>
+:: In the context of this specification, a [=user account=] is some section of a [=[RP]=]'s services,
+    identified by a [=user handle=]
+    and associated with some set of [=credentials=] that a user may use to gain access to that section of services.
+    The set of credentials might change over time.
+    One user account might be accessed by one or more users and one user might have access to one or more user accounts,
+    depending on the user(s) and the [=[RP]=].
+
 : <dfn>User Consent</dfn>
 :: User consent means the user agrees with what they are being asked, i.e., it encompasses reading and understanding prompts.
     An [=authorization gesture=] is a [=ceremony=] component often employed to indicate [=user consent=].
 
 : <dfn>User Handle</dfn>
-:: A user handle is an identifier for a user, specified by the [=[RP]=] as
+:: A user handle is an identifier for a [=user account=], specified by the [=[RP]=] as
     <code>{{PublicKeyCredentialCreationOptions/user}}.{{PublicKeyCredentialUserEntity/id}}</code>
     during [=registration=].
     [=Discoverable credentials=] store this identifier and return it as
     <code>{{PublicKeyCredential/response}}.{{AuthenticatorAssertionResponse/userHandle}}</code>
     in [=authentication ceremonies=] started with an [=list/empty=]
     <code>{{PublicKeyCredentialRequestOptions/allowCredentials}}</code> argument.
-    Its main use is to identify the user in such [=authentication ceremonies=],
+
+    The main use of the [=user handle=] is to identify the [=user account=] in such [=authentication ceremonies=],
     but the [=credential ID=] could be used instead.
     The main differences are
-    that the [=user handle=] is chosen by the [=[RP]=] and MAY be the same for all of a user's [=credentials=],
-    while the [=credential ID=] is chosen by the [=authenticator=] and unique for each credential.
+    that the [=credential ID=] is chosen by the [=authenticator=] and unique for each credential,
+    while the [=user handle=] is chosen by the [=[RP]=] and ought to be the same
+    for all [=credentials=] registered to the same [=user account=].
 
-    [=Authenticators=] [=credentials map|map=] pairs of [=RP ID=] and user handle to [=public key credential sources=].
+    [=Authenticators=] [=credentials map|map=] pairs of [=RP ID=] and [=user handle=] to [=public key credential sources=].
     As a consequence, an authenticator will store at most one [=discoverable credential=] per [=user handle=] per [=[RP]=].
 
     A user handle is an opaque [=byte sequence=] with a maximum size of 64 bytes, and is not meant to be displayed to the user.
@@ -1287,7 +1297,7 @@ The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "S
     and [=authenticator=]'s capabilities.
     For example, some devices are intended to be used by a single individual,
     yet they may allow multiple natural persons to enroll fingerprints or know the same PIN
-    and thus access the same [=[RP]=] account(s) using that device.
+    and thus access the same [=user account=](s) using that device.
 
     <div class="note">
         Note: Invocation of the [=authenticatorMakeCredential=] and [=authenticatorGetAssertion=] operations
@@ -2527,7 +2537,7 @@ optionally evidence of [=user consent=] to a specific transaction.
         for further details.
 
     :   <dfn>user</dfn>
-    ::  This member contains identifiers for the user account performing the [=registration=].
+    ::  This member contains names and an identifier for the [=user account=] performing the [=registration=].
 
         Its value's {{PublicKeyCredentialEntity/name}}, {{PublicKeyCredentialUserEntity/displayName}} and
         {{PublicKeyCredentialUserEntity/id}} members are REQUIRED.
@@ -2556,10 +2566,9 @@ optionally evidence of [=user consent=] to a specific transaction.
         treated as a hint, and MAY be overridden by the [=client=].
 
     :   <dfn>excludeCredentials</dfn>
-    ::  This OPTIONAL member lists [=credentials=] the user has already registered,
-        and is used to ensure that the new credential is [=created on=] an [=authenticator=] not already registered.
-        The [=client=] and [=authenticators=] will prevent the user from creating the new credential on an authenticator
-        that also [=contains=] one of the credentials listed in {{PublicKeyCredentialCreationOptions/excludeCredentials}}.
+    ::  The [=[RP]=] SHOULD use this OPTIONAL member to list any existing [=credentials=] mapped to this [=user account=]
+        (as identified by {{PublicKeyCredentialCreationOptions/user}}.{{PublicKeyCredentialUserEntity/id}}).
+        This ensures that a new credential is not [=created on=] an [=authenticator=] having an existing credential mapped to this [=user account=].
 
     :   <dfn>authenticatorSelection</dfn>
     ::  This OPTIONAL member specifies capabilities and settings
@@ -2583,7 +2592,7 @@ optionally evidence of [=user consent=] to a specific transaction.
 
 ### Public Key Entity Description (dictionary <dfn dictionary>PublicKeyCredentialEntity</dfn>) ### {#dictionary-pkcredentialentity}
 
-The {{PublicKeyCredentialEntity}} dictionary describes a user account, or a [=[WRP]=], which a [=public key credential=] is
+The {{PublicKeyCredentialEntity}} dictionary describes a [=user account=], or a [=[WRP]=], which a [=public key credential=] is
 associated with or [=scoped=] to, respectively.
 
 <xmp class="idl">
@@ -2610,7 +2619,7 @@ associated with or [=scoped=] to, respectively.
                 including the value as a parameter of the [=authenticatorMakeCredential=] operation.
 
           - When inherited by {{PublicKeyCredentialUserEntity}}, it is a [=human palatability|human-palatable=] identifier for a
-            user account. It is intended only for display, i.e., aiding the user in determining the difference between user
+            [=user account=]. It is intended only for display, i.e., aiding the user in determining the difference between user
             accounts with similar {{PublicKeyCredentialUserEntity/displayName}}s. For example, "alexm", "alex.mueller@example.com"
             or "+14255551234".
 
@@ -2651,7 +2660,7 @@ The {{PublicKeyCredentialRpEntity}} dictionary is used to supply additional [=[R
 
 ### User Account Parameters for Credential Generation (dictionary <dfn dictionary>PublicKeyCredentialUserEntity</dfn>) ### {#dictionary-user-credential-params}
 
-The {{PublicKeyCredentialUserEntity}} dictionary is used to supply additional user account attributes when creating a new
+The {{PublicKeyCredentialUserEntity}} dictionary is used to supply additional [=user account=] attributes when creating a new
 credential.
 
 <xmp class="idl">
@@ -2663,7 +2672,7 @@ credential.
 
 <div dfn-type="dict-member" dfn-for="PublicKeyCredentialUserEntity">
     :   <dfn>id</dfn>
-    ::  The [=user handle=] of the user account entity.
+    ::  The [=user handle=] of the [=user account=].
         A [=user handle=] is an opaque [=byte sequence=] with a maximum size of 64 bytes,
         and is not meant to be displayed to the user.
 
@@ -2674,10 +2683,13 @@ credential.
         The [=user handle=] MUST NOT contain [PII] about the user, such as a username or e-mail address;
         see [[#sctn-user-handle-privacy]] for details. The [=user handle=] MUST NOT be empty.
 
-        Note: the [=user handle=] <i>ought not</i> be a constant value across different accounts, even for [=non-discoverable credentials=], because some authenticators always create [=discoverable credentials=]. Thus a constant [=user handle=] would prevent a user from using such an authenticator with more than one account at the [=[RP]=].
+        Note: the [=user handle=] <i>ought not</i> be a constant value across different [=user accounts=],
+        even for [=non-discoverable credentials=], because some authenticators always create [=discoverable credentials=].
+        Thus a constant [=user handle=] would prevent a user from using such an authenticator
+        with more than one [=user account=] at the [=[RP]=].
 
     :   <dfn>displayName</dfn>
-    ::  A [=human palatability|human-palatable=] name for the user account, intended only for display. For example, "Alex Müller" or "田中倫". The
+    ::  A [=human palatability|human-palatable=] name for the [=user account=], intended only for display. For example, "Alex Müller" or "田中倫". The
         [=[RP]=] SHOULD let the user choose this, and SHOULD NOT restrict the choice more than necessary.
 
         - [=[RPS]=] SHOULD perform enforcement, as prescribed in Section 2.3 of
@@ -3813,7 +3825,7 @@ It takes the following input parameters:
 : |rpEntity|
 :: The [=[RP]=]'s {{PublicKeyCredentialRpEntity}}.
 : |userEntity|
-:: The user account's {{PublicKeyCredentialUserEntity}}, containing the [=user handle=] given by the [=[RP]=].
+:: The [=user account's=] {{PublicKeyCredentialUserEntity}}, containing the [=user handle=] given by the [=[RP]=].
 : |requireResidentKey|
 :: The [=effective resident key requirement for credential creation=], a Boolean value determined by the [=client=].
 : |requireUserPresence|
@@ -4557,9 +4569,9 @@ In order to perform a [=registration ceremony=], the [=[RP]=] MUST proceed as fo
     fail this [=registration ceremony=], or it MAY decide to accept the registration, e.g. while deleting the older registration.
 
 1. If the attestation statement |attStmt| verified successfully and is found to be trustworthy, then register the new
-    credential with the account that was denoted in <code>|options|.{{PublicKeyCredentialCreationOptions/user}}</code>:
+    credential with the [=user account=] that was denoted in <code>|options|.{{PublicKeyCredentialCreationOptions/user}}</code>:
 
-    - Associate the user's account with the <code>[=credentialId=]</code> and <code>[=credentialPublicKey=]</code>
+    - Associate the [=user account=] with the <code>[=credentialId=]</code> and <code>[=credentialPublicKey=]</code>
         in <code>|authData|.[=attestedCredentialData=]</code>, as appropriate for the [=[RP]=]'s system.
     - Associate the <code>[=credentialId=]</code> with a new stored [=signature counter=] value
         initialized to the value of <code>|authData|.[=signCount=]</code>.
@@ -6797,7 +6809,7 @@ multiple [=public key credential|credentials=] for the same user. For example, a
 frequently used [=client devices=], and one or more [=roaming credentials=] for use as backup and with new or rarely used [=client
 devices=].
 
-[=[RPS]=] SHOULD allow and encourage users to register multiple [=public key credential|credentials=] to the same account.
+[=[RPS]=] SHOULD allow and encourage users to register multiple [=public key credential|credentials=] to the same [=user account=].
 [=[RPS]=] SHOULD make use of the <code>{{PublicKeyCredentialCreationOptions/excludeCredentials}}</code> and
 <code>{{PublicKeyCredentialCreationOptions/user}}.{{PublicKeyCredentialUserEntity/id}}</code> options to ensure that these
 different [=public key credential|credentials=] are [=bound credential|bound=] to different [=authenticators=].
@@ -6812,12 +6824,12 @@ with a non-[=list/empty=] {{PublicKeyCredentialRequestOptions/allowCredentials}}
 For example, if using authentication with [=server-side credentials=] as the first authentication step.
 
 In this case the {{PublicKeyCredentialRequestOptions/allowCredentials}} argument risks leaking information
-about which user accounts have WebAuthn credentials registered and which do not,
+about which [=user accounts=] have WebAuthn credentials registered and which do not,
 which may be a signal of account protection strength.
 For example, say an attacker can initiate an [=authentication ceremony=] by providing only a username,
-and the [=[RP]=] responds with an non-empty {{PublicKeyCredentialRequestOptions/allowCredentials}} for some users,
-and with failure or a password challenge for other users.
-The attacker can then conclude that the latter user accounts
+and the [=[RP]=] responds with an non-empty {{PublicKeyCredentialRequestOptions/allowCredentials}} for some accounts,
+and with failure or a password challenge for other accounts.
+The attacker can then conclude that the latter accounts
 likely do not require a WebAuthn [=assertion=] for successful authentication,
 and thus focus an attack on those likely weaker accounts.
 
@@ -6900,8 +6912,9 @@ authentication, they are designed to be minimally identifying and not shared bet
 
 Additionally, a [=client-side discoverable public key credential source=] can optionally include a [=user
 handle=] specified by the [=[RP]=]. The [=public key credential|credential=] can then be used to both identify and
-[=authentication|authenticate=] the user. This means that a privacy-conscious [=[RP]=] can allow the user to create an account
-without a traditional username, further improving non-correlatability between [=[RPS]=].
+[=authentication|authenticate=] the user.
+This means that a privacy-conscious [=[RP]=] can allow creating a [=user account=] without a traditional username,
+further improving non-correlatability between [=[RPS]=].
 
 
 ## Authenticator-local [=Biometric Recognition=] ## {#sctn-biometric-privacy}
@@ -7022,7 +7035,7 @@ only to the operating system user that created that [=platform credential=].
 Since the [=user handle=] is not considered [PII] in [[#sctn-pii-privacy]], the [=[RP]=] MUST NOT include [PII], e.g., e-mail
 addresses or usernames, in the [=user handle=]. This includes hash values of [PII], unless the hash
 function is [=salted=] with [=salt=] values private to the [=[RP]=], since hashing does not prevent probing for guessable input
-values. It is RECOMMENDED to let the [=user handle=] be 64 random bytes, and store this value in the user's account.
+values. It is RECOMMENDED to let the [=user handle=] be 64 random bytes, and store this value in the [=user account=].
 
 
 ### Username Enumeration ### {#sctn-username-enumeration}
@@ -7032,7 +7045,7 @@ information about its registered users. For example, if a [=[RP]=] uses e-mail a
 initiate an [=authentication=] [=ceremony=] for "alex.mueller@example.com" and the [=[RP]=] responds with a failure, but then
 successfully initiates an [=authentication ceremony=] for "j.doe@example.com", then the attacker can conclude that "j.doe@example.com"
 is registered and "alex.mueller@example.com" is not. The [=[RP]=] has thus leaked the possibly sensitive information that
-"j.doe@example.com" has an account at this [=[RP]=].
+"j.doe@example.com" has a [=user account=] at this [=[RP]=].
 
 The following is a non-normative, non-exhaustive list of measures the [=[RP]=] may implement to mitigate or prevent information
 leakage due to such an attack:
@@ -7062,7 +7075,7 @@ leakage due to such an attack:
 
 - For [=authentication ceremonies=]:
 
-    - If, when initiating an [=authentication ceremony=], there is no account matching the provided username, continue the
+    - If, when initiating an [=authentication ceremony=], there is no [=user account=] matching the provided username, continue the
         ceremony by invoking {{CredentialsContainer/get()|navigator.credentials.get()}} using a syntactically valid
         {{PublicKeyCredentialRequestOptions}} object that is populated with plausible imaginary values.
 
