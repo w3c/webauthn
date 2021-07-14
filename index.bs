@@ -2529,7 +2529,7 @@ optionally evidence of [=user consent=] to a specific transaction.
 </xmp>
 <div dfn-type="dict-member" dfn-for="PublicKeyCredentialCreationOptions">
     :   <dfn>rp</dfn>
-    ::  This member contains identifiers for the [=[RP]=] responsible for the request.
+    ::  This member contains a name and an identifier for the [=[RP]=] responsible for the request.
 
         Its value's {{PublicKeyCredentialEntity/name}} member is REQUIRED. See [[#dictionary-pkcredentialentity]] for further
         details.
@@ -2547,7 +2547,7 @@ optionally evidence of [=user consent=] to a specific transaction.
         {{PublicKeyCredentialUserEntity/id}} can be returned as the {{AuthenticatorAssertionResponse/userHandle}}
         in some future [=authentication ceremonies=],
         and is used to overwrite existing [=discoverable credentials=]
-        with the same {{PublicKeyCredentialUserEntity/id}} on the same [=authenticator=].
+        that have the same {{PublicKeyCredentialUserEntity/id}} on the same [=authenticator=].
         {{PublicKeyCredentialEntity/name}} and {{PublicKeyCredentialUserEntity/displayName}}
         MAY be used by the [=authenticator=] and [=client=] in future [=authentication ceremonies=]
         to help the user select a [=credential=], but are not returned to the [=[RP]=].
@@ -2555,8 +2555,9 @@ optionally evidence of [=user consent=] to a specific transaction.
         For further details, see [[#dictionary-pkcredentialentity]] and [[#dictionary-user-credential-params]].
 
     :   <dfn>challenge</dfn>
-    ::  This member contains a challenge to be used for generating the newly created credential's [=attestation
-        object=]. See the [[#sctn-cryptographic-challenges]] security consideration.
+    ::  This member contains the [=[RP]=]'s challenge value
+        which is signed over by the authenticator when generating the newly created credential's [=attestation object=].
+        See the [[#sctn-cryptographic-challenges]] security consideration.
 
     :   <dfn>pubKeyCredParams</dfn>
     ::  This member lists the key types and signature algorithms the [=[RP]=] supports,
@@ -2571,22 +2572,23 @@ optionally evidence of [=user consent=] to a specific transaction.
     :   <dfn>excludeCredentials</dfn>
     ::  The [=[RP]=] SHOULD use this OPTIONAL member to list any existing [=credentials=] mapped to this [=user account=]
         (as identified by {{PublicKeyCredentialCreationOptions/user}}.{{PublicKeyCredentialUserEntity/id}}).
-        This ensures that a new credential is not [=created on=] an [=authenticator=] having an existing credential mapped to this [=user account=].
+        This ensures that a new credential is not [=created on=] an [=authenticator=] that [=contains=] an existing credential mapped to this [=user account=].
 
     :   <dfn>authenticatorSelection</dfn>
-    ::  This OPTIONAL member specifies capabilities and settings
+    ::  The [=[RP]=] MAY use this OPTIONAL member to specify capabilities and settings
         that the [=authenticator=] MUST or SHOULD satisfy to participate in the {{CredentialsContainer/create()}} operation.
         See [[#dictionary-authenticatorSelection]].
 
     :   <dfn>attestation</dfn>
-    ::  This OPTIONAL member specifies the [=[RP]=]'s preference for [=attestation conveyance=].
+    ::  The [=[RP]=] MAY use this OPTIONAL member to specify a preference regarding [=attestation conveyance=].
         Its value SHOULD be a member of {{AttestationConveyancePreference}}.
         [=Client platforms=] MUST ignore unknown values, treating an unknown value as if the [=map/exist|member does not exist=].
 
         The default value is {{AttestationConveyancePreference/none}}.
 
     :   <dfn>extensions</dfn>
-    ::  This OPTIONAL member contains [=client extension inputs=] requesting additional processing by the [=client=] and [=authenticator=].
+    ::  The [=[RP]=] MAY use this OPTIONAL member to provide [=client extension inputs=]
+        requesting additional processing by the [=client=] and [=authenticator=].
         For example, the [=[RP]=] may request that the client returns additional information about the [=credential=] that was created.
         Some extensions are defined in [[#sctn-extensions]];
         consult the IANA "WebAuthn Extension Identifiers" registry [[!IANA-WebAuthn-Registries]] established by [[!RFC8809]] for an up-to-date list
@@ -2729,11 +2731,14 @@ attributes.
 
 <div dfn-type="dict-member" dfn-for="AuthenticatorSelectionCriteria">
     :   <dfn>authenticatorAttachment</dfn>
-    ::  If this member is present, eligible authenticators are filtered to only authenticators attached with the
-        specified [=authenticator attachment modality=]. The value SHOULD be a member of {{AuthenticatorAttachment}} but [=client platforms=] MUST ignore unknown values, treating an unknown value as if the [=map/exist|member does not exist=].
+    ::  If this member is present, eligible [=authenticators=] are filtered to be only those authenticators attached with the specified
+        [[#enum-attachment|authenticator attachment modality]] (see also [[#sctn-authenticator-attachment-modality]]).
+        If this member is absent, then the [=[RP]=] is saying that any attachment modality is acceptable.
+        The value SHOULD be a member of {{AuthenticatorAttachment}} but [=client platforms=] MUST ignore unknown values,
+        treating an unknown value as if the [=map/exist|member does not exist=].
 
-        The resulting [=authenticator attachment modality|attachment=] for the created credential might be determinable
-        using the {{AuthenticatorAttestationResponse/getTransports()}} method of the [=registration=] result.
+        The [=[RP]=] can determine the resulting [=authenticator attachment modality|attachment=] for the created credential
+        using the {{AuthenticatorAttestationResponse/getTransports()}} method of the resulting {{AuthenticatorAttestationResponse}}.
         See [[#enum-transport]] for details.
 
     :   <dfn>residentKey</dfn>
@@ -2907,11 +2912,14 @@ an assertion. Its {{PublicKeyCredentialRequestOptions/challenge}} member MUST be
         [=effective domain=].
 
     :   <dfn>allowCredentials</dfn>
-    ::  This OPTIONAL member lists [=credentials=] the user has [=registration ceremony|registered=],
+    ::  The [=[RP]=] MAY use this OPTIONAL member to list [=credentials=] the user has [=registration ceremony|registered=],
         and is used by the [=client=] to find [=authenticators=] eligible for this [=authentication ceremony=].
         This MAY include all or a subset of the user's credentials, at the [=[RP]=]'s discretion.
 
-        If [=list/empty=] or not specified, only a [=client-side discoverable credential=] can be used for this [=authentication ceremony=].
+        If [=list/empty=] or not specified, only [=client-side discoverable credentials=]
+        that are mapped to the {{PublicKeyCredentialRequestOptions/rpId}} will be utilized in this [=authentication ceremony=].
+        If there are more than one such credential stored on this [=authenticator=],
+        the credentials are displayed for the user to select from (see [[#sctn-op-get-assertion]] step 7).
         If not [=list/empty=], the client MUST return an error if none of the listed credentials can be used.
 
         The list is ordered in descending order of preference: the first item in the list is the most
@@ -3322,16 +3330,13 @@ Note: The {{UserVerificationRequirement}} enumeration is deliberately not refere
 
 <div dfn-type="enum-value" dfn-for="UserVerificationRequirement">
     :   <dfn>required</dfn>
-    ::  The [=[RP]=] requires [=user verification=] for the operation and will fail the operation if the
+    ::  The [=[RP]=] requires [=user verification=] for the operation and will fail the overall [=ceremony=] if the
         response does not have the [=UV=] [=flag=] set.
         The [=client=] MUST return an error if [=user verification=] cannot be performed.
-
-        Note: The value of the [=UV=] [=flag=] might not be reliable without a trusted [=authenticator=] [=attestation=].
 
     :   <dfn>preferred</dfn>
     ::  The [=[RP]=] prefers [=user verification=] for the operation if possible, but will not fail the
         operation if the response does not have the [=UV=] [=flag=] set.
-        For example, the client SHOULD guide the user through setting up [=user verification=] if needed.
 
     :   <dfn>discouraged</dfn>
     ::  The [=[RP]=] does not want [=user verification=] employed during the operation (e.g., in the
