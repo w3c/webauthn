@@ -28,7 +28,7 @@ set traceDisplay = long.
 
 free c: channel.  (* TLS channel *)
 
-free tlsKey: Key [private].  (* TLS symmetric encryption key *)
+(* free tlsKey: Key [private]. *) (* TLS symmetric encryption key *)
 
 
 (* Various locally-defined types                                            *)
@@ -45,8 +45,8 @@ type Extensions. (* placeholder for now *)
 
 (* Attestation Key Pair *)
 
-free attSecretKey: SKey [private].
-free attPublicKey: PKey (* [private] *). (* an attacker can obtain the attPublicKey from several sources,
+(* free attSecretKey: SKey [private]. *)
+(* free attPublicKey: PKey *) (* [private] .*) (* an attacker can obtain the attPublicKey from several sources,
                                             e.g.: an authenticator itself, or authenticator metadata *)
 
 
@@ -67,7 +67,7 @@ fun B2RegRequestMsg( bitstring ): RegRequestMsg [data, typeConverter].
 
 DEFINE_DATA_TYPE2(AttStatement,
                   attSignature, bitstring,
-                  attPublicKey, PKey).
+                  attPubKey, PKey).
 
 fun AttStatement2b( AttStatement ): bitstring [data, typeConverter].
 fun B2AttStatement( bitstring ): AttStatement [data, typeConverter].
@@ -136,10 +136,11 @@ event receivedValidAuthnResponse(bitstring).
 query msg:bitstring, msg':bitstring;
     event(receivedValidAuthnResponse(msg)) && event(sendingAuthnResponse(msg')) ==> msg = msg'.
 
-
+(*
 query   attacker(attSecretKey).
 query   attacker(attPublicKey).
 query   attacker(tlsKey).
+*)
 
 query   secret regChallengeQ;   (* secrecy queries (see "5.1.2 Security properties" in [MANUAL]) *)
         secret authnChallengeQ.
@@ -156,14 +157,14 @@ let processClientAndAuthnr ( k: Key, attskU: SKey, attpkU: PKey) =
     let regRequestMsgb = dec(encRegRequestMsg, k) in
     let regRequestMsg = B2RegRequestMsg(regRequestMsgb) in
     let receivedRegChallenge = RegRequestMsg_regChallenge(regRequestMsg) in
-    let receivedServerName = RegRequestMsg_serverName(regRequestMsg) in
+    let receivedServerNameReg = RegRequestMsg_serverName(regRequestMsg) in
     let receivedExtensions = RegRequestMsg_extensions(regRequestMsg) in
 
     new skU: SKey;                                  (* mint new user credential "secret key user" |skU| *)
     let pkU = pk(skU) in                            (* and "public key user" |pkU|                      *)
     new extensionsOutputs: Extensions;
 
-    let authData = BuildAuthData(receivedServerName, pkU, extensionsOutputs) in  (* construct attestation object *)
+    let authData = BuildAuthData(receivedServerNameReg, pkU, extensionsOutputs) in  (* construct attestation object *)
     let attSignature = sign( (authData, receivedRegChallenge), attskU ) in
     let attStatement = BuildAttStatement(attSignature, attpkU) in
     let attObject = BuildAttObject(attStatement, authData) in
@@ -183,11 +184,11 @@ let processClientAndAuthnr ( k: Key, attskU: SKey, attpkU: PKey) =
     let authnRequestMsgb = dec(encAuthnRequestMsg, k) in
     let authnRequestMsg = B2AuthnRequestMsg(authnRequestMsgb) in
     let receivedAuthnChallenge = AuthnRequestMsg_authnChallenge(authnRequestMsg) in
-    let receivedServerName = AuthnRequestMsg_serverName(authnRequestMsg) in
+    let receivedServerNameAuthn = AuthnRequestMsg_serverName(authnRequestMsg) in
 
-    let assertionSignature = sign((receivedAuthnChallenge, receivedServerName), skU) in
+    let assertionSignature = sign((receivedAuthnChallenge, receivedServerNameAuthn), skU) in
 
-    let authnResponseMsg = BuildAuthnResponseMsg(receivedAuthnChallenge, receivedServerName, assertionSignature) in
+    let authnResponseMsg = BuildAuthnResponseMsg(receivedAuthnChallenge, receivedServerNameAuthn, assertionSignature) in
     let authnResponseMsgb = AuthnResponseMsg2b(authnResponseMsg) in
 
     let encAuthnResponseMsgFromAuthnr = enc(authnResponseMsgb, k) in
@@ -222,7 +223,7 @@ let processServer (k: Key, a: RP_id) =
 
     let returnedAttStatement = AttObject_attStatement(returnedAttObject) in         (* extract and parse AttStatement *)
     let attSig = AttStatement_attSignature(returnedAttStatement) in
-    let attPK = AttStatement_attPublicKey(returnedAttStatement) in
+    let attPK = AttStatement_attPubKey(returnedAttStatement) in
 
     let returnedAuthData = AttObject_authData(returnedAttObject) in                 (* extract and parse AuthData *)
     let returnedServerName = AuthData_serverName(returnedAuthData) in
