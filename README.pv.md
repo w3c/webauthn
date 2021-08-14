@@ -28,13 +28,13 @@ Specifically, `webauthn.pv` relies upon `crypto.pvl` and `named_tuples.pvl`.
 
 These pvl ("Proverif library") files were obtained from:
 
-  `//google3/cloud/security/virtsec/proverif_rg/seems_legit/`  ..and..
+  `//google3/cloud/security/virtsec/proverif_rg/seems_legit/`  (`crypto.pvl`)
 
-  `//google3/cloud/security/virtsec/proverif_rg/ekep/`
+  `//google3/cloud/security/virtsec/proverif_rg/ekep/`         (`named_tuples.pvl`)
 
 
 `crypto.pvl` models sophisticated signature proofs based on the recent "Seems Legit" 
-paper <https://eprint.iacr.org/2019/779>, see `go/seems-legit-proverif` for details.
+paper <https://eprint.iacr.org/2019/779>, SEE `go/seems-legit-proverif` FOR DETAILS.
 
 `named_tuples.pvl` very cleverly uses the C-preprocessor to make it easy to model 
 nested datastructures in Proverif.  `webauthn.pv` uses this liberally to create a 
@@ -81,7 +81,9 @@ environment variable `PROVERIF_NO_CLEANUP`. For example:
 $ PROVERIF_NO_CLEANUP=1 ./run_proverif.sh webauthn.pv
 ```
 
-## Running ProVerif Interactively
+## Running ProVerif Interactively (TODO)
+
+[NOTE: I have not experimented with this as yet]
 
 The `run_proverif.sh` script supports an environment variable
 `PROVERIF_INTERACT`. If this variable is set, then `run_proverif.sh` will call
