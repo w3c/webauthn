@@ -1,15 +1,17 @@
 (* ProVerif Web Authentication Formal Model: webauthn.pv
-   based on webauthn-basic.pv by Iness Ben Guirat
+   Originally based on webauthn-basic.pv by Iness Ben Guirat
+
    Paper: https://dl.acm.org/doi/10.1145/3190619.3190640 (by Iness Ben Guirat and Harry Halpin)
    Slides: https://cps-vo.org/node/48511
    github: https://github.com/hhalpin/weauthn-model
    ------
-   [MANUAL]: The proverif manual is here: https://prosecco.gforge.inria.fr/personal/bblanche/proverif/manual.pdf
+   [MANUAL]: The proverif manual is here: 
+   https://prosecco.gforge.inria.fr/personal/bblanche/proverif/manual.pdf
 *)
 
 (* INTRODUCTION:
 
-See the paper section 5.2 for a detailed description of the original model.
+See the [Paper[ section 5.2 for a detailed description of the original model.
 
 This models a registration of a WebAuthn user credential with a server (aka Relying Party) and then models subsequent authentication using that registered credential.  The model seeks to prove various properties of the protocol.
 
@@ -40,8 +42,9 @@ type nonce.
 (* Server's ID *)
 
 type RP_id.
-const a: RP_id (* [private] *).
-type Extensions. (* placeholder for now *)
+const server: RP_id (* This is not [private] because the server's name is not 
+                       necessarily a secret in the real world. *).
+
 
 (* Attestation Key Pair *)
 
@@ -51,6 +54,9 @@ type Extensions. (* placeholder for now *)
 
 
 (* Server's and authnr+clientPlatform's tuple messages *)
+
+type Extensions. (* TODO: placeholder for now *)
+
 
 (** Registration Request message -- server sends this to the user's authnr+clientPlatform: **)
 
@@ -73,7 +79,7 @@ fun AttStatement2b( AttStatement ): bitstring [data, typeConverter].
 fun B2AttStatement( bitstring ): AttStatement [data, typeConverter].
 
 
-(*
+(* TODO:
 fun BuildExtensions(bitstring): Extensions [data].
 reduc forall devicePublicKey: bitstring;
     Extensions_devicePublicKey(BuildExtensions(devicePublicKey)) = devicePublicKey.
@@ -131,8 +137,9 @@ fun B2AuthnResponseMsg( bitstring ): AuthnResponseMsg [data, typeConverter].
 event sendingAuthnResponse(bitstring).
 event receivedValidAuthnResponse(bitstring).
 
-(** we can only receive a valid response if the user's authnr+clientPlatform sent the response message,
-    and we have to receive the same message as was sent. **)
+(** we can only receive a valid authn response if the user's authnr+clientPlatform 
+    sent the response message, and we have to receive the same message as was sent. **)
+
 query msg:bitstring, msg':bitstring;
     event(receivedValidAuthnResponse(msg)) && event(sendingAuthnResponse(msg')) ==> msg = msg'.
 
@@ -232,7 +239,7 @@ let processServer (k: Key, a: RP_id) =
 
 
     if checkSign(attSig, (returnedAuthData, returnedRegChallenge), attPK) then (* we have a registration response msg with
-                                                                                  a valid signature... *)
+                                                                                  a (supposedly) valid signature... *)
 
     if (regChallenge = returnedRegChallenge) then (                         (* ...and if the challenge returned matches the
                                                                                   one we sent, we will proceed to challenge
@@ -241,16 +248,17 @@ let processServer (k: Key, a: RP_id) =
 
         new authnChallenge: nonce;
 
-        (* let authnChallengeBitstr = nonce_to_bitstring( authnChallenge ) in  -- do we need to do this type conversion? *)
+        (* let authnChallengeBitstr = nonce_to_bitstring( authnChallenge ) in  -- do we need to do this type conversion? 
+                                                                                  seems like we do not. *)
 
         let authnRequestMsg = BuildAuthnRequestMsg(authnChallenge, a) in
         let authnRequestMsgb = AuthnRequestMsg2b(authnRequestMsg) in
 
         out(c, enc(authnRequestMsgb, k) );                                  (* send authentication request *)
 
-        (* --- wait for client -- *)
+        (* --- wait for client --- *)
 
-        in(c, encAuthnResponseMsg: bitstring);                              (* receive authn response *)
+        in(c, encAuthnResponseMsg: bitstring);                              (* receive encrypted authn response *)
 
         let authnResponseMsgb = dec(encAuthnResponseMsg, k) in              (* decrypt and parse |encAuthnResponseMsg| *)
         let authnResponseMsg = B2AuthnResponseMsg(authnResponseMsgb) in
@@ -261,7 +269,8 @@ let processServer (k: Key, a: RP_id) =
         if (authnChallenge = retAuthnChallenge) && (a = retServerName) then
         if checkSign(retAssertSignature, (retAuthnChallenge, retServerName), userPK) then
 
-        event receivedValidAuthnResponse(encAuthnResponseMsg);
+        event receivedValidAuthnResponse(encAuthnResponseMsg);              (* signal receipt of ostensibly valid authn 
+                                                                               authn response *)
 
         (* set up for secrecy queries (see "5.1.2 Security properties" in [MANUAL]) *)
         let regChallengeQ = regChallenge in
@@ -273,11 +282,11 @@ let processServer (k: Key, a: RP_id) =
 
 process
   new tlsKey: Key; (** assume TLS handshake is error-free and yields this symmetric channel-encryption key **)
-  new attSecretKey: SKey; (** assume a particular authenticator with a particular attestation private key **)
+  new attSecretKey: SKey; (** assume a particular authenticator with a particular attestation private key.. **)
 
-  let attPublicKey = pk(attSecretKey) in
+  let attPublicKey = pk(attSecretKey) in (** ..and attestation public key. **)
   (
-    !processClientAndAuthnr(tlsKey, attSecretKey, attPublicKey) | !processServer(tlsKey, a)
+    !processClientAndAuthnr(tlsKey, attSecretKey, attPublicKey) | !processServer(tlsKey, server)
   )
 
 
