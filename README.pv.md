@@ -16,10 +16,22 @@ ProVerif Web Authentication Formal Model: webauthn.pv
 (aka Relying Party) and then models subsequent authentication using that registered credential.
 
 
-
 ## STATUS
 
 This is WORK IN PROGRESS by Jeff Hodges <jdhodges@google.com> as of Aug-2021.
+
+Presently, the model seeks to prove that the ostensibly valid authentication response message 
+(i.e., the signatures validate) received by the server is the same as the one sent by the 
+authnr+clientPlatform. Proverif finds this to be FALSE, meaning it found a way such that an 
+attacker can forge an authentication response message that passes signature verification by
+the server (if I understand correctly). 
+
+I'm presently suspecting this result is due to the sophisticated signature algorithm model
+ensconced in `crypto.pvl`. Digging into this result and determining its source and 
+significance is a TODO.
+
+Further, the model ought to be updated to model the authenticator, client platform, and server
+as distinct entities, in order to more closely model the actual end-to-end behavior of the system.
 
 
 ## NOTES
