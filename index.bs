@@ -5943,18 +5943,18 @@ If the [=client device=] is incapable of generating a [=hardware-bound device ke
 :: The Boolean value [TRUE] to indicate that this extension is requested by the [=[RP]=].
     <xmp class="idl">
     partial dictionary AuthenticationExtensionsClientInputs {
-        boolean devicePublicKey;  // Explicitly set this to \`true\`!
+        boolean devicePubKey;  // Explicitly set this to \`true\`!
     };
     </xmp>
 
 : Client extension processing
-:: If {{AuthenticationExtensionsClientInputs/devicePublicKey}} is [TRUE], then there is no processing, except for creating the authenticator extension input from the client extension input. Otherwise, the platform ignores this extension.
+:: If {{AuthenticationExtensionsClientInputs/devicePublicKey}} is [TRUE], the client creates the authenticator extension input from the client extension input. If {{AuthenticationExtensionsClientInputs/devicePublicKey}} is [FALSE], the client ignores this extension.
 
 : Client extension output
 :: An ArrayBuffer containing the [=device public key attestation object=] that was returned in the authenticator extension output.
     <xmp class="idl">
     partial dictionary AuthenticationExtensionsClientOutputs {
-        ArrayBuffer devicePublicKeyAttestationObject;
+        ArrayBuffer devicePubKey;
     };
     </xmp>
 
@@ -5968,32 +5968,73 @@ If the [=client device=] is incapable of generating a [=hardware-bound device ke
     )
     ```
 
+: Authenticator extension output
+:: The <dfn>device public key attestation object</dfn> constructed above (i.e., `attObjForDevicePublicKey`):
+
+    ```
+    $$extensionOutput //= (
+        devicePubKey: attObjForDevicePublicKey,
+    )
+
+    AttObjForDevicePublicKey = { ; Note: This object conveys an attested
+                                 ; device public key and is analogous to `attObj`.
+
+        sig:     bstr,  ; Result of sign((clientDataHash || userCredentialId), devicePrivateKey)
+                        ; Note that this signature value is unique per-response
+                        ; because the client data contains the per-request challenge.
+
+        aaguid:  bstr,  ; Authenticator's AAGUID (16 bytes fixed-length)
+                        ; https://www.w3.org/TR/webauthn/#aaguid
+
+        dpk:     bstr,  ; The Device Public Key (self-describing variable length,
+                        ; COSE_Key format, CBOR-encoded)).
+
+        ; Whether this key is scoped to the entire device, or a loosely-defined,
+        ; narrower scope called "app". For example, a "device"-scoped key is expected
+        ; to be the same between an app and a browser on the same device, while
+        ; an "app"-scoped key would probably not be.
+        ;
+        ; Whatever the scope, a device key is still specific to a given credential
+        ; and does not provide any ability to link credentials.
+        ;
+        ; Whether device-scoped or not, keys are still device-bound. I.e. an
+        ; app-scoped key does not enjoy lesser protection from extraction.
+
+        scope: uint .size 1,  ; a value of '0' means "entire device" ("all apps") scope.
+                              ; '1' means "per-app" scope.
+                              ; Values other than '0' or '1' are reserved for future use.
+
+        ; See https://www.w3.org/TR/webauthn/#sctn-generating-an-attestation-object
+        ;
+        ; Attestation statement formats define the `fmt` and `attStmt` members of
+        ; $$attStmtType.
+        ;
+        ; In summary, the `attStmt` will (typically) contain:
+        ;   (1) a SIGNATURE value calculated (using the attestation private key)
+        ;       over (aaguid || dpk).
+        ;   (2) the attestation certificate or public key, and supporting certificates,
+        ;       if any.
+        ;
+        ; Note that there are details dependent upon the particular attestation
+        ; statement format.
+        ; See https://www.w3.org/TR/webauthn/#sctn-defined-attestation-formats.
+
+        $$attStmtType,
+    }
+
+    ```
+
 : Authenticator extension processing
 :: For both [=authenticatorMakeCredential=] and [=authenticatorGetAssertion=] operations:
-    1. Create or select the [=user credential=] as usual.
+    1. Create or select the [=user credential=] as usual, and let `userCredentialId` be its <code>[=credentialId=]</code>.
     1. If a [=hardware-bound device key pair=] does not already exist for this [=user credential=] on the [=authenticator=], create it using the same public key algorithm as that used by the [=user credential=]'s [=credential key pair=], otherwise locate the existing [=device-bound key=].
-    1. Let `devicePublicKey` be the newly created or existing [=device public key=], in COSE_Key format [=credentialPublicKey|in the same fashion as for the user credential's credentialPublicKey=] when the latter is conveyed in [=attested credential data=].
+    1. Let `dpk` be the newly created or existing [=device public key=], in COSE_Key format [=credentialPublicKey|in the same fashion as for the user credential's credentialPublicKey=] when the latter is conveyed in [=attested credential data=].
     1. Let `devicePrivateKey` be the newly created or existing [=device private key=].
     1. Let `clientDataHash` be the [=hash of the serialized client data=].
-    1. Let `dpkSignatureValue` be the result of `sign(devicePrivateKey, (clientDataHash || devicePublicKey))` using the signature algorithm appropriate for the `devicePrivateKey`'s public key algorithm.
-    1. Let `rpIdHash` be the [=user credential=]'s [=rpIdHash=].
-    1. Let `credentialId` be [=user credential=]'s [=credentialId=].
-    1. Let `AuthDataForDevicePublicKeyAttestation` be a [=CBOR=] record containing `rpIdHash`, `credentialId`, `devicePublicKey`, and `dpkSignatureValue`. This is expressed in [=CDDL=] as:
-
-    ```
-    AuthDataForDevicePublicKeyAttestation = [ ; Note: The element labels are annotations
-                                              ;       and do not appear in an encoded
-                                              ;       record.
-
-        rpIdHash:              bstr,    ; SHA-256 hash of the user credential's RP ID
-        credentialId:          bstr,    ; CredentialId of the user credential
-        devicePublicKey:       bstr,    ; COSE_Key format
-        dpkSignatureValue:     bstr,    ; sign(devicePrivateKey,
-                                        ;      (clientDataHash || devicePublicKey))
-    ]
-    ```
-
-    10. Let `$$attStmtType` be the result of generating the appropriate attestation statement, using `AuthDataForDevicePublicKeyAttestation`, see [[#sctn-generating-an-attestation-object]]. Attestation statement formats define the `fmt` and `attStmt` members of `$$attStmtType`'s value. In summary, it typically contains a signature value calculated over the bytes of `AuthDataForDevicePublicKeyAttestation`, the attestation certificate or public key, and supporting certificates, if any. Note that the details are dependent upon the particular attestation statement format. See [[#sctn-attestation-formats]].
+    1. Let `sig` be the result of signing the concatenation of `clientDataHash` and `userCredentialId` using the `devicePrivateKey` and the signature algorithm appropriate for the `devicePrivateKey`'s public key algorithm: `sign((clientDataHash || userCredentialId), devicePrivateKey)`.
+    1. Let `scope` have the value zero (0x00) if this is an "entrie-device" device public key. Otherwise, let `scope` have the value one (0x01), indicating a more narrow per-app scope.
+    1. Let `$$attStmtType` be the result of generating an attestation statement in the [=attestation statement format=] appropriate for the [=user credential=], although substituting the authenticator's <code>[=aaguid=]</code> for |authenticatorData|, and substituting `userCredentialId` for |clientDataHash| in the [=attestation statement format=]'s signing procedure (see [[#sctn-generating-an-attestation-object]]). Attestation statement formats define the `fmt` and `attStmt` members of `$$attStmtType`'s value. In summary, it typically contains a signature value calculated over the bytes of `(clientDataHash || userCredentialId)`, the attestation certificate or public key, and supporting certificates, if any. Note that the details are dependent upon the particular attestation statement format. See [[#sctn-attestation-formats]].
+    1. Let `AttObjForDevicePublicKey` be a [=CBOR=] object, as defined above (in "Authenticator extension output"),
     1. Let `attObjForDevicePublicKey` be a CBOR object containing a `dpkAuthData` member whose value is the `AuthDataForDevicePublicKeyAttestation` record constructed above, and the attestation statement constructed in the prior step as the value of `$$attStmtType`:
 
     ```
@@ -6007,14 +6048,6 @@ If the [=client device=] is incapable of generating a [=hardware-bound device ke
      }
    ```
 
-: Authenticator extension output
-:: The <dfn>device public key attestation object</dfn> constructed above (i.e., `attObjForDevicePublicKey`):
-
-    ```
-    $$extensionOutput //= (
-        devicePublicKey: attObjForDevicePublicKey,
-    )
-    ```
 
 
 # User Agent Automation # {#sctn-automation}
