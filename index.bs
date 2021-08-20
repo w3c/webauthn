@@ -1094,7 +1094,7 @@ The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "S
 : <dfn>Device Public Key</dfn>
 : <dfn>Device Key</dfn>
 : <dfn>Secondary Key</dfn>
-:: A [=hardware-bound device key pair=], also known as a [=device-bound key=], is a [=[RP]=]-specific and [=user credential=]-specific public key pair created upon a [=[RP]=]'s request via the [=devicePublicKey=] [=WebAuthn extension=].
+:: A [=hardware-bound device key pair=], also known as a [=device-bound key=], is a [=[RP]=]-specific and [=user credential=]-specific public key pair created upon a [=[RP]=]'s request via the [=devicePubKey=] [=WebAuthn extension=].
     The [=[RP]=] may supply this extension during both [=registration=] and [=authentication=].
     The [=authenticator=] that a [=hardware-bound device key pair=] is created upon guarantees that the [=device private key=] is securely stored in hardware, i.e., it is unextractable. The [=device public key=] is returned only to the [=[RP]=] that created the [=hardware-bound device key pair=]. See [[#sctn-device-publickey-extension]].
 
@@ -5928,10 +5928,22 @@ Note: In order to interoperate, user agents storing large blobs on authenticator
 
 ## Device-bound public key extension (<dfn>devicePubKey</dfn>) ## {#sctn-device-publickey-extension}
 
-This [=client extension|client=] [=registration extension=] and [=authentication extension=] provides a [=[RP]=] with a "device continuity" signal. This is done by creating a [=[RP]=]-specific [=hardware-bound device key pair=] on the [=client device=], if such a key pair does not already exist for the [=user credential=] being created or exercised, and returning the attested [=device public key=] along with a signature by the [=device private key=] to the [=[RP]=]. This is done each time this [=devicePublicKey=] extension is included with either a <code>{{CredentialsContainer/create()|navigator.credentials.create()}}</code> or <code>{{CredentialsContainer/create()|navigator.credentials.get()}}</code> call.
+This [=client extension|client=] [=registration extension=] and [=authentication extension=] provides a [=[RP]=] with a "device continuity" signal. This is done by creating a [=[RP]=]-specific [=hardware-bound device key pair=] on the [=client device=], if such a key pair does not already exist for the [=user credential=] being created or exercised, and returning the attested [=device public key=] along with a signature by the [=device private key=] to the [=[RP]=]. This is done each time this [=devicePubKey=] extension is included with either a <code>{{CredentialsContainer/create()|navigator.credentials.create()}}</code> or <code>{{CredentialsContainer/create()|navigator.credentials.get()}}</code> call.
 
-If the [=client device=] is incapable of generating a [=hardware-bound device key pair=], or the registration or authentication operation fails for any reason, this extension is ignored and no [=hardware-bound device key pair=] is created. In this case, there is no [=devicePublicKey=] extension output generated.
+If the [=client device=] is incapable of generating a [=hardware-bound device key pair=], or the registration or authentication operation fails for any reason, this extension is ignored and no [=hardware-bound device key pair=] is created. In this case, there is no [=devicePubKey=] extension output generated.
 
+
+<div class="note">
+    Note 1: This extension is intended for use by those [=[RPS]=] employing risk-analysis systems informing their sign-in decisions. This extension provides a "device continuity" signal when used consistently with both <code>{{CredentialsContainer/get()|navigator.credentials.create()}}</code> and <code>{{CredentialsContainer/get()|navigator.credentials.get()}}</code> operations. When a user's credential is synced to a new device, the [=[RP]=] will receive a new [=device public key=] on the initial <code>{{CredentialsContainer/get()|navigator.credentials.get()}}</code> invocation on the new device. Note that a synced credential will be exercised for authentication on a new device without a <code>{{CredentialsContainer/get()|navigator.credentials.create()}}</code> having been performed on that new device).
+
+    A usage example is thus:
+
+    Say that a sign-in request appears along with some geolocation signal that has not been seen for this [=user account=] before, and is outside of the typical working hours observed for the account. The risk may be deemed high enough not to allow the request, even with a synced credential. But if a device-bound signature can also be presented and it's a [=device-bound key=] that is well established for this user, then that may tip the balance.
+
+    Note 2: A [=[RP]=] utilizing this extension will only need to perform thorough verification of the [=device public key=]'s `AttObjForDevicePublicKey` once: i.e., the first time a new [=device public key=] is received. "Thorough verification" means verifying the attestation statement `$$attStmtType` (per the [= attestation statement format=]'s signing procedure (see [[#sctn-generating-an-attestation-object]]) as well as the `sig` value. Upon successful verification, the [=[RP]=] SHOULD cache the `aaguid`, `dpk`, `context`, and `$$attStmtType` values. Upon receiving subsequent
+</div>
+
+Issue: TODO: write an explicit subsection wrt "how to verify a `attObjForDevicePublicKey` ?
 
 : Extension identifier
 :: `devicePubKey`
@@ -5948,7 +5960,7 @@ If the [=client device=] is incapable of generating a [=hardware-bound device ke
     </xmp>
 
 : Client extension processing
-:: If {{AuthenticationExtensionsClientInputs/devicePublicKey}} is [TRUE], the client creates the authenticator extension input from the client extension input. If {{AuthenticationExtensionsClientInputs/devicePublicKey}} is [FALSE], the client ignores this extension.
+:: If {{AuthenticationExtensionsClientInputs/devicePubKey}} is [TRUE], the client creates the authenticator extension input from the client extension input. If {{AuthenticationExtensionsClientInputs/devicePubKey}} is [FALSE], the client ignores this extension.
 
 : Client extension output
 :: An ArrayBuffer containing the [=device public key attestation object=] that was returned in the authenticator extension output.
@@ -5964,12 +5976,12 @@ If the [=client device=] is incapable of generating a [=hardware-bound device ke
 
     ```
     $$extensionInput //= (
-      devicePublicKey: true
+      devicePubKey: true
     )
     ```
 
 : Authenticator extension output
-:: The <dfn>device public key attestation object</dfn> constructed above (i.e., `attObjForDevicePublicKey`):
+:: The <dfn>device public key attestation object</dfn>, `attObjForDevicePublicKey`:
 
     ```
     $$extensionOutput //= (
@@ -5977,7 +5989,7 @@ If the [=client device=] is incapable of generating a [=hardware-bound device ke
     )
 
     AttObjForDevicePublicKey = { ; Note: This object conveys an attested
-                                 ; device public key and is analogous to `attObj`.
+                                 ; device public key and is analogous to \`attObj\`.
 
         sig:     bstr,  ; Result of sign((clientDataHash || userCredentialId), devicePrivateKey)
                         ; Note that this signature value is unique per-response
@@ -6000,16 +6012,16 @@ If the [=client device=] is incapable of generating a [=hardware-bound device ke
         ; Whether device-scoped or not, keys are still device-bound. I.e. an
         ; app-scoped key does not enjoy lesser protection from extraction.
 
-        scope: uint .size 1,  ; a value of '0' means "entire device" ("all apps") scope.
-                              ; '1' means "per-app" scope.
-                              ; Values other than '0' or '1' are reserved for future use.
+        scope: uint .size 1, ; a value of 0x00 means "entire device" ("all apps") scope.
+                             ; 0x01 means "per-app" scope.
+                             ; Values other than 0x00 or 0x01 are reserved for future use.
 
         ; See https://www.w3.org/TR/webauthn/#sctn-generating-an-attestation-object
         ;
-        ; Attestation statement formats define the `fmt` and `attStmt` members of
+        ; Attestation statement formats define the \`fmt\` and \`attStmt\` members of
         ; $$attStmtType.
         ;
-        ; In summary, the `attStmt` will (typically) contain:
+        ; In summary, the \`attStmt\` will (typically) contain:
         ;   (1) a SIGNATURE value calculated (using the attestation private key)
         ;       over (aaguid || dpk).
         ;   (2) the attestation certificate or public key, and supporting certificates,
@@ -6027,26 +6039,28 @@ If the [=client device=] is incapable of generating a [=hardware-bound device ke
 : Authenticator extension processing
 :: For both [=authenticatorMakeCredential=] and [=authenticatorGetAssertion=] operations:
     1. Create or select the [=user credential=] as usual, and let `userCredentialId` be its <code>[=credentialId=]</code>.
+
     1. If a [=hardware-bound device key pair=] does not already exist for this [=user credential=] on the [=authenticator=], create it using the same public key algorithm as that used by the [=user credential=]'s [=credential key pair=], otherwise locate the existing [=device-bound key=].
+
     1. Let `dpk` be the newly created or existing [=device public key=], in COSE_Key format [=credentialPublicKey|in the same fashion as for the user credential's credentialPublicKey=] when the latter is conveyed in [=attested credential data=].
+
     1. Let `devicePrivateKey` be the newly created or existing [=device private key=].
+
     1. Let `clientDataHash` be the [=hash of the serialized client data=].
+
     1. Let `sig` be the result of signing the concatenation of `clientDataHash` and `userCredentialId` using the `devicePrivateKey` and the signature algorithm appropriate for the `devicePrivateKey`'s public key algorithm: `sign((clientDataHash || userCredentialId), devicePrivateKey)`.
-    1. Let `scope` have the value zero (0x00) if this is an "entrie-device" device public key. Otherwise, let `scope` have the value one (0x01), indicating a more narrow per-app scope.
-    1. Let `$$attStmtType` be the result of generating an attestation statement in the [=attestation statement format=] appropriate for the [=user credential=], although substituting the authenticator's <code>[=aaguid=]</code> for |authenticatorData|, and substituting `userCredentialId` for |clientDataHash| in the [=attestation statement format=]'s signing procedure (see [[#sctn-generating-an-attestation-object]]). Attestation statement formats define the `fmt` and `attStmt` members of `$$attStmtType`'s value. In summary, it typically contains a signature value calculated over the bytes of `(clientDataHash || userCredentialId)`, the attestation certificate or public key, and supporting certificates, if any. Note that the details are dependent upon the particular attestation statement format. See [[#sctn-attestation-formats]].
-    1. Let `AttObjForDevicePublicKey` be a [=CBOR=] object, as defined above (in "Authenticator extension output"),
-    1. Let `attObjForDevicePublicKey` be a CBOR object containing a `dpkAuthData` member whose value is the `AuthDataForDevicePublicKeyAttestation` record constructed above, and the attestation statement constructed in the prior step as the value of `$$attStmtType`:
 
-    ```
-    attObjForDevicePublicKey = { ; Note: This object conveys an attested
-                                 ;       device public key and is
-                                 ;       analogous to \`attObj\`.
+    1. Let `scope` have the value zero (0x00) if this is an "entrie-device" [=device public key=]. Otherwise, let `scope` have the value one (0x01), indicating a more narrow per-app scope.
 
-        dpkAuthData: AuthDataForDevicePublicKeyAttestation,
+    1. Let `$$attStmtType` be the result of generating an attestation statement in the [=attestation statement format=] appropriate for the [=user credential=], although substituting the authenticator's <code>[=aaguid=]</code> for |authenticatorData|, and substituting `userCredentialId` for |clientDataHash| in the [=attestation statement format=]'s signing procedure (see [[#sctn-generating-an-attestation-object]]). Attestation statement formats define the `fmt` and `attStmt` members of `$$attStmtType`'s value.
 
-        $$attStmtType,
-     }
-   ```
+        In summary, `$$attStmtType`'s value typically contains a signature value calculated over the bytes of `(clientDataHash || userCredentialId)`, the attestation certificate or public key, and supporting certificates, if any.
+
+        Note: The details of `$$attStmtType`'s value are dependent upon the particular [=attestation statement=] format. See [[#sctn-attestation-formats]].
+
+    1. Let `AttObjForDevicePublicKey` be a [=CBOR=] object, as defined above (in "Authenticator extension output"), whose values for its `sig`, `aaguid`, `dpk`, `scope`, and `$$attStmtType` members are as calculated in the prior steps.
+
+    1. Let  `AttObjForDevicePublicKey` be the value for the `devicePubKey` member of `$$extensionOutput`, and return the extension output.
 
 
 
