@@ -6244,17 +6244,15 @@ If the `devicePubKey` extension was included on a {{CredentialsContainer/create(
 
 1. Verify that |attObjForDevicePublicKey| is valid CBOR conforming to the syntax defined above and perform CBOR decoding on it to extract the contained fields: |sig|, |aaguid|, |dpk|, |scope|, |fmt|, |attStmt|.
 
-1. Verify that |attObjForDevicePublicKey|.|aaguid| matches the <code>[=aaguid=]</code> in the <code>[=attestedCredentialData=]</code> in |authData|.
-
-1. Verify that <code>|credential|.{{PublicKeyCredential/rawId}}</code> matches the <code>[=credentialId=]</code> in the <code>[=attestedCredentialData=]</code> in |authData|.
-
 1. Verify that |sig| is a valid signature over the concatenation of |hash| and <code>[=credentialId=]</code> using the [=device public key=] |dpk| (the signature algorithm is indicated by |dpk|'s "alg" {{COSEAlgorithmIdentifier}} value).
 
 1. Verify that |attObjForDevicePublicKey|.|attStmt| is a correct [=attestation statement=], conveying a valid [=attestation signature=], by using the [=attestation statement format=] |attObjForDevicePublicKey|.|fmt|'s [=verification procedure=] given |attObjForDevicePublicKey|.|attStmt|, although substituting |attObjForDevicePublicKey|.|aaguid| for `authenticatorData`, and substituting |dpk| for `clientDataHash` in the [=attestation statement format=]'s [=verification procedure inputs=].
 
     Note: If |attObjForDevicePublicKey|.|fmt|'s value is "[=none=]", there is no attestation signature to verify.
 
-See also [[#sctn-device-publickey-extension-usage]] for guidance on [=[RP]=] processing upon successful verification.
+1. Store the |aaguid|, |dpk|, |scope|, |fmt|, |attStmt| values indexed to the <code>|credential|.{{Credential/id}}</code> in the [=user account=].
+
+See also [[#sctn-device-publickey-extension-usage]] for further details.
 
 
 #### Authentication (`get()`) #### {#sctn-device-publickey-extension-verification-get}
@@ -6265,7 +6263,23 @@ If the `devicePubKey` extension was included on a {{CredentialsContainer/get()|n
 
 1. Verify that |attObjForDevicePublicKey| is valid CBOR conforming to the syntax defined above and perform CBOR decoding on it to extract the contained fields: |sig|, |aaguid|, |dpk|, |scope|, |fmt|, |attStmt|.
 
-1.
+1. Verify that |sig| is a valid signature over the concatenation of |hash| and <code>[=credentialId=]</code> using the [=device public key=] |dpk| (the signature algorithm is indicated by |dpk|'s "alg" {{COSEAlgorithmIdentifier}} value).
+
+1. If the [=[RP]=]'s [=user account|account=] mapped to the <code>|credential|.{{Credential/id}}</code> in play (i.e., for the user being authenticated) holds values corresponding to the extracted |attObjForDevicePublicKey| fields: perform binary equality checks between the corresponding stored and extracted values, then if the results are:
+
+    <dl class="switch">
+        : successful
+        :: This is a known [=device public key=] and thus a known device. Terminate these verification steps.
+
+        : unsuccessful
+        :: This is a new [=device public key=] signifying a new device:
+            1. Verify that |attObjForDevicePublicKey|.|attStmt| is a correct [=attestation statement=], conveying a valid [=attestation signature=], by using the [=attestation statement format=] |attObjForDevicePublicKey|.|fmt|'s [=verification procedure=] given |attObjForDevicePublicKey|.|attStmt|, although substituting |attObjForDevicePublicKey|.|aaguid| for `authenticatorData`, and substituting |dpk| for `clientDataHash` in the [=attestation statement format=]'s [=verification procedure inputs=].
+            1. Store the |aaguid|, |dpk|, |scope|, |fmt|, |attStmt| values indexed to the <code>|credential|.{{Credential/id}}</code> in the [=user account=]. Terminate these verification steps.
+    </dl>
+
+1. Otherwise, |attObjForDevicePublicKey| fields are not presently mapped to this [=user account=] and <code>|credential|.{{Credential/id}}</code> pair. Verify the |attObjForDevicePublicKey|.|attStmt| as given above, and if successful then store the |aaguid|, |dpk|, |scope|, |fmt|, |attStmt| values indexed to the <code>|credential|.{{Credential/id}}</code> in the [=user account=].
+
+See also [[#sctn-device-publickey-extension-usage]] for further details.
 
 
 # User Agent Automation # {#sctn-automation}
