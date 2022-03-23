@@ -6091,7 +6091,7 @@ The [=hardware-bound device key pair=] is not on its own a [=user credential=] a
 
 ### Relying Party Usage ### {#sctn-device-publickey-extension-usage}
 
-Issue(w3c/webauthn#1665): TODO: explicitly add the notion of "Synced/multi-device User Credentials" to the spec. This will involve adding proper definitions for "single-device (user) credentials" and "multi-device (user) credentials" in the terminology section, updating the text of this "Device-bound public key extension" section, and perhaps other approapriate changes or additions to other portions of the spec.
+Issue(w3c/webauthn#1665): TODO: explicitly add the notion of "Synced/multi-device User Credentials" to the spec. This will involve adding proper definitions for "single-device (user) credentials" and "multi-device (user) credentials" in the terminology section, updating the text of this "Device-bound public key extension" section, and perhaps other appropriate changes or additions to other portions of the spec. See also [issue #1692](https://github.com/w3c/webauthn/issues/1692) and [PR #1695](https://github.com/w3c/webauthn/pull/1695) regarding public key credential source "backup".
 
 This extension is intended for use by those [=[RPS]=] employing risk-analysis systems informing their sign-in decisions. This extension provides a "device continuity" signal <i>when used consistently</i> with both {{CredentialsContainer/create()|navigator.credentials.create()}} and {{CredentialsContainer/get()|navigator.credentials.get()}} operations:
 
@@ -6103,12 +6103,7 @@ A usage example is thus:
 
 >    Say that a sign-in request appears at a website along with some geolocation signal that has not been seen for this [=user account=] before, and is outside of the typical usage hours observed for the account. The risk may be deemed high enough not to allow the request, even with an assertion by a multi-device user credential on its own. But if a signature by a [=device-bound key=] that is <i>well established</i> for this user can also be presented, then that may tip the balance.
 
-Issue(w3c/webauthn#1701): TODO: **The below paragraph is presently inaccurate and will be revised or removed as part of the resolution to Issue #1701.** RPs will likely need to verify the device-bound key's signature on a per-request basis.
-
-A [=[RP]=] utilizing this extension will only need to perform thorough verification of the [=device public key=]'s `attObjForDevicePublicKey` once: i.e., the first time a new [=device public key=] is received. "Thorough verification" means verifying the attestation statement `$$attStmtType` (per the [=attestation statement format=]'s "signing procedure", see [[#sctn-generating-an-attestation-object]]) as well as the `sig` value: see [[#sctn-device-publickey-extension-verification]].
-
-
-Upon successful verification, the [=[RP]=] SHOULD cache the `aaguid`, `dpk`, `scope`, and `$$attStmtType` values. Upon receiving subsequent `devicePubKey` extension output values, the [=[RP]=] can, along with verifying the `sig` value of each extension output occurrence, do binary equality checks of the cached `aaguid`, `dpk`, `scope`, and `$$attStmtType` values against those returned in the extension output. If any of `aaguid`, `dpk`, `scope` do not compare as equal, then the response is invalid. Otherwise, they are all equal, and if `$$attStmtType` does not compare as equal, then the [=[RP]=] should verify the attestation signature. If
+Note: The `devicePubKey` extension output value contains one or more signature values. [=[RPS]=] need to take care to verify these signatures before associating and storing extension in conjunction with the [=user account=]. See [[#sctn-device-publickey-extension-verification]].
 
 
 ### Extension Definition ### {#sctn-device-publickey-extension-definition}
@@ -6258,7 +6253,7 @@ If the `devicePubKey` extension was included on a {{CredentialsContainer/create(
 
 1. Verify that |attObjForDevicePublicKey| is valid CBOR conforming to the syntax defined above and perform CBOR decoding on it to extract the contained fields: |sig|, |aaguid|, |dpk|, |scope|, |nonce|, |fmt|, |attStmt|.
 
-    Note: The latter |attObjForDevicePublicKey| fields are referenced exclusively in the below steps and are not to be confused with other fields with the same names in other portions of [=authenticatorData=].
+    Note: The latter |attObjForDevicePublicKey| fields are referenced exclusively in the below steps and are not to be confused with other fields with the same names in other portions of [=authenticator data=].
 
 1. Verify that |sig| is a valid signature over the concatenation of |hash| and <code>[=credentialId=]</code> using the [=device public key=] |dpk| (the signature algorithm is indicated by |dpk|'s "alg" {{COSEAlgorithmIdentifier}} value).
 
@@ -6267,6 +6262,8 @@ If the `devicePubKey` extension was included on a {{CredentialsContainer/create(
     Note: If |fmt|'s value is "[=none=]" there is no attestation signature to verify.
 
 1. Store the |aaguid|, |dpk|, |scope|, |fmt|, |attStmt| values indexed to the <code>|credential|.{{Credential/id}}</code> in the [=user account=].
+
+Issue(w3c/webauthn#1711): Storing this information ought to only occur if the overall registration operation is successful (i.e., crucially, the "encompassing signature" verified correctly).
 
 See also [[#sctn-device-publickey-extension-usage]] for further details.
 
@@ -6279,7 +6276,7 @@ If the `devicePubKey` extension was included on a {{CredentialsContainer/get()|n
 
 1. Verify that |attObjForDevicePublicKey| is valid CBOR conforming to the syntax defined above and perform CBOR decoding on it to extract the contained fields: |sig|, |aaguid|, |dpk|, |scope|, |nonce|, |fmt|, |attStmt|.
 
-    Note: The latter |attObjForDevicePublicKey| fields are referenced exclusively in the below steps and are not to be confused with other fields with the same names in other portions of [=authenticatorData=].
+    Note: The latter |attObjForDevicePublicKey| fields are referenced exclusively in the below steps and are not to be confused with other fields with the same names in other portions of [=authenticator data=].
 
 1. Verify that |sig| is a valid signature over the concatenation of |hash| and <code>[=credentialId=]</code> using the [=device public key=] |dpk| (the signature algorithm is indicated by |dpk|'s "alg" {{COSEAlgorithmIdentifier}} value).
 
@@ -6325,6 +6322,8 @@ If the `devicePubKey` extension was included on a {{CredentialsContainer/get()|n
                     : If |fmt|'s value is "none" then there is no attestation signature to verify and this is a new device.
                     :: Store the |aaguid|, |dpk|, |scope|, |fmt|, |attStmt| values indexed to the <code>|credential|.{{Credential/id}}</code> in the [=user account=]. Terminate these verification steps.
 
+                        Issue(w3c/webauthn#1711): Storing this information ought to only occur if the overall registration operation is successful (i.e., crucially, the "encompassing signature" verified correctly).
+
                     : Otherwise:
                     :: Verify that |attStmt| is a correct [=attestation statement=], conveying a valid [=attestation signature=], by using the [=attestation statement format=] |fmt|'s [=verification procedure=] given |attStmt|, although substituting |aaguid|'s value for `authenticatorData`, and substituting the concatenation of |dpk|'s value and |nonce|'s value for `clientDataHash` in the [=attestation statement format=]'s [=verification procedure inputs=].
 
@@ -6333,6 +6332,8 @@ If the `devicePubKey` extension was included on a {{CredentialsContainer/get()|n
                         <dl class="switch">
                             : successful
                             :: This is a new [=device public key=] signifying a new device. Store the |aaguid|, |dpk|, |scope|, |fmt|, |attStmt| values indexed to the <code>|credential|.{{Credential/id}}</code> in the [=user account=]. Terminate these verification steps.
+
+                                Issue(w3c/webauthn#1711): Storing this information ought to only occur if the overall registration operation is successful (i.e., crucially, the "encompassing signature" verified correctly).
 
                             : unsuccessful
                             :: Some form of error has occurred. It is indeterminate whether this is a valid new device. Terminate these verification steps.
