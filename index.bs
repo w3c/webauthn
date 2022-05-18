@@ -5941,6 +5941,97 @@ At this time, one [=credential property=] is defined: the [=resident key credent
 : Authenticator extension output
 :: None.
 
+## Pseudo-random function extension (<dfn>prf</dfn>) ## {#prf-extension}
+
+This [=client extension|client=] [=registration extension=] and [=authentication extension=] allows a [=[RP]=] to evaluate outputs from a pseudo-random function (PRF) associated with a [=credential=]. The PRFs provided by this extension map from {{USVString}}s of any length to 32-byte {{ArrayBuffer}}s.
+
+When requested, if a [=credential=] is created on an [=authenticator=] that supports this extension then either one or two freshly-seeded PRFs are associated with it. If two PRFs are associated then, when outputs are requested, one PRF is evaluated if [=user verification=] is performed and the other is evaluated if only a [=test of user presence|user presence test=] is performed. It is the responsibility of the [=[RP]=] to set the {{PublicKeyCredentialRequestOptions/userVerification}} parameter accordingly: [=[RPS]=] SHOULD *consistently* use either the {{UserVerificationRequirement/required}} or {{UserVerificationRequirement/discouraged}} values of {{UserVerificationRequirement}} when using this extension, otherwise the outputs may vary for a given input. To avoid mistakes, the default value of {{UserVerificationRequirement/preferred}} is prohibited when using this extension during [=assertion=] because that could cause the PRF used to vary between operations if [=user verification=] is later enabled on an [=authenticator=].
+
+As a motivating example, PRF outputs could be used as symmetric keys to encrypt user data. Such encrypted data would be inaccessible without the ability to get assertions from the associated [=credential=]. By using the provision below to evaluate the PRF at two inputs in a single [=assertion=] operation, the encryption key could be periodically rotated during [=assertions=] by choosing a fresh, random input and reencrypting under the new output. If the evaluation inputs are unpredictable then even an attacker who could satisfy [=user verification=], and who had time-limited access to the authenticator, could not learn the encryption key without also knowing the correct PRF input.
+
+This extension is implemented on top of the [[FIDO-CTAP]] `hmac-secret` extension. It is a separate [=client extension=] because `hmac-secret` requires that inputs and outputs be encrypted in a manner that only the user agent can perform, and to provide separation between uses by WebAuthn and any uses by the underlying platform. This separation is achieved by hashing the provided PRF inputs with a context string to prevent evaluation of the PRFs for arbitrary inputs.
+
+Note: this extension may be implemented for [=authenticators=] that do not use [[FIDO-CTAP]] so long as the behavior observed by a [=[RP]=] is identical.
+
+: Extension identifier
+:: `prf`
+
+: Operation applicability
+:: [=registration extension|Registration=] and [=authentication extension|authentication=]
+
+: Client extension input
+::  <xmp class="idl">
+    dictionary AuthenticationExtensionsPRFValues {
+        required ArrayBuffer first;
+        ArrayBuffer second;
+    };
+
+    dictionary AuthenticationExtensionsPRFInputs {
+        AuthenticationExtensionsPRFValues eval;
+        record<USVString, AuthenticationExtensionsPRFValues> evalByCredential;
+    };
+
+    partial dictionary AuthenticationExtensionsClientInputs {
+        AuthenticationExtensionsPRFInputs prf;
+    };
+    </xmp>
+
+    <div dfn-type="dict-member" dfn-for="AuthenticationExtensionsPRFInputs">
+        :   <dfn>eval</dfn>
+        ::  One or two inputs on which to evaluate PRF. Not all [=authenticators=] support evaluating the PRFs during credential creation so outputs may, or may not, be provided. If not, then an [=assertion=] is needed in order to obtain the outputs.
+
+        :   <dfn>evalByCredential</dfn>
+        ::  A record mapping [=base64url encoding|base64url encoded=] [=credential IDs=] to PRF inputs to evaluate for that credential. Only applicable during [=assertions=] when {{PublicKeyCredentialRequestOptions/allowCredentials}} is not empty.
+    </div>
+
+: Client extension processing ([=registration extension|registration=])
+::
+       1. If {{AuthenticationExtensionsPRFInputs/evalByCredential}} is present, return a {{DOMException}} whose name is “{{NotSupportedError}}”.
+       1. Set `hmac-secret` to [TRUE] in the authenticator extensions input.
+       1. If {{AuthenticationExtensionsPRFInputs/eval}} is present and a future extension to [[FIDO-CTAP]] permits evaluation of the PRF at creation time, configure `hmac-secret` inputs accordingly:
+           * Let `salt1` be the value of <code>SHA-256(UTF8Encode("WebAuthn PRF") || 0x00 || {{AuthenticationExtensionsPRFInputs/eval}}.{{AuthenticationExtensionsPRFValues/first}})</code>.
+           * If <code>{{AuthenticationExtensionsPRFInputs/eval}}.{{AuthenticationExtensionsPRFValues/second}}</code> is present, let `salt2` be the value of <code>SHA-256(UTF8Encode("WebAuthn PRF") || 0x00 || {{AuthenticationExtensionsPRFInputs/eval}}.{{AuthenticationExtensionsPRFValues/second}})</code>.
+       1. Set {{AuthenticationExtensionsPRFOutputs/enabled}} to the value of `hmac-secret` in the authenticator extensions output. If not present, set {{AuthenticationExtensionsPRFOutputs/enabled}} to [FALSE].
+       1. Set {{AuthenticationExtensionsPRFOutputs/results}} to the decrypted PRF result(s), if any.
+
+Note: If PRF results are obtained during [=registration=] then the [=[RP]=] MUST inspect the [=UV=] bit in the [=flags=] of the response in order to determine the correct value of {{PublicKeyCredentialRequestOptions/userVerification}} for future [=assertions=]. Otherwise results from [=assertions=] may be inconsistent with those from the [=registration=].
+
+: Client extension processing ([=authentication extension|authentication=])
+::
+      1. If {{PublicKeyCredentialRequestOptions/userVerification}} has the value {{UserVerificationRequirement/preferred}}, return a {{DOMException}} whose name is “{{NotSupportedError}}”.
+      1. If {{AuthenticationExtensionsPRFInputs/evalByCredential}} is not empty but {{PublicKeyCredentialRequestOptions/allowCredentials}} is empty, return a {{DOMException}} whose name is “{{NotSupportedError}}”.
+      1. Initialize the {{AuthenticationExtensionsClientOutputs/prf}} extension output to an empty dictionary.
+      1. Let |ev| be null, and try to find any applicable PRF input(s):
+          1. If {{AuthenticationExtensionsPRFInputs/evalByCredential}} is present and [=map/exists|contains=] an [=map/entry=] whose [=map/key=] is the [=base64url encoding=] of the [=credential ID=] that will be returned, let |ev| be the [=map/value=] of that entry.
+          1. If |ev| is null and {{AuthenticationExtensionsPRFInputs/eval}} is present, then let |ev| be the value of {{AuthenticationExtensionsPRFInputs/eval}}.
+      1. If |ev| is not null:
+          1. Let `salt1` be the value of <code>SHA-256(UTF8Encode("WebAuthn PRF") || 0x00 || |ev|.{{AuthenticationExtensionsPRFValues/first}})</code>.
+          1. If <code>|ev|.{{AuthenticationExtensionsPRFValues/second}}</code> is present, let `salt2` be the value of <code>SHA-256(UTF8Encode("WebAuthn PRF") || 0x00 || |ev|.{{AuthenticationExtensionsPRFValues/second}})</code>.
+          1. Send an `hmac-secret` extension to the [=authenticator=] using the values of `salt1` and, if set, `salt2` as the parameters of the same name in that process.
+          1. Decrypt the extension result and set {{AuthenticationExtensionsPRFOutputs/results}} to the PRF result(s), if any.
+
+: Authenticator extension input / processing / output
+:: [=prf|This extension=] uses the [[FIDO-CTAP]] `hmac-secret` extension when communicating with the authenticator. It thus does not specify any direct authenticator interaction for [=[RPS]=].
+
+: Client extension output
+:: <xmp class="idl">
+    dictionary AuthenticationExtensionsPRFOutputs {
+        boolean enabled;
+        AuthenticationExtensionsPRFValues results;
+    };
+
+    partial dictionary AuthenticationExtensionsClientOutputs {
+        AuthenticationExtensionsPRFOutputs prf;
+    };
+    </xmp>
+
+    <div dfn-type="dict-member" dfn-for="AuthenticationExtensionsPRFOutputs">
+        :   <dfn>enabled</dfn>
+        ::  [TRUE] if, and only if, the one or two PRFs are available for use with the created credential. This is only reported during [=registration=] and is not present in the case of [=authentication=].
+
+        :   <dfn>results</dfn>
+        ::  The results of evaluating the PRF for the inputs given in {{AuthenticationExtensionsPRFInputs/eval}} or {{AuthenticationExtensionsPRFInputs/evalByCredential}}. Outputs may not be available during [=registration=]; see comments in {{AuthenticationExtensionsPRFInputs/eval}}.
+    </div>
 
 ## Large blob storage extension (<dfn>largeBlob</dfn>) ## {#sctn-large-blob-extension}
 
@@ -6117,6 +6208,12 @@ Additionally, [=extension capabilities=] are defined for every [=authenticator e
                 <td>`"webauthn:extension:uvm"`</td>
                 <td>boolean</td>
                 <td>Indicates whether the [=endpoint node=] WebAuthn WebDriver implementation supports the [=User Verification Method=] extension.</td>
+            </tr>
+            <tr>
+                <td>Pseudo-Random Function Extension Support</td>
+                <td>`"webauthn:extension:prf"`</td>
+                <td>boolean</td>
+                <td>Indicates whether the [=endpoint node=] WebAuthn WebDriver implementation supports the [=prf=] extension.</td>
             </tr>
             <tr>
                 <td>Large Blob Storage Extension Support</td>
