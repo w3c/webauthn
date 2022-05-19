@@ -4727,6 +4727,8 @@ In order to perform an [=authentication ceremony=], the [=[RP]=] MUST proceed as
     {{AuthenticatorResponse/clientDataJSON}}, {{AuthenticatorAssertionResponse/authenticatorData}}, and
     {{AuthenticatorAssertionResponse/signature}} respectively.
 
+    Note: if using the [devicePubKey](#sctn-device-publickey-extension) extension then {{AuthenticatorAssertionResponse/signature}} contains a CBOR array instead and |sig| should be the first element of that array.
+
 1. Let |JSONtext| be the result of running [=UTF-8 decode=] on the value of |cData|.
 
     Note: Using any implementation of [=UTF-8 decode=] is acceptable as long as it yields the same result as that yielded by
@@ -6169,11 +6171,6 @@ Note: [=[RPS]=] need to take care to verify [=device-bound key=] signatures befo
     attObjForDevicePublicKey = { ; Note: This object conveys an attested
                                  ; device public key and is analogous to \`attObj\`.
 
-        sig:     bstr,  ; Result of sign((clientDataHash || userCredentialId),
-                                         devicePrivateKey)
-                        ; Note that this signature value is unique per-response
-                        ; because the client data contains the per-request challenge.
-
         aaguid:  bstr,  ; Authenticator's AAGUID (16 bytes fixed-length)
                         ; https://www.w3.org/TR/webauthn/#aaguid
 
@@ -6242,7 +6239,7 @@ Note: [=[RPS]=] need to take care to verify [=device-bound key=] signatures befo
 
         <dl class="switch">
             : none
-            :: |attFormat| is "none" or "self", at the authenticator's discretion, and |aaguid| is 16 zero bytes.
+            :: |attFormat| is "none" or "self", at the authenticator's discretion, and |aaguid| is 16 zero bytes. (Note that, since the [=device-bound key=] is already exercised during {{CredentialsContainer/get()|navigator.credentials.get()}} calls, the proof-of-possession property provided by "self" attestation is superfluous in that context.)
 
             : indirect, direct
             :: |attFormat| is an [=attestation statement format=] appropriate for this [=authenticator=] and |aaguid| is the [=authenticator's=] [=AAGUID=]. (Since the [=hardware-bound device key pair=] is specific to a particular authenticator, its attestation can be tied to hardware roots of trust, although they do not have to be. This is in contrast to the associated [=user credential=]'s attestation.)
@@ -6271,8 +6268,6 @@ Note: [=[RPS]=] need to take care to verify [=device-bound key=] signatures befo
 
         1. Let the `nonce` key's value be |randomNonce|.
 
-        1. Let the `sig` key's value be the result of signing the concatenation of |clientDataHash| and |userCredentialId| using the |devicePrivateKey| and the signature algorithm appropriate for the |devicePrivateKey|'s public key algorithm: <code>sign((|clientDataHash| || |userCredentialId|), |devicePrivateKey|)</code>.
-
         1. Let the `scope` key have the value zero (0x00) if this is an "entire device" [=device public key=]. Otherwise, let `scope` have the value one (0x01), indicating a more narrow per-app scope.
 
         1. Let the values of the `$$attStmtType` "group socket" [[=CDDL=]] be the result of generating an [=attestation statement=] with the [=attestation statement format=], |attFormat|. See [[#sctn-device-publickey-attestation-calculations]].
@@ -6280,6 +6275,12 @@ Note: [=[RPS]=] need to take care to verify [=device-bound key=] signatures befo
             Note: The details of the `$$attStmtType` values are dependent upon the particular [=attestation statement=] format. See [[#sctn-attestation-formats]]. Since the [=hardware-bound device key pair=] is specific to a particular authenticator, its attestation can be tied to hardware roots of trust (although they do not have to be). This is in contrast to the associated [=user credential=]'s attestation.
 
         1. If the `$$attStmtType` "group socket" contains uniquely identifying information then let `epAtt` be [TRUE]. Otherwise omit the `epAtt` field. (This field can only be [TRUE] when the {{AuthenticationExtensionsDevicePublicKeyInputs/attestation}} field of the extension input is "enterprise" and either the user-agent or the authenticator permits uniquely identifying attestation for the requested RP ID.)
+
+    1. If the extension was presented during a {{CredentialsContainer/get()|navigator.credentials.get()}} call:
+
+        1. Let |dpkSig| be the result of signing the [=assertion signature=] [input](#fig-signature) with the [=device private key=].
+
+        1. Replace the usual [=assertion signature=] result with a two-element CBOR array containing the previous [=assertion signature=] and |dpkSig|, in that order.
 
 #### Attestation calculations #### {#sctn-device-publickey-attestation-calculations}
 
@@ -6302,11 +6303,9 @@ If the `devicePubKey` extension was included on a {{CredentialsContainer/create(
 
 1. Let |attObjForDevicePublicKey| be the value of the `devicePubKey` member of |clientExtensionResults|.
 
-1. Verify that |attObjForDevicePublicKey| is valid CBOR conforming to the syntax defined above and perform CBOR decoding on it to extract the contained fields: |sig|, |aaguid|, |dpk|, |scope|, |nonce|, |fmt|, |attStmt|.
+1. Verify that |attObjForDevicePublicKey| is valid CBOR conforming to the syntax defined above and perform CBOR decoding on it to extract the contained fields: |aaguid|, |dpk|, |scope|, |nonce|, |fmt|, |attStmt|.
 
     Note: The latter |attObjForDevicePublicKey| fields are referenced exclusively in the below steps and are not to be confused with other fields with the same names in other portions of [=authenticator data=].
-
-1. Verify that |sig| is a valid signature over the concatenation of |hash| and <code>[=credentialId=]</code> using the [=device public key=] |dpk| (the signature algorithm is indicated by |dpk|'s "alg" {{COSEAlgorithmIdentifier}} value).
 
 1. Optionally, if attestation was requested and the RP wishes to verify it, verify that |attStmt| is a correct [=attestation statement=], conveying a valid [=attestation signature=], by using the [=attestation statement format=] |fmt|'s [=verification procedure=] given |attStmt|. See [[#sctn-device-publickey-attestation-calculations]].
 
@@ -6324,11 +6323,13 @@ If the `devicePubKey` extension was included on a {{CredentialsContainer/get()|n
 
 1. Let |attObjForDevicePublicKey| be the value of the `devicePubKey` member of |clientExtensionResults|.
 
-1. Verify that |attObjForDevicePublicKey| is valid CBOR conforming to the syntax defined above and perform CBOR decoding on it to extract the contained fields: |sig|, |aaguid|, |dpk|, |scope|, |nonce|, |fmt|, |attStmt|.
+1. Verify that |attObjForDevicePublicKey| is valid CBOR conforming to the syntax defined above and perform CBOR decoding on it to extract the contained fields: |aaguid|, |dpk|, |scope|, |nonce|, |fmt|, |attStmt|.
 
     Note: The latter |attObjForDevicePublicKey| fields are referenced exclusively in the below steps and are not to be confused with other fields with the same names in other portions of [=authenticator data=].
 
-1. Verify that |sig| is a valid signature over the concatenation of |hash| and <code>[=credentialId=]</code> using the [=device public key=] |dpk| (the signature algorithm is indicated by |dpk|'s "alg" {{COSEAlgorithmIdentifier}} value).
+1. Verify that {{AuthenticatorAssertionResponse/signature}} contains a two-element CBOR array and let |sig| be the second element of the array.
+
+1. Verify that |sig| is a valid signature over the [=assertion signature=] [input](#fig-signature) by the [=device public key=] |dpk|. (The signature algorithm is indicated by |dpk|'s "alg" {{COSEAlgorithmIdentifier}} value.)
 
 1. If the [=[RP]=]'s [=user account=] mapped to the <code>|credential|.{{Credential/id}}</code> in play (i.e., for the user being authenticated) holds `aaguid`, `dpk`, `scope`, `fmt`, and `attStmt` values corresponding to the extracted |attObjForDevicePublicKey| fields, then perform binary equality checks between the corresponding stored values and the extracted field values. The [=[RP]=] may have more than one set of {`aaguid`, `dpk`, `scope`, `fmt`, `attStmt`} values mapped to the [=user account=] and <code>|credential|.{{Credential/id}}</code> pair and each set must be checked.
 
