@@ -6095,15 +6095,15 @@ Issue(w3c/webauthn#1665): TODO: explicitly add the notion of "Synced/multi-devic
 
 This extension is intended for use by those [=[RPS]=] employing risk-analysis systems informing their sign-in decisions. This extension provides a "device continuity" signal <i>when used consistently</i> with both {{CredentialsContainer/create()|navigator.credentials.create()}} and {{CredentialsContainer/get()|navigator.credentials.get()}} operations:
 
-When a [=[RP]=] uses the `devicePubKey` extension with a {{CredentialsContainer/create()|create()}} call on a given [=client device=] ("device&nbsp;1") to create a new [=user credential=], a new signature ("sig&nbsp;1") by a new [=device-bound key=] ("dpk&nbsp;1") is returned along with the new [=device public key=]. The [=[RP]=]'s subsequent {{CredentialsContainer/get()|get()}} operations using the same user credential on that <i>same [=client device=]</i> ("device&nbsp;1") generate [=assertions=] including further signatures by the <i>same</i> [=device-bound key=] ("sig&nbsp;n&nbsp;+ dpk&nbsp;1"). This behavior on "device&nbsp;1" is independent of whether this user credential has been copied to any other [=client devices=].
+When a [=[RP]=] uses the `devicePubKey` extension with a {{CredentialsContainer/create()|create()}} call to create a new [=user credential=], a signature by a new [=device-bound key=] ("dpk&nbsp;1") is returned along with the new [=device public key=]. Even if the [=user credential=] is <!-- TODO: link this once https://github.com/w3c/webauthn/pull/1695 has landed--> backed up, "dpk 1" never leaves the <!-- TODO: link this once https://github.com/w3c/webauthn/pull/1695 has landed--> generating authenticator ("authenticator 1"). The [=[RP]=]'s subsequent {{CredentialsContainer/get()|get()}} operations using the same user credential with that <i>same [=authenticator=]</i> generate [=assertions=] including further signatures by the <i>same</i> [=device-bound key=] ("dpk&nbsp;1"). This behavior on "authenticator &nbsp;1" is independent of whether this user credential has been copied to any other [=authenticator=].
 
-Then, if this same user credential is copied or moved to a different [=client device=] ("device&nbsp;2"), the [=[RP]=]'s initial {{CredentialsContainer/get()|get()}} call on "device&nbsp;2", that includes the `devicePubKey` extension, will produce an [=assertion=] including <strong>a new signature by a <i>new</i> [=device-bound key=]</strong> ("sig&nbsp;x&nbsp;+ dpk&nbsp;2"). Note that such a "multi-device user credential" can be exercised on "device&nbsp;2" without a {{CredentialsContainer/create()|create()}} having been performed on "device&nbsp;2". The [=[RP]=]'s subsequent {{CredentialsContainer/get()|get()}} calls on "device&nbsp;2", using the `devicePubKey` extension and the same user credential, yield further signatures by "dpk&nbsp;2".
+Then, if this same user credential is copied to a different [=authenticator=] ("authenticator&nbsp;2"), the [=[RP]=]'s first {{CredentialsContainer/get()|get()}} call on "authenticator&nbsp;2" (that includes the `devicePubKey` extension) will produce an [=assertion=] including a signature by a <i>new</i> [=device-bound key=] ("dpk&nbsp;2"). Note that such a "multi-device user credential" can be exercised on "authenticator&nbsp;2" without a {{CredentialsContainer/create()|create()}} having been performed on "authenticator&nbsp;2". The [=[RP]=]'s subsequent {{CredentialsContainer/get()|get()}} calls on "authenticator&nbsp;2", using the `devicePubKey` extension and the same user credential, yield further signatures by "dpk&nbsp;2".
 
 A usage example is thus:
 
 >    Say that a sign-in request appears at a website along with some geolocation signal that has not been seen for this [=user account=] before, and is outside of the typical usage hours observed for the account. The risk may be deemed high enough not to allow the request, even with an assertion by a multi-device user credential on its own. But if a signature by a [=device-bound key=] that is <i>well established</i> for this user can also be presented, then that may tip the balance.
 
-Note: The `devicePubKey` extension output value contains one or more signature values. [=[RPS]=] need to take care to verify these signatures before associating and storing extension output value fields in conjunction with the [=user account=]. See [[#sctn-device-publickey-extension-verification]].
+Note: [=[RPS]=] need to take care to verify [=device-bound key=] signatures before associating and storing extension output value fields in conjunction with the [=user account=]. See [[#sctn-device-publickey-extension-verification]].
 
 
 ### Extension Definition ### {#sctn-device-publickey-extension-definition}
@@ -6117,13 +6117,25 @@ Note: The `devicePubKey` extension output value contains one or more signature v
 : Client extension input
 :: The Boolean value [TRUE] to indicate that this extension is requested by the [=[RP]=].
     <xmp class="idl">
+    dictionary AuthenticationExtensionsDevicePublicKeyInputs {
+        DOMString attestation = "none";
+    };
+
     partial dictionary AuthenticationExtensionsClientInputs {
-        boolean devicePubKey;  // Explicitly set this to \`true\`!
+        AuthenticationExtensionsDevicePublicKeyInputs devicePubKey;
     };
     </xmp>
+    <div dfn-type="dict-member" dfn-for="AuthenticationExtensionsDevicePublicKeyInputs">
+        :   <dfn>attestation</dfn>
+        ::  The [=[RP]=] MAY use this OPTIONAL member to specify a preference regarding [=attestation conveyance=].
+            Its value SHOULD be a member of {{AttestationConveyancePreference}}.
+            [=Client platforms=] MUST ignore unknown values, treating an unknown value as if the [=map/exist|member does not exist=].
+
+            The default value is {{AttestationConveyancePreference/none}}.
+    </div>
 
 : Client extension processing
-:: If {{AuthenticationExtensionsClientInputs/devicePubKey}} is [TRUE], the client creates the authenticator extension input from the client extension input. If {{AuthenticationExtensionsClientInputs/devicePubKey}} is [FALSE], the client ignores this extension.
+:: If {{AuthenticationExtensionsClientInputs/devicePubKey}} is present, the client creates the authenticator extension input from the client extension input.
 
 : Client extension output
 :: An ArrayBuffer containing the [=device public key attestation object=] that was returned in the authenticator extension output.
@@ -6135,11 +6147,14 @@ Note: The `devicePubKey` extension output value contains one or more signature v
 
 
 : Authenticator extension input
-:: The Boolean value [TRUE], encoded in CBOR (major type 7, value 21).
+:: A CBOR expression of the client extension input
 
     ```
+    devicePublicKeyInputs = {
+      attestation: "none" / "indirect" / "direct" / "enterprise",
+    }
     $$extensionInput //= (
-      devicePubKey: true
+      devicePubKey: devicePublicKeyInputs,
     )
     ```
 
@@ -6201,6 +6216,14 @@ Note: The `devicePubKey` extension output value contains one or more signature v
         ; See https://www.w3.org/TR/webauthn/#sctn-defined-attestation-formats.
 
         $$attStmtType,
+
+        ; An optional boolean that indicates whether the attestation statement
+        ; contains uniquely identifying information. This can only be true
+        ; when the \`attestation\` field of the extension input is "enterprise"
+        ; an either the user-agent or the authenticator permits uniquely
+        ; identifying attestation for the requested RP ID.
+
+        ? epAtt: bool .default false,
     }
 
     ```
@@ -6211,9 +6234,22 @@ Note: The `devicePubKey` extension output value contains one or more signature v
 
     1. If a [=hardware-bound device key pair=] does not already exist for this {[=public key credential source/id|Credential ID=], [=public key credential source/rpId|RP ID=], [=public key credential source/rpId|userHandle=]} tuple on the [=authenticator=], create it using the same public key algorithm as that used by the [=user credential=]'s [=credential key pair=], otherwise locate the existing [=device-bound key=].
 
-    1. Let |dpk| be the newly created or existing [=device public key=], in COSE_Key format [=credentialPublicKey|in the same fashion as for the user credential's credentialPublicKey=] when the latter is conveyed in [=attested credential data=].
+    1. Let |attFormat| be the chosen [=attestation statement format=], and |aaguid| be a 16-byte value, based on the value of {{AuthenticationExtensionsDevicePublicKeyInputs/attestation}} in the extension input:
 
-    1. Let |aaguid| be the [=authenticator=]'s [=AAGUID=].
+        <dl class="switch">
+            : none
+            :: |attFormat| is "none" or "self", at the authenticator's discretion, and |aaguid| is 16 zero bytes.
+
+            : indirect, direct
+            :: |attFormat| is an [=attestation statement format=] appropriate for this [=authenticator=] and |aaguid| is the [=authenticator's=] [=AAGUID=]. (Since the [=hardware-bound device key pair=] is specific to a particular authenticator, its attestation can be tied to hardware roots of trust, although they do not have to be. This is in contrast to the associated [=user credential=]'s attestation.)
+
+            : enterprise
+            :: The [=[RP]=] wants to receive an [=attestation statement=] that may include uniquely identifying information. This is intended for controlled deployments within an enterprise where the organization wishes to tie registrations to specific authenticators. [=Authenticators=] MUST NOT provide such an attestation unless the user agent or authenticator configuration expressly permits it for the requested [=RP ID=]. If <i>not</i> permitted, |attFormat| is "none" and |aaguid| is 16 zero bytes. Otherwise |attFormat| is an [=attestation statement format=] appropriate for this [=authenticator=] and |aaguid| is the [=authenticator's=] [=AAGUID=]. (Again, since the [=hardware-bound device key pair=] is specific to a particular authenticator, the attestation may be tied to hardware roots of trust.)
+
+            Note: CTAP2 does not currently provide for an <a href="https://fidoalliance.org/specs/fido-v2.1-ps-20210615/fido-client-to-authenticator-protocol-v2.1-ps-20210615.html#makecred-enterpriseattestation">enterpriseAttestation</a> signal during an <a href="https://fidoalliance.org/specs/fido-v2.1-ps-20210615/fido-client-to-authenticator-protocol-v2.1-ps-20210615.html#authenticatorGetAssertion">authenticatorGetAssertion</a> call. Until that is changed, <a href="https://fidoalliance.org/specs/fido-v2.1-ps-20210615/fido-client-to-authenticator-protocol-v2.1-ps-20210615.html#platform-managed-enterprise-attestation">platform-managed enterprise attestation</a> will not work in that context with CTAP2 [=authenticators=].
+        </dl>
+
+    1. Let |dpk| be the newly created or existing [=device public key=], in COSE_Key format [=credentialPublicKey|in the same fashion as for the user credential's credentialPublicKey=] when the latter is conveyed in [=attested credential data=].
 
     1. Let |devicePrivateKey| be the newly created or existing [=device private key=].
 
@@ -6235,11 +6271,13 @@ Note: The `devicePubKey` extension output value contains one or more signature v
 
         1. Let the `scope` key have the value zero (0x00) if this is an "entire device" [=device public key=]. Otherwise, let `scope` have the value one (0x01), indicating a more narrow per-app scope.
 
-        1. Let the values of the `$$attStmtType` "group socket" [[=CDDL=]] be the result of generating an [=attestation statement=] in the [=attestation statement format=] appropriate for this [=authenticator=] (see the Note below), although substituting |aaguid|'s value for `authenticatorData`, and substituting the concatenation of |dpk|'s value and |nonce|'s value (in that order) for `clientDataHash` in the [=attestation statement format=]'s signing procedure (see [[#sctn-generating-an-attestation-object]]). If |nonce|'s value is a zero length bytestring, then there is no nonce value to concatenate. Attestation statement formats define the `fmt` and `attStmt` members of the `$$attStmtType` group socket.
+        1. Let the values of the `$$attStmtType` "group socket" [[=CDDL=]] be the result of generating an [=attestation statement=] with the [=attestation statement format=], |attFormat|, although substituting |aaguid|'s value for `authenticatorData`, and substituting the concatenation of |dpk|'s value and |nonce|'s value (in that order) for `clientDataHash` in the [=attestation statement format=]'s signing procedure (see [[#sctn-generating-an-attestation-object]]). If |nonce|'s value is a zero length bytestring, then there is no nonce value to concatenate. Attestation statement formats define the `fmt` and `attStmt` members of the `$$attStmtType` group socket.
 
             In summary, the `$$attStmtType` values generated by the foregoing procedure typically contain a signature value calculated over the bytes of <code>(|aaguid| || |dpk| || |nonce|)</code>, the attestation certificate or public key, and supporting certificates, if any.
 
             Note: The details of the `$$attStmtType` values are dependent upon the particular [=attestation statement=] format. See [[#sctn-attestation-formats]]. Since the [=hardware-bound device key pair=] is specific to a particular authenticator, its attestation can be tied to hardware roots of trust (although they do not have to be). This is in contrast to the associated [=user credential=]'s attestation.
+
+        1. If the `$$attStmtType` "group socket" contains uniquely identifying information then let `epAtt` be [TRUE]. Otherwise omit the `epAtt` field. (This field can only be [TRUE] when the {{AuthenticationExtensionsDevicePublicKeyInputs/attestation}} field of the extension input is "enterprise" and either the user-agent or the authenticator permits uniquely identifying attestation for the requested RP ID.)
 
 ### `devicePubKey` Extension Output Verification Procedures ### {#sctn-device-publickey-extension-verification}
 
@@ -6257,7 +6295,7 @@ If the `devicePubKey` extension was included on a {{CredentialsContainer/create(
 
 1. Verify that |sig| is a valid signature over the concatenation of |hash| and <code>[=credentialId=]</code> using the [=device public key=] |dpk| (the signature algorithm is indicated by |dpk|'s "alg" {{COSEAlgorithmIdentifier}} value).
 
-1. Verify that |attStmt| is a correct [=attestation statement=], conveying a valid [=attestation signature=], by using the [=attestation statement format=] |fmt|'s [=verification procedure=] given |attStmt|, although substituting |aaguid|'s value for `authenticatorData`, and substituting the concatenation of |dpk|'s value and |nonce|'s value for `clientDataHash` in the [=attestation statement format=]'s [=verification procedure inputs=].
+1. Optionally, if attestation was requested and the RP wishes to verify it, verify that |attStmt| is a correct [=attestation statement=], conveying a valid [=attestation signature=], by using the [=attestation statement format=] |fmt|'s [=verification procedure=] given |attStmt|, although substituting |aaguid|'s value for `authenticatorData`, and substituting the concatenation of |dpk|'s value and |nonce|'s value for `clientDataHash` in the [=attestation statement format=]'s [=verification procedure inputs=].
 
     Note: If |fmt|'s value is "[=none=]" there is no attestation signature to verify.
 
@@ -6302,7 +6340,7 @@ If the `devicePubKey` extension was included on a {{CredentialsContainer/get()|n
                         Note: This authenticator is not generating a fresh per-response random nonce.
 
                     : unsuccessful
-                    :: Verify that |attStmt| is a correct [=attestation statement=], conveying a valid [=attestation signature=], by using the [=attestation statement format=] |fmt|'s [=verification procedure=] given |attStmt|, although substituting |aaguid|'s value for `authenticatorData`, and substituting the concatenation of |dpk|'s value and |nonce|'s value for `clientDataHash` in the [=attestation statement format=]'s [=verification procedure inputs=].
+                    :: Optionally, if attestation was requested and the RP wishes to verify it, verify that |attStmt| is a correct [=attestation statement=], conveying a valid [=attestation signature=], by using the [=attestation statement format=] |fmt|'s [=verification procedure=] given |attStmt|, although substituting |aaguid|'s value for `authenticatorData`, and substituting the concatenation of |dpk|'s value and |nonce|'s value for `clientDataHash` in the [=attestation statement format=]'s [=verification procedure inputs=].
 
                         If the result is:
 
@@ -6327,7 +6365,7 @@ If the `devicePubKey` extension was included on a {{CredentialsContainer/get()|n
                     :: Store the extracted |aaguid|, |dpk|, |scope|, |fmt|, |attStmt| values indexed to the <code>|credential|.{{Credential/id}}</code> in the [=user account=]. Terminate these verification steps.
 
                     : Otherwise:
-                    :: Verify that |attStmt| is a correct [=attestation statement=], conveying a valid [=attestation signature=], by using the [=attestation statement format=] |fmt|'s [=verification procedure=] given |attStmt|, although substituting |aaguid|'s value for `authenticatorData`, and substituting the concatenation of |dpk|'s value and |nonce|'s value for `clientDataHash` in the [=attestation statement format=]'s [=verification procedure inputs=].
+                    :: Optionally, if attestation was requested and the RP wishes to verify it, verify that |attStmt| is a correct [=attestation statement=], conveying a valid [=attestation signature=], by using the [=attestation statement format=] |fmt|'s [=verification procedure=] given |attStmt|, although substituting |aaguid|'s value for `authenticatorData`, and substituting the concatenation of |dpk|'s value and |nonce|'s value for `clientDataHash` in the [=attestation statement format=]'s [=verification procedure inputs=].
 
                         If the result is:
 
