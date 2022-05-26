@@ -4723,7 +4723,12 @@ In order to perform an [=authentication ceremony=], the [=[RP]=] MUST proceed as
 1. Verify that the value of <code>|C|.{{CollectedClientData/challenge}}</code> equals
     the base64url encoding of <code>|options|.{{PublicKeyCredentialRequestOptions/challenge}}</code>.
 
-1. Verify that the value of <code>|C|.{{CollectedClientData/origin}}</code> matches the [=[RP]=]'s [=origin=].
+<!-- Note: this next step is actually a top-level step, but bikeshed wanted it indented this much in order to render it as
+a numbered step. If outdented, it (today) is rendered as a bullet in the midst of a numbered list :-/
+-->
+    <li id='rp-op-verifying-assertion-step-origin'>
+      Verify that the value of <code>|C|.{{CollectedClientData/origin}}</code> matches the [=[RP]=]'s [=origin=].
+    </li>
 
 <!-- Note: this next step is actually a top-level step, but bikeshed wanted it indented this much in order to render it as
 a numbered step. If outdented, it (today) is rendered as a bullet in the midst of a numbered list :-/
@@ -6896,6 +6901,46 @@ and thus focus an attack on those likely weaker accounts.
 
 This issue is similar to the one described in [[#sctn-username-enumeration]]
 and [[#sctn-credential-id-privacy-leak]], and can be mitigated in similar ways.
+
+
+### Code injection attacks ### {#sctn-code-injection}
+
+Any malicious code executing on an
+[=determines the set of origins on which the public key credential may be exercised|origin=]
+within the [=scope=] of a [=[RP]=]' [=public key credentials=]
+has the potential to invalidate any and all security guarantees WebAuthn may provide.
+[=[WAC]s=] only expose the WebAuthn API in [=secure contexts=],
+which mitigates the most basic attacks but SHOULD be combined with additional precautions by [=[RPS]=].
+
+Code injection can happen in several ways;
+this section attempts to point out some likely scenarios and suggest suitable mitigations,
+but is not an exhaustive list.
+
+  - Malicous code could be injected by a third-party script included by the [=[RP]=],
+    either intentionally or due to a security vulnerability in the third party.
+
+    The [=[RP]=] therefore SHOULD limit the amount of third-party script included on the
+    [=determines the set of origins on which the public key credential may be exercised|origins=]
+    within the [=scope=] of its [=credentials=].
+
+    The [=[RP]=] SHOULD use Content Security Policy [[!CSP2]],
+    and/or other appropriate technologies available at the time, to limit what script can run on its
+    [=determines the set of origins on which the public key credential may be exercised|origins=].
+
+  - Malicious code could, by the credential [=scope=] rules, be hosted on a subdomain of the [=RP ID=].
+    For example, user-submitted code hosted on `usercontent.example.org`
+    could exercise any [=credentials=] [=scoped=] to the [=RP ID=] `example.org`.
+    If the [=[RP]=] allows a subdomain {{CollectedClientData/origin}}
+    when [verifying the assertion](#rp-op-verifying-assertion-step-origin),
+    malicious users could use this to launch a [=man-in-the-middle attack=]
+    to obtain valid [=authentication assertions=] and impersonate the victims of the attack.
+
+    Therefore, the [=[RP]=] by default SHOULD NOT allow a subdomain {{CollectedClientData/origin}}
+    when [verifying the assertion](#rp-op-verifying-assertion-step-origin).
+    If the [=[RP]=] needs to allow a subdomain {{CollectedClientData/origin}},
+    then the [=[RP]=] MUST NOT serve untrusted code on any subdomain of any
+    [=determines the set of origins on which the public key credential may be exercised|origin=]
+    within the [=scope=] of its [=public key credentials=].
 
 
 # Privacy Considerations # {#sctn-privacy-considerations}
