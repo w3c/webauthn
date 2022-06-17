@@ -1850,6 +1850,7 @@ a numbered step. If outdented, it (today) is rendered either as a bullet in the 
                             |credTypesAndPubKeyAlgs|,
                             |excludeCredentialDescriptorList|,
                             |enterpriseAttestationPossible|,
+                            <code>|options|.{{PublicKeyCredentialCreationOptions/attestationFormats}}</code>,
                             and |authenticatorExtensions| as parameters.
                     </li>
 
@@ -2236,14 +2237,19 @@ When this method is invoked, the user agent MUST execute the following algorithm
                                 :   [=list/is empty=]
                                 ::  Using local configuration knowledge of the appropriate transport to use with |authenticator|,
                                     invoke the [=authenticatorGetAssertion=] operation on |authenticator| with |rpId|,
-                                    |clientDataHash|, |allowCredentialDescriptorList|, |userVerification|, and
-                                    |authenticatorExtensions| as parameters.
+                                    |clientDataHash|, |allowCredentialDescriptorList|, |userVerification|,
+                                    <code>|options|.{{PublicKeyCredentialRequestOptions/attestation}}</code>,
+                                    <code>|options|.{{PublicKeyCredentialRequestOptions/attestationFormats}}</code>,
+                                    and |authenticatorExtensions| as parameters.
                             </dl>
 
                     :   [=list/is empty=]
                     ::  Using local configuration knowledge of the appropriate transport to use with |authenticator|, invoke the
                         [=authenticatorGetAssertion=] operation on |authenticator| with |rpId|, |clientDataHash|,
-                        |userVerification| and |authenticatorExtensions| as parameters.
+                        |userVerification|,
+                        <code>|options|.{{PublicKeyCredentialRequestOptions/attestation}}</code>,
+                        <code>|options|.{{PublicKeyCredentialRequestOptions/attestationFormats}}</code>,
+                        and |authenticatorExtensions| as parameters.
 
                         Note: In this case, the [=[RP]=] did not supply a list of acceptable credential descriptors. Thus, the
                             authenticator is being asked to exercise any credential it may possess that is [=scoped=] to
@@ -2291,6 +2297,10 @@ When this method is invoked, the user agent MUST execute the following algorithm
                 ::  If the [=authenticator=] returned a [=user handle=], set the value of [=userHandleResult=] to be the bytes of
                     the returned [=user handle=]. Otherwise, set the value of [=userHandleResult=] to null.
 
+                :   <code><dfn for="assertionCreationData">assertionAttestation</dfn></code>
+                ::  If the [=authenticator=] returned an [=attestation=], set the value of [=assertionAttestation=] to be the bytes of
+                    the [=attestation statement=]. Otherwise set it to null.
+
                 :   <code><dfn for="assertionCreationData">clientExtensionResults</dfn></code>
                 ::  whose value is an {{AuthenticationExtensionsClientOutputs}} object containing [=extension identifier=] →
                     [=client extension output=] entries. The entries are created by running each extension's
@@ -2329,6 +2339,12 @@ When this method is invoked, the user agent MUST execute the following algorithm
                             field to null. Otherwise, set this field to a new {{ArrayBuffer}}, created using |global|'s
                             [=%ArrayBuffer%=], containing the bytes of
                             <code>|assertionCreationData|.[=assertionCreationData/userHandleResult=]</code>.
+
+                        :   {{AuthenticatorAssertionResponse/attestationObject}}
+                        ::  If <code>|assertionCreationData|.[=assertionCreationData/assertionAttestation=]</code> is null, set this
+                            field to null. Otherwise, set this field to a new {{ArrayBuffer}}, created using |global|'s
+                            [=%ArrayBuffer%=], containing the bytes of
+                            <code>|assertionCreationData|.[=assertionCreationData/assertionAttestation=]</code>.
 
                     :   {{PublicKeyCredential/[[clientExtensionsResults]]}}
                     ::  A new {{ArrayBuffer}}, created using |global|'s [=%ArrayBuffer%=], containing the bytes of
@@ -2512,6 +2528,7 @@ optionally evidence of [=user consent=] to a specific transaction.
         [SameObject] readonly attribute ArrayBuffer      authenticatorData;
         [SameObject] readonly attribute ArrayBuffer      signature;
         [SameObject] readonly attribute ArrayBuffer?     userHandle;
+        [SameObject] readonly attribute ArrayBuffer?     attestationObject;
     };
 </xmp>
 <div dfn-type="attribute" dfn-for="AuthenticatorAssertionResponse">
@@ -2530,6 +2547,9 @@ optionally evidence of [=user consent=] to a specific transaction.
     :   <dfn>userHandle</dfn>
     ::  This attribute contains the [=user handle=] returned from the authenticator, or null if the authenticator did not return a
         [=user handle=]. See [[#sctn-op-get-assertion]].
+
+    :   <dfn>attestationObject</dfn>
+    ::  This OPTIONAL attribute contains an [=attestation object=]. The [=attestation object=], if present, includes an [=attestation statement=]. Unlike the {{AuthenticatorAttestationResponse/attestationObject}} in an {{AuthenticatorAssertionResponse}}, it does not contains an `authData` key because the [=authenticator data=] is provided directly in an {{AuthenticatorAssertionResponse}} structure. For more details on attestation, see [[#sctn-attestation]], [[#sctn-generating-an-attestation-object]], and [Figure 6](#fig-attStructs).
 </div>
 
 ## Parameters for Credential Generation (dictionary <dfn dictionary>PublicKeyCredentialParameters</dfn>) ## {#dictionary-credential-params}
@@ -2569,6 +2589,7 @@ optionally evidence of [=user consent=] to a specific transaction.
         sequence<PublicKeyCredentialDescriptor>      excludeCredentials = [];
         AuthenticatorSelectionCriteria               authenticatorSelection;
         DOMString                                    attestation = "none";
+        sequence<DOMString>                          attestationFormats = [];
         AuthenticationExtensionsClientInputs         extensions;
     };
 </xmp>
@@ -2634,6 +2655,14 @@ optionally evidence of [=user consent=] to a specific transaction.
         [=Client platforms=] MUST ignore unknown values, treating an unknown value as if the [=map/exist|member does not exist=].
 
         The default value is {{AttestationConveyancePreference/none}}.
+
+    :   <dfn>attestationFormats</dfn>
+    ::  The [=[RP]=] MAY use this OPTIONAL member to specify a preference regarding the [=attestation=] statement format used by the [=authenticator=].
+        Values SHOULD be taken from the IANA "WebAuthn Attestation Statement Format Identifiers" registry [[!IANA-WebAuthn-Registries]] established by [[!RFC8809]].
+        Values are ordered from most preferable to least preferable.
+        This parameter is advisory and the [=authenticator=] MAY use an attestation statement not enumerated in this parameter.
+
+        The default value is the empty list, which indicates no preference.
 
     :   <dfn>extensions</dfn>
     ::  The [=[RP]=] MAY use this OPTIONAL member to provide [=client extension inputs=]
@@ -2940,6 +2969,8 @@ an assertion. Its {{PublicKeyCredentialRequestOptions/challenge}} member MUST be
         USVString                            rpId;
         sequence<PublicKeyCredentialDescriptor> allowCredentials = [];
         DOMString                            userVerification = "preferred";
+        DOMString                            attestation = "none";
+        sequence<DOMString>                  attestationFormats = [];
         AuthenticationExtensionsClientInputs extensions;
     };
 </xmp>
@@ -2999,6 +3030,21 @@ an assertion. Its {{PublicKeyCredentialRequestOptions/challenge}} member MUST be
         {{CredentialsContainer/get()}} operation. The value SHOULD be a member of {{UserVerificationRequirement}} but [=client platforms=] MUST ignore unknown values, treating an unknown value as if the [=map/exist|member does not exist=]. Eligible authenticators are filtered to only those capable of satisfying this requirement.
 
         See {{UserVerificationRequirement}} for the description of {{AuthenticatorSelectionCriteria/userVerification}}'s values and semantics.
+
+    :   <dfn>attestation</dfn>
+    ::  The [=[RP]=] MAY use this OPTIONAL member to specify a preference regarding [=attestation conveyance=].
+        Its value SHOULD be a member of {{AttestationConveyancePreference}}.
+        [=Client platforms=] MUST ignore unknown values, treating an unknown value as if the [=map/exist|member does not exist=].
+
+        The default value is {{AttestationConveyancePreference/none}}.
+
+    :   <dfn>attestationFormats</dfn>
+    ::  The [=[RP]=] MAY use this OPTIONAL member to specify a preference regarding the [=attestation=] statement format used by the [=authenticator=].
+        Values SHOULD be taken from the IANA "WebAuthn Attestation Statement Format Identifiers" registry [[!IANA-WebAuthn-Registries]] established by [[!RFC8809]].
+        Values are ordered from most preferable to least preferable.
+        This parameter is advisory and the [=authenticator=] MAY use an attestation statement not enumerated in this parameter.
+
+        The default value is the empty list, which indicates no preference.
 
     :   <dfn>extensions</dfn>
     ::  The [=[RP]=] MAY use this OPTIONAL member to provide [=client extension inputs=]
@@ -4021,6 +4067,8 @@ It takes the following input parameters:
     list of known credentials.
 : |enterpriseAttestationPossible|
 :: A Boolean value that indicates that individually-identifying attestation MAY be returned by the authenticator.
+: |attestationFormats|
+:: A sequence of strings that expresses the [=RP=]'s preference for attestation statement formats, from most to least preferable. If it returns attestation then the [=authenticator=] makes a best-effort attempt to use the most preferable format that it supports.
 : |extensions|
 :: A [=CBOR=] [=map=] from [=extension identifiers=] to their [=authenticator extension inputs=], created by the [=client=] based on
     the extensions requested by the [=[RP]=], if any.
@@ -4305,8 +4353,9 @@ produce, for each [=credential public key=], an [=attestation statement=] verifi
 a challenge, as well as a certificate or similar data providing provenance information for the [=attestation public key=],
 enabling the [=[RP]=] to make a trust decision. However, if an [=attestation key pair=] is not available, then the authenticator
 MAY either perform [=self attestation=] of the [=credential public key=] with the corresponding [=credential private key=],
-or otherwise perform [=None|no attestation=]. All this
-information is returned by [=authenticators=] any time a new [=public key credential=] is generated, in the overall form of an
+or otherwise perform [=None|no attestation=].
+
+All this information is returned by [=authenticators=] any time a new [=public key credential=] is generated, and optionally when exercised, in the overall form of an
 <dfn>attestation object</dfn>. The relationship of the [=attestation object=] with [=authenticator data=] (containing
 [=attested credential data=]) and the [=attestation statement=] is illustrated in <a href="#fig-attStructs">figure <span class="figure-num-following"/></a>, below.
 
@@ -4316,7 +4365,7 @@ In these cases, the [=authenticator=] provides no guarantees about its operation
 
 <figure id="fig-attStructs">
     <img src="images/fido-attestation-structures.svg"/>
-    <figcaption>[=Attestation object=] layout illustrating the included [=authenticator data=] (containing [=attested credential
+    <figcaption>[=Attestation object=] layout illustrating the included [=authenticator data=] from a {{CredentialsContainer/create()|create()}} operation (containing [=attested credential
     data=]) and the [=attestation statement=].</figcaption>
 </figure>
 <div class="note">
@@ -4353,17 +4402,23 @@ The privacy, security and operational characteristics of [=attestation=] depend 
     operating environment, and so on.
 
 The [=attestation type=] and [=attestation statement format=] is chosen by the [=authenticator=];
-[=[RPS]=] can only signal limited [=attestation conveyance=] preferences during [=registration=].
+[=[RPS]=] can only signal their preferences by setting the {{PublicKeyCredentialCreationOptions/attestation}} and {{PublicKeyCredentialCreationOptions/attestationFormats}} parameters. (Or the parameters with the same names in {{PublicKeyCredentialRequestOptions}}.)
+
 It is expected that most [=authenticators=] will support a small number of [=attestation types=] and [=attestation statement
 formats=], while [=[RPS]=] will decide what [=attestation types=] are acceptable to them by policy. [=[RPS]=] will also need to
 understand the characteristics of the [=authenticators=] that they trust, based on information they have about these
 [=authenticators=]. For example, the FIDO Metadata Service [[FIDOMetadataService]] provides one way to access such information.
 
+### Attestation in assertions ### {#sctn-attestation-in-assertions}
+
+Attestation is most commonly provided during credential creation. However, [=multi-device credentials=] can move between [=authenticators=] during their lifetime and thus attestation MAY be provided during assertions if requested by the [=[RP]=] using the {{PublicKeyCredentialRequestOptions/attestation}} parameter.
+
+[=Attestation objects=] provided in an {{AuthenticatorAttestationResponse}} structure (i.e. as the result of a {{CredentialsContainer/create()|create()}} operation) contain at least the three keys shown in [the previous figure](#fig-attStructs): `fmt`, `attStmt`, and `authData`. The last of those keys is not included when an [=attestation object=] is provided in an {{AuthenticatorAssertionResponse}} (i.e. as the result of a {{CredentialsContainer/get()|get()}} operation). That is because the [=authenticator data=] is provided directly in the {{AuthenticatorAssertionResponse/authenticatorData}} member of the {{AuthenticatorAssertionResponse}}. Otherwise, processing of the [=attestation object=] is identical.
 
 ### Attested Credential Data ### {#sctn-attested-credential-data}
 
 <dfn>Attested credential data</dfn> is a variable-length byte array added to the [=authenticator data=] when generating an [=attestation
-object=] for a given credential. Its format is shown in <a href="#table-attestedCredentialData">Table <span class="table-ref-following"/></a>.
+object=] for a credential. Its format is shown in <a href="#table-attestedCredentialData">Table <span class="table-ref-following"/></a>.
 
 <figure id="table-attestedCredentialData" class="table">
     <table class="complex data longlastcol">
@@ -4406,6 +4461,8 @@ object=] for a given credential. Its format is shown in <a href="#table-attested
         present in the actual representation of the [=attested credential data=].
     </figcaption>
 </figure>
+
+Attested credential data is always present in any [=authenticator data=] that results from a {{CredentialsContainer/create()|create()}} operation. It may only be present in an [=authenticator data=] resulting from a {{CredentialsContainer/get()|get()}} operation if attestation was requested using the {{PublicKeyCredentialRequestOptions/attestation}} parameter.
 
 #### Examples of `credentialPublicKey` Values Encoded in COSE_Key Format #### {#sctn-encoded-credPubKey-examples}
 
@@ -4923,6 +4980,20 @@ a numbered step. If outdented, it (today) is rendered as a bullet in the midst o
                   [=authentication ceremony=] or not, is
                   [=[RP]=]-specific. </dd>
            </dl>
+
+1. If <code>|response|.{{AuthenticatorAssertionResponse/attestationObject}}</code> is present and the [=[RP]=] wishes to verify the attestation then perform CBOR decoding on {AuthenticatorAssertionResponse/attestationObject}} to obtain the attestation statement format |fmt|, and the attestation statement |attStmt|.
+
+    1. Verify that the `AT` bit in the [=flags=] field of |authData| is set, indicating that [=attested credential data=] is included.
+
+    1. Verify that [=credentialId=] and [=credentialPublicKey=] fields of the [=attested credential data=] in |authData| match the stored values for the selected [=credential public key=].
+
+    1. Determine the attestation statement format by performing a USASCII case-sensitive match on |fmt| against the set of supported WebAuthn Attestation Statement Format Identifier values. An up-to-date list of registered WebAuthn Attestation Statement Format Identifier values is maintained in the IANA "WebAuthn Attestation Statement Format Identifiers" registry [[!IANA-WebAuthn-Registries]] established by [[!RFC8809]].
+
+    1. Verify that |attStmt| is a correct [=attestation statement=], conveying a valid [=attestation signature=], by using the [=attestation statement format=] |fmt|'s [=verification procedure=] given |attStmt|, |authData| and |hash|.
+
+        Note: Each [=attestation statement format=] specifies its own [=verification procedure=]. See [[#sctn-defined-attestation-formats]] for the initially-defined formats, and [[!IANA-WebAuthn-Registries]] for the up-to-date list.
+
+    1. If validation is successful, obtain a list of acceptable trust anchors (i.e. attestation root certificates) for that attestation type and attestation statement format |fmt|, from a trusted source or from policy. The [=aaguid=] in the [=attested credential data=] can be used to guide this lookup.
 
 1. If all the above steps are successful, continue with the [=authentication ceremony=] as appropriate. Otherwise, fail the
     [=authentication ceremony=].
@@ -6197,6 +6268,7 @@ Note: [=[RPS]=] need to take care to verify [=device-bound key=] signatures befo
 :: <xmp class="idl">
     dictionary AuthenticationExtensionsDevicePublicKeyInputs {
         DOMString attestation = "none";
+        sequence<DOMString> attestationFormats = [];
     };
 
     partial dictionary AuthenticationExtensionsClientInputs {
@@ -6210,6 +6282,14 @@ Note: [=[RPS]=] need to take care to verify [=device-bound key=] signatures befo
             [=Client platforms=] MUST ignore unknown values, treating an unknown value as if the [=map/exist|member does not exist=].
 
             The default value is {{AttestationConveyancePreference/none}}.
+
+    :   <dfn>attestationFormats</dfn>
+    ::  The [=[RP]=] MAY use this OPTIONAL member to specify a preference regarding the [=attestation=] statement format used by the [=authenticator=].
+        Values SHOULD be taken from the IANA "WebAuthn Attestation Statement Format Identifiers" registry [[!IANA-WebAuthn-Registries]] established by [[!RFC8809]].
+        Values are ordered from most preferable to least preferable.
+        This parameter is advisory and the [=authenticator=] MAY use an attestation statement not enumerated in this parameter.
+
+        The default value is the empty list, which indicates no preference.
     </div>
 
 : Client extension processing
@@ -6235,6 +6315,7 @@ Note: [=[RPS]=] need to take care to verify [=device-bound key=] signatures befo
     ```
     devicePublicKeyInputs = {
       attestation: "none" / "indirect" / "direct" / "enterprise",
+      attestationFormats: [tstr],
     }
     $$extensionInput //= (
       devicePubKey: devicePublicKeyInputs,
@@ -6323,10 +6404,10 @@ Note: [=[RPS]=] need to take care to verify [=device-bound key=] signatures befo
             :: |attFormat| is "none" or "self", at the authenticator's discretion, and |aaguid| is 16 zero bytes. (Note that, since the [=device-bound key=] is already exercised during {{CredentialsContainer/get()|navigator.credentials.get()}} calls, the proof-of-possession property provided by "self" attestation is superfluous in that context.)
 
             : indirect, direct
-            :: |attFormat| is an [=attestation statement format=] appropriate for this [=authenticator=] and |aaguid| is the [=authenticator's=] [=AAGUID=]. (Since the [=hardware-bound device key pair=] is specific to a particular authenticator, its attestation can be tied to hardware roots of trust, although they do not have to be. This is in contrast to the associated [=user credential=]'s attestation.)
+            :: |attFormat| is an [=attestation statement format=] appropriate for this [=authenticator=] based on {{AuthenticationExtensionsDevicePublicKeyInputs/attestationFormats}}, and |aaguid| is the [=authenticator's=] [=AAGUID=]. (Since the [=hardware-bound device key pair=] is specific to a particular authenticator, its attestation can be tied to hardware roots of trust, although they do not have to be. This is in contrast to the associated [=user credential=]'s attestation.)
 
             : enterprise
-            :: The [=[RP]=] wants to receive an [=attestation statement=] that may include uniquely identifying information. This is intended for controlled deployments within an enterprise where the organization wishes to tie registrations to specific authenticators. [=Authenticators=] MUST NOT provide such an attestation unless the user agent or authenticator configuration expressly permits it for the requested [=RP ID=]. If <i>not</i> permitted, |attFormat| is "none" and |aaguid| is 16 zero bytes. Otherwise |attFormat| is an [=attestation statement format=] appropriate for this [=authenticator=] and |aaguid| is the [=authenticator's=] [=AAGUID=]. (Again, since the [=hardware-bound device key pair=] is specific to a particular authenticator, the attestation may be tied to hardware roots of trust.)
+            :: The [=[RP]=] wants to receive an [=attestation statement=] that may include uniquely identifying information. This is intended for controlled deployments within an enterprise where the organization wishes to tie registrations to specific authenticators. [=Authenticators=] MUST NOT provide such an attestation unless the user agent or authenticator configuration expressly permits it for the requested [=RP ID=]. If <i>not</i> permitted, |attFormat| is "none", and |aaguid| is 16 zero bytes. Otherwise |attFormat| is an [=attestation statement format=] appropriate for this [=authenticator=] based on {{AuthenticationExtensionsDevicePublicKeyInputs/attestationFormats}}, and |aaguid| is the [=authenticator's=] [=AAGUID=]. (Again, since the [=hardware-bound device key pair=] is specific to a particular authenticator, the attestation may be tied to hardware roots of trust.)
 
             Note: CTAP2 does not currently provide for an <a href="https://fidoalliance.org/specs/fido-v2.1-ps-20210615/fido-client-to-authenticator-protocol-v2.1-ps-20210615.html#makecred-enterpriseattestation">enterpriseAttestation</a> signal during an <a href="https://fidoalliance.org/specs/fido-v2.1-ps-20210615/fido-client-to-authenticator-protocol-v2.1-ps-20210615.html#authenticatorGetAssertion">authenticatorGetAssertion</a> call. Until that is changed, <a href="https://fidoalliance.org/specs/fido-v2.1-ps-20210615/fido-client-to-authenticator-protocol-v2.1-ps-20210615.html#platform-managed-enterprise-attestation">platform-managed enterprise attestation</a> will not work in that context with CTAP2 [=authenticators=].
         </dl>
