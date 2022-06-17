@@ -4841,8 +4841,6 @@ In order to perform an [=authentication ceremony=], the [=[RP]=] MUST proceed as
     {{AuthenticatorResponse/clientDataJSON}}, {{AuthenticatorAssertionResponse/authenticatorData}}, and
     {{AuthenticatorAssertionResponse/signature}} respectively.
 
-    Note: if using the [devicePubKey](#sctn-device-publickey-extension) extension then {{AuthenticatorAssertionResponse/signature}} contains a CBOR array instead and |sig| should be the first element of that array.
-
 1. Let |JSONtext| be the result of running [=UTF-8 decode=] on the value of |cData|.
 
     Note: Using any implementation of [=UTF-8 decode=] is acceptable as long as it yields the same result as that yielded by
@@ -6220,8 +6218,13 @@ Note: [=[RPS]=] need to take care to verify [=device-bound key=] signatures befo
 : Client extension output
 :: An ArrayBuffer containing the [=device public key attestation object=] that was returned in the authenticator extension output.
     <xmp class="idl">
+    dictionary AuthenticationExtensionsDevicePublicKeyOutputs {
+        ArrayBuffer authenticatorOutput;
+        ArrayBuffer signature;
+    };
+
     partial dictionary AuthenticationExtensionsClientOutputs {
-        ArrayBuffer devicePubKey;
+        AuthenticationExtensionsDevicePublicKeyOutputs devicePubKey;
     };
     </xmp>
 
@@ -6309,7 +6312,7 @@ Note: [=[RPS]=] need to take care to verify [=device-bound key=] signatures befo
 
 : Authenticator extension processing
 :: For both [=authenticatorMakeCredential=] and [=authenticatorGetAssertion=] operations:
-    1. Create or select the [=public key credential source=] as usual (see [[#sctn-op-make-cred]], or [[#sctn-op-get-assertion]] as appropriate), and let |userCredentialId| be its <code>[=public key credential source/id|Credential ID=]</code>.
+    1. Create or select the [=public key credential source=] as usual (see [[#sctn-op-make-cred]], or [[#sctn-op-get-assertion]] as appropriate).
 
     1. If a [=hardware-bound device key pair=] does not already exist for this {[=public key credential source/id|Credential ID=], [=public key credential source/rpId|RP ID=], [=public key credential source/rpId|userHandle=]} tuple on the [=authenticator=], create it using the same public key algorithm as that used by the [=user credential=]'s [=credential key pair=], otherwise locate the existing [=device-bound key=].
 
@@ -6356,11 +6359,11 @@ Note: [=[RPS]=] need to take care to verify [=device-bound key=] signatures befo
 
         1. If the `$$attStmtType` "group socket" contains uniquely identifying information then let `epAtt` be [TRUE]. Otherwise omit the `epAtt` field. (This field can only be [TRUE] when the {{AuthenticationExtensionsDevicePublicKeyInputs/attestation}} field of the extension input is "enterprise" and either the user-agent or the authenticator permits uniquely identifying attestation for the requested RP ID.)
 
-    1. If the extension was presented during a {{CredentialsContainer/get()|navigator.credentials.get()}} call:
+    1. Let |dpkSig| be the result of signing the [=assertion signature=] [input](#fig-signature) with |devicePrivateKey|.
 
-        1. Let |dpkSig| be the result of signing the [=assertion signature=] [input](#fig-signature) with the [=device private key=].
+    1. Output |dpkSig| to the [=client platform=] so that it can be included in the [=client extension output=].
 
-        1. Replace the usual [=assertion signature=] result with a two-element CBOR array containing the previous [=assertion signature=] and |dpkSig|, in that order.
+        Note: |dpkSig| cannot be included in the extension output because the extension output is inside the [=authenticator data=] and that would imply that the signature signs over itself. Therefore the signature must be conveyed to the [=client platform=] via other means.
 
 #### Attestation calculations #### {#sctn-device-publickey-attestation-calculations}
 
@@ -6384,8 +6387,9 @@ If the `devicePubKey` extension was included on a {{CredentialsContainer/create(
 1. Let |attObjForDevicePublicKey| be the value of the `devicePubKey` member of |clientExtensionResults|.
 
 1. Verify that |attObjForDevicePublicKey| is valid CBOR conforming to the syntax defined above and perform CBOR decoding on it to extract the contained fields: |aaguid|, |dpk|, |scope|, |nonce|, |fmt|, |attStmt|.
-
     Note: The latter |attObjForDevicePublicKey| fields are referenced exclusively in the below steps and are not to be confused with other fields with the same names in other portions of [=authenticator data=].
+
+1. Verify that {{AuthenticationExtensionsDevicePublicKeyOutputs/signature}} is a valid signature over the [=assertion signature=] [input](#fig-signature) by the [=device public key=] |dpk|. (The signature algorithm is the same as for the [=user credential=].)
 
 1. Optionally, if attestation was requested and the RP wishes to verify it, verify that |attStmt| is a correct [=attestation statement=], conveying a valid [=attestation signature=], by using the [=attestation statement format=] |fmt|'s [=verification procedure=] given |attStmt|. See [[#sctn-device-publickey-attestation-calculations]].
 
@@ -6407,9 +6411,7 @@ If the `devicePubKey` extension was included on a {{CredentialsContainer/get()|n
 
     Note: The latter |attObjForDevicePublicKey| fields are referenced exclusively in the below steps and are not to be confused with other fields with the same names in other portions of [=authenticator data=].
 
-1. Verify that {{AuthenticatorAssertionResponse/signature}} contains a two-element CBOR array and let |sig| be the second element of the array.
-
-1. Verify that |sig| is a valid signature over the [=assertion signature=] [input](#fig-signature) by the [=device public key=] |dpk|. (The signature algorithm is indicated by |dpk|'s "alg" {{COSEAlgorithmIdentifier}} value.)
+1. Verify that {{AuthenticationExtensionsDevicePublicKeyOutputs/signature}} is a valid signature over the [=assertion signature=] [input](#fig-signature) by the [=device public key=] |dpk|. (The signature algorithm is the same as for the [=user credential=].)
 
 1. If the [=[RP]=]'s [=user account=] mapped to the <code>|credential|.{{Credential/id}}</code> in play (i.e., for the user being authenticated) holds `aaguid`, `dpk`, `scope`, `fmt`, and `attStmt` values corresponding to the extracted |attObjForDevicePublicKey| fields, then perform binary equality checks between the corresponding stored values and the extracted field values. The [=[RP]=] may have more than one set of {`aaguid`, `dpk`, `scope`, `fmt`, `attStmt`} values mapped to the [=user account=] and <code>|credential|.{{Credential/id}}</code> pair and each set must be checked.
 
@@ -6423,12 +6425,12 @@ If the `devicePubKey` extension was included on a {{CredentialsContainer/get()|n
         : successful
         :: This is likely a known device:
 
-            If |fmt|'s value is "none" then there is no attestation signature to verify and this is a known [=device public key=] with a valid |sig| and thus a known device. Terminate these verification steps.
+            If |fmt|'s value is "none" then there is no attestation signature to verify and this is a known [=device public key=] with a valid signature and thus a known device. Terminate these verification steps.
 
             Otherwise, check |attObjForDevicePublicKey|'s |attStmt| by performing a binary equality check between the corresponding stored and extracted |attStmt| values. If the result is:
                 <dl class="switch">
                     : successful
-                    :: This is a known [=device public key=] with a valid |sig| and valid attestation and thus a known device. Terminate these verification steps.
+                    :: This is a known [=device public key=] with a valid signature and valid attestation and thus a known device. Terminate these verification steps.
 
                         Note: This authenticator is not generating a fresh per-response random nonce.
 
@@ -6439,7 +6441,7 @@ If the `devicePubKey` extension was included on a {{CredentialsContainer/get()|n
 
                         <dl class="switch">
                             : successful
-                            :: This is a known [=device public key=] with a valid |sig| and valid attestation and thus a known device. Terminate these verification steps.
+                            :: This is a known [=device public key=] with a valid signature and valid attestation and thus a known device. Terminate these verification steps.
 
                                 Note: This authenticator is generating a fresh per-response random nonce.
 
