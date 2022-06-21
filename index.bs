@@ -2202,15 +2202,18 @@ When this method is invoked, the user agent MUST execute the following algorithm
 
                 1. If the user selects a |credentialMetadata|,
 
-                    1. Let |optionsCopy| be a temporary copy of |options|.
+                    1. Let |publicKeyOptions| be a temporary copy of |options|.{{CredentialRequestOptions/publicKey}}.
 
                     1. Let |authenticator| be the value of |silentlyDiscoveredCredentials|[|credentialMetadata|].
 
-                    1. Set <code>|optionsCopy|.{{PublicKeyCredentialRequestOptions/allowCredentials}}</code> to be a [=list=] containing a
-                        single {{PublicKeyCredentialDescriptor}} [=list/item=] whose  {{PublicKeyCredentialDescriptor/id}}'s value is set to
-                        |credentialMetadata|'s [=DiscoverableCredentialMetadata/id=]'s value.
+                    1. Set <code>|publicKeyOptions|.{{PublicKeyCredentialRequestOptions/allowCredentials}}</code> to be a [=list=] containing a
+                        single {{PublicKeyCredentialDescriptor}} [=list/item=] whose {{PublicKeyCredentialDescriptor/id}}'s value is set to
+                        |credentialMetadata|'s [=DiscoverableCredentialMetadata/id=]'s value and whose{{PublicKeyCredentialDescriptor/id}}
+                        value is set to |credentialMetadata|'s [=DiscoverableCredentialMetadata/type=].
 
-                    1. Execute the [=issuing a credential request to an authenticator=] algorithm with |authenticator|, |savedCredentialIds| and |optionsCopy|.
+                    1. Execute the [=issuing a credential request to an authenticator=] algorithm with |authenticator|, |savedCredentialIds| and |publicKeyOptions|.
+
+                    1. If that threw a {{NotAllowedError}} [=exception=], [=continue=].
 
                     1. [=set/Append=] |authenticator| to |issuedRequests|.
 
@@ -2239,11 +2242,14 @@ When this method is invoked, the user agent MUST execute the following algorithm
 
             1. Else:
 
-                1. Execute the [=issuing a credential request to an authenticator=] algorithm with |authenticator|, |savedCredentialIds| and |options|.
+                1. Execute the [=issuing a credential request to an authenticator=] algorithm with |authenticator|,
+                   |savedCredentialIds| and |options|.{{CredentialRequestOptions/publicKey}}.
 
                     Note: This branch is taken if <code>|options|.{{CredentialRequestOptions/mediation}}</code> is {{CredentialMediationRequirement/conditional}}
                     and the |authenticator| does not support the [=silentCredentialDiscovery=] operation to allow use of such authenticators during a
                     {{CredentialMediationRequirement/conditional}} [=user mediation=] request.
+
+                1. If that threw a {{NotAllowedError}} [=exception=], [=continue=].
 
                 1. [=set/Append=] |authenticator| to |issuedRequests|.
 
@@ -2360,16 +2366,28 @@ This algorithm accepts the following arguments:
     ::  A [=map=] containing [=authenticator=] → [=credential ID=]. This argument will be modified in this algorithm.
 
     :   <dfn>options</dfn>
-    ::  This argument is a {{CredentialRequestOptions}} object whose
-        <code>|options|.{{CredentialRequestOptions/publicKey}}</code> member contains a {{PublicKeyCredentialRequestOptions}}
-        object specifying the desired attributes of the [=public key credential=] to discover.
+    ::  This argument is a {{PublicKeyCredentialRequestOptions}} object specifying the desired attributes of the
+        [=public key credential=] to discover.
+
+    :   <dfn>rpId</dfn>
+    ::  The request [=RP ID=].
+
+    :   <dfn>clientDataHash</dfn>
+    ::  The [=hash of the serialized client data=] represented by |clientDataJSON|.
+
+    :   <dfn>authenticatorExtensions</dfn>
+    ::  A [=map=] containing [=extension IDs=] to the [=base64url encoding=] of the [=client extension processing=]
+        output for [=authenticator extensions=].
 </dl>
+
+This algorithm throws a "{{NotAllowedError}}" {{DOMException}} if the [=client=] determines that the |authenticator| is
+not capable of handling the request.
 
 The steps for [=issuing a credential request to an authenticator=] are as follows:
 
     1. If <code>|options|.{{PublicKeyCredentialRequestOptions/userVerification}}</code> is set to
         {{UserVerificationRequirement/required}} and the |authenticator| is not capable of performing [=user verification=],
-        [=iteration/continue=].
+        throw a "{{NotAllowedError}}" {{DOMException}}.
 
     1. Let |userVerification| be the <dfn>effective user verification requirement for assertion</dfn>, a Boolean value, as
         follows. If <code>|options|.{{PublicKeyCredentialRequestOptions/userVerification}}</code>
@@ -2405,11 +2423,10 @@ The steps for [=issuing a credential request to an authenticator=] are as follow
                     <code>|options|.{{PublicKeyCredentialRequestOptions/allowCredentials}}</code> are [=bound credential|bound=] to this
                     |authenticator|, by matching with |rpId|,
                     <code>|options|.{{PublicKeyCredentialRequestOptions/allowCredentials}}.{{PublicKeyCredentialDescriptor/id}}</code>,
-                    and
-                    <code>|options|.{{PublicKeyCredentialRequestOptions/allowCredentials}}.{{PublicKeyCredentialDescriptor/type}}</code>.
+                    and <code>|options|.{{PublicKeyCredentialRequestOptions/allowCredentials}}.{{PublicKeyCredentialDescriptor/type}}</code>.
                     Set |allowCredentialDescriptorList| to this filtered list.
 
-                1. If |allowCredentialDescriptorList| [=list/is empty=], [=continue=].
+                1. If |allowCredentialDescriptorList| [=list/is empty=], throw a "{{NotAllowedError}}" {{DOMException}}.
 
                 1. Let |distinctTransports| be a new [=ordered set=].
 
@@ -4364,7 +4381,7 @@ This is an OPTIONAL operation authenticators MAY support to enable {{CredentialM
 It takes the following input parameter:
 
 : |rpId|
-:: The caller's [=RP ID=], as <a href='#GetAssn-DetermineRpId'>determined</a> by the user agent and the client.
+:: The caller's [=RP ID=], as <a href='#GetAssn-DetermineRpId'>determined</a> by the [=client=].
 
 When this operation is invoked, the [=authenticator=] MUST perform the following procedure:
 
@@ -4372,6 +4389,9 @@ When this operation is invoked, the [=authenticator=] MUST perform the following
     <dfn>DiscoverableCredentialMetadata</dfn> [=structs=] with the following [=struct/items=]:
 
     <dl dfn-for="DiscoverableCredentialMetadata">
+        :   <dfn>type</dfn>
+        ::  A {{PublicKeyCredentialType}}.
+
         :   <dfn>id</dfn>
         ::  A [=Credential ID=].
 
@@ -4392,8 +4412,9 @@ When this operation is invoked, the [=authenticator=] MUST perform the following
     1. If |credSource|.[=public key credential source/rpId=] is not |rpId|, [=iteration/continue=].
 
     1. Let |discoveredCredentialMetadata| be a new [=DiscoverableCredentialMetadata=] [=struct=] whose [=struct/items=]
-        are copies of |credSource|'s [=public key credential source/id=], [=public key credential source/rpId=],
-        [=public key credential source/userHandle=] and [=public key credential source/otherUI=].
+        are copies of |credSource|'s [=public key credential source/type=], [=public key credential source/id=],
+        [=public key credential source/rpId=], [=public key credential source/userHandle=] and
+        [=public key credential source/otherUI=].
 
     1. [=list/Append=] |discoveredCredentialMetadata| to |collectedDiscoverableCredentialMetadata|.
 
