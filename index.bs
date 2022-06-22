@@ -3089,7 +3089,7 @@ SHOULD be aborted.
 
 The subsections below define the data types used for conveying [=WebAuthn extension=] inputs and outputs.
 
-Note: [=Authenticator extension outputs=] are conveyed as a part of [=Authenticator data=] (see [Table 1](#table-authData)).
+Note: [=Authenticator extension outputs=] are conveyed as a part of [=authenticator data=] (see [Table 1](#table-authData)).
 
 Note: The types defined below &mdash; {{AuthenticationExtensionsClientInputs}} and {{AuthenticationExtensionsClientOutputs}} &mdash; are applicable to both [=registration extensions=] and [=authentication extensions=]. The "Authentication..." portion of their names should be regarded as meaning "WebAuthentication..."
 
@@ -5612,9 +5612,11 @@ and passes them to the authenticator in the {{CredentialsContainer/create()}} ca
 {{CredentialsContainer/get()}} call (for [=authentication extensions=]). These [=authenticator extension input=] values are
 represented in [=CBOR=] and passed as name-value pairs, with the [=extension identifier=] as the name, and the corresponding
 [=authenticator extension input=] as the value. The authenticator, in turn, performs additional processing for the extensions
-that it supports, and returns the [=CBOR=] [=authenticator extension output=] for each as specified by the extension. Part of
-the [=client extension processing=] for [=authenticator extensions=] is to use the [=authenticator extension output=] as an
-input to creating the [=client extension output=].
+that it supports, and returns the [=CBOR=] [=authenticator extension output=] for each as specified by the extension.
+Since [=authenticator extension output=] is returned as part of the signed [=authenticator data=], authenticator extensions
+may also specify an [=unsigned extension output=], e.g. for cases where an output itself depends on [=authenticator data=].
+Part of the [=client extension processing=] for [=authenticator extensions=] is to use the [=authenticator extension output=]
+and [=unsigned extension output=] as an input to creating the [=client extension output=].
 
 All [=WebAuthn Extensions=] are OPTIONAL for both clients and authenticators. Thus, any extensions requested by a [=[RP]=] MAY be
 ignored by the client browser or OS and not passed to the authenticator at all, or they MAY be ignored by the authenticator.
@@ -5662,6 +5664,7 @@ If the extension communicates with the authenticator (meaning it is an [=authent
 it MUST also specify the [=CBOR=] [=authenticator extension input=] argument
 sent via the [=authenticatorGetAssertion=] or [=authenticatorMakeCredential=] call,
 the [=authenticator extension processing=] rules, and the [=CBOR=] [=authenticator extension output=] value.
+Extensions MAY specify [=unsigned extension outputs=].
 
 Any [=client extension=] that is processed by the client MUST return a [=client extension output=] value so that the [=[WRP]=]
 knows that the extension was honored by the client. Similarly, any extension that requires authenticator processing MUST return
@@ -5752,7 +5755,8 @@ There MUST NOT be any values returned for ignored extensions.
 
 Extensions that require authenticator processing MUST define
 the process by which the [=client extension input=] can be used to determine the [=CBOR=] [=authenticator extension input=] and
-the process by which the [=CBOR=] [=authenticator extension output=] can be used to determine the [=client extension output=].
+the process by which the [=CBOR=] [=authenticator extension output=], and the [=unsigned extension output=] if used, can be
+used to determine the [=client extension output=].
 
 ## <dfn>Authenticator Extension Processing</dfn> ## {#sctn-authenticator-extension-processing}
 
@@ -5765,8 +5769,16 @@ Likewise, the extension output is represented in the [=authdataextensions|extens
 [=authdataextensions|extensions=] part of the [=authenticator data=] is a CBOR map where each key is an [=extension identifier=]
 and the corresponding value is the <dfn>authenticator extension output</dfn> for that extension.
 
+<dfn>Unsigned extension outputs</dfn> are represented independently from [=authenticator data=] and returned by authenticators
+as a separate map, keyed with the same [=extension identifier=]. This map only contains entries for authenticator
+extensions that make use of unsigned outputs.
+
+Note: In [[!FIDO-CTAP]] [=unsigned extension outputs=] are returned as a CBOR map in a top-level field named
+`unsignedExtensionOutputs` from both [=authenticatorMakeCredential=] and [=authenticatorGetAssertion=].
+
 For each supported extension, the [=authenticator extension processing=] rule for that extension is used create the
-[=authenticator extension output=] from the [=authenticator extension input=] and possibly also other inputs.
+[=authenticator extension output=], and [=unsigned extension output=] if used, from the [=authenticator extension input=]
+and possibly also other inputs.
 There MUST NOT be any values returned for ignored extensions.
 
 
@@ -6283,20 +6295,22 @@ Note: [=[RPS]=] need to take care to verify [=device-bound key=] signatures befo
 
             The default value is {{AttestationConveyancePreference/none}}.
 
-    :   <dfn>attestationFormats</dfn>
-    ::  The [=[RP]=] MAY use this OPTIONAL member to specify a preference regarding the [=attestation=] statement format used by the [=authenticator=].
-        Values SHOULD be taken from the IANA "WebAuthn Attestation Statement Format Identifiers" registry [[!IANA-WebAuthn-Registries]] established by [[!RFC8809]].
-        Values are ordered from most preferable to least preferable.
-        This parameter is advisory and the [=authenticator=] MAY use an attestation statement not enumerated in this parameter.
+        :   <dfn>attestationFormats</dfn>
+        ::  The [=[RP]=] MAY use this OPTIONAL member to specify a preference regarding the [=attestation=] statement format used by the [=authenticator=].
+            Values SHOULD be taken from the IANA "WebAuthn Attestation Statement Format Identifiers" registry [[!IANA-WebAuthn-Registries]] established by [[!RFC8809]].
+            Values are ordered from most preferable to least preferable.
+            This parameter is advisory and the [=authenticator=] MAY use an attestation statement not enumerated in this parameter.
 
-        The default value is the empty list, which indicates no preference.
+            The default value is the empty list, which indicates no preference.
     </div>
+
+    Note: To request the `devicePubKey` extension processing with default options, pass an empty dictionary as the input.
 
 : Client extension processing
 :: If {{AuthenticationExtensionsClientInputs/devicePubKey}} is present, the client creates the authenticator extension input from the client extension input.
 
 : Client extension output
-:: An ArrayBuffer containing the [=device public key attestation object=] that was returned in the authenticator extension output.
+:: An ArrayBuffer containing the [=device public key attestation object=] that was returned in the authenticator extension output and the signature returned as the [=unsigned extension output=].
     <xmp class="idl">
     dictionary AuthenticationExtensionsDevicePublicKeyOutputs {
         ArrayBuffer authenticatorOutput;
@@ -6391,6 +6405,9 @@ Note: [=[RPS]=] need to take care to verify [=device-bound key=] signatures befo
 
     ```
 
+: Unsigned extension output
+:: A signature generated with the device public key as a CBOR bytestring
+
 : Authenticator extension processing
 :: For both [=authenticatorMakeCredential=] and [=authenticatorGetAssertion=] operations:
     1. Create or select the [=public key credential source=] as usual (see [[#sctn-op-make-cred]], or [[#sctn-op-get-assertion]] as appropriate).
@@ -6409,7 +6426,7 @@ Note: [=[RPS]=] need to take care to verify [=device-bound key=] signatures befo
             : enterprise
             :: The [=[RP]=] wants to receive an [=attestation statement=] that may include uniquely identifying information. This is intended for controlled deployments within an enterprise where the organization wishes to tie registrations to specific authenticators. [=Authenticators=] MUST NOT provide such an attestation unless the user agent or authenticator configuration expressly permits it for the requested [=RP ID=]. If <i>not</i> permitted, |attFormat| is "none", and |aaguid| is 16 zero bytes. Otherwise |attFormat| is an [=attestation statement format=] appropriate for this [=authenticator=] based on {{AuthenticationExtensionsDevicePublicKeyInputs/attestationFormats}}, and |aaguid| is the [=authenticator's=] [=AAGUID=]. (Again, since the [=hardware-bound device key pair=] is specific to a particular authenticator, the attestation may be tied to hardware roots of trust.)
 
-            Note: CTAP2 does not currently provide for an <a href="https://fidoalliance.org/specs/fido-v2.1-ps-20210615/fido-client-to-authenticator-protocol-v2.1-ps-20210615.html#makecred-enterpriseattestation">enterpriseAttestation</a> signal during an <a href="https://fidoalliance.org/specs/fido-v2.1-ps-20210615/fido-client-to-authenticator-protocol-v2.1-ps-20210615.html#authenticatorGetAssertion">authenticatorGetAssertion</a> call. Until that is changed, <a href="https://fidoalliance.org/specs/fido-v2.1-ps-20210615/fido-client-to-authenticator-protocol-v2.1-ps-20210615.html#platform-managed-enterprise-attestation">platform-managed enterprise attestation</a> will not work in that context with CTAP2 [=authenticators=].
+                Note: CTAP2 does not currently provide for an <a href="https://fidoalliance.org/specs/fido-v2.1-ps-20210615/fido-client-to-authenticator-protocol-v2.1-ps-20210615.html#makecred-enterpriseattestation">enterpriseAttestation</a> signal during an <a href="https://fidoalliance.org/specs/fido-v2.1-ps-20210615/fido-client-to-authenticator-protocol-v2.1-ps-20210615.html#authenticatorGetAssertion">authenticatorGetAssertion</a> call. Until that is changed, <a href="https://fidoalliance.org/specs/fido-v2.1-ps-20210615/fido-client-to-authenticator-protocol-v2.1-ps-20210615.html#platform-managed-enterprise-attestation">platform-managed enterprise attestation</a> will not work in that context with CTAP2 [=authenticators=].
         </dl>
 
     1. Let |dpk| be the newly created or existing [=device public key=], in COSE_Key format [=credentialPublicKey|in the same fashion as for the user credential's credentialPublicKey=] when the latter is conveyed in [=attested credential data=].
@@ -6442,9 +6459,9 @@ Note: [=[RPS]=] need to take care to verify [=device-bound key=] signatures befo
 
     1. Let |dpkSig| be the result of signing the [=assertion signature=] [input](#fig-signature) with |devicePrivateKey|.
 
-    1. Output |dpkSig| to the [=client platform=] so that it can be included in the [=client extension output=].
+    1. Output |dpkSig| as the extension's [=unsigned extension output=].
 
-        Note: |dpkSig| cannot be included in the extension output because the extension output is inside the [=authenticator data=] and that would imply that the signature signs over itself. Therefore the signature must be conveyed to the [=client platform=] via other means.
+        Note: |dpkSig| cannot be included in the [=authenticator extension output=] because it is returned inside the [=authenticator data=] and that would imply that the signature signs over itself.
 
 #### Attestation calculations #### {#sctn-device-publickey-attestation-calculations}
 
