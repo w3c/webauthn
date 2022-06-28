@@ -1149,6 +1149,9 @@ The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "S
             Note: Modifying or removing [=list/items=] from the value returned from {{AuthenticatorAttestationResponse/getTransports()}}
             could negatively impact user experience, or even prevent use of the corresponding credential.
 
+        :   <dfn>UV</dfn>
+        ::  A Boolean value indicating whether this [=credential=] has reported any successful [=user verification=].
+
         :   <dfn>BE</dfn>
         ::  The value of the [=authData/flags/BE=] [=flag=] when the [=public key credential source=] was created.
 
@@ -5151,6 +5154,9 @@ In order to perform a [=registration ceremony=], the [=[RP]=] MUST proceed as fo
         :   [=credential record/transports=]
         ::  The value returned from <code>|response|.{{AuthenticatorAttestationResponse/getTransports()}}</code>.
 
+        :   [=credential record/UV=]
+        ::  The value of the [=authData/flags/UV=] [=flag=] in |authData|.
+
         :   [=credential record/BE=]
         ::  The value of the [=authData/flags/BE=] [=flag=] in |authData|.
 
@@ -5245,7 +5251,18 @@ a numbered step. If outdented, it (today) is rendered as a bullet in the midst o
 
 1. Verify that the [=UP=] bit of the <code>[=flags=]</code> in |authData| is set.
 
-1. If the [=[RP]=] requires [=user verification=] for this assertion,
+1. Determine whether [=user verification=] is required for this assertion.
+    [=User verification=] SHOULD be required if any of the following is true:
+
+    - <code>|options|.{{PublicKeyCredentialRequestOptions/userVerification}}</code> is set to {{UserVerificationRequirement/required}}.
+    - <code>|options|.{{PublicKeyCredentialRequestOptions/userVerification}}</code> is set to {{UserVerificationRequirement/preferred}}
+        and <code>|credentialRecord|.[=credential record/UV=]</code> is [TRUE].
+    - The [=[RP]=] has any other reason to require [=user verification=].
+
+    [=User verification=] SHOULD NOT be required
+    if <code>|options|.{{PublicKeyCredentialRequestOptions/userVerification}}</code> is set to {{UserVerificationRequirement/discouraged}}.
+
+    If [=user verification=] was determined to be required,
     verify that the [=authData/flags/UV=] bit of the <code>[=flags=]</code> in |authData| is set.
 
 1. If the credential [=backup state=] is used as part of [=[RP]=] business logic or policy,
@@ -5253,8 +5270,7 @@ a numbered step. If outdented, it (today) is rendered as a bullet in the midst o
     of the <code>[=flags=]</code> in |authData|.
     Compare |currentBe| and |currentBs| with
     <code>|credentialRecord|.[=credential record/BE=]</code> and <code>|credentialRecord|.[=credential record/BS=]</code>
-    and apply [=[RP]=] policy, if any,
-    and then update <code>|credentialRecord|.[=credential record/BS=]</code> to the value of |currentBs|.
+    and apply [=[RP]=] policy, if any.
 
     Note: See [[#sctn-credential-backup]] for examples of how a [=[RP]=] might process the [=authData/flags/BS=] [=flag=] values.
 
@@ -5302,6 +5318,13 @@ a numbered step. If outdented, it (today) is rendered as a bullet in the midst o
                   [=authentication ceremony=] or not, is
                   [=[RP]=]-specific. </dd>
            </dl>
+
+1. Update the remaining stateful [=struct/items=] of |credentialRecord|:
+
+    - If the [=authData/flags/UV=] bit in the [=flags=] in |authData| is set,
+        update <code>|credentialRecord|.[=credential record/UV=]</code> to [TRUE].
+    - Update <code>|credentialRecord|.[=credential record/BS=]</code> to the value of
+        the [=authData/flags/BS=] bit in the [=flags=] in |authData|.
 
 1. If all the above steps are successful, continue with the [=authentication ceremony=] as appropriate. Otherwise, fail the
     [=authentication ceremony=].
