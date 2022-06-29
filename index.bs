@@ -1435,6 +1435,7 @@ that are returned to the caller when a new credential is created, or a new asser
         [SameObject] readonly attribute DOMString?               authenticatorAttachment;
         AuthenticationExtensionsClientOutputs getClientExtensionResults();
         static Promise<boolean> isConditionalMediationAvailable();
+        PublicKeyCredentialJSON toJSON();
     };
 </xmp>
 <dl dfn-type="attribute" dfn-for="PublicKeyCredential">
@@ -1452,7 +1453,7 @@ that are returned to the caller when a new credential is created, or a new asser
         {{CredentialsContainer/create()}}, this attribute's value will be an {{AuthenticatorAttestationResponse}}, otherwise,
         the {{PublicKeyCredential}} was created in response to {{CredentialsContainer/get()}}, and this attribute's value
         will be an {{AuthenticatorAssertionResponse}}.
-    
+
     :   <dfn>authenticatorAttachment</dfn>
     ::  This attribute reports the [=authenticator attachment modality=] in effect at the time the
         {{CredentialsContainer/create()|navigator.credentials.create()}} or
@@ -1490,6 +1491,67 @@ that are returned to the caller when a new credential is created, or a new asser
 
         Note: If this method is not present, {{CredentialMediationRequirement/conditional}} [=user mediation=] is not available.
 
+    :   {{PublicKeyCredential/toJSON()}}
+    ::  This operation returns {{RegistrationResponseJSON}} or {{AuthenticationResponseJSON}},
+        which are [=JSON type=] representations mirroring {{PublicKeyCredential}}, suitable for submission to a
+        [=[RP]=] server as an `application/json` payload. The [=client=] is in charge of
+        [serializing values to JSON types as usual](https://webidl.spec.whatwg.org/#idl-tojson-operation),
+        but MUST take additional steps to first encode any {{ArrayBuffer}} values to {{DOMString}} values
+        using [=base64url encoding=].
+
+        The
+        {{RegistrationResponseJSON/clientExtensionResults|RegistrationResponseJSON.clientExtensionResults}} or
+        {{AuthenticationResponseJSON/clientExtensionResults|AuthenticationResponseJSON.clientExtensionResults}}
+        member MUST be set to the output of {{PublicKeyCredential/getClientExtensionResults()}},
+        with any {{ArrayBuffer}} values encoded to {{DOMString}} values using
+        [=base64url encoding=]. This MAY include {{ArrayBuffer}} values from extensions registered
+        in the IANA "WebAuthn Extension Identifiers" registry [[!IANA-WebAuthn-Registries]] but not
+        defined in [[#sctn-extensions]].
+
+        The {{AuthenticatorAttestationResponseJSON/transports|AuthenticatorAttestationResponseJSON.transports}}
+        member MUST be set to the output of {{AuthenticatorAttestationResponse/getTransports()}}.
+</dl>
+
+<xmp class="idl">
+    typedef DOMString Base64URLString;
+    typedef (RegistrationResponseJSON or AuthenticationResponseJSON) PublicKeyCredentialJSON;
+
+    dictionary RegistrationResponseJSON {
+        Base64URLString id;
+        Base64URLString rawId;
+        AuthenticatorAttestationResponseJSON response;
+        DOMString?  authenticatorAttachment;
+        AuthenticationExtensionsClientOutputsJSON clientExtensionResults;
+        DOMString type;
+    };
+
+    dictionary AuthenticatorAttestationResponseJSON {
+        Base64URLString clientDataJSON;
+        Base64URLString attestationObject;
+        sequence<DOMString> transports;
+    };
+
+    dictionary AuthenticationResponseJSON {
+        Base64URLString id;
+        Base64URLString rawId;
+        AuthenticatorAssertionResponseJSON response;
+        DOMString?  authenticatorAttachment;
+        AuthenticationExtensionsClientOutputsJSON clientExtensionResults;
+        DOMString type;
+    };
+
+    dictionary AuthenticatorAssertionResponseJSON {
+        Base64URLString clientDataJSON;
+        Base64URLString authenticatorData;
+        Base64URLString signature;
+        Base64URLString? userHandle;
+    };
+
+    dictionary AuthenticationExtensionsClientOutputsJSON {
+    };
+</xmp>
+
+<dl dfn-type="attribute" dfn-for="PublicKeyCredential">
     :   <dfn>\[[type]]</dfn>
     ::  The {{PublicKeyCredential}} [=interface object=]'s {{Credential/[[type]]}} [=internal slot=]'s value is the string
         "`public-key`".
@@ -2533,6 +2595,104 @@ Note: Invoking this method from a [=browsing context=] where the [=Web Authentic
 
 </div>
 
+### Deserialize Registration ceremony options - PublicKeyCredential's `parseCreationOptionsFromJSON()` Method ### {#sctn-parseCreationOptionsFromJSON}
+
+<div link-for-hint="WebAuthentication/parseCreationOptionsFromJSON">
+
+[=[WRPS]=] use this method to convert [=JSON type=] representations of options for
+{{CredentialsContainer/create()|navigator.credentials.create()}} into
+{{PublicKeyCredentialCreationOptions}}.
+
+Upon invocation, the [=client=] MUST convert the
+{{PublicKeyCredential/parseCreationOptionsFromJSON(options)/options}} argument into a new,
+identically-structured {{PublicKeyCredentialCreationOptions}} object, using [=base64url encoding=]
+to decode any {{DOMString}} attributes in {{PublicKeyCredentialCreationOptionsJSON}} that correspond
+to [=buffer source type=] attributes in {{PublicKeyCredentialCreationOptions}}. This conversion MUST
+also apply to any [=client extension inputs=] processed by the [=client=].
+
+{{AuthenticationExtensionsClientInputsJSON}} MAY include extensions registered in the IANA
+"WebAuthn Extension Identifiers" registry [[!IANA-WebAuthn-Registries]] but not defined in
+[[#sctn-extensions]].
+
+If the [=client=] encounters any issues parsing any of the [=JSON type=] representations then it
+MUST throw an "{{EncodingError}}" {{DOMException}} with a description of the incompatible
+value and terminate the operation.
+
+<xmp class="idl">
+    partial interface PublicKeyCredential {
+        static PublicKeyCredentialCreationOptions parseCreationOptionsFromJSON(PublicKeyCredentialCreationOptionsJSON options);
+    };
+
+    dictionary PublicKeyCredentialCreationOptionsJSON {
+        required PublicKeyCredentialRpEntity                    rp;
+        required PublicKeyCredentialUserEntityJSON              user;
+        required Base64URLString                                challenge;
+        required sequence<PublicKeyCredentialParameters>        pubKeyCredParams;
+        unsigned long                                           timeout;
+        sequence<PublicKeyCredentialDescriptorJSON>             excludeCredentials = [];
+        AuthenticatorSelectionCriteria                          authenticatorSelection;
+        DOMString                                               attestation = "none";
+        AuthenticationExtensionsClientInputsJSON                extensions;
+    };
+
+    dictionary PublicKeyCredentialUserEntityJSON {
+        required Base64URLString        id;
+        required DOMString              name;
+        required DOMString              displayName;
+    };
+
+    dictionary PublicKeyCredentialDescriptorJSON {
+        required Base64URLString        id;
+        required DOMString              type;
+        sequence<DOMString>             transports;
+    };
+
+    dictionary AuthenticationExtensionsClientInputsJSON {
+    };
+</xmp>
+
+</div>
+
+### Deserialize Authentication ceremony options - PublicKeyCredential's `parseRequestOptionsFromJSON()` Methods ### {#sctn-parseRequestOptionsFromJSON}
+
+<div link-for-hint="WebAuthentication/parseRequestOptionsFromJSON">
+
+[=[WRPS]=] use this method to convert [=JSON type=] representations of options for
+{{CredentialsContainer/get()|navigator.credentials.get()}} into
+{{PublicKeyCredentialRequestOptions}}.
+
+Upon invocation, the [=client=] MUST convert the
+{{PublicKeyCredential/parseRequestOptionsFromJSON(options)/options}} argument into a new,
+identically-structured {{PublicKeyCredentialRequestOptions}} object, using [=base64url encoding=]
+to decode any {{DOMString}} attributes in {{PublicKeyCredentialRequestOptionsJSON}} that correspond
+to [=buffer source type=] attributes in {{PublicKeyCredentialRequestOptions}}. This conversion MUST
+also apply to any [=client extension inputs=] processed by the [=client=].
+
+{{AuthenticationExtensionsClientInputsJSON}} MAY include extensions registered in the IANA
+"WebAuthn Extension Identifiers" registry [[!IANA-WebAuthn-Registries]] but not defined in
+[[#sctn-extensions]].
+
+If the [=client=] encounters any issues parsing any of the [=JSON type=] representations then it
+MUST throw an "{{EncodingError}}" {{DOMException}} with a description of the incompatible
+value and terminate the operation.
+
+<xmp class="idl">
+    partial interface PublicKeyCredential {
+        static PublicKeyCredentialRequestOptions parseRequestOptionsFromJSON(PublicKeyCredentialRequestOptionsJSON options);
+    };
+
+    dictionary PublicKeyCredentialRequestOptionsJSON {
+        required Base64URLString                                challenge;
+        unsigned long                                           timeout;
+        DOMString                                               rpId;
+        sequence<PublicKeyCredentialDescriptorJSON>             allowCredentials = [];
+        DOMString                                               userVerification = "preferred";
+        AuthenticationExtensionsClientInputsJSON                extensions;
+    };
+</xmp>
+
+</div>
+
 ## Authenticator Responses (interface <dfn interface>AuthenticatorResponse</dfn>) ## {#iface-authenticatorresponse}
 
 [=Authenticators=] respond to [=[RP]=] requests by returning an object derived from the
@@ -3236,7 +3396,7 @@ Note: The {{CollectedClientData}} may be extended in the future. Therefore it's 
         required DOMString           type;
         required DOMString           challenge;
         required DOMString           origin;
-        boolean                      crossOrigin;        
+        boolean                      crossOrigin;
     };
 
     dictionary TokenBinding {
@@ -3268,7 +3428,7 @@ Note: The {{CollectedClientData}} may be extended in the future. Therefore it's 
     :   \[RESERVED] <dfn dfn>tokenBinding</dfn>
     ::  This OPTIONAL member contains information about the state of the [=Token Binding=] protocol [[!TokenBinding]] used when communicating
         with the [=[RP]=]. Its absence indicates that the client doesn't support token binding
-        
+
         Note: While [=Token Binding=] was present in Level 1 and Level 2 of WebAuthn, its use is not expected in Level 3. The {{CollectedClientData/tokenBinding}} field is reserved so that it will not be reused for a different purpose.
 
         <div dfn-type="dict-member" dfn-for="TokenBinding">
