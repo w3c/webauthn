@@ -1118,6 +1118,60 @@ The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "S
 :: A [=credential property=] is some characteristic property of a [=public key credential source=], such as whether it is a
     [=client-side discoverable credential=] or a [=server-side credential=].
 
+: <dfn>Credential Record</dfn>
+:: In order to implement the algorithms defined in [[#sctn-rp-operations]],
+    the [=[RP]=] MUST store some properties of registered [=public key credential sources=].
+    The [=credential record=] [=struct=] is an abstraction of these properties stored in a [=user account=].
+    A&nbsp;credential record is created during a [=registration ceremony=] and used in subsequent [=authentication ceremonies=].
+    [=[RPS]=] MAY delete credential records as necessary or when requested by users.
+
+    The following [=struct/items=] are RECOMMENDED in order to implement all steps of
+    [[#sctn-registering-a-new-credential]] and [[#sctn-verifying-assertion]] as defined:
+
+    <dl dfn-for="credential record">
+        :   <dfn>type</dfn>
+        ::  The [=public key credential source/type=] of the [=public key credential source=].
+
+        :   <dfn>id</dfn>
+        ::  The [=Credential ID=] of the [=public key credential source=].
+
+        :   <dfn>publicKey</dfn>
+        ::  The [=credential public key=] of the [=public key credential source=].
+
+        :   <dfn>signCount</dfn>
+        ::  The latest value of the [=authData/signCount|signature counter=] in the [=authenticator data=]
+            from any [=ceremony=] using the [=public key credential source=].
+
+        :   <dfn>transports</dfn>
+        ::  The value returned from {{AuthenticatorAttestationResponse/getTransports()}}
+            when the [=public key credential source=] was [=registration|registered=].
+
+            Note: Modifying or removing [=list/items=] from the value returned from {{AuthenticatorAttestationResponse/getTransports()}}
+            could negatively impact user experience, or even prevent use of the corresponding credential.
+
+        :   <dfn>BE</dfn>
+        ::  The value of the [=authData/flags/BE=] [=flag=] when the [=public key credential source=] was created.
+
+        :   <dfn>BS</dfn>
+        ::  The latest value of the [=authData/flags/BS=] [=flag=] in the [=authenticator data=]
+            from any [=ceremony=] using the [=public key credential source=].
+    </dl>
+
+    [=[RPS]=] MAY include any additional [=struct/items=] as needed,
+    and MAY omit any [=struct/items=] not needed for their implementation.
+
+    The <dfn>credential descriptor for a credential record</dfn> is a {{PublicKeyCredentialDescriptor}} value with the contents:
+
+    :   {{PublicKeyCredentialDescriptor/type}}
+    ::  The [=credential record/type=] of the [=credential record=].
+
+    :   {{PublicKeyCredentialDescriptor/id}}
+    ::  The [=credential record/id=] of the [=credential record=].
+
+    :   {{PublicKeyCredentialDescriptor/transports}}
+    ::  The [=credential record/transports=] of the [=credential record=].
+
+
 : <dfn>Generating Authenticator</dfn>
 :: The Generating Authenticator is the authenticator involved in the [=authenticatorMakeCredential=] operation resulting
     in the creation of a given [=public key credential source=]. The [=generating authenticator=] is the same as the [=managing authenticator=]
@@ -1294,7 +1348,8 @@ The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "S
     a [=user account=] denotes the mapping of a set of [=credentials=] [[CREDENTIAL-MANAGEMENT-1]]
     to a (sub)set of a [=[RP]=]'s resources, as maintained and authorized by the [=[RP]=].
     The [=[RP]=] maps a given [=public key credential=] to a [=user account=]
-    by assigning a [=user account=]-specific value to the credential's [=user handle=].
+    by assigning a [=user account=]-specific value to the credential's [=user handle=]
+    and storing a [=credential record=] for the credential in the [=user account=].
     This mapping, the set of credentials, and their authorizations, may evolve over time.
     A given [=user account=] might be accessed by one or more natural persons (also known as "users"),
     and one natural person might have access to one or more [=user accounts=],
@@ -3246,9 +3301,9 @@ an assertion. Its {{PublicKeyCredentialRequestOptions/challenge}} member MUST be
         It can be used in two ways:
 
           - If the [=user account=] to authenticate is already identified (e.g., if the user has entered a username),
-            then the [=[RP]=] SHOULD use this member to list the [=credentials=] [=registration ceremony|registered=]
-            to the [=user account=].
-            This SHOULD usually include all of the [=user account's=] credentials.
+            then the [=[RP]=] SHOULD use this member to list
+            [=credential descriptor for a credential record|credential descriptors for credential records=] in the [=user account=].
+            This SHOULD usually include all [=credential records=] in the [=user account=].
 
             The [=list/items=] SHOULD specify {{PublicKeyCredentialDescriptor/transports}} whenever possible.
             This helps the [=client=] optimize the user experience for any given situation.
@@ -3687,12 +3742,12 @@ Note: The {{UserVerificationRequirement}} enumeration is deliberately not refere
 <div dfn-type="enum-value" dfn-for="UserVerificationRequirement">
     :   <dfn>required</dfn>
     ::  The [=[RP]=] requires [=user verification=] for the operation and will fail the overall [=ceremony=] if the
-        response does not have the [=UV=] [=flag=] set.
+        response does not have the [=authData/flags/UV=] [=flag=] set.
         The [=client=] MUST return an error if [=user verification=] cannot be performed.
 
     :   <dfn>preferred</dfn>
     ::  The [=[RP]=] prefers [=user verification=] for the operation if possible, but will not fail the
-        operation if the response does not have the [=UV=] [=flag=] set.
+        operation if the response does not have the [=authData/flags/UV=] [=flag=] set.
 
     :   <dfn>discouraged</dfn>
     ::  The [=[RP]=] does not want [=user verification=] employed during the operation (e.g., in the
@@ -3756,7 +3811,7 @@ operates at a higher security level than the rest of the authenticator. This is 
 are embedded in the WebAuthn client, as in those cases this cryptographic module (which may, for example, be a TPM) could be
 considered more trustworthy than the rest of the authenticator.
 
-Each authenticator stores a <dfn for=authenticator>credentials map</dfn>, a [=map=] from ([=rpId=], [=userHandle=]) to
+Each authenticator stores a <dfn for=authenticator>credentials map</dfn>, a [=map=] from ([=rpId=], [=public key credential source/userHandle=]) to
 [=public key credential source=].
 
 Additionally, each authenticator has an AAGUID, which is a 128-bit identifier indicating the type (e.g. make and model) of the
@@ -3900,12 +3955,12 @@ the requested [=public key credential|credential=] is [=scoped=] to exactly matc
 - Hash [=RP ID=] using SHA-256 to generate the [=rpIdHash=].
 
 - The [=UP=] [=flag=] SHALL be set if and only if the authenticator performed a [=test of user presence=].
-    The [=UV=] [=flag=] SHALL be set if and only if the authenticator performed [=user verification=].
+    The [=authData/flags/UV=] [=flag=] SHALL be set if and only if the authenticator performed [=user verification=].
     The `RFU` bits SHALL be set to zero.
 
     Note: If the authenticator performed both a [=test of user presence=] and [=user verification=],
     possibly combined in a single [=authorization gesture=],
-    then the authenticator will set both the [=UP=] [=flag=] and the [=UV=] [=flag=].
+    then the authenticator will set both the [=UP=] [=flag=] and the [=authData/flags/UV=] [=flag=].
 
 - For [=attestation signatures=], the authenticator MUST set the [=AT=] [=flag=] and include the <code>[=attestedCredentialData=]</code>.
     For [=assertion signatures=], the [=AT=] [=flag=] MUST NOT be set and the <code>[=attestedCredentialData=]</code> MUST NOT be included.
@@ -3931,18 +3986,18 @@ the requested [=public key credential|credential=] is [=scoped=] to exactly matc
 ### <dfn>Signature Counter</dfn> Considerations ### {#sctn-sign-counter}
 
 Authenticators SHOULD implement a [=signature counter=] feature. These counters are conceptually stored for each credential
-by the authenticator, or globally for the authenticator as a whole. The initial value of a credential's [=signature counter=] is specified in the <code>[=signCount=]</code>
+by the authenticator, or globally for the authenticator as a whole. The initial value of a credential's [=signature counter=] is specified in the <code>[=authData/signCount=]</code>
 value of the [=authenticator data=] returned by [=authenticatorMakeCredential=]. The [=signature counter=] is incremented for each successful
 [=authenticatorGetAssertion=] operation by some positive value, and subsequent values are returned to the [=[WRP]=] within the
 [=authenticator data=] again. The [=signature counter=]'s purpose is to aid [=[RPS]=] in detecting cloned authenticators. Clone
 detection is more important for authenticators with limited protection measures.
 
 Authenticators that do not implement a [=signature counter=]
-leave the <code>[=signCount=]</code> in the [=authenticator data=] constant at zero.
+leave the <code>[=authData/signCount=]</code> in the [=authenticator data=] constant at zero.
 
 A [=[RP]=] stores the [=signature counter=] of the most recent [=authenticatorGetAssertion=] operation. (Or the counter from the [=authenticatorMakeCredential=] operation if no [=authenticatorGetAssertion=] has ever been performed on a credential.) In subsequent
 [=authenticatorGetAssertion=] operations, the [=[RP]=] compares the stored [=signature counter=] value with the new
-<code>[=signCount=]</code> value returned in the assertion's [=authenticator data=]. If either is non-zero, and the new <code>[=signCount=]</code> value is less than or equal to the stored value, a cloned authenticator may exist, or the authenticator may be malfunctioning.
+<code>[=authData/signCount=]</code> value returned in the assertion's [=authenticator data=]. If either is non-zero, and the new <code>[=authData/signCount=]</code> value is less than or equal to the stored value, a cloned authenticator may exist, or the authenticator may be malfunctioning.
 
 Detecting a [=signature counter=] mismatch does not indicate whether the current operation was performed by a cloned authenticator or the original authenticator.  [=[RPS]=] should address this situation appropriately relative to their individual situations, i.e., their risk tolerance.
 
@@ -3971,19 +4026,19 @@ the same procedure as other [=assertion signatures=] generated by the [=authenti
 
 ### Credential Backup State ### {#sctn-credential-backup}
 
-Credential [=backup eligibility=] and current [=backup state=] is conveyed by the [=BE=] and [=BS=] [=flags=] in the [=authenticator data=], as
+Credential [=backup eligibility=] and current [=backup state=] is conveyed by the [=authData/flags/BE=] and [=authData/flags/BS=] [=flags=] in the [=authenticator data=], as
 defined in <a href="#table-authData">Table <span class="table-ref-previous"/></a>.
 
-The value of the [=BE=] [=flag=] is set during [=authenticatorMakeCredential=] operation and MUST NOT change.
+The value of the [=authData/flags/BE=] [=flag=] is set during [=authenticatorMakeCredential=] operation and MUST NOT change.
 
-The value of the [=BS=] [=flag=] may change over time based on the current state of the [=public key credential source=]. <a href="#table-backupStates">Table <span class="table-ref-following"/></a> below defines
+The value of the [=authData/flags/BS=] [=flag=] may change over time based on the current state of the [=public key credential source=]. <a href="#table-backupStates">Table <span class="table-ref-following"/></a> below defines
 valid combinations and their meaning.
 
 <figure id="table-backupStates" class="table">
     <table class="complex data longlastcol">
             <tr>
-            <th>[=BE=]</th>
-            <th>[=BS=]</th>
+            <th>[=authData/flags/BE=]</th>
+            <th>[=authData/flags/BS=]</th>
             <th>Description</th>
         </tr>
         <tr>
@@ -4016,39 +4071,38 @@ valid combinations and their meaning.
         </tr>
     </table>
     <figcaption>
-        [=BE=] and [=BS=] [=flag=] combinations
+        [=authData/flags/BE=] and [=authData/flags/BS=] [=flag=] combinations
     </figcaption>
 </figure>
 
 It is RECOMMENDED that [=[RPS]=] store the most recent value of these [=flags=] with the [=user account=] for future evaluation.
 
-The following is a non-normative, non-exhaustive list of how [=[RPS]=] might use these [=flags=]:
+The following is a non-exhaustive list of how [=[RPS]=] might use these [=flags=]:
 
     - Requiring additional [=authenticators=]:
 
-        When the [=BE=] [=flag=] is set to `0`, the credential is a [=single-device credential=] and the [=generating authenticator=] will never
+        When the [=authData/flags/BE=] [=flag=] is set to `0`, the credential is a [=single-device credential=] and the [=generating authenticator=] will never
         allow the credential to be backed up.
 
-        A [=single-device credential=] is not resilient to single device loss. [=[RPS]=] SHOULD ensure that a [=user account=]
+        A [=single-device credential=] is not resilient to single device loss. [=[RPS]=] SHOULD ensure that each [=user account=]
         has additional [=authenticators=] [=registration ceremony|registered=] and/or an account recovery process in place.
-
         For example, the user could be prompted to set up an additional [=authenticator=], such as a [=roaming authenticator=] or an
         [=authenticator=] that is capable of [=multi-device credentials=].
 
     - Upgrading a user to a password-free account:
 
-        When the [=BS=] [=flag=] changes from `0` to `1`, the [=authenticator=] is signaling that the [=credential=] is backed up and is protected from single device loss.
+        When the [=authData/flags/BS=] [=flag=] changes from `0` to `1`, the [=authenticator=] is signaling that the [=credential=] is backed up and is protected from single device loss.
 
-        A [=[RP]=] may decide to prompt the user to upgrade their account security and remove their password.
+        The [=[RP]=] MAY choose to prompt the user to upgrade their account security and remove their password.
 
     - Adding an additional factor after a state change:
 
-        When the [=BS=] [=flag=] changes from `1` to `0`, the [=authenticator=] is signaling that the [=credential=] is no longer backed up,
+        When the [=authData/flags/BS=] [=flag=] changes from `1` to `0`, the [=authenticator=] is signaling that the [=credential=] is no longer backed up,
         and no longer protected from single device loss. This could be the result of the user actions, such as disabling the backup service,
         or errors, such as issues with the backup service.
 
-        When this transition occurs, the [=[RP]=] SHOULD guide the user through a process to validate their other sign in factors.
-        If the user does not have another credential for their account, they SHOULD be guided through adding an additional authentication factor
+        When this transition occurs, the [=[RP]=] SHOULD guide the user through a process to validate their other authentication factors.
+        If the user does not have another credential for their account, they SHOULD be guided through adding an additional credential
         to ensure they do not lose access to their account. For example, the user could be prompted to set up an additional [=authenticator=],
         such as a [=roaming authenticator=] or an [=authenticator=] that is capable of [=multi-device credentials=].
 
@@ -4243,9 +4297,9 @@ not [=multi-factor capable=] is <dfn>single-factor capable</dfn>. Note that a si
 could support several modes of [=user verification=], meaning it could act as all three kinds of [=authentication factor=].
 
 Although [=user verification=] is performed locally on the [=authenticator=] and not by the [=[RP]=], the [=authenticator=]
-indicates if [=user verification=] was performed by setting the [=UV=] [=flag=] in the signed response returned to the [=[RP]=].
-The [=[RP]=] can therefore use the [=UV=] [=flag=] to verify that additional [=authentication factors=] were used in a
-[=registration=] or [=authentication ceremony=]. The authenticity of the [=UV=] [=flag=] can in turn be assessed by inspecting the
+indicates if [=user verification=] was performed by setting the [=authData/flags/UV=] [=flag=] in the signed response returned to the [=[RP]=].
+The [=[RP]=] can therefore use the [=authData/flags/UV=] [=flag=] to verify that additional [=authentication factors=] were used in a
+[=registration=] or [=authentication ceremony=]. The authenticity of the [=authData/flags/UV=] [=flag=] can in turn be assessed by inspecting the
 [=authenticator=]'s [=attestation statement=].
 
 
@@ -5020,13 +5074,13 @@ In order to perform a [=registration ceremony=], the [=[RP]=] MUST proceed as fo
 1. Verify that the [=UP=] bit of the <code>[=flags=]</code> in |authData| is set.
 
 1. If the [=[RP]=] requires [=user verification=] for this registration,
-    verify that the [=UV=] bit of the <code>[=flags=]</code> in |authData| is set.
+    verify that the [=authData/flags/UV=] bit of the <code>[=flags=]</code> in |authData| is set.
 
 1. If the [=[RP]=] uses the credential's [=backup eligibility=] to inform its user experience flows and/or policies, evaluate the
-    [=BE=] bit of the <code>[=flags=]</code> in |authData|.
+    [=authData/flags/BE=] bit of the <code>[=flags=]</code> in |authData|.
 
-1. If the [=[RP]=] uses the credential's [=backup state=] to inform its user experience flows and/or policies, evaluate the [=BS=]
-    bit of the <code>[=flags=]</code> in |authData|, and then store the value for evaluation in future [=authentication ceremonies=].
+1. If the [=[RP]=] uses the credential's [=backup state=] to inform its user experience flows and/or policies, evaluate the [=authData/flags/BS=]
+    bit of the <code>[=flags=]</code> in |authData|.
 
 1. Verify that the "alg" parameter in the [=credentialPublicKey|credential public key=] in |authData|
     matches the {{PublicKeyCredentialParameters/alg}} attribute of one of the [=list/items=] in
@@ -5078,23 +5132,31 @@ In order to perform a [=registration ceremony=], the [=[RP]=] MUST proceed as fo
 
     NOTE: The rationale for [=[RPS]=] rejecting duplicate [=credential IDs=] is as follows: [=credential IDs=] contain sufficient entropy that accidental duplication is very unlikely. However, [=attestation types=] other than [=self attestation=] do not include a self-signature to explicitly prove possession of the [=credential private key=] at [=registration=] time. Thus an attacker who has managed to obtain a user's [=credential ID=] and [=credential public key=] for a site (this could be potentially accomplished in various ways), could attempt to register a victim's credential as their own at that site. If the [=[RP]=] accepts this new registration and replaces the victim's existing credential registration, and the [=discoverable credentials|credentials are discoverable=], then the victim could be forced to sign into the attacker's account at their next attempt. Data saved to the site by the victim in that state would then be available to the attacker.
 
-1. If the attestation statement |attStmt| verified successfully and is found to be trustworthy, then register the new
-    credential with the [=user account=] that was denoted in <code>|options|.{{PublicKeyCredentialCreationOptions/user}}</code>:
+1. If the attestation statement |attStmt| verified successfully and is found to be trustworthy,
+    then create and store a new [=credential record=] in the [=user account=]
+    that was denoted in <code>|options|.{{PublicKeyCredentialCreationOptions/user}}</code>,
+    with the following contents:
 
-    - Associate the [=user account=] with the <code>[=credentialId=]</code> and <code>[=credentialPublicKey=]</code>
-        in <code>|authData|.[=attestedCredentialData=]</code>, as appropriate for the [=[RP]=]'s system.
-    - Associate the <code>[=credentialId=]</code> with a new stored [=signature counter=] value
-        initialized to the value of <code>|authData|.[=signCount=]</code>.
+    <dl>
+        :   [=credential record/id=]
+        ::  <code>|credential|.{{Credential/id}}</code> or <code>|credential|.{{PublicKeyCredential/rawId}}</code>,
+            whichever format is preferred by the [=[RP]=].
 
-    It is RECOMMENDED to also:
+        :   [=credential record/publicKey=]
+        ::  The [=credential public key=] in |authData|.
 
-    - Associate the <code>[=credentialId=]</code> with the transport hints
-        returned by calling
-        <code>|credential|.{{PublicKeyCredential/response}}.{{AuthenticatorAttestationResponse/getTransports()}}</code>.
-        This value SHOULD NOT be modified before or after storing it.
-        It is RECOMMENDED to use this value to populate the {{PublicKeyCredentialDescriptor/transports}}
-        of the {{PublicKeyCredentialRequestOptions/allowCredentials}} option in future {{CredentialsContainer/get()}} calls
-        to help the [=client=] know how to find a suitable [=authenticator=].
+        :   [=credential record/signCount=]
+        ::  <code>|authData|.[=authData/signCount=]</code>.
+
+        :   [=credential record/transports=]
+        ::  The value returned from <code>|response|.{{AuthenticatorAttestationResponse/getTransports()}}</code>.
+
+        :   [=credential record/BE=]
+        ::  The value of the [=authData/flags/BE=] [=flag=] in |authData|.
+
+        :   [=credential record/BS=]
+        ::  The value of the [=authData/flags/BS=] [=flag=] in |authData|.
+    </dl>
 
 1. If the attestation statement |attStmt| successfully verified but is not trustworthy per step 20 above, the [=[RP]=] SHOULD fail
     the [=registration ceremony=].
@@ -5116,15 +5178,6 @@ In order to perform an [=authentication ceremony=], the [=[RP]=] MUST proceed as
 
 1. Let |options| be a new {{PublicKeyCredentialRequestOptions}} structure configured to the [=[RP]=]'s needs for the ceremony.
 
-    If <code>|options|.{{PublicKeyCredentialRequestOptions/allowCredentials}}</code> is present,
-    the {{PublicKeyCredentialDescriptor/transports}} member of each [=list/item=] SHOULD be set to
-    the value that was returned by
-    <code>|credential|.{{PublicKeyCredential/response}}.{{AuthenticatorAttestationResponse/getTransports()}}</code>
-    when the corresponding credential was registered.
-
-    Note: Modifying or removing [=list/items=] from values returned from {{AuthenticatorAttestationResponse/getTransports()}}
-    could negatively impact user experience, or even prevent use of the corresponding credentials.
-
 1. Call {{CredentialsContainer/get()|navigator.credentials.get()}} and pass |options|
     as the <code>{{CredentialRequestOptions/publicKey}}</code> option.
     Let |credential| be the result of the successfully resolved promise.
@@ -5141,23 +5194,23 @@ In order to perform an [=authentication ceremony=], the [=[RP]=] MUST proceed as
     verify that <code>|credential|.{{Credential/id}}</code> identifies one of the [=public key credentials=]
     listed in <code>|options|.{{PublicKeyCredentialRequestOptions/allowCredentials}}</code>.
 
-1. Identify the user being authenticated and verify that this user is the owner of the [=public key credential source=]
-    |credentialSource| identified by <code>|credential|.{{Credential/id}}</code>:
+1. Identify the user being authenticated and let |credentialRecord|
+    be the [=credential record=] for the [=credential=]:
 
     <dl class="switch">
         :  If the user was identified before the [=authentication ceremony=] was initiated, e.g., via a username or cookie,
-        :: verify that the identified user is the owner of |credentialSource|. If
-            <code>|response|.{{AuthenticatorAssertionResponse/userHandle}}</code> is present,
-            let |userHandle| be its value. Verify that |userHandle| also maps to the same user.
+        :: verify that the identified [=user account=] contains a [=credential record=]
+            whose [=credential record/id=] equals <code>|credential|.{{PublicKeyCredential/rawId}}</code>.
+            Let |credentialRecord| be that [=credential record=].
+            If <code>|response|.{{AuthenticatorAssertionResponse/userHandle}}</code> is present,
+            verify that it equals the [=user handle=] of the [=user account=].
 
         :  If the user was not identified before the [=authentication ceremony=] was initiated,
-        :: verify that <code>|response|.{{AuthenticatorAssertionResponse/userHandle}}</code> is
-            present, and that the user identified by this value is the owner of |credentialSource|.
+        :: verify that <code>|response|.{{AuthenticatorAssertionResponse/userHandle}}</code> is present.
+            Verify that the [=user account=] identified by <code>|response|.{{AuthenticatorAssertionResponse/userHandle}}</code>
+            contains a [=credential record=] whose [=credential record/id=] equals <code>|credential|.{{PublicKeyCredential/rawId}}</code>.
+            Let |credentialRecord| be that [=credential record=].
     </dl>
-
-1. Using <code>|credential|.{{Credential/id}}</code> (or <code>|credential|.{{PublicKeyCredential/rawId}}</code>, if
-    [=base64url encoding=] is inappropriate for your use case), look up the corresponding [=credential public key=]
-    and let |credentialPublicKey| be that [=credential public key=].
 
 1. Let |cData|, |authData| and |sig| denote the value of |response|'s
     {{AuthenticatorResponse/clientDataJSON}}, {{AuthenticatorAssertionResponse/authenticatorData}}, and
@@ -5193,10 +5246,17 @@ a numbered step. If outdented, it (today) is rendered as a bullet in the midst o
 1. Verify that the [=UP=] bit of the <code>[=flags=]</code> in |authData| is set.
 
 1. If the [=[RP]=] requires [=user verification=] for this assertion,
-    verify that the [=UV=] bit of the <code>[=flags=]</code> in |authData| is set.
+    verify that the [=authData/flags/UV=] bit of the <code>[=flags=]</code> in |authData| is set.
 
-1. If the credential [=backup state=] is used as part of [=[RP]=] business logic or policy, compare the previously stored
-    value with the [=BS=] bit of the <code>[=flags=]</code> in |authData|, perform evaluation, and then store the new value.
+1. If the credential [=backup state=] is used as part of [=[RP]=] business logic or policy,
+    let |currentBe| and |currentBs| be the values of the [=authData/flags/BE=] and [=authData/flags/BS=] bits, respectively,
+    of the <code>[=flags=]</code> in |authData|.
+    Compare |currentBe| and |currentBs| with
+    <code>|credentialRecord|.[=credential record/BE=]</code> and <code>|credentialRecord|.[=credential record/BS=]</code>
+    and apply [=[RP]=] policy, if any,
+    and then update <code>|credentialRecord|.[=credential record/BS=]</code> to the value of |currentBs|.
+
+    Note: See [[#sctn-credential-backup]] for examples of how a [=[RP]=] might process the [=authData/flags/BS=] [=flag=] values.
 
 1. Verify that the values of the [=client extension outputs=] in |clientExtensionResults| and the [=authenticator extension
     outputs=] in the <code>[=authData/extensions=]</code> in |authData| are as expected, considering the [=client
@@ -5217,26 +5277,27 @@ a numbered step. If outdented, it (today) is rendered as a bullet in the midst o
 
 1. Let |hash| be the result of computing a hash over the |cData| using SHA-256.
 
-1. Using |credentialPublicKey|, verify that |sig| is a valid signature over the binary concatenation of
+1. Using <code>|credentialRecord|.[=credential record/publicKey=]</code>,
+    verify that |sig| is a valid signature over the binary concatenation of
     |authData| and |hash|.
 
     Note: This verification step is compatible with signatures generated by FIDO U2F authenticators. See
     [[#sctn-fido-u2f-sig-format-compat]].
 
-1. Let |storedSignCount| be the stored [=signature counter=] value associated with <code>|credential|.{{Credential/id}}</code>.
-    If |authData|.<code>[=signCount=]</code> is nonzero or |storedSignCount| is nonzero,
+1. If |authData|.<code>[=authData/signCount=]</code> is nonzero or <code>|credentialRecord|.[=credential record/signCount=]</code> is nonzero,
     then run the following sub-step:
-      - If |authData|.<code>[=signCount=]</code> is
+      - If |authData|.<code>[=authData/signCount=]</code> is
            <dl class="switch">
-              <dt>greater than |storedSignCount|:</dt>
-              <dd>Update |storedSignCount| to be the value of
-                  |authData|.<code>[=signCount=]</code>.</dd>
-              <dt>less than or equal to |storedSignCount|:</dt>
+              <dt>greater than <code>|credentialRecord|.[=credential record/signCount=]</code>:</dt>
+              <dd>Update <code>|credentialRecord|.[=credential record/signCount=]</code> to be the value of
+                  |authData|.<code>[=authData/signCount=]</code>.</dd>
+              <dt>less than or equal to <code>|credentialRecord|.[=credential record/signCount=]</code>:</dt>
               <dd>This is a signal that
                   the authenticator may be cloned, i.e. at least
                   two copies of the [=credential private key=] may exist and are
                   being used in parallel. [=[RPS]=] should incorporate this information
-                  into their risk scoring.  Whether the [=[RP]=] updates |storedSignCount|
+                  into their risk scoring.
+                  Whether the [=[RP]=] updates <code>|credentialRecord|.[=credential record/signCount=]</code>
                   in this case, or not, or fails the
                   [=authentication ceremony=] or not, is
                   [=[RP]=]-specific. </dd>
@@ -7411,7 +7472,7 @@ user's personal identity via biometric data, and a security breach at a [=[RP]=]
 use for forging logins at other [=[RPS]=].
 
 In the case where a [=[RP]=] requires [=biometric recognition=], this is performed locally by the [=biometric authenticator=]
-perfoming [=user verification=] and then signaling the result by setting the [=UV=] [=flag=] in the signed [=assertion=] response,
+perfoming [=user verification=] and then signaling the result by setting the [=authData/flags/UV=] [=flag=] in the signed [=assertion=] response,
 instead of revealing the biometric data itself to the [=[RP]=].
 
 
