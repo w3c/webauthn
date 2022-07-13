@@ -5,5 +5,3 @@ labels: ["type:process"]
 ---
 
 ## Description
-
-Describe the content you'd like to see added
