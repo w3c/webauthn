@@ -6,4 +6,4 @@ labels: ["type:technical"]
 
 ## Proposed Change
 
-Describe your proposed change 
+Describe your proposed change. If you have suggested text, please file a corresponding Pull Request.
