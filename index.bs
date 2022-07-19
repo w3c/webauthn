@@ -1821,6 +1821,17 @@ a numbered step. If outdented, it (today) is rendered as a bullet in the midst o
 
                     </dl>
 
+            1. Let |attestationFormats| be a list of strings, initialized to the value of <code>|options|.{{PublicKeyCredentialCreationOptions/attestationFormats}}</code>.
+
+            1. If <code>|options|.{{PublicKeyCredentialCreationOptions/attestation}}</code>
+
+                    <dl class="switch">
+
+                        :   is set to {{AttestationConveyancePreference/none}}
+                        ::  Set |attestationFormats| be the single-element list containing the string &ldquo;none&rdquo;
+
+                    </dl>
+
             1. Let |excludeCredentialDescriptorList| be a new [=list=].
 
             1. [=list/For each=] credential descriptor |C| in <code>|options|.{{PublicKeyCredentialCreationOptions/excludeCredentials}}</code>:
@@ -1840,7 +1851,7 @@ a numbered step. If outdented, it (today) is rendered either as a bullet in the 
 -->
                     <li id='CreateCred-InvokeAuthnrMakeCred'>
 
-                        <!-- @@EDITOR-ANCHOR-01A: KEEP THIS LIST SYNC'D WITH THE LIST UP AT @@EDITOR-ANCHOR-01B -->
+                        <!-- @@EDITOR-ANCHOR-01: KEEP THIS LIST SYNC'D WITH OTHER LOCATIONS WITH THIS TAG -->
                         Invoke the [=authenticatorMakeCredential=] operation on |authenticator| with
                             |clientDataHash|,
                             <code>|options|.{{PublicKeyCredentialCreationOptions/rp}}</code>,
@@ -1850,7 +1861,7 @@ a numbered step. If outdented, it (today) is rendered either as a bullet in the 
                             |credTypesAndPubKeyAlgs|,
                             |excludeCredentialDescriptorList|,
                             |enterpriseAttestationPossible|,
-                            <code>|options|.{{PublicKeyCredentialCreationOptions/attestationFormats}}</code>,
+                            |attestationFormats|,
                             and |authenticatorExtensions| as parameters.
                     </li>
 
@@ -2230,28 +2241,27 @@ When this method is invoked, the user agent MUST execute the following algorithm
                                     configuration knowledge of the appropriate transport to use with |authenticator| in making its
                                     selection.
 
+                                    <!-- @@EDITOR-ANCHOR-01: KEEP THIS LIST SYNC'D WITH OTHER LOCATIONS WITH THIS TAG -->
                                     Then, using |transport|, invoke the [=authenticatorGetAssertion=] operation on
                                     |authenticator|, with |rpId|, |clientDataHash|, |allowCredentialDescriptorList|,
                                     |userVerification|,
-                                    <code>|options|.{{PublicKeyCredentialRequestOptions/attestation}}</code>,
-                                    <code>|options|.{{PublicKeyCredentialRequestOptions/attestationFormats}}</code>,
+                                    |attestationFormats|,
                                     and |authenticatorExtensions| as parameters.
 
+                                    <!-- @@EDITOR-ANCHOR-01: KEEP THIS LIST SYNC'D WITH OTHER LOCATIONS WITH THIS TAG -->
                                 :   [=list/is empty=]
                                 ::  Using local configuration knowledge of the appropriate transport to use with |authenticator|,
                                     invoke the [=authenticatorGetAssertion=] operation on |authenticator| with |rpId|,
                                     |clientDataHash|, |allowCredentialDescriptorList|, |userVerification|,
-                                    <code>|options|.{{PublicKeyCredentialRequestOptions/attestation}}</code>,
-                                    <code>|options|.{{PublicKeyCredentialRequestOptions/attestationFormats}}</code>,
-                                    and |authenticatorExtensions| as parameters.
+                                    |attestationFormats|, and |authenticatorExtensions| as parameters.
                             </dl>
 
+                    <!-- @@EDITOR-ANCHOR-01: KEEP THIS LIST SYNC'D WITH OTHER LOCATIONS WITH THIS TAG -->
                     :   [=list/is empty=]
                     ::  Using local configuration knowledge of the appropriate transport to use with |authenticator|, invoke the
                         [=authenticatorGetAssertion=] operation on |authenticator| with |rpId|, |clientDataHash|,
                         |userVerification|,
-                        <code>|options|.{{PublicKeyCredentialRequestOptions/attestation}}</code>,
-                        <code>|options|.{{PublicKeyCredentialRequestOptions/attestationFormats}}</code>,
+                        |attestationFormats|,
                         and |authenticatorExtensions| as parameters.
 
                         Note: In this case, the [=[RP]=] did not supply a list of acceptable credential descriptors. Thus, the
@@ -4045,7 +4055,7 @@ The result of <dfn for="credential id">looking up</dfn> a [=credential id=] |cre
 
 It takes the following input parameters:
 
-<!-- @@EDITOR-ANCHOR-01B: KEEP THIS LIST SYNC'D WITH THE LIST UP AT @@EDITOR-ANCHOR-01A -->
+<!-- @@EDITOR-ANCHOR-01: KEEP THIS LIST SYNC'D WITH OTHER LOCATIONS WITH THIS TAG -->
 : |hash|
 :: The [=hash of the serialized client data=], provided by the client.
 : |rpEntity|
@@ -4183,12 +4193,20 @@ a numbered step. If outdented, it (today) is rendered as a bullet in the midst o
     </dl>
 
 1. Let |attestedCredentialData| be the [=attested credential data=] byte array including the |credentialId| and |publicKey|.
+1. If |attestationFormats|:
+    <dl class="switch">
+        : is [=list/is not empty|not empty=]
+        :: let |attestationFormat| be the first supported [=attestation statement format=] from |attestationFormats|, taking into account |enterpriseAttestationPossible|. If none are supported, fallthrough to:
+
+        : is [=list/is empty|empty=]
+        :: let |attestationFormat| be the [=attestation statement format=] most preferred by this authenticator.
+    </dl>
 1. Let |authenticatorData| [=perform the following steps to generate an authenticator data structure|be the byte array=] specified in [[#sctn-authenticator-data]], including |attestedCredentialData| as the
     <code>[=attestedCredentialData=]</code> and |processedExtensions|, if any, as the
     <code>[=authDataExtensions|extensions=]</code>.
 1. Create an [=attestation object=] for the new credential using the procedure specified in
-    [[#sctn-generating-an-attestation-object]], using an authenticator-chosen [=attestation statement format=], |authenticatorData|,
-    and |hash|, as well as {{enterprise|taking into account}} the value of |enterpriseAttestationPossible|. For more details on attestation, see [[#sctn-attestation]].
+    [[#sctn-generating-an-attestation-object]], the [=attestation statement format=] |attestationFormat|, and the values |authenticatorData|
+    and |hash|. For more details on attestation, see [[#sctn-attestation]].
 
 On successful completion of this operation, the authenticator returns the [=attestation object=] to the client.
 
@@ -4210,6 +4228,10 @@ It takes the following input parameters:
     wish to make a [=test of user presence=] optional although WebAuthn does not.
 : |requireUserVerification|
 :: The [=effective user verification requirement for assertion=], a Boolean value provided by the client.
+: |enterpriseAttestationPossible|
+:: A Boolean value that indicates that individually-identifying attestation MAY be returned by the authenticator.
+: |attestationFormats|
+:: A sequence of strings that expresses the [=RP=]'s preference for attestation statement formats, from most to least preferable. If it returns attestation then the [=authenticator=] makes a best-effort attempt to use the most preferable format that it supports.
 : |extensions|
 :: A [=CBOR=] [=map=] from [=extension identifiers=] to their [=authenticator extension inputs=], created by the client based on
     the extensions requested by the [=[RP]=], if any.
@@ -4265,8 +4287,20 @@ When this method is invoked, the [=authenticator=] MUST perform the following pr
         <figcaption>Generating an [=assertion signature=].</figcaption>
     </figure>
 
-1. If any error occurred while generating the [=assertion signature=], return an error code equivalent to "{{UnknownError}}" and
-    terminate the operation.
+1. If |attestationFormats|:
+    <dl class="switch">
+        : is [=list/is not empty|not empty=]
+        :: let |attestationFormat| be the first supported [=attestation statement format=] from |attestationFormats|, taking into account |enterpriseAttestationPossible|. If none are supported, fallthrough to:
+
+        : is [=list/is empty|empty=]
+        :: let |attestationFormat| be the [=attestation statement format=] most preferred by this authenticator.
+    </dl>
+
+1. Create an [=attestation object=] for the new credential using the procedure specified in
+    [[#sctn-generating-an-attestation-object]], the [=attestation statement format=] |attestationFormat|, and the values |authenticatorData|
+    and |hash|. For more details on attestation, see [[#sctn-attestation]].
+
+1. If any error occurred then return an error code equivalent to "{{UnknownError}}" and terminate the operation.
 
 <!-- Note: this next step is actually a top-level step, but bikeshed wanted it indented this much in order to render it as
 a numbered step. If outdented, it (today) is rendered as a bullet in the midst of a numbered list :-/
@@ -4283,6 +4317,7 @@ a numbered step. If outdented, it (today) is rendered as a bullet in the midst o
 
             - |authenticatorData|
             - |signature|
+            - The attestation object.
             - |selectedCredential|.[=public key credential source/userHandle=]
 
                     Note: the returned [=public key credential source/userHandle=] value may be `null`, see:
@@ -6270,6 +6305,7 @@ A usage example is thus:
 
 Note: [=[RPS]=] need to take care to verify [=device-bound key=] signatures before associating and storing extension output value fields in conjunction with the [=user account=]. See [[#sctn-device-publickey-extension-verification]].
 
+The weight that [=[RPS]=] give to the presence of a signature from a [=device-bound key=] may be based on information learned from its optional attestation. An attestation can indicate the level of protection that the hardware offers the private key, certifiations for the hardware, etc.
 
 ### Extension Definition ### {#sctn-device-publickey-extension-definition}
 
@@ -6374,7 +6410,8 @@ Note: [=[RPS]=] need to take care to verify [=device-bound key=] signatures befo
 
         ; An authenticator-generated random nonce for inclusion in the attestation
         ; signature. If the authenticator chooses to not generate a nonce, it sets this
-        ; to a zero-length bytestring.
+        ; to a zero-length bytestring. See the note below about "randomNonce" for a
+        ; discussion on the nonce's purpose.
 
         nonce: bstr .size (0..32),
 
@@ -6387,7 +6424,9 @@ Note: [=[RPS]=] need to take care to verify [=device-bound key=] signatures befo
         ;   (1) a SIGNATURE value calculated (using the attestation private key)
         ;       over (prefix || aaguid || dpk || nonce) where \`prefix\` is
         ;       h'64657669636520626f756e64206b6579206174746573746174696f6e20736967
-        ;         00ffffffff'
+        ;         00ffffffff'.
+        ;       (See the attestation calculations section, below, for a discussion
+        ;       about the purpose of this value.)
         ;   (2) the attestation certificate or public key, and supporting certificates,
         ;       if any.
         ;
@@ -6400,7 +6439,7 @@ Note: [=[RPS]=] need to take care to verify [=device-bound key=] signatures befo
         ; An optional boolean that indicates whether the attestation statement
         ; contains uniquely identifying information. This can only be true
         ; when the \`attestation\` field of the extension input is "enterprise"
-        ; an either the user-agent or the authenticator permits uniquely
+        ; and either the user-agent or the authenticator permits uniquely
         ; identifying attestation for the requested RP ID.
 
         ? epAtt: bool .default false,
@@ -6417,17 +6456,17 @@ Note: [=[RPS]=] need to take care to verify [=device-bound key=] signatures befo
 
     1. If a [=hardware-bound device key pair=] does not already exist for this {[=public key credential source/id|Credential ID=], [=public key credential source/rpId|RP ID=], [=public key credential source/rpId|userHandle=]} tuple on the [=authenticator=], create it using the same public key algorithm as that used by the [=user credential=]'s [=credential key pair=], otherwise locate the existing [=device-bound key=].
 
-    1. Let |attFormat| be the chosen [=attestation statement format=], and |aaguid| be a 16-byte value, based on the value of {{AuthenticationExtensionsDevicePublicKeyInputs/attestation}} in the extension input:
+    1. Let |attFormat| be the chosen [=attestation statement format=], and |attAaguid| be a 16-byte value, based on the value of {{AuthenticationExtensionsDevicePublicKeyInputs/attestation}} in the extension input:
 
         <dl class="switch">
             : none
-            :: |attFormat| is "none" or "self", at the authenticator's discretion, and |aaguid| is 16 zero bytes. (Note that, since the [=device-bound key=] is already exercised during {{CredentialsContainer/get()|navigator.credentials.get()}} calls, the proof-of-possession property provided by "self" attestation is superfluous in that context.)
+            :: |attFormat| is "none" or "self", at the authenticator's discretion, and |attAaguid| is 16 zero bytes. (Note that, since the [=device-bound key=] is already exercised during {{CredentialsContainer/get()|navigator.credentials.get()}} calls, the proof-of-possession property provided by "self" attestation is superfluous in that context.)
 
             : indirect, direct
-            :: |attFormat| is an [=attestation statement format=] appropriate for this [=authenticator=] based on {{AuthenticationExtensionsDevicePublicKeyInputs/attestationFormats}}, and |aaguid| is the [=authenticator's=] [=AAGUID=]. (Since the [=hardware-bound device key pair=] is specific to a particular authenticator, its attestation can be tied to hardware roots of trust, although they do not have to be. This is in contrast to the associated [=user credential=]'s attestation.)
+            :: |attFormat| is an [=attestation statement format=] appropriate for this [=authenticator=] based on {{AuthenticationExtensionsDevicePublicKeyInputs/attestationFormats}}, and |attAaguid| is the [=authenticator's=] [=AAGUID=]. (Since the [=hardware-bound device key pair=] is specific to a particular authenticator, its attestation can be tied to hardware roots of trust, although they do not have to be. This is in contrast to the associated [=user credential=]'s attestation.)
 
             : enterprise
-            :: The [=[RP]=] wants to receive an [=attestation statement=] that may include uniquely identifying information. This is intended for controlled deployments within an enterprise where the organization wishes to tie registrations to specific authenticators. [=Authenticators=] MUST NOT provide such an attestation unless the user agent or authenticator configuration expressly permits it for the requested [=RP ID=]. If <i>not</i> permitted, |attFormat| is "none", and |aaguid| is 16 zero bytes. Otherwise |attFormat| is an [=attestation statement format=] appropriate for this [=authenticator=] based on {{AuthenticationExtensionsDevicePublicKeyInputs/attestationFormats}}, and |aaguid| is the [=authenticator's=] [=AAGUID=]. (Again, since the [=hardware-bound device key pair=] is specific to a particular authenticator, the attestation may be tied to hardware roots of trust.)
+            :: The [=[RP]=] wants to receive an [=attestation statement=] that may include uniquely identifying information. This is intended for controlled deployments within an enterprise where the organization wishes to tie registrations to specific authenticators. [=Authenticators=] MUST NOT provide such an attestation unless the user agent or authenticator configuration expressly permits it for the requested [=RP ID=]. If <i>not</i> permitted, |attFormat| is "none", and |attAaguid| is 16 zero bytes. Otherwise |attFormat| is an [=attestation statement format=] appropriate for this [=authenticator=] based on {{AuthenticationExtensionsDevicePublicKeyInputs/attestationFormats}}, and |attAaguid| is the [=authenticator's=] [=AAGUID=]. (Again, since the [=hardware-bound device key pair=] is specific to a particular authenticator, the attestation may be tied to hardware roots of trust.)
 
                 Note: CTAP2 does not currently provide for an <a href="https://fidoalliance.org/specs/fido-v2.1-ps-20210615/fido-client-to-authenticator-protocol-v2.1-ps-20210615.html#makecred-enterpriseattestation">enterpriseAttestation</a> signal during an <a href="https://fidoalliance.org/specs/fido-v2.1-ps-20210615/fido-client-to-authenticator-protocol-v2.1-ps-20210615.html#authenticatorGetAssertion">authenticatorGetAssertion</a> call. Until that is changed, <a href="https://fidoalliance.org/specs/fido-v2.1-ps-20210615/fido-client-to-authenticator-protocol-v2.1-ps-20210615.html#platform-managed-enterprise-attestation">platform-managed enterprise attestation</a> will not work in that context with CTAP2 [=authenticators=].
         </dl>
@@ -6446,7 +6485,7 @@ Note: [=[RPS]=] need to take care to verify [=device-bound key=] signatures befo
 
         Note: as with all CBOR structures used in this specification, the [=CTAP2 canonical CBOR encoding form=] MUST be used.
 
-        1. Let the `aaguid` key's value be |aaguid|.
+        1. Let the `aaguid` key's value be |attAaguid|.
 
         1. Let the `dpk` key's value be |dpk|.
 
