@@ -2873,7 +2873,7 @@ optionally evidence of [=user consent=] to a specific transaction.
         [=user handle=]. See [[#sctn-op-get-assertion]].
 
     :   <dfn>attestationObject</dfn>
-    ::  This OPTIONAL attribute contains an [=attestation object=]. The [=attestation object=], if present, includes an [=attestation statement=]. Unlike the {{AuthenticatorAttestationResponse/attestationObject}} in an {{AuthenticatorAssertionResponse}}, it does not contain an `authData` key because the [=authenticator data=] is provided directly in an {{AuthenticatorAssertionResponse}} structure. For more details on attestation, see [[#sctn-attestation]], [[#sctn-generating-an-attestation-object]], and [Figure 6](#fig-attStructs).
+    ::  This OPTIONAL attribute contains an [=attestation object=], if the [=authenticator=] supports attestation in assertions. The [=attestation object=], if present, includes an [=attestation statement=]. Unlike the {{AuthenticatorAttestationResponse/attestationObject}} in an {{AuthenticatorAssertionResponse}}, it does not contain an `authData` key because the [=authenticator data=] is provided directly in an {{AuthenticatorAssertionResponse}} structure. For more details on attestation, see [[#sctn-attestation]], [[#sctn-attestation-in-assertions]], [[#sctn-generating-an-attestation-object]], and [Figure 6](#fig-attStructs).
 </div>
 
 ## Parameters for Credential Generation (dictionary <dfn dictionary>PublicKeyCredentialParameters</dfn>) ## {#dictionary-credential-params}
@@ -4515,7 +4515,7 @@ a numbered step. If outdented, it (today) is rendered as a bullet in the midst o
     <code>[=authDataExtensions|extensions=]</code>.
 1. Create an [=attestation object=] for the new credential using the procedure specified in
     [[#sctn-generating-an-attestation-object]], the [=attestation statement format=] |attestationFormat|, and the values |authenticatorData|
-    and |hash|. For more details on attestation, see [[#sctn-attestation]].
+    and |hash|, as well as {{enterprise|taking into account}} the value of |enterpriseAttestationPossible|. For more details on attestation, see [[#sctn-attestation]].
 
 On successful completion of this operation, the authenticator returns the [=attestation object=] to the client.
 
@@ -4582,9 +4582,17 @@ When this method is invoked, the [=authenticator=] MUST perform the following pr
     which approach is implemented by the [=authenticator=], by some positive value.
     If the [=authenticator=] does not implement a [=signature counter=], let the [=signature counter=] value remain constant at
     zero.
+1. If |attestationFormats|:
+    <dl class="switch">
+        : is [=list/is not empty|not empty=]
+        :: let |attestationFormat| be the first supported [=attestation statement format=] from |attestationFormats|, taking into account |enterpriseAttestationPossible|. If none are supported, fallthrough to:
+
+        : is [=list/is empty|empty=]
+        :: let |attestationFormat| be the [=attestation statement format=] most preferred by this authenticator. If it does not support attestation during assertion then let this be `none`.
+    </dl>
 1. Let |authenticatorData| [=perform the following steps to generate an authenticator data structure|be the byte array=]
     specified in [[#sctn-authenticator-data]] including |processedExtensions|, if any, as
-    the <code>[=authDataExtensions|extensions=]</code> and excluding <code>[=attestedCredentialData=]</code>.
+    the <code>[=authDataExtensions|extensions=]</code> and excluding <code>[=attestedCredentialData=]</code>. This |authenticatorData| MUST include [=attested credential data=] if, and only if, |attestationFormat| is not `none`.
 1. Let |signature| be the [=assertion signature=] of the concatenation <code>|authenticatorData| || |hash|</code> using the
     [=public key credential source/privateKey=] of |selectedCredential| as shown in <a href="#fig-signature">Figure <span class="figure-num-following"/></a>, below. A simple,
     undelimited
@@ -4596,18 +4604,9 @@ When this method is invoked, the [=authenticator=] MUST perform the following pr
         <figcaption>Generating an [=assertion signature=].</figcaption>
     </figure>
 
-1. If |attestationFormats|:
-    <dl class="switch">
-        : is [=list/is not empty|not empty=]
-        :: let |attestationFormat| be the first supported [=attestation statement format=] from |attestationFormats|, taking into account |enterpriseAttestationPossible|. If none are supported, fallthrough to:
-
-        : is [=list/is empty|empty=]
-        :: let |attestationFormat| be the [=attestation statement format=] most preferred by this authenticator.
-    </dl>
-
-1. Create an [=attestation object=] for the new credential using the procedure specified in
+1. The |attestationFormat| is not `none` then create an [=attestation object=] for the new credential using the procedure specified in
     [[#sctn-generating-an-attestation-object]], the [=attestation statement format=] |attestationFormat|, and the values |authenticatorData|
-    and |hash|. For more details on attestation, see [[#sctn-attestation]].
+    and |hash|, as well as {{enterprise|taking into account}} the value of |enterpriseAttestationPossible|. For more details on attestation, see [[#sctn-attestation]].
 
 1. If any error occurred then return an error code equivalent to "{{UnknownError}}" and terminate the operation.
 
@@ -4626,7 +4625,7 @@ a numbered step. If outdented, it (today) is rendered as a bullet in the midst o
 
             - |authenticatorData|
             - |signature|
-            - The attestation object.
+            - The attestation object, if an [=attestation object=] was created for this assertion.
             - |selectedCredential|.[=public key credential source/userHandle=]
 
                     Note: the returned [=public key credential source/userHandle=] value may be `null`, see:
@@ -4806,7 +4805,7 @@ understand the characteristics of the [=authenticators=] that they trust, based 
 
 ### Attestation in assertions ### {#sctn-attestation-in-assertions}
 
-Attestation is most commonly provided during credential creation. However, [=multi-device credentials=] can move between [=authenticators=] during their lifetime and thus attestation MAY be provided in [=assertions=] if requested by the [=[RP]=] using the {{PublicKeyCredentialRequestOptions/attestation}} parameter.
+Attestation is most commonly provided during credential creation. However, if supported by the authenticator and requested by the [=[RP]=] using the {{PublicKeyCredentialRequestOptions/attestation}} parameter, attestation MAY be provided in [=assertions=].
 
 [=Attestation objects=] provided in an {{AuthenticatorAttestationResponse}} structure (i.e. as the result of a {{CredentialsContainer/create()|create()}} operation) contain at least the three keys shown in [the previous figure](#fig-attStructs): `fmt`, `attStmt`, and `authData`. The `authData` key is not included when an [=attestation object=] is provided in an {{AuthenticatorAssertionResponse}} (i.e. as the result of a {{CredentialsContainer/get()|get()}} operation). That is because the [=authenticator data=] is provided directly in the {{AuthenticatorAssertionResponse/authenticatorData}} member of the {{AuthenticatorAssertionResponse}}. Otherwise, processing of the [=attestation object=] is identical.
 
@@ -4857,7 +4856,7 @@ object=] for a credential. Its format is shown in <a href="#table-attestedCreden
     </figcaption>
 </figure>
 
-Attested credential data is always present in any [=authenticator data=] that results from a {{CredentialsContainer/create()|create()}} operation. It MAY be present in an [=authenticator data=] resulting from a {{CredentialsContainer/get()|get()}} operation only if attestation was requested using the {{PublicKeyCredentialRequestOptions/attestation}} parameter.
+Attested credential data is always present in any [=authenticator data=] that results from a {{CredentialsContainer/create()|create()}} operation. It MUST be present in an [=authenticator data=] resulting from a {{CredentialsContainer/get()|get()}} operation if, and only if, the {{AuthenticatorAssertionResponse/attestationObject}} attribute is present in the assertion result.
 
 #### Examples of `credentialPublicKey` Values Encoded in COSE_Key Format #### {#sctn-encoded-credPubKey-examples}
 
@@ -6976,7 +6975,7 @@ Note that when |nonce| is empty, then the (signed) authenticator extension outpu
 
 #### `devicePubKey` Extension Output Verification Procedures #### {#sctn-device-publickey-extension-verification}
 
-Verifying the <code>[=devicePubKey=]</code> extension output is performed by the [=[RP]=] whenever a <i>new</i> [=device public key=] is returned within the extension output. As explained in [[#sctn-device-publickey-extension-usage]], a new [=device public key=] is always returned as a result of a {{CredentialsContainer/create()|navigator.credentials.create()}} call (i.e., as part of a [=registration ceremony=]). In contrast, a new [=device public key=] <i>may</i> be returned as a result of a {{CredentialsContainer/get()|navigator.credentials.get()}} call (i.e., as part of an [=authentication ceremony=]).
+Verifying the <code>[=devicePubKey=]</code> extension output is performed by the [=[RP]=] whenever a <i>new</i> [=device public key=] is returned within the extension output. As explained in [[#sctn-device-publickey-extension-usage]], a new [=device public key=] is always returned as a result of a {{CredentialsContainer/create()|navigator.credentials.create()}} call (i.e., as part of a [=registration ceremony=]). In contrast, a {{CredentialsContainer/get()|navigator.credentials.get()}} call (i.e., an authentication ceremony) MAY create and return new [=device public key=], or MAY reuse an existing one.
 
 ##### Registration (`create()`) ##### {#sctn-device-publickey-extension-verification-create}
 
