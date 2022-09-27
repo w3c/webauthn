@@ -4807,6 +4807,11 @@ understand the characteristics of the [=authenticators=] that they trust, based 
 
 Attestation is most commonly provided during credential creation. However, if supported by the authenticator and requested by the [=[RP]=] using the {{PublicKeyCredentialRequestOptions/attestation}} parameter, attestation MAY be provided in [=assertions=].
 
+Attestations in [=assertions=] could be helpful in at least the following situations:
+
+1. For [=multi-device credentials=], the [=generating authenticator=] may have returned a meaningfully different attestation then the authenticator currently exercising the credential. Thus returning an attestation for each use of the credential allows the [=[RP]=] to observe these changes.
+1. If the [=attestation statement format=] involves a 3rd-party attesting to the state of the authenticator, then returning an attestation with each use of the credential allows for the continued good health of the authenticator to be attested.
+
 [=Attestation objects=] provided in an {{AuthenticatorAttestationResponse}} structure (i.e. as the result of a {{CredentialsContainer/create()|create()}} operation) contain at least the three keys shown in [the previous figure](#fig-attStructs): `fmt`, `attStmt`, and `authData`. The `authData` key is not included when an [=attestation object=] is provided in an {{AuthenticatorAssertionResponse}} (i.e. as the result of a {{CredentialsContainer/get()|get()}} operation). That is because the [=authenticator data=] is provided directly in the {{AuthenticatorAssertionResponse/authenticatorData}} member of the {{AuthenticatorAssertionResponse}}. Otherwise, processing of the [=attestation object=] is identical.
 
 ### Attested Credential Data ### {#sctn-attested-credential-data}
@@ -6963,6 +6968,10 @@ The weight that [=[RPS]=] give to the presence of a signature from a [=device-bo
 
         Note: |dpkSig| cannot be included in the [=authenticator extension output=] because it is returned inside the [=authenticator data=] and that would imply that the signature signs over itself.
 
+##### AAGUIDs ##### {#sctn-device-publickey-attestation-aaguid}
+
+The [=AAGUID=] included in the <code>[=devicePubKey=]</code> extension output, if non-zero, identifies the make or model of hardware that is storing the [=device-bound key=]. This is distinct from the [=AAGUID=] in the [=attested credential data=] of a [=multi-device credential=], which likely identifies something broader since such credentials are not bound to a single device. Thus the two AAGUIDs MAY be different in a single response and either, or both, may be zero depending on the options requested and authenticator behaviour.
+
 ##### Attestation calculations ##### {#sctn-device-publickey-attestation-calculations}
 
 When computing attestations, the process in [[#sctn-generating-an-attestation-object]] takes two inputs: `authData` and `hash`. When calculating an attestation for a [=device-bound key=], the typical value for `hash` hashes over the attestation signature itself, which is impossible. Also the attestation of a [=device-bound key=] is potentially used repeatedly, thus may want to be cached. But signing over values that include [=[RP]=]-chosen nonces, like the [=hash of the serialized client data=], makes that impossible.
@@ -6978,11 +6987,11 @@ Note that when |nonce| is empty, then the (signed) authenticator extension outpu
 
 #### `devicePubKey` Extension Output Verification Procedures #### {#sctn-device-publickey-extension-verification}
 
-Verifying the <code>[=devicePubKey=]</code> extension output is performed by the [=[RP]=] whenever a <i>new</i> [=device public key=] is returned within the extension output. As explained in [[#sctn-device-publickey-extension-usage]], a new [=device public key=] is always returned as a result of a {{CredentialsContainer/create()|navigator.credentials.create()}} call (i.e., as part of a [=registration ceremony=]). In contrast, a {{CredentialsContainer/get()|navigator.credentials.get()}} call (i.e., an authentication ceremony) MAY create and return new [=device public key=], or MAY reuse an existing one.
+Verifying the <code>[=devicePubKey=]</code> extension output is performed by the [=[RP]=] whenever a [=device public key=] is returned within the extension output.
 
 ##### Registration (`create()`) ##### {#sctn-device-publickey-extension-verification-create}
 
-If the `devicePubKey` extension was included on a {{CredentialsContainer/create()|navigator.credentials.create()}} call, then the below verification steps are performed in the context of <a href=#reg-ceremony-verify-extension-outputs>this step</a> of [[#sctn-registering-a-new-credential]] using these variables established therein: |credential|, |clientExtensionResults|, |authData|, and |hash|.
+If the `devicePubKey` extension was included on a {{CredentialsContainer/create()|navigator.credentials.create()}} call, then the below verification steps are performed in the context of <a href=#reg-ceremony-verify-extension-outputs>this step</a> of [[#sctn-registering-a-new-credential]] using these variables established therein: |credential|, |clientExtensionResults|, |authData|, and |hash|. [=[RP]=] policy may specify whether a response without a `devicePubKey` is acceptable.
 
 1. Let |attObjForDevicePublicKey| be the value of the {{AuthenticationExtensionsClientOutputs/devicePubKey}} member of |clientExtensionResults|.
 
@@ -6991,19 +7000,17 @@ If the `devicePubKey` extension was included on a {{CredentialsContainer/create(
 
 1. Verify that {{AuthenticationExtensionsDevicePublicKeyOutputs/signature}} is a valid signature over the [=assertion signature=] [input](#fig-signature) (i.e. `authData` and `hash`) by the [=device public key=] |dpk|. (The signature algorithm is the same as for the [=user credential=].)
 
-1. Optionally, if attestation was requested and the RP wishes to verify it, verify that |attStmt| is a correct [=attestation statement=], conveying a valid [=attestation signature=], by using the [=attestation statement format=] |fmt|'s [=verification procedure=] given |attStmt|. See [[#sctn-device-publickey-attestation-calculations]].
+1. Optionally, if attestation was requested and the [=[RP]=] wishes to verify it, verify that |attStmt| is a correct [=attestation statement=], conveying a valid [=attestation signature=], by using the [=attestation statement format=] |fmt|'s [=verification procedure=] given |attStmt|. See [[#sctn-device-publickey-attestation-calculations]]. [=[RP]=] policy may specifiy which attestations are acceptable.
 
     Note: If |fmt|'s value is "[=none=]" there is no attestation signature to verify.
 
-1. Store the |aaguid|, |dpk|, |scope|, |fmt|, |attStmt| values indexed to the <code>|credential|.{{Credential/id}}</code> in the [=user account=].
-
-Issue(w3c/webauthn#1711): Storing this information ought to only occur if the overall registration operation is successful, i.e., crucially, the "encompassing signature" verified correctly.
+1. Complete the steps from [[#sctn-registering-a-new-credential]] and, if those steps are successful, store the |aaguid|, |dpk|, |scope|, |fmt|, |attStmt| values indexed to the <code>|credential|.{{Credential/id}}</code> in the [=user account=].
 
 See also [[#sctn-device-publickey-extension-usage]] for further details.
 
 ##### Authentication (`get()`) ##### {#sctn-device-publickey-extension-verification-get}
 
-If the `devicePubKey` extension was included on a {{CredentialsContainer/get()|navigator.credentials.get()}} call, then the below verification steps are performed in the context of <a href=#authn-ceremony-verify-extension-outputs>this step</a> of [[#sctn-verifying-assertion]] using these variables established therein: |credential|, |clientExtensionResults|, |authData|, and |hash|.
+If the `devicePubKey` extension was included on a {{CredentialsContainer/get()|navigator.credentials.get()}} call, then the below verification steps are performed in the context of <a href=#authn-ceremony-verify-extension-outputs>this step</a> of [[#sctn-verifying-assertion]] using these variables established therein: |credential|, |clientExtensionResults|, |authData|, and |hash|. [=[RP]=] policy may specify whether a response without a `devicePubKey` is acceptable.
 
 1. Let |attObjForDevicePublicKey| be the value of the `devicePubKey` member of |clientExtensionResults|.
 
@@ -7011,11 +7018,9 @@ If the `devicePubKey` extension was included on a {{CredentialsContainer/get()|n
 
     Note: The latter |attObjForDevicePublicKey| fields are referenced exclusively in the below steps and are not to be confused with other fields with the same names in other portions of [=authenticator data=].
 
-1. Verify that {{AuthenticationExtensionsDevicePublicKeyOutputs/signature}} is a valid signature over the [=assertion signature=] [input](#fig-signature) by the [=device public key=] |dpk|. (The signature algorithm is the same as for the [=user credential=].)
+1. Verify that {{AuthenticationExtensionsDevicePublicKeyOutputs/signature}} is a valid signature over the [=assertion signature=] [input](#fig-signature) (i.e. `authData` and `hash`) by the [=device public key=] |dpk|. (The signature algorithm is the same as for the [=user credential=].)
 
 1. If the [=[RP]=]'s [=user account=] mapped to the <code>|credential|.{{Credential/id}}</code> in play (i.e., for the user being authenticated) holds `aaguid`, `dpk` and `scope` values corresponding to the extracted |attObjForDevicePublicKey| fields, then perform binary equality checks between the corresponding stored values and the extracted field values. The [=[RP]=] MAY have more than one set of {`aaguid`, `dpk`, `scope`} values mapped to the [=user account=] and <code>|credential|.{{Credential/id}}</code> pair and each set MUST be checked.
-
-    Issue(w3c/webauthn#1711): In the below steps, where storing the extracted |aaguid|, |dpk|, |scope|, |fmt|, |attStmt| values is called for, it ought to only occur if the overall authentication operation is successful, i.e., crucially, the "encompassing signature" verified correctly.
 
     If the above set of binary equality checks resulted in:
 
@@ -7036,7 +7041,7 @@ If the `devicePubKey` extension was included on a {{CredentialsContainer/get()|n
                         Note: This authenticator is not generating a fresh per-response random nonce.
 
                     : unsuccessful
-                    :: Optionally, if attestation was requested and the RP wishes to verify it, verify that |attStmt| is a correct [=attestation statement=], conveying a valid [=attestation signature=], by using the [=attestation statement format=] |fmt|'s [=verification procedure=] given |attStmt|. See [[#sctn-device-publickey-attestation-calculations]].
+                    :: Optionally, if attestation was requested and the RP wishes to verify it, verify that |attStmt| is a correct [=attestation statement=], conveying a valid [=attestation signature=], by using the [=attestation statement format=] |fmt|'s [=verification procedure=] given |attStmt|. See [[#sctn-device-publickey-attestation-calculations]]. [=[RP]=] policy may specifiy which attestations are acceptable.
 
                         If the result is:
 
@@ -7056,16 +7061,16 @@ If the `devicePubKey` extension was included on a {{CredentialsContainer/get()|n
 
                 <dl class="switch">
                     : If |fmt|'s value is "none":
-                    :: There is no attestation signature to verify and this is a new device. Store the extracted |aaguid|, |dpk|, |scope|, |fmt|, |attStmt| values indexed to the <code>|credential|.{{Credential/id}}</code> in the [=user account=]. Terminate these verification steps.
+                    :: There is no attestation signature to verify and this is a new device. Unless [=[RP]=] policy specifies that this attestation is unacceptable, store the extracted |aaguid|, |dpk|, |scope|, |fmt|, |attStmt| values indexed to the <code>|credential|.{{Credential/id}}</code> in the [=user account=]. Terminate these verification steps.
 
                     : Otherwise:
-                    :: Optionally, if attestation was requested and the RP wishes to verify it, verify that |attStmt| is a correct [=attestation statement=], conveying a valid [=attestation signature=], by using the [=attestation statement format=] |fmt|'s [=verification procedure=] given |attStmt|. See [[#sctn-device-publickey-attestation-calculations]].
+                    :: Optionally, if attestation was requested and the RP wishes to verify it, verify that |attStmt| is a correct [=attestation statement=], conveying a valid [=attestation signature=], by using the [=attestation statement format=] |fmt|'s [=verification procedure=] given |attStmt|. See [[#sctn-device-publickey-attestation-calculations]]. [=[RP]=] policy may specifiy which attestations are acceptable.
 
                         If the result is:
 
                         <dl class="switch">
                             : successful
-                            :: This is a new [=device public key=] signifying a new device. Store the extracted |aaguid|, |dpk|, |scope|, |fmt|, |attStmt| values indexed to the <code>|credential|.{{Credential/id}}</code> in the [=user account=]. Terminate these verification steps.
+                            :: This is a new [=device public key=] signifying a new device. Complete the steps in [[#sctn-verifying-assertion]] and, if those steps are successful, store the extracted |aaguid|, |dpk|, |scope|, |fmt|, |attStmt| values indexed to the <code>|credential|.{{Credential/id}}</code> in the [=user account=]. Terminate these verification steps.
 
                             : unsuccessful
                             :: Some form of error has occurred. It is indeterminate whether this is a valid new device. Terminate these verification steps.
@@ -7077,15 +7082,15 @@ If the `devicePubKey` extension was included on a {{CredentialsContainer/get()|n
 
 1. Otherwise, the [=[RP]=] does not have |attObjForDevicePublicKey| fields presently mapped to this [=user account=] and <code>|credential|.{{Credential/id}}</code> pair:
 
-    1. If |fmt|'s value is "none" there is no attestation signature to verify. Store the extracted |aaguid|, |dpk|, |scope|, |fmt|, |attStmt| values indexed to the <code>|credential|.{{Credential/id}}</code> in the [=user account=]. Terminate these verification steps.
+    1. If |fmt|'s value is "none" there is no attestation signature to verify. Complete the steps in [[#sctn-verifying-assertion]] and, if those steps are successful, store the extracted |aaguid|, |dpk|, |scope|, |fmt|, |attStmt| values indexed to the <code>|credential|.{{Credential/id}}</code> in the [=user account=]. Terminate these verification steps.
 
-    1. Otherwise, verify that |attStmt| is a correct [=attestation statement=], conveying a valid [=attestation signature=], by using the [=attestation statement format=] |fmt|'s [=verification procedure=] given |attStmt|. See [[#sctn-device-publickey-attestation-calculations]].
+    1. Otherwise, verify that |attStmt| is a correct [=attestation statement=], conveying a valid [=attestation signature=], by using the [=attestation statement format=] |fmt|'s [=verification procedure=] given |attStmt|. See [[#sctn-device-publickey-attestation-calculations]]. [=[RP]=] policy may specifiy which attestations are acceptable.
 
         If the result is:
 
             <dl class="switch">
                 : successful
-                :: This is the first [=device public key=]&mdash;and thus device&mdash;mapped to this [=user account=] and <code>|credential|.{{Credential/id}}</code> pair. Store the extracted |aaguid|, |dpk|, |scope|, |fmt|, |attStmt| values indexed to the <code>|credential|.{{Credential/id}}</code> in the [=user account=]. Terminate these verification steps.
+                :: This is the first [=device public key=]&mdash;and thus device&mdash;mapped to this [=user account=] and <code>|credential|.{{Credential/id}}</code> pair. Complete the steps in [[#sctn-verifying-assertion]] and, if those steps are successful, store the extracted |aaguid|, |dpk|, |scope|, |fmt|, |attStmt| values indexed to the <code>|credential|.{{Credential/id}}</code> in the [=user account=]. Terminate these verification steps.
 
                 : unsuccessful
                 :: Some form of error has occurred. It is indeterminate whether this is a valid new device. Terminate these verification steps.
