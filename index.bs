@@ -2191,8 +2191,11 @@ When this method is invoked, the user agent MUST execute the following algorithm
 1. If <code>|options|.{{CredentialRequestOptions/mediation}}</code> is present with the value
     {{CredentialMediationRequirement/conditional}}:
 
-    1. If <code>|pkOptions|.{{PublicKeyCredentialRequestOptions/allowCredentials}}</code> is not [=list/empty=],
-        return a {{DOMException}} whose name is "{{NotSupportedError}}", and terminate this algorithm.
+    1. Let |credentialIdFilter| be the value of <code>|pkOptions|.{{PublicKeyCredentialRequestOptions/allowCredentials}}</code>.
+
+    1. Set <code>|pkOptions|.{{PublicKeyCredentialRequestOptions/allowCredentials}}</code> to [=list/empty=].
+
+        Note: This prevents [=non-discoverable credentials=] from being used during {{CredentialMediationRequirement/conditional}} requests.
 
     1. Set a timer |lifetimeTimer| to a value of infinity.
 
@@ -2200,6 +2203,8 @@ When this method is invoked, the user agent MUST execute the following algorithm
         the [=Document=] to interact with any <{input}> form control tagged with a `"webauthn"` [=autofill detail token=]. For example, upon the user clicking in such an input field, the user agent can render a list of discovered credentials for the user to select from, and perhaps also give the user the option to "try another way".
 
 1. Else:
+
+    1. Let |credentialIdFilter| be an [=list/empty=] [=list=].
 
     1. If <code>|pkOptions|.{{PublicKeyCredentialRequestOptions/timeout}}</code> is present, check if its value lies
         within a reasonable range as defined by the [=client=] and if not, correct it to the closest value lying within that range.
@@ -2365,11 +2370,13 @@ When this method is invoked, the user agent MUST execute the following algorithm
 
                 1. [=list/For each=] |credentialMetadata| of |collectedDiscoveredCredentialMetadata|:
 
-                    1. [=map/Set=] |silentlyDiscoveredCredentials|[|credentialMetadata|] to |authenticator|.
+                    1. If |credentialIdFilter| [=list/is empty=] or |credentialIdFilter| contains an item whose
+                        {{PublicKeyCredentialDescriptor/id}}'s value is set to |credentialMetadata|'s [=DiscoverableCredentialMetadata/id=],
+                        [=map/set=] |silentlyDiscoveredCredentials|[|credentialMetadata|] to |authenticator|.
 
-                        Note: A request will be issued to this authenticator upon user selection of a credential via
-                        interaction with a particular UI context
-                        (see [here](#GetAssn-ConditionalMediation-Interact-FormControl) for details).
+                           Note: A request will be issued to this authenticator upon user selection of a credential via
+                           interaction with a particular UI context
+                           (see [here](#GetAssn-ConditionalMediation-Interact-FormControl) for details).
 
             1. Else:
 
@@ -2428,6 +2435,9 @@ When this method is invoked, the user agent MUST execute the following algorithm
                     [=client extension output=] entries. The entries are created by running each extension's
                     [=client extension processing=] algorithm to create the [=client extension outputs=], for each
                     [=client extension=] in <code>|pkOptions|.{{PublicKeyCredentialRequestOptions/extensions}}</code>.
+
+            1. If |credentialIdFilter| [=list/is not empty=] and |credentialIdFilter| does not contain an item whose
+                {{PublicKeyCredentialDescriptor/id}}'s value is set to the value of [=credentialIdResult=], [=continue=].
 
             1.  Let |constructAssertionAlg| be an algorithm that takes a [=global object=]
                 |global|, and whose steps are:
