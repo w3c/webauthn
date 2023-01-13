@@ -5293,44 +5293,46 @@ In order to perform a [=registration ceremony=], the [=[RP]=] MUST proceed as fo
 
     NOTE: The rationale for [=[RPS]=] rejecting duplicate [=credential IDs=] is as follows: [=credential IDs=] contain sufficient entropy that accidental duplication is very unlikely. However, [=attestation types=] other than [=self attestation=] do not include a self-signature to explicitly prove possession of the [=credential private key=] at [=registration=] time. Thus an attacker who has managed to obtain a user's [=credential ID=] and [=credential public key=] for a site (this could be potentially accomplished in various ways), could attempt to register a victim's credential as their own at that site. If the [=[RP]=] accepts this new registration and replaces the victim's existing credential registration, and the [=discoverable credentials|credentials are discoverable=], then the victim could be forced to sign into the attacker's account at their next attempt. Data saved to the site by the victim in that state would then be available to the attacker.
 
-1. If the attestation statement |attStmt| verified successfully and is found to be trustworthy,
-    then create and store a new [=credential record=] in the [=user account=]
-    that was denoted in <code>|options|.{{PublicKeyCredentialCreationOptions/user}}</code>,
-    with the following contents:
+    <li id="reg-ceremony-store-credential-record">
+        If the attestation statement |attStmt| verified successfully and is found to be trustworthy,
+        then create and store a new [=credential record=] in the [=user account=]
+        that was denoted in <code>|options|.{{PublicKeyCredentialCreationOptions/user}}</code>,
+        with the following contents:
 
-    <dl>
-        :   [$credential record/type$]
-        ::  <code>|credential|.{{Credential/type}}</code>.
+        <dl>
+            :   [$credential record/type$]
+            ::  <code>|credential|.{{Credential/type}}</code>.
 
-        :   [$credential record/id$]
-        ::  <code>|credential|.{{Credential/id}}</code> or <code>|credential|.{{PublicKeyCredential/rawId}}</code>,
-            whichever format is preferred by the [=[RP]=].
+            :   [$credential record/id$]
+            ::  <code>|credential|.{{Credential/id}}</code> or <code>|credential|.{{PublicKeyCredential/rawId}}</code>,
+                whichever format is preferred by the [=[RP]=].
 
-        :   [$credential record/publicKey$]
-        ::  The [=credential public key=] in |authData|.
+            :   [$credential record/publicKey$]
+            ::  The [=credential public key=] in |authData|.
 
-        :   [$credential record/signCount$]
-        ::  <code>|authData|.[=authData/signCount=]</code>.
+            :   [$credential record/signCount$]
+            ::  <code>|authData|.[=authData/signCount=]</code>.
 
-        :   [$credential record/transports$]
-        ::  The value returned from <code>|response|.{{AuthenticatorAttestationResponse/getTransports()}}</code>.
+            :   [$credential record/transports$]
+            ::  The value returned from <code>|response|.{{AuthenticatorAttestationResponse/getTransports()}}</code>.
 
-        :   [$credential record/backupEligible$]
-        ::  The value of the [=authData/flags/BE=] [=flag=] in |authData|.
+            :   [$credential record/backupEligible$]
+            ::  The value of the [=authData/flags/BE=] [=flag=] in |authData|.
 
-        :   [$credential record/backupState$]
-        ::  The value of the [=authData/flags/BS=] [=flag=] in |authData|.
-    </dl>
+            :   [$credential record/backupState$]
+            ::  The value of the [=authData/flags/BS=] [=flag=] in |authData|.
+        </dl>
 
-    The new [=credential record=] MAY also include the following OPTIONAL contents:
+        The new [=credential record=] MAY also include the following OPTIONAL contents:
 
-    <dl>
-        :   [$credential record/attestationObject$]
-        ::  <code>|response|.{{AuthenticatorAttestationResponse/attestationObject}}</code>.
+        <dl>
+            :   [$credential record/attestationObject$]
+            ::  <code>|response|.{{AuthenticatorAttestationResponse/attestationObject}}</code>.
 
-        :   [$credential record/attestationClientDataJSON$]
-        ::  <code>|response|.{{AuthenticatorResponse/clientDataJSON}}</code>.
-    </dl>
+            :   [$credential record/attestationClientDataJSON$]
+            ::  <code>|response|.{{AuthenticatorResponse/clientDataJSON}}</code>.
+        </dl>
+    </li>
 
 1. If the attestation statement |attStmt| successfully verified but is not trustworthy per step 20 above, the [=[RP]=] SHOULD fail
     the [=registration ceremony=].
@@ -5498,10 +5500,17 @@ a numbered step. If outdented, it (today) is rendered as a bullet in the midst o
 
     1. If validation is successful, obtain a list of acceptable trust anchors (i.e. attestation root certificates) for that attestation type and attestation statement format |fmt|, from a trusted source or from policy. The [=aaguid=] in the [=attested credential data=] can be used to guide this lookup.
 
-1. Update |credentialRecord| with new state values:
+    <li id='authn-ceremony-update-credential-record'>
+        Update |credentialRecord| with new state values:
 
-    1. Update <code>|credentialRecord|.[$credential record/signCount$]</code> to the value of |authData|.<code>[=authData/signCount=]</code>.
-    1. Update <code>|credentialRecord|.[$credential record/backupState$]</code> to the value of |currentBs|.
+            1. Update <code>|credentialRecord|.[$credential record/signCount$]</code> to the value of |authData|.<code>[=authData/signCount=]</code>.
+            1. Update <code>|credentialRecord|.[$credential record/backupState$]</code> to the value of |currentBs|.
+            1. OPTIONALLY, if <code>|response|.{{AuthenticatorAssertionResponse/attestationObject}}</code> is present,
+                update <code>|credentialRecord|.[$credential record/attestationObject$]</code>
+                to the value of <code>|response|.{{AuthenticatorAssertionResponse/attestationObject}}</code>
+                and update <code>|credentialRecord|.[$credential record/attestationClientDataJSON$]</code>
+                to the value of <code>|response|.{{AuthenticatorResponse/clientDataJSON}}</code>.
+    </li>
 
 1. If all the above steps are successful, continue with the [=authentication ceremony=] as appropriate. Otherwise, fail the
     [=authentication ceremony=].
@@ -7100,9 +7109,38 @@ Note that when |nonce| is empty, then the (signed) authenticator extension outpu
 
 Verifying the <code>[=devicePubKey=]</code> extension output is performed by the [=[RP]=] whenever a [=device public key=] is returned within the extension output.
 
+The [=devicePubKey=] extension adds the following [=struct/item=] to [=credential records=]:
+
+<dl dfn-for="credential record" dfn-type="abstract-op">
+    :   <dfn>devicePubKeys</dfn>
+    ::  An initially [=set/empty=] [=set=] of [=device-bound key records=] associated with this [=public key credential source=].
+
+        A <dfn dfn>device-bound key record</dfn> is an abstract representation of a registered [=device-bound key=].
+        It is a [=struct=] with the following [=struct/items=]:
+
+        <dl dfn-for="devicePubKey record" dfn-type="abstract-op">
+            :   <dfn>aaguid</dfn>
+            ::  The [=AAGUID=] of the [=device-bound key=]'s [=managing authenticator=].
+                This MAY be different from the [=AAGUID=] in the [$credential record/attestationObject$], if any, of the containing [=credential record=].
+
+            :   <dfn>dpk</dfn>
+            ::  The public key portion of the [=device-bound key=].
+
+            :   <dfn>scope</dfn>
+            ::  The scope of the [=device-bound key=]. See [[#sctn-device-publickey-extension-definition]] for details.
+
+            :   <dfn>fmt</dfn>
+            ::  The [=attestation statement format=] of the [=device-bound key=]'s [=attestation statement=].
+
+            :   <dfn>attStmt</dfn>
+            ::  The [=device-bound key=]'s [=attestation statement=].
+        </dl>
+</dl>
+
+
 ##### Registration (`create()`) ##### {#sctn-device-publickey-extension-verification-create}
 
-If the `devicePubKey` extension was included on a {{CredentialsContainer/create()|navigator.credentials.create()}} call, then the below verification steps are performed in the context of <a href=#reg-ceremony-verify-extension-outputs>this step</a> of [[#sctn-registering-a-new-credential]] using these variables established therein: |credential|, |clientExtensionResults|, |authData|, and |hash|. [=[RP]=] policy may specify whether a response without a `devicePubKey` is acceptable.
+If the [=[RP]=] requested the `devicePubKey` extension in a {{CredentialsContainer/create()|navigator.credentials.create()}} call, then the below verification steps are performed in the context of <a href=#reg-ceremony-verify-extension-outputs>step 18</a> of [[#sctn-registering-a-new-credential]] using these variables established therein: |credential|, |clientExtensionResults|, |authData|, and |hash|. [=[RP]=] policy may specify whether a response without a `devicePubKey` extension output is acceptable.
 
 1. Let |attObjForDevicePublicKey| be the value of the {{AuthenticationExtensionsClientOutputs/devicePubKey}} member of |clientExtensionResults|.
 
@@ -7116,13 +7154,33 @@ If the `devicePubKey` extension was included on a {{CredentialsContainer/create(
 
     Note: If |fmt|'s value is "[=none=]" there is no attestation signature to verify.
 
-1. Complete the steps from [[#sctn-registering-a-new-credential]] and, if those steps are successful, store the |aaguid|, |dpk|, |scope|, |fmt|, |attStmt| values indexed to the <code>|credential|.{{Credential/id}}</code> in the [=user account=].
+1. Create a new [=device-bound key record=] with the contents:
+
+    <dl>
+        :   [$devicePubKey record/aaguid$]
+        ::  The value of |aaguid|.
+
+        :   [$devicePubKey record/dpk$]
+        ::  The value of |dpk|.
+
+        :   [$devicePubKey record/scope$]
+        ::  The value of |scope|.
+
+        :   [$devicePubKey record/fmt$]
+        ::  The value of |fmt|.
+
+        :   [$devicePubKey record/attStmt$]
+        ::  The value of |attStmt|.
+    </dl>
+
+    In <a href="#reg-ceremony-store-credential-record">step 25</a> of [[#sctn-registering-a-new-credential]],
+    add this [=device-bound key record=] to the [$credential record/devicePubKeys$] member of the new [=credential record=].
 
 See also [[#sctn-device-publickey-extension-usage]] for further details.
 
 ##### Authentication (`get()`) ##### {#sctn-device-publickey-extension-verification-get}
 
-If the `devicePubKey` extension was included on a {{CredentialsContainer/get()|navigator.credentials.get()}} call, then the below verification steps are performed in the context of <a href=#authn-ceremony-verify-extension-outputs>this step</a> of [[#sctn-verifying-assertion]] using these variables established therein: |credential|, |clientExtensionResults|, |authData|, and |hash|. [=[RP]=] policy may specify whether a response without a `devicePubKey` is acceptable.
+If the [=[RP]=] requested the `devicePubKey` extension in a {{CredentialsContainer/get()|navigator.credentials.get()}} call, then the below verification steps are performed in the context of <a href=#authn-ceremony-verify-extension-outputs>step 17</a> of [[#sctn-verifying-assertion]] using these variables established therein: |credential|, |clientExtensionResults|, |authData|, |hash|, and |credentialRecord|. [=[RP]=] policy may specify whether a response without a `devicePubKey` extension output is acceptable.
 
 1. Let |attObjForDevicePublicKey| be the value of the `devicePubKey` member of |clientExtensionResults|.
 
@@ -7132,27 +7190,32 @@ If the `devicePubKey` extension was included on a {{CredentialsContainer/get()|n
 
 1. Verify that {{AuthenticationExtensionsDevicePublicKeyOutputs/signature}} is a valid signature over the [=assertion signature=] [input](#fig-signature) (i.e. `authData` and `hash`) by the [=device public key=] |dpk|. (The signature algorithm is the same as for the [=user credential=].)
 
-1. If the [=[RP]=]'s [=user account=] mapped to the <code>|credential|.{{Credential/id}}</code> in play (i.e., for the user being authenticated) holds `aaguid`, `dpk` and `scope` values corresponding to the extracted |attObjForDevicePublicKey| fields, then perform binary equality checks between the corresponding stored values and the extracted field values. The [=[RP]=] MAY have more than one set of {`aaguid`, `dpk`, `scope`} values mapped to the [=user account=] and <code>|credential|.{{Credential/id}}</code> pair and each set MUST be checked.
+1. Let |matchedDpkRecords| be a new [=set/empty=] [=set=].
+    [=set/For each=] |dpkRecord| in |credentialRecord|.[$credential record/devicePubKeys$]:
+        1. If |dpkRecord|.[$devicePubKey record/aaguid$] equals |aaguid|,
+              |dpkRecord|.[$devicePubKey record/dpk$] equals |dpk|,
+              and |dpkRecord|.[$devicePubKey record/scope$] equals |scope|:
+            1. [=set/Append=] |dpkRecord| to |matchedDpkRecords|.
 
-    If the above set of binary equality checks resulted in:
+1.  If |matchedDpkRecords|
 
     <dl class="switch">
-        : more than one match
+        : has [=set/size=] greater than one:
         :: Some form of error has occurred. It is indeterminate whether this is a known device. Terminate these verification steps.
 
-        : exactly one match
+        : has [=set/size=] equal to one:
         :: This is likely a known device.
 
             If |fmt|'s value is "none" then there is no attestation signature to verify and this is a known [=device public key=] with a valid signature and thus a known device. Terminate these verification steps.
 
-            Otherwise, check |attObjForDevicePublicKey|'s |attStmt| by performing a binary equality check between the corresponding stored and extracted |attStmt| values. If the result is:
+            Otherwise, let |dpkRecord| be |matchedDpkRecords|[0]. If the |attStmt| in |attObjForDevicePublicKey|:
                 <dl class="switch">
-                    : successful
+                    : equals |dpkRecord|.[$devicePubKey record/attStmt$] by binary equality:
                     :: This is a known [=device public key=] with a valid signature and valid attestation and thus a known device. Terminate these verification steps.
 
                         Note: This authenticator is not generating a fresh per-response random nonce.
 
-                    : unsuccessful
+                    : does not equal |dpkRecord|.[$devicePubKey record/attStmt$] by binary equality:
                     :: Optionally, if attestation was requested and the RP wishes to verify it, verify that |attStmt| is a correct [=attestation statement=], conveying a valid [=attestation signature=], by using the [=attestation statement format=] |fmt|'s [=verification procedure=] given |attStmt|. See [[#sctn-device-publickey-attestation-calculations]]. [=[RP]=] policy may specifiy which attestations are acceptable.
 
                         If the result is:
@@ -7166,14 +7229,19 @@ If the `devicePubKey` extension was included on a {{CredentialsContainer/get()|n
                         </dl>
                 </dl>
 
-        : zero matches
-        :: This is possibly a new [=device public key=] signifying a new device:
+        : is [=set/empty=]:
+        :: This is possibly a new [=device public key=] signifying a new device.
 
-            1. If |attObjForDevicePublicKey|.|dpk| did not match any of the [=[RP]=]'s stored |dpk| values for this [=user account=] and <code>|credential|.{{Credential/id}}</code> pair then:
+            1. Let |matchedDpkKeys| be a new [=set/empty=] [=set=].
+                [=set/For each=] |dpkRecord| in |credentialRecord|.[$credential record/devicePubKeys$]:
+                    1. If |dpkRecord|.[$devicePubKey record/dpk$] equals |dpk|:
+                        1. [=set/Append=] |dpkRecord| to |matchedDpkKeys|.
+
+            1. If |matchedDpkKeys| is [=set/empty=]:
 
                 <dl class="switch">
                     : If |fmt|'s value is "none":
-                    :: There is no attestation signature to verify and this is a new device. Unless [=[RP]=] policy specifies that this attestation is unacceptable, store the extracted |aaguid|, |dpk|, |scope|, |fmt|, |attStmt| values indexed to the <code>|credential|.{{Credential/id}}</code> in the [=user account=]. Terminate these verification steps.
+                    :: There is no attestation signature to verify and this is a new device. Unless [=[RP]=] policy specifies that this attestation is unacceptable, [$Create a new device-bound key record$] and then terminate these verification steps.
 
                     : Otherwise:
                     :: Optionally, if attestation was requested and the RP wishes to verify it, verify that |attStmt| is a correct [=attestation statement=], conveying a valid [=attestation signature=], by using the [=attestation statement format=] |fmt|'s [=verification procedure=] given |attStmt|. See [[#sctn-device-publickey-attestation-calculations]]. [=[RP]=] policy may specifiy which attestations are acceptable.
@@ -7182,7 +7250,7 @@ If the `devicePubKey` extension was included on a {{CredentialsContainer/get()|n
 
                         <dl class="switch">
                             : successful
-                            :: This is a new [=device public key=] signifying a new device. Complete the steps in [[#sctn-verifying-assertion]] and, if those steps are successful, store the extracted |aaguid|, |dpk|, |scope|, |fmt|, |attStmt| values indexed to the <code>|credential|.{{Credential/id}}</code> in the [=user account=]. Terminate these verification steps.
+                            :: This is a new [=device public key=] signifying a new device. [$Create a new device-bound key record$], then terminate these verification steps.
 
                             : unsuccessful
                             :: Some form of error has occurred. It is indeterminate whether this is a valid new device. Terminate these verification steps.
@@ -7192,9 +7260,9 @@ If the `devicePubKey` extension was included on a {{CredentialsContainer/get()|n
             1. Otherwise there is some form of error: we recieved a known |dpk| value, but one or more of the accompanying |aaguid|, |scope|, or |fmt| values did not match what the [=[RP]=] has stored along with that |dpk| value. Terminate these verification steps.
     </dl>
 
-1. Otherwise, the [=[RP]=] does not have |attObjForDevicePublicKey| fields presently mapped to this [=user account=] and <code>|credential|.{{Credential/id}}</code> pair:
+1. Otherwise, the [=[RP]=] does not have a [=device-bound key record=] for this [=device public key=].
 
-    1. If |fmt|'s value is "none" there is no attestation signature to verify. Complete the steps in [[#sctn-verifying-assertion]] and, if those steps are successful, store the extracted |aaguid|, |dpk|, |scope|, |fmt|, |attStmt| values indexed to the <code>|credential|.{{Credential/id}}</code> in the [=user account=]. Terminate these verification steps.
+    1. If |fmt|'s value is "none" there is no attestation signature to verify. [$Create a new device-bound key record$], then terminate these verification steps.
 
     1. Otherwise, verify that |attStmt| is a correct [=attestation statement=], conveying a valid [=attestation signature=], by using the [=attestation statement format=] |fmt|'s [=verification procedure=] given |attStmt|. See [[#sctn-device-publickey-attestation-calculations]]. [=[RP]=] policy may specifiy which attestations are acceptable.
 
@@ -7202,13 +7270,37 @@ If the `devicePubKey` extension was included on a {{CredentialsContainer/get()|n
 
             <dl class="switch">
                 : successful
-                :: This is the first [=device public key=]&mdash;and thus device&mdash;mapped to this [=user account=] and <code>|credential|.{{Credential/id}}</code> pair. Complete the steps in [[#sctn-verifying-assertion]] and, if those steps are successful, store the extracted |aaguid|, |dpk|, |scope|, |fmt|, |attStmt| values indexed to the <code>|credential|.{{Credential/id}}</code> in the [=user account=]. Terminate these verification steps.
+                :: This is the first [=device public key=]&mdash;and thus device&mdash;mapped to this [=user account=] and <code>|credential|.{{Credential/id}}</code> pair. [$Create a new device-bound key record$], then terminate these verification steps.
 
                 : unsuccessful
                 :: Some form of error has occurred. It is indeterminate whether this is a valid new device. Terminate these verification steps.
             </dl>
 
 See also [[#sctn-device-publickey-extension-usage]].
+
+To <dfn abstract-op>Create a new device-bound key record</dfn>, perform the following steps:
+
+    1. Create a new [=device-bound key record=] with the contents:
+
+        <dl>
+            :   [$devicePubKey record/aaguid$]
+            ::  The value of |aaguid|.
+
+            :   [$devicePubKey record/dpk$]
+            ::  The value of |dpk|.
+
+            :   [$devicePubKey record/scope$]
+            ::  The value of |scope|.
+
+            :   [$devicePubKey record/fmt$]
+            ::  The value of |fmt|.
+
+            :   [$devicePubKey record/attStmt$]
+            ::  The value of |attStmt|.
+        </dl>
+
+        In <a href="#authn-ceremony-update-credential-record">step 22</a> of [[#sctn-verifying-assertion]],
+        [=set/append=] this [=device-bound key record=] to |credentialRecord|.[$credential record/devicePubKeys$].
 
 
 # User Agent Automation # {#sctn-automation}
