@@ -1843,6 +1843,8 @@ a numbered step. If outdented, it (today) is rendered as a bullet in the midst o
     :: The [=base64url encoding=] of |pkOptions|.{{PublicKeyCredentialCreationOptions/challenge}}.
     : {{CollectedClientData/origin}}
     :: The [=ascii serialization of an origin|serialization of=] |callerOrigin|.
+    : {{CollectedClientData/topOrigin}}
+    :: The [=ascii serialization of an origin|serialization of=] |callerOrigin|'s [=top-level origin=].
     : {{CollectedClientData/crossOrigin}}
     :: The inverse of the value of the
         {{PublicKeyCredential/[[Create]](origin, options, sameOriginWithAncestors)/sameOriginWithAncestors}}
@@ -2308,6 +2310,8 @@ When this method is invoked, the user agent MUST execute the following algorithm
     :: The [=base64url encoding=] of |pkOptions|.{{PublicKeyCredentialRequestOptions/challenge}}
     : {{CollectedClientData/origin}}
     :: The [=ascii serialization of an origin|serialization of=] |callerOrigin|.
+    : {{CollectedClientData/topOrigin}}
+    :: The [=ascii serialization of an origin|serialization of=] |callerOrigin|'s [=top-level origin=].
     : {{CollectedClientData/crossOrigin}}
     :: The inverse of the value of the
         {{PublicKeyCredential/[[DiscoverFromExternalSource]](origin, options, sameOriginWithAncestors)/sameOriginWithAncestors}}
@@ -3576,6 +3580,7 @@ Note: The {{CollectedClientData}} may be extended in the future. Therefore it's 
         required DOMString           type;
         required DOMString           challenge;
         required DOMString           origin;
+        required DOMString           topOrigin;
         boolean                      crossOrigin;
     };
 
@@ -3600,6 +3605,11 @@ Note: The {{CollectedClientData}} may be extended in the future. Therefore it's 
     :   <dfn>origin</dfn>
     ::  This member contains the fully qualified [=origin=] of the requester, as provided to the authenticator by the client, in
         the syntax defined by [[!RFC6454]].
+
+    :   <dfn>topOrigin</dfn>
+    ::  This member contains the fully qualified [=top-level origin=] of the requester, as provided to the authenticator by the client, in
+        the syntax defined by [[!RFC6454]]. If {{CollectedClientData/crossOrigin}} is `false`, this member should be identical to
+        {{CollectedClientData/origin}}.
 
     :   <dfn>crossOrigin</dfn>
     ::  This OPTIONAL member contains the inverse of the `sameOriginWithAncestors` argument value
@@ -3655,12 +3665,14 @@ The serialization algorithm works by appending successive byte strings to an, in
 1. Append [=CCDToString=]({{CollectedClientData/challenge}}) to |result|.
 1. Append 0x2c226f726967696e223a (`,"origin":`) to |result|.
 1. Append [=CCDToString=]({{CollectedClientData/origin}}) to |result|.
+1. Append 0x2c22746f704f726967696e223a (`,"topOrigin":`) to |result|.
+1. Append [=CCDToString=]({{CollectedClientData/topOrigin}}) to |result|.
 1. Append 0x2c2263726f73734f726967696e223a (`,"crossOrigin":`) to |result|.
 1. If {{CollectedClientData/crossOrigin}} is not present, or is `false`:
     1. Append 0x66616c7365 (`false`) to |result|.
 1. Otherwise:
     1. Append 0x74727565 (`true`) to |result|.
-1. Create a temporary copy of the {{CollectedClientData}} and remove the fields {{CollectedClientData/type}}, {{CollectedClientData/challenge}}, {{CollectedClientData/origin}}, and {{CollectedClientData/crossOrigin}} (if present).
+1. Create a temporary copy of the {{CollectedClientData}} and remove the fields {{CollectedClientData/type}}, {{CollectedClientData/challenge}}, {{CollectedClientData/origin}}, {{CollectedClientData/topOrigin}}, and {{CollectedClientData/crossOrigin}} (if present).
 1. If no fields remain in the temporary copy then:
     1. Append 0x7d (`}`) to |result|.
 1. Otherwise:
@@ -3701,6 +3713,7 @@ Verifiers may use the following algorithm to verify an encoded {{CollectedClient
     1. A string, |type|, that contains the expected {{CollectedClientData/type}}.
     1. A byte string, |challenge|, that contains the challenge byte string that was given in the {{PublicKeyCredentialRequestOptions}} or {{PublicKeyCredentialCreationOptions}}.
     1. A string, |origin|, that contains the expected {{CollectedClientData/origin}} that issued the request to the user agent.
+    1. A string, |topOrigin|, that contains the expected {{CollectedClientData/topOrigin}} of the frame that issued the request to the user agent.
     1. A boolean, |crossOrigin|, that is true if, and only if, the request should have been performed within a cross-origin <{iframe}>.
 1. Let |expected| be an empty byte string.
 1. Append 0x7b2274797065223a (`{"type":`) to |expected|.
@@ -3710,6 +3723,8 @@ Verifiers may use the following algorithm to verify an encoded {{CollectedClient
 1. Append [=CCDToString=](|challengeBase64|) to |expected|.
 1. Append 0x2c226f726967696e223a (`,"origin":`) to |expected|.
 1. Append [=CCDToString=](|origin|) to |expected|.
+1. Append 0x2c22746f704f726967696e223a (`,"topOrigin":`) to |expected|.
+1. Append [=CCDToString=](|topOrigin|) to |expected|.
 1. Append 0x2c2263726f73734f726967696e223a (`,"crossOrigin":`) to |expected|.
 1. If |crossOrigin| is true:
     1. Append 0x74727565 (`true`) to |expected|.
@@ -3731,7 +3746,7 @@ Verifiers may use the following algorithm to verify an encoded {{CollectedClient
 
 #### Future development #### {#clientdatajson-development}
 
-In order to remain compatible with the [limited verification algorithm](#clientdatajson-verification), future versions of this specification must not remove any of the fields {{CollectedClientData/type}}, {{CollectedClientData/challenge}}, {{CollectedClientData/origin}}, or {{CollectedClientData/crossOrigin}} from {{CollectedClientData}}. They also must not change the [serialization algorithm](#clientdatajson-verification) to change the order in which those fields are serialized.
+In order to remain compatible with the [limited verification algorithm](#clientdatajson-verification), future versions of this specification must not remove any of the fields {{CollectedClientData/type}}, {{CollectedClientData/challenge}}, {{CollectedClientData/origin}}, {{CollectedClientData/topOrigin}}, or {{CollectedClientData/crossOrigin}} from {{CollectedClientData}}. They also must not change the [serialization algorithm](#clientdatajson-verification) to change the order in which those fields are serialized.
 
 If additional fields are added to {{CollectedClientData}} then verifiers that employ the [limited verification algorithm](#clientdatajson-verification) will not be able to consider them until the two algorithms above are updated to include them. Once such an update occurs then the added fields inherit the same limitations as described in the previous paragraph. Such an algorithm update would have to accomodate serializations produced by previous versions. I.e. the verification algorithm would have to handle the fact that a fifth key&ndash;value pair may not appear fifth (or at all) if generated by a user agent working from a previous version.
 
@@ -5232,6 +5247,8 @@ In order to perform a [=registration ceremony=], the [=[RP]=] MUST proceed as fo
 
 1. Verify that the value of <code>|C|.{{CollectedClientData/origin}}</code> matches the [=[RP]=]'s [=origin=].
 
+1. Verify that the value of <code>|C|.{{CollectedClientData/topOrigin}}</code> either matches the [=[RP]=]'s [=origin=], or the [=origin=] of a page that the [=[RP]=] expects to be sub-framed within.
+
 1. Let |hash| be the result of computing a hash over <code>|response|.{{AuthenticatorResponse/clientDataJSON}}</code> using SHA-256.
 
 1. Perform CBOR decoding on the {{AuthenticatorAttestationResponse/attestationObject}} field of the
@@ -5426,6 +5443,8 @@ a numbered step. If outdented, it (today) is rendered as a bullet in the midst o
     <li id='rp-op-verifying-assertion-step-origin'>
       Verify that the value of <code>|C|.{{CollectedClientData/origin}}</code> matches the [=[RP]=]'s [=origin=].
     </li>
+
+1. Verify that the value of <code>|C|.{{CollectedClientData/topOrigin}}</code> either matches the [=[RP]=]'s [=origin=], or the [=origin=] of a page that the [=[RP]=] expects to be sub-framed within.
 
 <!-- Note: this next step is actually a top-level step, but bikeshed wanted it indented this much in order to render it as
 a numbered step. If outdented, it (today) is rendered as a bullet in the midst of a numbered list :-/
