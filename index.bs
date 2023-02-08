@@ -1712,6 +1712,9 @@ This [=internal method=] accepts three arguments:
     ::  This argument is a Boolean value which is [TRUE] if and only if the caller's [=environment settings object=] is
         [=same-origin with its ancestors=]. It is [FALSE] if caller is cross-origin.
 
+        Note: Invocation of this [=internal method=] indicates that it was allowed by
+        [=permissions policy=], which is evaluated at the [[!CREDENTIAL-MANAGEMENT-1]] level.
+        See [[#sctn-permissions-policy]].
 </dl>
 
 Note: <strong>This algorithm is synchronous:</strong> the {{Promise}} resolution/rejection is handled by
@@ -1844,7 +1847,9 @@ a numbered step. If outdented, it (today) is rendered as a bullet in the midst o
     : {{CollectedClientData/origin}}
     :: The [=ascii serialization of an origin|serialization of=] |callerOrigin|.
     : {{CollectedClientData/topOrigin}}
-    :: The [=ascii serialization of an origin|serialization of=] |callerOrigin|'s [=top-level origin=].
+    :: The [=ascii serialization of an origin|serialization of=] |callerOrigin|'s [=top-level origin=], if
+        the {{PublicKeyCredential/[[Create]](origin, options, sameOriginWithAncestors)/sameOriginWithAncestors}}
+        argument passed to this [=internal method=] is [FALSE], else `undefined`.
     : {{CollectedClientData/crossOrigin}}
     :: The inverse of the value of the
         {{PublicKeyCredential/[[Create]](origin, options, sameOriginWithAncestors)/sameOriginWithAncestors}}
@@ -2310,8 +2315,6 @@ When this method is invoked, the user agent MUST execute the following algorithm
     :: The [=base64url encoding=] of |pkOptions|.{{PublicKeyCredentialRequestOptions/challenge}}
     : {{CollectedClientData/origin}}
     :: The [=ascii serialization of an origin|serialization of=] |callerOrigin|.
-    : {{CollectedClientData/topOrigin}}
-    :: The [=ascii serialization of an origin|serialization of=] |callerOrigin|'s [=top-level origin=].
     : {{CollectedClientData/crossOrigin}}
     :: The inverse of the value of the
         {{PublicKeyCredential/[[DiscoverFromExternalSource]](origin, options, sameOriginWithAncestors)/sameOriginWithAncestors}}
@@ -3580,7 +3583,7 @@ Note: The {{CollectedClientData}} may be extended in the future. Therefore it's 
         required DOMString           type;
         required DOMString           challenge;
         required DOMString           origin;
-        required DOMString           topOrigin;
+        DOMString                    topOrigin;
         boolean                      crossOrigin;
     };
 
@@ -3607,9 +3610,9 @@ Note: The {{CollectedClientData}} may be extended in the future. Therefore it's 
         the syntax defined by [[!RFC6454]].
 
     :   <dfn>topOrigin</dfn>
-    ::  This member contains the fully qualified [=top-level origin=] of the requester, as provided to the authenticator by the client, in
-        the syntax defined by [[!RFC6454]]. If {{CollectedClientData/crossOrigin}} is `false`, this member should be identical to
-        {{CollectedClientData/origin}}.
+    ::  This OPTIONAL member contains the fully qualified [=top-level origin=] of the requester, in the syntax defined
+        by [[!RFC6454]]. It is set only if the call was made from context that is not [=same-origin with its
+        ancestors=], i.e. if {{CollectedClientData/crossOrigin}} is [TRUE].
 
     :   <dfn>crossOrigin</dfn>
     ::  This OPTIONAL member contains the inverse of the `sameOriginWithAncestors` argument value
@@ -3665,14 +3668,15 @@ The serialization algorithm works by appending successive byte strings to an, in
 1. Append [=CCDToString=]({{CollectedClientData/challenge}}) to |result|.
 1. Append 0x2c226f726967696e223a (`,"origin":`) to |result|.
 1. Append [=CCDToString=]({{CollectedClientData/origin}}) to |result|.
-1. Append 0x2c22746f704f726967696e223a (`,"topOrigin":`) to |result|.
-1. Append [=CCDToString=]({{CollectedClientData/topOrigin}}) to |result|.
+1. If {{CollectedClientData/topOrigin}} is present:
+    1. Append 0x2c22746f704f726967696e223a (`,"topOrigin":`) to |result|.
+    1. Append [=CCDToString=]({{CollectedClientData/topOrigin}}) to |result|.
 1. Append 0x2c2263726f73734f726967696e223a (`,"crossOrigin":`) to |result|.
 1. If {{CollectedClientData/crossOrigin}} is not present, or is `false`:
     1. Append 0x66616c7365 (`false`) to |result|.
 1. Otherwise:
     1. Append 0x74727565 (`true`) to |result|.
-1. Create a temporary copy of the {{CollectedClientData}} and remove the fields {{CollectedClientData/type}}, {{CollectedClientData/challenge}}, {{CollectedClientData/origin}}, {{CollectedClientData/topOrigin}}, and {{CollectedClientData/crossOrigin}} (if present).
+1. Create a temporary copy of the {{CollectedClientData}} and remove the fields {{CollectedClientData/type}}, {{CollectedClientData/challenge}}, {{CollectedClientData/origin}}, {{CollectedClientData/topOrigin}} (if present), and {{CollectedClientData/crossOrigin}} (if present).
 1. If no fields remain in the temporary copy then:
     1. Append 0x7d (`}`) to |result|.
 1. Otherwise:
@@ -3713,7 +3717,7 @@ Verifiers may use the following algorithm to verify an encoded {{CollectedClient
     1. A string, |type|, that contains the expected {{CollectedClientData/type}}.
     1. A byte string, |challenge|, that contains the challenge byte string that was given in the {{PublicKeyCredentialRequestOptions}} or {{PublicKeyCredentialCreationOptions}}.
     1. A string, |origin|, that contains the expected {{CollectedClientData/origin}} that issued the request to the user agent.
-    1. A string, |topOrigin|, that contains the expected {{CollectedClientData/topOrigin}} of the frame that issued the request to the user agent.
+    1. An optional string, |topOrigin|, that contains the expected {{CollectedClientData/topOrigin}} of the frame that issued the request to the user agent.
     1. A boolean, |crossOrigin|, that is true if, and only if, the request should have been performed within a cross-origin <{iframe}>.
 1. Let |expected| be an empty byte string.
 1. Append 0x7b2274797065223a (`{"type":`) to |expected|.
@@ -3724,8 +3728,9 @@ Verifiers may use the following algorithm to verify an encoded {{CollectedClient
 1. Append 0x2c226f726967696e223a (`,"origin":`) to |expected|.
 1. Append [=CCDToString=](|origin|) to |expected|.
 1. Append 0x2c22746f704f726967696e223a (`,"topOrigin":`) to |expected|.
-1. Append [=CCDToString=](|topOrigin|) to |expected|.
-1. Append 0x2c2263726f73734f726967696e223a (`,"crossOrigin":`) to |expected|.
+1. If |topOrigin| is specified:
+    1. Append [=CCDToString=](|topOrigin|) to |expected|.
+    1. Append 0x2c2263726f73734f726967696e223a (`,"crossOrigin":`) to |expected|.
 1. If |crossOrigin| is true:
     1. Append 0x74727565 (`true`) to |expected|.
 1. Otherwise, i.e. |crossOrigin| is false:
@@ -5247,7 +5252,13 @@ In order to perform a [=registration ceremony=], the [=[RP]=] MUST proceed as fo
 
 1. Verify that the value of <code>|C|.{{CollectedClientData/origin}}</code> matches the [=[RP]=]'s [=origin=].
 
-1. Verify that the value of <code>|C|.{{CollectedClientData/topOrigin}}</code> either matches the [=[RP]=]'s [=origin=], or the [=origin=] of a page that the [=[RP]=] expects to be sub-framed within.
+1. If <code>|C|.{{CollectedClientData/topOrigin}}</code> is present:
+
+    1. Verify that the [=[RP]=] expects that this credential would have been created within an iframe that is
+        not [=same-origin with its ancestors=].
+
+    1. Verify that the value of <code>|C|.{{CollectedClientData/topOrigin}}</code> matches the [=origin=] of a page
+        that the [=[RP]=] expects to be sub-framed within.
 
 1. Let |hash| be the result of computing a hash over <code>|response|.{{AuthenticatorResponse/clientDataJSON}}</code> using SHA-256.
 
@@ -5443,8 +5454,6 @@ a numbered step. If outdented, it (today) is rendered as a bullet in the midst o
     <li id='rp-op-verifying-assertion-step-origin'>
       Verify that the value of <code>|C|.{{CollectedClientData/origin}}</code> matches the [=[RP]=]'s [=origin=].
     </li>
-
-1. Verify that the value of <code>|C|.{{CollectedClientData/topOrigin}}</code> either matches the [=[RP]=]'s [=origin=], or the [=origin=] of a page that the [=[RP]=] expects to be sub-framed within.
 
 <!-- Note: this next step is actually a top-level step, but bikeshed wanted it indented this much in order to render it as
 a numbered step. If outdented, it (today) is rendered as a bullet in the midst of a numbered list :-/
