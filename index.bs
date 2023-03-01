@@ -1712,6 +1712,9 @@ This [=internal method=] accepts three arguments:
     ::  This argument is a Boolean value which is [TRUE] if and only if the caller's [=environment settings object=] is
         [=same-origin with its ancestors=]. It is [FALSE] if caller is cross-origin.
 
+        Note: Invocation of this [=internal method=] indicates that it was allowed by
+        [=permissions policy=], which is evaluated at the [[!CREDENTIAL-MANAGEMENT-1]] level.
+        See [[#sctn-permissions-policy]].
 </dl>
 
 Note: <strong>This algorithm is synchronous:</strong> the {{Promise}} resolution/rejection is handled by
@@ -1725,9 +1728,20 @@ When this method is invoked, the user agent MUST execute the following algorithm
 
 1. Assert: <code>|options|.{{CredentialCreationOptions/publicKey}}</code> is present.
 
-1. If <var ignore>sameOriginWithAncestors</var> is [FALSE], throw a "{{NotAllowedError}}" {{DOMException}}.
+1. If <var ignore>sameOriginWithAncestors</var> is [FALSE]:
 
-    Note: This "sameOriginWithAncestors" restriction aims to address a tracking concern raised in [Issue #1336](https://github.com/w3c/webauthn/issues/1336). This may be revised in future versions of this specification.
+    1. If the [=relevant global object=], as determined by the calling
+        {{CredentialsContainer/create()}} implementation, does not have
+        [=transient activation=]:
+
+        1. Throw a "{{NotAllowedError}}" {{DOMException}}.
+
+    1. [=Consume user activation=] of the [=relevant global object=].
+
+    NOTE: The [=client=] SHOULD make it clear to the user in the case where the
+          [=origin=] that is creating a credential is different from the
+          [=top-level origin=] of the [=relevant global object=] (i.e., is a
+          different origin than the user can see in the address bar).
 
 1. Let |pkOptions| be the value of <code>|options|.{{CredentialCreationOptions/publicKey}}</code>.
 
@@ -1832,6 +1846,10 @@ a numbered step. If outdented, it (today) is rendered as a bullet in the midst o
     :: The [=base64url encoding=] of |pkOptions|.{{PublicKeyCredentialCreationOptions/challenge}}.
     : {{CollectedClientData/origin}}
     :: The [=ascii serialization of an origin|serialization of=] |callerOrigin|.
+    : {{CollectedClientData/topOrigin}}
+    :: The [=ascii serialization of an origin|serialization of=] |callerOrigin|'s [=top-level origin=] if
+        the {{PublicKeyCredential/[[Create]](origin, options, sameOriginWithAncestors)/sameOriginWithAncestors}}
+        argument passed to this [=internal method=] is [FALSE], else `undefined`.
     : {{CollectedClientData/crossOrigin}}
     :: The inverse of the value of the
         {{PublicKeyCredential/[[Create]](origin, options, sameOriginWithAncestors)/sameOriginWithAncestors}}
@@ -3573,6 +3591,7 @@ Note: The {{CollectedClientData}} may be extended in the future. Therefore it's 
         required DOMString           type;
         required DOMString           challenge;
         required DOMString           origin;
+        DOMString                    topOrigin;
         boolean                      crossOrigin;
     };
 
@@ -3597,6 +3616,11 @@ Note: The {{CollectedClientData}} may be extended in the future. Therefore it's 
     :   <dfn>origin</dfn>
     ::  This member contains the fully qualified [=origin=] of the requester, as provided to the authenticator by the client, in
         the syntax defined by [[!RFC6454]].
+
+    :   <dfn>topOrigin</dfn>
+    ::  This OPTIONAL member contains the fully qualified [=top-level origin=] of the requester, in the syntax defined
+        by [[!RFC6454]]. It is set only if the call was made from context that is not [=same-origin with its
+        ancestors=], i.e. if {{CollectedClientData/crossOrigin}} is [TRUE].
 
     :   <dfn>crossOrigin</dfn>
     ::  This OPTIONAL member contains the inverse of the `sameOriginWithAncestors` argument value
@@ -3641,7 +3665,7 @@ Note: The {{CollectedClientData}} may be extended in the future. Therefore it's 
 
 #### Serialization #### {#clientdatajson-serialization}
 
-The serialization of the {{CollectedClientData}} is a subset of the algorithm for [=serialize JSON to bytes|JSON-serializing to bytes=]. I.e. it produces a valid JSON encoding of the {{CollectedClientData}} but also provides additional structure that may be exploited by verifiers to avoid integrating a full JSON parser. While verifiers are recommended to perform standard JSON parsing, they may use the [more limited algorithm](#clientdatajson-verification) below in contexts where a full JSON parser is too large. This verification algorithm requires only [=base64url encoding=], appending of bytestrings (which could be implemented by writing into a fixed template), and three conditional checks (assuming that inputs are known not to need escaping).
+The serialization of the {{CollectedClientData}} is a subset of the algorithm for [=serialize JSON to bytes|JSON-serializing to bytes=]. I.e. it produces a valid JSON encoding of the {{CollectedClientData}} but also provides additional structure that may be exploited by verifiers to avoid integrating a full JSON parser. While verifiers are recommended to perform standard JSON parsing, they may use the [more limited algorithm](#clientdatajson-verification) below in contexts where a full JSON parser is too large. This verification algorithm requires only [=base64url encoding=], appending of bytestrings (which could be implemented by writing into a fixed template), and simple conditional checks (assuming that inputs are known not to need escaping).
 
 The serialization algorithm works by appending successive byte strings to an, initially empty, partial result until the complete result is obtained.
 
@@ -3657,7 +3681,10 @@ The serialization algorithm works by appending successive byte strings to an, in
     1. Append 0x66616c7365 (`false`) to |result|.
 1. Otherwise:
     1. Append 0x74727565 (`true`) to |result|.
-1. Create a temporary copy of the {{CollectedClientData}} and remove the fields {{CollectedClientData/type}}, {{CollectedClientData/challenge}}, {{CollectedClientData/origin}}, and {{CollectedClientData/crossOrigin}} (if present).
+1. If {{CollectedClientData/topOrigin}} is present:
+    1. Append 0x2c22746f704f726967696e223a (`,"topOrigin":`) to |result|.
+    1. Append [=CCDToString=]({{CollectedClientData/topOrigin}}) to |result|.
+1. Create a temporary copy of the {{CollectedClientData}} and remove the fields {{CollectedClientData/type}}, {{CollectedClientData/challenge}}, {{CollectedClientData/origin}}, {{CollectedClientData/crossOrigin}} (if present), and {{CollectedClientData/topOrigin}} (if present).
 1. If no fields remain in the temporary copy then:
     1. Append 0x7d (`}`) to |result|.
 1. Otherwise:
@@ -3728,9 +3755,9 @@ Verifiers may use the following algorithm to verify an encoded {{CollectedClient
 
 #### Future development #### {#clientdatajson-development}
 
-In order to remain compatible with the [limited verification algorithm](#clientdatajson-verification), future versions of this specification must not remove any of the fields {{CollectedClientData/type}}, {{CollectedClientData/challenge}}, {{CollectedClientData/origin}}, or {{CollectedClientData/crossOrigin}} from {{CollectedClientData}}. They also must not change the [serialization algorithm](#clientdatajson-verification) to change the order in which those fields are serialized.
+In order to remain compatible with the [limited verification algorithm](#clientdatajson-verification), future versions of this specification must not remove any of the fields {{CollectedClientData/type}}, {{CollectedClientData/challenge}}, {{CollectedClientData/origin}}, {{CollectedClientData/crossOrigin}}, or {{CollectedClientData/topOrigin}} from {{CollectedClientData}}. They also must not change the [serialization algorithm](#clientdatajson-verification) to change the order in which those fields are serialized, or insert new fields between them.
 
-If additional fields are added to {{CollectedClientData}} then verifiers that employ the [limited verification algorithm](#clientdatajson-verification) will not be able to consider them until the two algorithms above are updated to include them. Once such an update occurs then the added fields inherit the same limitations as described in the previous paragraph. Such an algorithm update would have to accomodate serializations produced by previous versions. I.e. the verification algorithm would have to handle the fact that a fifth key&ndash;value pair may not appear fifth (or at all) if generated by a user agent working from a previous version.
+If additional fields are added to {{CollectedClientData}} then verifiers that employ the [limited verification algorithm](#clientdatajson-verification) will not be able to consider them until the two algorithms above are updated to include them. Once such an update occurs then the added fields inherit the same limitations as described in the previous paragraph. Such an algorithm update would have to accomodate serializations produced by previous versions. I.e. the verification algorithm would have to handle the fact that a sixth key&ndash;value pair may not appear sixth (or at all) if generated by a user agent working from a previous version.
 
 ### Credential Type Enumeration (enum <dfn enum>PublicKeyCredentialType</dfn>) ### {#enum-credentialType}
 
@@ -3888,17 +3915,18 @@ Note: The {{UserVerificationRequirement}} enumeration is deliberately not refere
 
 ## Permissions Policy integration ## {#sctn-permissions-policy}
 
-This specification defines one [=policy-controlled feature=] identified by
-the feature-identifier token "<code><dfn data-lt="publickey-credentials-get-feature" export>publickey-credentials-get</dfn></code>".
-Its [=default allowlist=] is '<code>self</code>'. [[!Permissions-Policy]]
+This specification defines two [=policy-controlled features=] identified by
+the feature-identifier tokens "<code><dfn data-lt="publickey-credentials-create-feature" export>publickey-credentials-create</dfn></code>"
+and "<code><dfn data-lt="publickey-credentials-get-feature" export>publickey-credentials-get</dfn></code>".
+Their [=default allowlists=] are both '<code>self</code>'. [[!Permissions-Policy]]
 
 A {{Document}}'s [=Document/permissions policy=] determines whether any content in that <a href="https://html.spec.whatwg.org/multipage/dom.html#documents">document</a> is
-[=allowed to use|allowed to successfully invoke=] the [=Web Authentication API=], i.e., via
-<code><a idl for="CredentialsContainer" lt="get()">navigator.credentials.get({publicKey:..., ...})</a></code>.
+[=allowed to use|allowed to successfully invoke=] the [=Web Authentication API=], i.e., via <code><a idl for="CredentialsContainer" lt="create()">navigator.credentials.create({publicKey:..., ...})</a></code> or
+<code><a idl for="CredentialsContainer" lt="get()">navigator.credentials.get({publicKey:..., ...})</a></code>
 If disabled in any document, no content in the document will be [=allowed to use=]
 the foregoing methods: attempting to do so will [return an error](https://www.w3.org/2001/tag/doc/promises-guide#errors).
 
-Note: Algorithms specified in [[!CREDENTIAL-MANAGEMENT-1]] perform the actual permissions policy evaluation. This is because such policy evaluation needs to occur when there is access to the [=current settings object=]. The {{PublicKeyCredential/[[DiscoverFromExternalSource]](origin, options, sameOriginWithAncestors)}} [=internal method=] does not have such access since it is invoked [=in parallel=] by {{CredentialsContainer}}'s <a abstract-op>Request a `Credential`</a> abstract operation [[!CREDENTIAL-MANAGEMENT-1]].
+Note: Algorithms specified in [[!CREDENTIAL-MANAGEMENT-1]] perform the actual permissions policy evaluation. This is because such policy evaluation needs to occur when there is access to the [=current settings object=]. The {{PublicKeyCredential/[[Create]](origin, options, sameOriginWithAncestors)}} and {{PublicKeyCredential/[[DiscoverFromExternalSource]](origin, options, sameOriginWithAncestors)}} [=internal methods=] does not have such access since they are invoked [=in parallel=] by {{CredentialsContainer}}'s <a abstract-op>Create a `Credential`</a> and <a abstract-op>Request a `Credential`</a> abstract operations [[!CREDENTIAL-MANAGEMENT-1]].
 
 
 
@@ -5227,6 +5255,14 @@ In order to perform a [=registration ceremony=], the [=[RP]=] MUST proceed as fo
     the base64url encoding of <code>|options|.{{PublicKeyCredentialCreationOptions/challenge}}</code>.
 
 1. Verify that the value of <code>|C|.{{CollectedClientData/origin}}</code> matches the [=[RP]=]'s [=origin=].
+
+1. If <code>|C|.{{CollectedClientData/topOrigin}}</code> is present:
+
+    1. Verify that the [=[RP]=] expects that this credential would have been created within an iframe that is
+        not [=same-origin with its ancestors=].
+
+    1. Verify that the value of <code>|C|.{{CollectedClientData/topOrigin}}</code> matches the [=origin=] of a page
+        that the [=[RP]=] expects to be sub-framed within.
 
 1. Let |hash| be the result of computing a hash over <code>|response|.{{AuthenticatorResponse/clientDataJSON}}</code> using SHA-256.
 
