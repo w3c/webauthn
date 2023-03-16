@@ -1826,18 +1826,22 @@ a numbered step. If outdented, it (today) is rendered as a bullet in the midst o
 
 1. Let |clientExtensions| be a new [=map=] and let |authenticatorExtensions| be a new [=map=].
 
-1. If <code>|pkOptions|.{{PublicKeyCredentialCreationOptions/extensions}}</code> is present, then [=map/for each=]
-    |extensionId| → |clientExtensionInput| of <code>|pkOptions|.{{PublicKeyCredentialCreationOptions/extensions}}</code>:
-    1. If |extensionId| is not supported by this [=client platform=] or is not a [=registration extension=], then [=continue=].
+<!-- Note: this next step is actually a top-level step, but bikeshed wanted it indented this much in order to render it as
+a numbered step. If outdented, it (today) is rendered as a bullet in the midst of a numbered list -->
+    <li id="CreateCred-process-extensions">
+        If <code>|pkOptions|.{{PublicKeyCredentialCreationOptions/extensions}}</code> is present, then [=map/for each=]
+        |extensionId| → |clientExtensionInput| of <code>|pkOptions|.{{PublicKeyCredentialCreationOptions/extensions}}</code>:
+        1. If |extensionId| is not supported by this [=client platform=] or is not a [=registration extension=], then [=continue=].
 
-    1. [=map/Set=] |clientExtensions|[|extensionId|] to |clientExtensionInput|.
+        1. [=map/Set=] |clientExtensions|[|extensionId|] to |clientExtensionInput|.
 
-    1. If |extensionId| is not an [=authenticator extension=], then [=continue=].
+        1. If |extensionId| is not an [=authenticator extension=], then [=continue=].
 
-    1. Let |authenticatorExtensionInput| be the ([=CBOR=]) result of running |extensionId|'s [=client extension processing=]
-        algorithm on |clientExtensionInput|. If the algorithm returned an error, [=continue=].
+        1. Let |authenticatorExtensionInput| be the ([=CBOR=]) result of running |extensionId|'s [=client extension processing=]
+            algorithm on |clientExtensionInput|. If the algorithm returned an error, [=continue=].
 
-    1. [=map/Set=] |authenticatorExtensions|[|extensionId|] to the [=base64url encoding=] of |authenticatorExtensionInput|.
+        1. [=map/Set=] |authenticatorExtensions|[|extensionId|] to the [=base64url encoding=] of |authenticatorExtensionInput|.
+    </li>
 
 1. Let |collectedClientData| be a new {{CollectedClientData}} instance whose fields are:
     : {{CollectedClientData/type}}
@@ -1873,280 +1877,284 @@ a numbered step. If outdented, it (today) is rendered as a bullet in the midst o
 
 1. Start |lifetimeTimer|.
 
-1. [=While=] |lifetimeTimer| has not expired, perform the following actions depending upon |lifetimeTimer|,
-    and the state and response [=set/for each=] |authenticator| in |authenticators|:
-    <dl class="switch">
-        :   If |lifetimeTimer| expires,
-        ::  [=set/For each=] |authenticator| in |issuedRequests| invoke the [=authenticatorCancel=] operation on |authenticator|
-            and [=set/remove=] |authenticator| from |issuedRequests|.
-
-        :   If the user exercises a user agent user-interface option to cancel the process,
-        ::  [=set/For each=] |authenticator| in |issuedRequests| invoke the [=authenticatorCancel=] operation on |authenticator|
-            and [=set/remove=] |authenticator| from |issuedRequests|. Throw a "{{NotAllowedError}}" {{DOMException}}.
-
-        :   If <code>|options|.{{CredentialCreationOptions/signal}}</code> is present and [=AbortSignal/aborted=],
-        ::  [=set/For each=] |authenticator| in |issuedRequests| invoke the [=authenticatorCancel=]
-            operation on |authenticator| and [=set/remove=] |authenticator| from |issuedRequests|. Then throw the
-            <code>|options|.{{CredentialCreationOptions/signal}}</code>'s [=AbortSignal/abort reason=].
-
-        :   If an |authenticator| becomes available on this [=client device=],
-        ::  Note:  This includes the case where an |authenticator| was available upon |lifetimeTimer| initiation.
-
-            1. This |authenticator| is now the <dfn for="create">candidate authenticator</dfn>.
-
-            1. If <code>|pkOptions|.{{PublicKeyCredentialCreationOptions/authenticatorSelection}}</code> is present:
-
-                  1. If <code>|pkOptions|.{{PublicKeyCredentialCreationOptions/authenticatorSelection}}.{{AuthenticatorSelectionCriteria/authenticatorAttachment}}</code> is
-                    present and its value is not equal to |authenticator|'s [=authenticator attachment modality=], [=iteration/continue=].
-
-                  1. If <code>|pkOptions|.{{PublicKeyCredentialCreationOptions/authenticatorSelection}}.{{residentKey}}</code>
-
-                      <dl class="switch">
-                          :   is present and set to {{ResidentKeyRequirement/required}}
-                          ::  If the |authenticator| is not capable of storing a [=client-side discoverable public key credential
-                              source=], [=iteration/continue=].
-
-                          :   is present and set to {{ResidentKeyRequirement/preferred}} or {{ResidentKeyRequirement/discouraged}}
-                          ::  No effect.
-
-                          :   is not present
-                          ::  if <code>|pkOptions|.{{PublicKeyCredentialCreationOptions/authenticatorSelection}}.{{requireResidentKey}}</code>
-                              is set to [TRUE] and the |authenticator| is not capable of storing a [=client-side discoverable public
-                              key credential source=], [=iteration/continue=].
-                      </dl>
-
-                  1. If <code>|pkOptions|.{{PublicKeyCredentialCreationOptions/authenticatorSelection}}.{{AuthenticatorSelectionCriteria/userVerification}}</code> is
-                    set to {{UserVerificationRequirement/required}} and the |authenticator| is not capable of performing [=user
-                    verification=], [=iteration/continue=].
-
-            1. Let |requireResidentKey| be the <dfn>effective resident key requirement for credential creation</dfn>, a Boolean value, as follows:
-
-                If <code>|pkOptions|.{{PublicKeyCredentialCreationOptions/authenticatorSelection}}.{{residentKey}}</code>
-
-                    <dl class="switch">
-
-                        :   is present and set to {{ResidentKeyRequirement/required}}
-                        ::  Let |requireResidentKey| be [TRUE].
-
-                        :   is present and set to {{ResidentKeyRequirement/preferred}}
-                        ::  If the |authenticator|
-
-                            <dl class="switch">
-                                :   is capable of [=client-side credential storage modality=]
-                                ::  Let |requireResidentKey| be [TRUE].
-
-                                :   is not capable of [=client-side credential storage modality=], or if the [=client=] cannot determine authenticator capability,
-                                ::  Let |requireResidentKey| be [FALSE].
-                            </dl>
-
-                        :   is present and set to {{ResidentKeyRequirement/discouraged}}
-                        ::  Let |requireResidentKey| be [FALSE].
-
-                        :   is not present
-                        ::  Let |requireResidentKey| be the value of <code>|pkOptions|.{{PublicKeyCredentialCreationOptions/authenticatorSelection}}.{{requireResidentKey}}</code>.
-
-                    </dl>
-
-            1. Let |userVerification| be the <dfn>effective user verification requirement for credential creation</dfn>, a Boolean value,
-                as follows. If
-                <code>|pkOptions|.{{PublicKeyCredentialCreationOptions/authenticatorSelection}}.{{AuthenticatorSelectionCriteria/userVerification}}</code>
-
-                    <dl class="switch">
-
-                        :   is set to {{UserVerificationRequirement/required}}
-                        ::  Let |userVerification| be [TRUE].
-
-                        :   is set to {{UserVerificationRequirement/preferred}}
-                        ::  If the |authenticator|
-
-                            <dl class="switch">
-                                :   is capable of [=user verification=]
-                                ::  Let |userVerification| be [TRUE].
-
-                                :   is not capable of [=user verification=]
-                                ::  Let |userVerification| be [FALSE].
-                            </dl>
-
-                        :   is set to {{UserVerificationRequirement/discouraged}}
-                        ::  Let |userVerification| be [FALSE].
-
-                    </dl>
-
-            1. Let |enterpriseAttestationPossible| be a Boolean value, as follows. If
-                <code>|pkOptions|.{{PublicKeyCredentialCreationOptions/attestation}}</code>
-
-                    <dl class="switch">
-
-                        :   is set to {{AttestationConveyancePreference/enterprise}}
-                        ::  Let |enterpriseAttestationPossible| be [TRUE] if the user agent wishes to support enterprise attestation for <code>|pkOptions|.{{PublicKeyCredentialCreationOptions/rp}}.{{PublicKeyCredentialRpEntity/id}}</code> (see [Step 8](#CreateCred-DetermineRpId), above). Otherwise [FALSE].
-
-                        :   otherwise
-                        ::  Let |enterpriseAttestationPossible| be [FALSE].
-
-                    </dl>
-
-            1. Let |attestationFormats| be a list of strings, initialized to the value of <code>|options|.{{PublicKeyCredentialCreationOptions/attestationFormats}}</code>.
-
-            1. If <code>|options|.{{PublicKeyCredentialCreationOptions/attestation}}</code>
-
-                    <dl class="switch">
-
-                        :   is set to {{AttestationConveyancePreference/none}}
-                        ::  Set |attestationFormats| be the single-element list containing the string &ldquo;none&rdquo;
-
-                    </dl>
-
-            1. Let |excludeCredentialDescriptorList| be a new [=list=].
-
-            1. [=list/For each=] credential descriptor |C| in <code>|pkOptions|.{{PublicKeyCredentialCreationOptions/excludeCredentials}}</code>:
-                1. If <code>|C|.{{PublicKeyCredentialDescriptor/transports}}</code> [=list/is not empty=], and |authenticator| is connected over a transport not
-                    mentioned in <code>|C|.{{PublicKeyCredentialDescriptor/transports}}</code>, the client MAY [=continue=].
-
-                    Note: If the client chooses to [=continue=], this could result in
-                    inadvertently registering multiple credentials [=bound credential|bound to=] the same [=authenticator=]
-                    if the transport hints in <code>|C|.{{PublicKeyCredentialDescriptor/transports}}</code> are not accurate.
-                    For example, stored transport hints could become inaccurate
-                    as a result of software upgrades adding new connectivity options.
-
-                1. Otherwise, [=list/Append=] |C| to |excludeCredentialDescriptorList|.
-
 <!-- Note: this next step is actually a top-level step, but bikeshed wanted it indented this much in order to render it as
-a numbered step. If outdented, it (today) is rendered either as a bullet in the midst of a numbered list or is mis-numabered :-/
--->
-                    <li id='CreateCred-InvokeAuthnrMakeCred'>
+a numbered step. If outdented, it (today) is rendered as a bullet in the midst of a numbered list -->
+    <li id="CreateCred-async-loop">
+        [=While=] |lifetimeTimer| has not expired, perform the following actions depending upon |lifetimeTimer|,
+        and the state and response [=set/for each=] |authenticator| in |authenticators|:
+        <dl class="switch">
+            :   If |lifetimeTimer| expires,
+            ::  [=set/For each=] |authenticator| in |issuedRequests| invoke the [=authenticatorCancel=] operation on |authenticator|
+                and [=set/remove=] |authenticator| from |issuedRequests|.
 
-                        <!-- @@EDITOR-ANCHOR-01: KEEP THIS LIST SYNC'D WITH OTHER LOCATIONS WITH THIS TAG -->
-                        Invoke the [=authenticatorMakeCredential=] operation on |authenticator| with
-                            |clientDataHash|,
-                            <code>|pkOptions|.{{PublicKeyCredentialCreationOptions/rp}}</code>,
-                            <code>|pkOptions|.{{PublicKeyCredentialCreationOptions/user}}</code>,
-                            |requireResidentKey|,
-                            |userVerification|,
-                            |credTypesAndPubKeyAlgs|,
-                            |excludeCredentialDescriptorList|,
-                            |enterpriseAttestationPossible|,
-                            |attestationFormats|,
-                            and |authenticatorExtensions| as parameters.
-                    </li>
+            :   If the user exercises a user agent user-interface option to cancel the process,
+            ::  [=set/For each=] |authenticator| in |issuedRequests| invoke the [=authenticatorCancel=] operation on |authenticator|
+                and [=set/remove=] |authenticator| from |issuedRequests|. Throw a "{{NotAllowedError}}" {{DOMException}}.
 
-            1. [=set/Append=] |authenticator| to |issuedRequests|.
+            :   If <code>|options|.{{CredentialCreationOptions/signal}}</code> is present and [=AbortSignal/aborted=],
+            ::  [=set/For each=] |authenticator| in |issuedRequests| invoke the [=authenticatorCancel=]
+                operation on |authenticator| and [=set/remove=] |authenticator| from |issuedRequests|. Then throw the
+                <code>|options|.{{CredentialCreationOptions/signal}}</code>'s [=AbortSignal/abort reason=].
 
-        :   If an |authenticator| ceases to be available on this [=client device=],
-        ::  [=set/Remove=] |authenticator| from |issuedRequests|.
+            :   If an |authenticator| becomes available on this [=client device=],
+            ::  Note:  This includes the case where an |authenticator| was available upon |lifetimeTimer| initiation.
 
-        :   If any |authenticator| returns a status indicating that the user cancelled the operation,
-        ::  1. [=set/Remove=] |authenticator| from |issuedRequests|.
-            1. [=set/For each=] remaining |authenticator| in |issuedRequests| invoke the [=authenticatorCancel=] operation on
-                |authenticator| and [=set/remove=] it from |issuedRequests|.
+                1. This |authenticator| is now the <dfn for="create">candidate authenticator</dfn>.
 
-                Note: [=Authenticators=] may return an indication of "the user cancelled the entire operation".
-                How a user agent manifests this state to users is unspecified.
+                1. If <code>|pkOptions|.{{PublicKeyCredentialCreationOptions/authenticatorSelection}}</code> is present:
 
-        :   If any |authenticator| returns an error status equivalent to "{{InvalidStateError}}",
-        ::  1. [=set/Remove=] |authenticator| from |issuedRequests|.
-            1. [=set/For each=] remaining |authenticator| in |issuedRequests| invoke the [=authenticatorCancel=] operation on
-                |authenticator| and [=set/remove=] it from |issuedRequests|.
-            1. Throw an "{{InvalidStateError}}" {{DOMException}}.
+                      1. If <code>|pkOptions|.{{PublicKeyCredentialCreationOptions/authenticatorSelection}}.{{AuthenticatorSelectionCriteria/authenticatorAttachment}}</code> is
+                        present and its value is not equal to |authenticator|'s [=authenticator attachment modality=], [=iteration/continue=].
 
-            Note: This error status is handled separately because the |authenticator| returns it only if
-            |excludeCredentialDescriptorList| identifies a credential [=bound credential|bound=] to the |authenticator| and the user has [=user
-            consent|consented=] to the operation. Given this explicit consent, it is acceptable for this case to be
-            distinguishable to the [=[RP]=].
+                      1. If <code>|pkOptions|.{{PublicKeyCredentialCreationOptions/authenticatorSelection}}.{{residentKey}}</code>
 
-        :   If any |authenticator| returns an error status not equivalent to "{{InvalidStateError}}",
-        ::  [=set/Remove=] |authenticator| from |issuedRequests|.
+                          <dl class="switch">
+                              :   is present and set to {{ResidentKeyRequirement/required}}
+                              ::  If the |authenticator| is not capable of storing a [=client-side discoverable public key credential
+                                  source=], [=iteration/continue=].
 
-            Note: This case does not imply [=user consent=] for the operation, so details about the error are hidden from the
-            [=[RP]=] in order to prevent leak of potentially identifying information. See [[#sctn-make-credential-privacy]] for
-            details.
+                              :   is present and set to {{ResidentKeyRequirement/preferred}} or {{ResidentKeyRequirement/discouraged}}
+                              ::  No effect.
 
-        :   If any |authenticator| indicates success,
-        ::  1.  [=set/Remove=] |authenticator| from |issuedRequests|. This authenticator is now the <dfn for="create">selected authenticator</dfn>.
+                              :   is not present
+                              ::  if <code>|pkOptions|.{{PublicKeyCredentialCreationOptions/authenticatorSelection}}.{{requireResidentKey}}</code>
+                                  is set to [TRUE] and the |authenticator| is not capable of storing a [=client-side discoverable public
+                                  key credential source=], [=iteration/continue=].
+                          </dl>
 
-            1.  Let |credentialCreationData| be a [=struct=] whose [=items=] are:
+                      1. If <code>|pkOptions|.{{PublicKeyCredentialCreationOptions/authenticatorSelection}}.{{AuthenticatorSelectionCriteria/userVerification}}</code> is
+                        set to {{UserVerificationRequirement/required}} and the |authenticator| is not capable of performing [=user
+                        verification=], [=iteration/continue=].
 
-                :   <code><dfn for="credentialCreationData">attestationObjectResult</dfn></code>
-                ::  whose value is the bytes returned from the successful [=authenticatorMakeCredential=] operation.
+                1. Let |requireResidentKey| be the <dfn>effective resident key requirement for credential creation</dfn>, a Boolean value, as follows:
 
-                    Note: this value is <code>attObj</code>, as defined in [[#sctn-generating-an-attestation-object]].
+                    If <code>|pkOptions|.{{PublicKeyCredentialCreationOptions/authenticatorSelection}}.{{residentKey}}</code>
 
-                :   <code><dfn for="credentialCreationData">clientDataJSONResult</dfn></code>
-                ::  whose value is the bytes of |clientDataJSON|.
+                        <dl class="switch">
 
-                :   <code><dfn for="credentialCreationData">attestationConveyancePreferenceOption</dfn></code>
-                ::  whose value is the value of |pkOptions|.{{PublicKeyCredentialCreationOptions/attestation}}.
+                            :   is present and set to {{ResidentKeyRequirement/required}}
+                            ::  Let |requireResidentKey| be [TRUE].
 
-                :   <code><dfn for="credentialCreationData">clientExtensionResults</dfn></code>
-                ::  whose value is an {{AuthenticationExtensionsClientOutputs}} object containing [=extension identifier=] →
-                    [=client extension output=] entries. The entries are created by running each extension's
-                    [=client extension processing=] algorithm to create the [=client extension outputs=], for each
-                    [=client extension=] in <code>|pkOptions|.{{PublicKeyCredentialCreationOptions/extensions}}</code>.
+                            :   is present and set to {{ResidentKeyRequirement/preferred}}
+                            ::  If the |authenticator|
 
-            1.  Let |constructCredentialAlg| be an algorithm that takes a [=global object=]
-                |global|, and whose steps are:
+                                <dl class="switch">
+                                    :   is capable of [=client-side credential storage modality=]
+                                    ::  Let |requireResidentKey| be [TRUE].
 
-                1.  If <code>|credentialCreationData|.[=attestationConveyancePreferenceOption=]</code>'s value is
-                    <dl class="switch">
-                        :   {{AttestationConveyancePreference/none}}
-                        ::  Replace potentially uniquely identifying information with non-identifying versions of the
-                            same:
-                               1. If the [=AAGUID=] in the [=attested credential data=] is 16 zero bytes, <code>|credentialCreationData|.[=attestationObjectResult=].fmt</code> is "packed", and "x5c" is absent from <code>|credentialCreationData|.[=attestationObjectResult=]</code>, then [=self attestation=] is being used and no further action is needed.
-                               1. Otherwise
-                                  1. Replace the [=AAGUID=] in the [=attested credential data=] with 16 zero bytes.
-                                  1. Set the value of <code>|credentialCreationData|.[=attestationObjectResult=].fmt</code> to "none", and set the value of <code>|credentialCreationData|.[=attestationObjectResult=].attStmt</code> to be an empty [=CBOR=] map. (See [[#sctn-none-attestation]] and [[#sctn-generating-an-attestation-object]]).
+                                    :   is not capable of [=client-side credential storage modality=], or if the [=client=] cannot determine authenticator capability,
+                                    ::  Let |requireResidentKey| be [FALSE].
+                                </dl>
 
-                        :   {{AttestationConveyancePreference/indirect}}
-                        ::  The client MAY replace the [=AAGUID=] and [=attestation statement=] with a more privacy-friendly
-                            and/or more easily verifiable version of the same data (for example, by employing an [=Anonymization CA=]).
+                            :   is present and set to {{ResidentKeyRequirement/discouraged}}
+                            ::  Let |requireResidentKey| be [FALSE].
 
-                        :   {{AttestationConveyancePreference/direct}} or {{AttestationConveyancePreference/enterprise}}
-                        ::  Convey the [=authenticator=]'s [=AAGUID=] and [=attestation statement=], unaltered, to the [=[RP]=].
-                    </dl>
+                            :   is not present
+                            ::  Let |requireResidentKey| be the value of <code>|pkOptions|.{{PublicKeyCredentialCreationOptions/authenticatorSelection}}.{{requireResidentKey}}</code>.
 
-                1.  Let |attestationObject| be a new {{ArrayBuffer}}, created using |global|'s [=%ArrayBuffer%=], containing the
-                    bytes of <code>|credentialCreationData|.[=attestationObjectResult=]</code>'s value.
+                        </dl>
 
-                1.  Let |id| be <code>|attestationObject|.authData.[=attestedCredentialData=].[=credentialId=]</code>.
+                1. Let |userVerification| be the <dfn>effective user verification requirement for credential creation</dfn>, a Boolean value,
+                    as follows. If
+                    <code>|pkOptions|.{{PublicKeyCredentialCreationOptions/authenticatorSelection}}.{{AuthenticatorSelectionCriteria/userVerification}}</code>
 
-                1.  Let |pubKeyCred| be a new {{PublicKeyCredential}} object associated with |global| whose fields are:
+                        <dl class="switch">
 
-                    :   {{PublicKeyCredential/[[identifier]]}}
-                    ::  |id|
+                            :   is set to {{UserVerificationRequirement/required}}
+                            ::  Let |userVerification| be [TRUE].
 
-                    :   {{PublicKeyCredential/authenticatorAttachment}}
-                    ::  The {{AuthenticatorAttachment}} value matching the current [=authenticator attachment modality=] of |authenticator|.
+                            :   is set to {{UserVerificationRequirement/preferred}}
+                            ::  If the |authenticator|
 
-                    :   {{PublicKeyCredential/response}}
-                    ::  A new {{AuthenticatorAttestationResponse}} object associated with |global| whose fields are:
+                                <dl class="switch">
+                                    :   is capable of [=user verification=]
+                                    ::  Let |userVerification| be [TRUE].
 
-                        :   {{AuthenticatorResponse/clientDataJSON}}
+                                    :   is not capable of [=user verification=]
+                                    ::  Let |userVerification| be [FALSE].
+                                </dl>
+
+                            :   is set to {{UserVerificationRequirement/discouraged}}
+                            ::  Let |userVerification| be [FALSE].
+
+                        </dl>
+
+                1. Let |enterpriseAttestationPossible| be a Boolean value, as follows. If
+                    <code>|pkOptions|.{{PublicKeyCredentialCreationOptions/attestation}}</code>
+
+                        <dl class="switch">
+
+                            :   is set to {{AttestationConveyancePreference/enterprise}}
+                            ::  Let |enterpriseAttestationPossible| be [TRUE] if the user agent wishes to support enterprise attestation for <code>|pkOptions|.{{PublicKeyCredentialCreationOptions/rp}}.{{PublicKeyCredentialRpEntity/id}}</code> (see [Step 8](#CreateCred-DetermineRpId), above). Otherwise [FALSE].
+
+                            :   otherwise
+                            ::  Let |enterpriseAttestationPossible| be [FALSE].
+
+                        </dl>
+
+                1. Let |attestationFormats| be a list of strings, initialized to the value of <code>|options|.{{PublicKeyCredentialCreationOptions/attestationFormats}}</code>.
+
+                1. If <code>|options|.{{PublicKeyCredentialCreationOptions/attestation}}</code>
+
+                        <dl class="switch">
+
+                            :   is set to {{AttestationConveyancePreference/none}}
+                            ::  Set |attestationFormats| be the single-element list containing the string &ldquo;none&rdquo;
+
+                        </dl>
+
+                1. Let |excludeCredentialDescriptorList| be a new [=list=].
+
+                1. [=list/For each=] credential descriptor |C| in <code>|pkOptions|.{{PublicKeyCredentialCreationOptions/excludeCredentials}}</code>:
+                    1. If <code>|C|.{{PublicKeyCredentialDescriptor/transports}}</code> [=list/is not empty=], and |authenticator| is connected over a transport not
+                        mentioned in <code>|C|.{{PublicKeyCredentialDescriptor/transports}}</code>, the client MAY [=continue=].
+
+                        Note: If the client chooses to [=continue=], this could result in
+                        inadvertently registering multiple credentials [=bound credential|bound to=] the same [=authenticator=]
+                        if the transport hints in <code>|C|.{{PublicKeyCredentialDescriptor/transports}}</code> are not accurate.
+                        For example, stored transport hints could become inaccurate
+                        as a result of software upgrades adding new connectivity options.
+
+                    1. Otherwise, [=list/Append=] |C| to |excludeCredentialDescriptorList|.
+
+                    <!-- Note: this next step is actually a step on the same level as the above, but bikeshed wanted it indented this much
+                    in order to render it as a numbered step. If outdented, it (today) is rendered either as a bullet in the midst
+                    of a numbered list or is mis-numbered -->
+                        <li id='CreateCred-InvokeAuthnrMakeCred'>
+
+                            <!-- @@EDITOR-ANCHOR-01: KEEP THIS LIST SYNC'D WITH OTHER LOCATIONS WITH THIS TAG -->
+                            Invoke the [=authenticatorMakeCredential=] operation on |authenticator| with
+                                |clientDataHash|,
+                                <code>|pkOptions|.{{PublicKeyCredentialCreationOptions/rp}}</code>,
+                                <code>|pkOptions|.{{PublicKeyCredentialCreationOptions/user}}</code>,
+                                |requireResidentKey|,
+                                |userVerification|,
+                                |credTypesAndPubKeyAlgs|,
+                                |excludeCredentialDescriptorList|,
+                                |enterpriseAttestationPossible|,
+                                |attestationFormats|,
+                                and |authenticatorExtensions| as parameters.
+                        </li>
+
+                1. [=set/Append=] |authenticator| to |issuedRequests|.
+
+            :   If an |authenticator| ceases to be available on this [=client device=],
+            ::  [=set/Remove=] |authenticator| from |issuedRequests|.
+
+            :   If any |authenticator| returns a status indicating that the user cancelled the operation,
+            ::  1. [=set/Remove=] |authenticator| from |issuedRequests|.
+                1. [=set/For each=] remaining |authenticator| in |issuedRequests| invoke the [=authenticatorCancel=] operation on
+                    |authenticator| and [=set/remove=] it from |issuedRequests|.
+
+                    Note: [=Authenticators=] may return an indication of "the user cancelled the entire operation".
+                    How a user agent manifests this state to users is unspecified.
+
+            :   If any |authenticator| returns an error status equivalent to "{{InvalidStateError}}",
+            ::  1. [=set/Remove=] |authenticator| from |issuedRequests|.
+                1. [=set/For each=] remaining |authenticator| in |issuedRequests| invoke the [=authenticatorCancel=] operation on
+                    |authenticator| and [=set/remove=] it from |issuedRequests|.
+                1. Throw an "{{InvalidStateError}}" {{DOMException}}.
+
+                Note: This error status is handled separately because the |authenticator| returns it only if
+                |excludeCredentialDescriptorList| identifies a credential [=bound credential|bound=] to the |authenticator| and the user has [=user
+                consent|consented=] to the operation. Given this explicit consent, it is acceptable for this case to be
+                distinguishable to the [=[RP]=].
+
+            :   If any |authenticator| returns an error status not equivalent to "{{InvalidStateError}}",
+            ::  [=set/Remove=] |authenticator| from |issuedRequests|.
+
+                Note: This case does not imply [=user consent=] for the operation, so details about the error are hidden from the
+                [=[RP]=] in order to prevent leak of potentially identifying information. See [[#sctn-make-credential-privacy]] for
+                details.
+
+            :   If any |authenticator| indicates success,
+            ::  1.  [=set/Remove=] |authenticator| from |issuedRequests|. This authenticator is now the <dfn for="create">selected authenticator</dfn>.
+
+                1.  Let |credentialCreationData| be a [=struct=] whose [=items=] are:
+
+                    :   <code><dfn for="credentialCreationData">attestationObjectResult</dfn></code>
+                    ::  whose value is the bytes returned from the successful [=authenticatorMakeCredential=] operation.
+
+                        Note: this value is <code>attObj</code>, as defined in [[#sctn-generating-an-attestation-object]].
+
+                    :   <code><dfn for="credentialCreationData">clientDataJSONResult</dfn></code>
+                    ::  whose value is the bytes of |clientDataJSON|.
+
+                    :   <code><dfn for="credentialCreationData">attestationConveyancePreferenceOption</dfn></code>
+                    ::  whose value is the value of |pkOptions|.{{PublicKeyCredentialCreationOptions/attestation}}.
+
+                    :   <code><dfn for="credentialCreationData">clientExtensionResults</dfn></code>
+                    ::  whose value is an {{AuthenticationExtensionsClientOutputs}} object containing [=extension identifier=] →
+                        [=client extension output=] entries. The entries are created by running each extension's
+                        [=client extension processing=] algorithm to create the [=client extension outputs=], for each
+                        [=client extension=] in <code>|pkOptions|.{{PublicKeyCredentialCreationOptions/extensions}}</code>.
+
+                1.  Let |constructCredentialAlg| be an algorithm that takes a [=global object=]
+                    |global|, and whose steps are:
+
+                    1.  If <code>|credentialCreationData|.[=attestationConveyancePreferenceOption=]</code>'s value is
+                        <dl class="switch">
+                            :   {{AttestationConveyancePreference/none}}
+                            ::  Replace potentially uniquely identifying information with non-identifying versions of the
+                                same:
+                                  1. If the [=AAGUID=] in the [=attested credential data=] is 16 zero bytes, <code>|credentialCreationData|.[=attestationObjectResult=].fmt</code> is "packed", and "x5c" is absent from <code>|credentialCreationData|.[=attestationObjectResult=]</code>, then [=self attestation=] is being used and no further action is needed.
+                                  1. Otherwise
+                                      1. Replace the [=AAGUID=] in the [=attested credential data=] with 16 zero bytes.
+                                      1. Set the value of <code>|credentialCreationData|.[=attestationObjectResult=].fmt</code> to "none", and set the value of <code>|credentialCreationData|.[=attestationObjectResult=].attStmt</code> to be an empty [=CBOR=] map. (See [[#sctn-none-attestation]] and [[#sctn-generating-an-attestation-object]]).
+
+                            :   {{AttestationConveyancePreference/indirect}}
+                            ::  The client MAY replace the [=AAGUID=] and [=attestation statement=] with a more privacy-friendly
+                                and/or more easily verifiable version of the same data (for example, by employing an [=Anonymization CA=]).
+
+                            :   {{AttestationConveyancePreference/direct}} or {{AttestationConveyancePreference/enterprise}}
+                            ::  Convey the [=authenticator=]'s [=AAGUID=] and [=attestation statement=], unaltered, to the [=[RP]=].
+                        </dl>
+
+                    1.  Let |attestationObject| be a new {{ArrayBuffer}}, created using |global|'s [=%ArrayBuffer%=], containing the
+                        bytes of <code>|credentialCreationData|.[=attestationObjectResult=]</code>'s value.
+
+                    1.  Let |id| be <code>|attestationObject|.authData.[=attestedCredentialData=].[=credentialId=]</code>.
+
+                    1.  Let |pubKeyCred| be a new {{PublicKeyCredential}} object associated with |global| whose fields are:
+
+                        :   {{PublicKeyCredential/[[identifier]]}}
+                        ::  |id|
+
+                        :   {{PublicKeyCredential/authenticatorAttachment}}
+                        ::  The {{AuthenticatorAttachment}} value matching the current [=authenticator attachment modality=] of |authenticator|.
+
+                        :   {{PublicKeyCredential/response}}
+                        ::  A new {{AuthenticatorAttestationResponse}} object associated with |global| whose fields are:
+
+                            :   {{AuthenticatorResponse/clientDataJSON}}
+                            ::  A new {{ArrayBuffer}}, created using |global|'s [=%ArrayBuffer%=], containing the bytes of
+                                <code>|credentialCreationData|.[=credentialCreationData/clientDataJSONResult=]</code>.
+
+                            :   {{AuthenticatorAttestationResponse/attestationObject}}
+                            ::  |attestationObject|
+
+                            :   {{AuthenticatorAttestationResponse/[[transports]]}}
+                            ::  A sequence of zero or more unique {{DOMString}}s, in lexicographical order, that the |authenticator| is believed to support. The values SHOULD be members of {{AuthenticatorTransport}}, but [=client platforms=] MUST ignore unknown values.
+
+                                If a user agent does not wish to divulge this information it MAY substitute an arbitrary sequence designed to preserve privacy. This sequence MUST still be valid, i.e. lexicographically sorted and free of duplicates. For example, it may use the empty sequence. Either way, in this case the user agent takes the risk that [=[RP]=] behavior may be suboptimal.
+
+                                If the user agent does not have any transport information, it SHOULD set this field to the empty sequence.
+
+                                Note: How user agents discover transports supported by a given [=authenticator=] is outside the scope of this specification, but may include information from an [=attestation certificate=] (for example [[FIDO-Transports-Ext]]), metadata communicated in an [=authenticator=] protocol such as CTAP2, or special-case knowledge about a [=platform authenticator=].
+
+                        :   {{PublicKeyCredential/[[clientExtensionsResults]]}}
                         ::  A new {{ArrayBuffer}}, created using |global|'s [=%ArrayBuffer%=], containing the bytes of
-                            <code>|credentialCreationData|.[=credentialCreationData/clientDataJSONResult=]</code>.
+                            <code>|credentialCreationData|.[=credentialCreationData/clientExtensionResults=]</code>.
 
-                        :   {{AuthenticatorAttestationResponse/attestationObject}}
-                        ::  |attestationObject|
+                    1.  Return |pubKeyCred|.
 
-                        :   {{AuthenticatorAttestationResponse/[[transports]]}}
-                        ::  A sequence of zero or more unique {{DOMString}}s, in lexicographical order, that the |authenticator| is believed to support. The values SHOULD be members of {{AuthenticatorTransport}}, but [=client platforms=] MUST ignore unknown values.
+                1. [=set/For each=] remaining |authenticator| in |issuedRequests| invoke the [=authenticatorCancel=] operation on
+                    |authenticator| and [=set/remove=] it from |issuedRequests|.
 
-                            If a user agent does not wish to divulge this information it MAY substitute an arbitrary sequence designed to preserve privacy. This sequence MUST still be valid, i.e. lexicographically sorted and free of duplicates. For example, it may use the empty sequence. Either way, in this case the user agent takes the risk that [=[RP]=] behavior may be suboptimal.
+                1. Return |constructCredentialAlg| and terminate this algorithm.
 
-                            If the user agent does not have any transport information, it SHOULD set this field to the empty sequence.
-
-                            Note: How user agents discover transports supported by a given [=authenticator=] is outside the scope of this specification, but may include information from an [=attestation certificate=] (for example [[FIDO-Transports-Ext]]), metadata communicated in an [=authenticator=] protocol such as CTAP2, or special-case knowledge about a [=platform authenticator=].
-
-                    :   {{PublicKeyCredential/[[clientExtensionsResults]]}}
-                    ::  A new {{ArrayBuffer}}, created using |global|'s [=%ArrayBuffer%=], containing the bytes of
-                        <code>|credentialCreationData|.[=credentialCreationData/clientExtensionResults=]</code>.
-
-                1.  Return |pubKeyCred|.
-
-            1. [=set/For each=] remaining |authenticator| in |issuedRequests| invoke the [=authenticatorCancel=] operation on
-                |authenticator| and [=set/remove=] it from |issuedRequests|.
-
-            1. Return |constructCredentialAlg| and terminate this algorithm.
-
-    </dl>
+        </dl>
+    </li>
 
 1. Throw a "{{NotAllowedError}}" {{DOMException}}. In order to prevent information leak that could identify the
     user without [=user consent|consent=], this step MUST NOT be executed before |lifetimeTimer| has expired. See
@@ -3448,7 +3456,8 @@ an assertion. Its {{PublicKeyCredentialRequestOptions/challenge}} member MUST be
             of the resulting {{AuthenticatorAssertionResponse}}.
             If the available [=authenticators=] [=contain=] more than one [=discoverable credential=] [=scoped=] to the [=[RP]=],
             the credentials are displayed by the [=client platform=] or [=authenticator=]
-            for the user to select from (see step 7 of [[#sctn-op-get-assertion]]).
+            for the user to select from (see [step 7](#authenticatorGetAssertion-prompt-select-credential)
+            of [[#sctn-op-get-assertion]]).
 
         If not [=list/empty=], the client MUST return an error if none of the listed credentials can be used.
 
@@ -4679,18 +4688,22 @@ When this method is invoked, the [=authenticator=] MUST perform the following pr
     |rpId|.
 1. If |credentialOptions| is now empty, return an error code equivalent to "{{NotAllowedError}}" and terminate the operation.
 
-1. Prompt the user to select a [=public key credential source=] |selectedCredential| from |credentialOptions|.
-    Collect an [=authorization gesture=] confirming [=user consent=] for using |selectedCredential|.
-    The prompt for the [=authorization gesture=] may be shown
-    by the [=authenticator=] if it has its own output capability, or by the user agent otherwise.
+<!-- Note: this next step is actually a top-level step, but bikeshed wanted it indented this much in order to render it as
+a numbered step. If outdented, it (today) is rendered as a bullet in the midst of a numbered list -->
+    <li id="authenticatorGetAssertion-prompt-select-credential">
+        Prompt the user to select a [=public key credential source=] |selectedCredential| from |credentialOptions|.
+        Collect an [=authorization gesture=] confirming [=user consent=] for using |selectedCredential|.
+        The prompt for the [=authorization gesture=] may be shown
+        by the [=authenticator=] if it has its own output capability, or by the user agent otherwise.
 
-    If |requireUserVerification| is [TRUE], the [=authorization gesture=] MUST include [=user verification=].
+        If |requireUserVerification| is [TRUE], the [=authorization gesture=] MUST include [=user verification=].
 
-    If |requireUserPresence| is [TRUE], the [=authorization gesture=] MUST include a
-        [=test of user presence=].
+        If |requireUserPresence| is [TRUE], the [=authorization gesture=] MUST include a
+            [=test of user presence=].
 
-    If the user does not [=user consent|consent=], return an error code equivalent to
-    "{{NotAllowedError}}" and terminate the operation.
+        If the user does not [=user consent|consent=], return an error code equivalent to
+        "{{NotAllowedError}}" and terminate the operation.
+    </li>
 
 1. Let |processedExtensions| be the result of [=authenticator extension processing=] [=map/for each=] supported [=extension
     identifier=] → [=authenticator extension input=] in |extensions|.
@@ -5099,7 +5112,8 @@ calling {{CredentialsContainer/create()|navigator.credentials.create()}} they se
 [=attestation type=] as a part of [=verification procedure|verification=]. See the "Verification procedure" subsections of
 [[#sctn-defined-attestation-formats]]. See also [[#sctn-attestation-privacy]]. For all [=attestation types=] defined in this
 section other than [=self attestation|Self=] and [=None=], [=[RP]=] [=verification procedure|verification=] is followed by
-matching the [=attestation trust path|trust path=] to an acceptable root certificate per step 23 of [[#sctn-registering-a-new-credential]].
+matching the [=attestation trust path|trust path=] to an acceptable root certificate per [step 23](#reg-ceremony-assess-trust)
+of [[#sctn-registering-a-new-credential]].
 Differentiating these [=attestation types=] becomes useful primarily as a means for determining if the [=attestation=] is acceptable
 under [=[RP]=] policy.
 
@@ -5314,22 +5328,35 @@ In order to perform a [=registration ceremony=], the [=[RP]=] MUST proceed as fo
     is maintained in the
     IANA "WebAuthn Attestation Statement Format Identifiers" registry [[!IANA-WebAuthn-Registries]] established by [[!RFC8809]].
 
-1. Verify that |attStmt| is a correct [=attestation statement=], conveying a valid [=attestation signature=], by using the
-    [=attestation statement format=] |fmt|'s [=verification procedure=] given |attStmt|, |authData| and |hash|.
+<!-- Note: this next step is actually a top-level step, but bikeshed wanted it indented this much in order to render it as
+a numbered step. If outdented, it (today) is rendered as a bullet in the midst of a numbered list -->
+    <li id="reg-ceremony-verify-attestation">
+        Verify that |attStmt| is a correct [=attestation statement=], conveying a valid [=attestation signature=], by using the
+        [=attestation statement format=] |fmt|'s [=verification procedure=] given |attStmt|, |authData| and |hash|.
 
-    Note: Each [=attestation statement format=] specifies its own [=verification procedure=]. See [[#sctn-defined-attestation-formats]] for
-    the initially-defined formats, and [[!IANA-WebAuthn-Registries]] for the up-to-date list.
+        Note: Each [=attestation statement format=] specifies its own [=verification procedure=]. See [[#sctn-defined-attestation-formats]] for
+        the initially-defined formats, and [[!IANA-WebAuthn-Registries]] for the up-to-date list.
+    </li>
 
-1. If validation is successful, obtain a list of acceptable trust anchors (i.e. attestation root certificates)
-    for that attestation type and attestation statement format |fmt|, from a trusted source or from policy. For
-    example, the FIDO Metadata Service [[FIDOMetadataService]] provides one way to obtain such information, using the
-    <code>[=aaguid=]</code> in the <code>[=attestedCredentialData=]</code> in |authData|.
+<!-- Note: this next step is actually a top-level step, but bikeshed wanted it indented this much in order to render it as
+a numbered step. If outdented, it (today) is rendered as a bullet in the midst of a numbered list -->
+    <li id="reg-ceremony-attestation-trust-anchors">
+        If validation is successful, obtain a list of acceptable trust anchors (i.e. attestation root certificates)
+        for that attestation type and attestation statement format |fmt|, from a trusted source or from policy. For
+        example, the FIDO Metadata Service [[FIDOMetadataService]] provides one way to obtain such information, using the
+        <code>[=aaguid=]</code> in the <code>[=attestedCredentialData=]</code> in |authData|.
+    </li>
 
-1. Assess the attestation trustworthiness using the outputs of the [=verification procedure=] in step 21, as follows:
-        - If [=None|no attestation=] was provided, verify that [=None=] attestation is acceptable under [=[RP]=] policy.
-        - If [=self attestation=] was used, verify that [=self attestation=] is acceptable under [=[RP]=] policy.
-        - Otherwise, use the X.509 certificates returned as the [=attestation trust path=] from the [=verification procedure=]
-            to verify that the attestation public key either correctly chains up to an acceptable root certificate, or is itself an acceptable certificate (i.e., it and the root certificate obtained in Step 22 may be the same).
+<!-- Note: this next step is actually a top-level step, but bikeshed wanted it indented this much in order to render it as
+a numbered step. If outdented, it (today) is rendered as a bullet in the midst of a numbered list -->
+    <li id="reg-ceremony-assess-trust">
+        Assess the attestation trustworthiness using the outputs of the [=verification procedure=] in [step 21](#reg-ceremony-verify-attestation), as follows:
+            - If [=None|no attestation=] was provided, verify that [=None=] attestation is acceptable under [=[RP]=] policy.
+            - If [=self attestation=] was used, verify that [=self attestation=] is acceptable under [=[RP]=] policy.
+            - Otherwise, use the X.509 certificates returned as the [=attestation trust path=] from the [=verification procedure=]
+                to verify that the attestation public key either correctly chains up to an acceptable root certificate, or is itself an acceptable certificate
+                (i.e., it and the root certificate obtained in [Step 22](#reg-ceremony-attestation-trust-anchors) may be the same).
+    </li>
 
 1. Verify that the <code>[=credentialId=]</code> is &le; 1023 bytes. Credential IDs larger than this many bytes SHOULD cause the RP to fail this [=registration ceremony=].
 
@@ -5378,8 +5405,8 @@ In order to perform a [=registration ceremony=], the [=[RP]=] MUST proceed as fo
         </dl>
     </li>
 
-1. If the attestation statement |attStmt| successfully verified but is not trustworthy per step 23 above, the [=[RP]=] SHOULD fail
-    the [=registration ceremony=].
+1. If the attestation statement |attStmt| successfully verified but is not trustworthy per [step 23](#reg-ceremony-assess-trust) above,
+    the [=[RP]=] SHOULD fail the [=registration ceremony=].
 
     NOTE: However, if permitted by policy, the [=[RP]=] MAY register the [=credential ID=] and credential public key but treat the
         credential as one with [=self attestation=] (see [[#sctn-attestation-types]]). If doing so, the [=[RP]=] is asserting there
@@ -5387,7 +5414,8 @@ In order to perform a [=registration ceremony=], the [=[RP]=] MUST proceed as fo
         See [[FIDOSecRef]] and [[UAFProtocol]] for a more detailed discussion.
 
 Verification of [=attestation objects=] requires that the [=[RP]=] has a trusted method of determining acceptable trust anchors
-in step 22 above. Also, if certificates are being used, the [=[RP]=] MUST have access to certificate status information for the
+in [step 22](#reg-ceremony-attestation-trust-anchors) above.
+Also, if certificates are being used, the [=[RP]=] MUST have access to certificate status information for the
 intermediate CA certificates. The [=[RP]=] MUST also be able to build the attestation certificate chain if the client did not
 provide this chain in the attestation information.
 
@@ -6748,9 +6776,13 @@ However, [=authenticators=] that do not utilize [[!FIDO-CTAP]] do not necessaril
        1. If {{AuthenticationExtensionsLargeBlobInputs/support}} is present and has the value {{LargeBlobSupport/required}}:
            1. Set {{AuthenticationExtensionsLargeBlobOutputs/supported}} to [TRUE].
 
-               Note: This is in anticipation of an authenticator capable of storing large blobs becoming available. It occurs during extension processing in Step 12 of {{PublicKeyCredential/[[Create]]()}}. The {{AuthenticationExtensionsLargeBlobOutputs}} will be abandoned if no satisfactory authenticator becomes available.
+               Note: This is in anticipation of an authenticator capable of storing large blobs becoming available.
+               It occurs during extension processing in [Step 12](#CreateCred-process-extensions) of {{PublicKeyCredential/[[Create]]()}}.
+               The {{AuthenticationExtensionsLargeBlobOutputs}} will be abandoned if no satisfactory authenticator becomes available.
 
-           1. If a [=create/candidate authenticator=] becomes available (Step 20 of {{PublicKeyCredential/[[Create]]()}}) then, before evaluating any <code>|options|</code>, [=iteration/continue=] (i.e. ignore the [=create/candidate authenticator=]) if the [=create/candidate authenticator=] is not capable of storing large blobs.
+           1. If a [=create/candidate authenticator=] becomes available ([Step 20](#CreateCred-async-loop) of {{PublicKeyCredential/[[Create]]()}}) then,
+              before evaluating any <code>|options|</code>, [=iteration/continue=] (i.e. ignore the [=create/candidate authenticator=])
+              if the [=create/candidate authenticator=] is not capable of storing large blobs.
        1. Otherwise (i.e. {{AuthenticationExtensionsLargeBlobInputs/support}} is absent or has the value {{LargeBlobSupport/preferred}}):
            1. If an [=create/selected authenticator|authenticator is selected=] and the [=create/selected authenticator=] supports large blobs, set {{AuthenticationExtensionsLargeBlobOutputs/supported}} to [TRUE], and [FALSE] otherwise.
 
@@ -7183,7 +7215,10 @@ The [=devicePubKey=] extension adds the following [=struct/item=] to [=credentia
 
 ##### Registration (`create()`) ##### {#sctn-device-publickey-extension-verification-create}
 
-If the [=[RP]=] requested the `devicePubKey` extension in a {{CredentialsContainer/create()|navigator.credentials.create()}} call, then the below verification steps are performed in the context of <a href=#reg-ceremony-verify-extension-outputs>step 19</a> of [[#sctn-registering-a-new-credential]] using these variables established therein: |credential|, |clientExtensionResults|, |authData|, and |hash|. [=[RP]=] policy may specify whether a response without a `devicePubKey` extension output is acceptable.
+If the [=[RP]=] requested the `devicePubKey` extension in a {{CredentialsContainer/create()|navigator.credentials.create()}} call,
+then the below verification steps are performed in the context of [step 19](#reg-ceremony-verify-extension-outputs)
+of [[#sctn-registering-a-new-credential]] using these variables established therein: |credential|, |clientExtensionResults|, |authData|, and |hash|.
+[=[RP]=] policy may specify whether a response without a `devicePubKey` extension output is acceptable.
 
 1. Verify that {{AuthenticationExtensionsClientOutputs/devicePubKey}} member of |clientExtensionResults| exists, and contains the {{AuthenticationExtensionsDevicePublicKeyOutputs/signature}} field.
 
@@ -7218,14 +7253,17 @@ If the [=[RP]=] requested the `devicePubKey` extension in a {{CredentialsContain
         ::  The value of |attStmt|.
     </dl>
 
-    In <a href="#reg-ceremony-store-credential-record">step 26</a> of [[#sctn-registering-a-new-credential]],
+    In [step 26](#reg-ceremony-store-credential-record) of [[#sctn-registering-a-new-credential]],
     add this [=device-bound key record=] to the [$credential record/devicePubKeys$] member of the new [=credential record=].
 
 See also [[#sctn-device-publickey-extension-usage]] for further details.
 
 ##### Authentication (`get()`) ##### {#sctn-device-publickey-extension-verification-get}
 
-If the [=[RP]=] requested the `devicePubKey` extension in a {{CredentialsContainer/get()|navigator.credentials.get()}} call, then the below verification steps are performed in the context of <a href=#authn-ceremony-verify-extension-outputs>step 17</a> of [[#sctn-verifying-assertion]] using these variables established therein: |credential|, |clientExtensionResults|, |authData|, |hash|, and |credentialRecord|. [=[RP]=] policy may specify whether a response without a `devicePubKey` extension output is acceptable.
+If the [=[RP]=] requested the `devicePubKey` extension in a {{CredentialsContainer/get()|navigator.credentials.get()}} call,
+then the below verification steps are performed in the context of [step 17](#authn-ceremony-verify-extension-outputs)
+of [[#sctn-verifying-assertion]] using these variables established therein: |credential|, |clientExtensionResults|, |authData|, |hash|, and |credentialRecord|.
+[=[RP]=] policy may specify whether a response without a `devicePubKey` extension output is acceptable.
 
 1. Verify that {{AuthenticationExtensionsClientOutputs/devicePubKey}} member of |clientExtensionResults| exists, and contains the {{AuthenticationExtensionsDevicePublicKeyOutputs/signature}} field.
 
@@ -7330,7 +7368,7 @@ To <dfn abstract-op>Create a new device-bound key record</dfn>, perform the foll
             ::  The value of |attStmt|.
         </dl>
 
-        In <a href="#authn-ceremony-update-credential-record">step 22</a> of [[#sctn-verifying-assertion]],
+        In [step 22](#authn-ceremony-update-credential-record) of [[#sctn-verifying-assertion]],
         [=set/append=] this [=device-bound key record=] to |credentialRecord|.[$credential record/devicePubKeys$].
 
 
