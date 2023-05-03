@@ -1146,6 +1146,22 @@ The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "S
             Note: Modifying or removing [=list/items=] from the value returned from {{AuthenticatorAttestationResponse/getTransports()}}
             could negatively impact user experience, or even prevent use of the corresponding credential.
 
+        :   <dfn>uvInitialized</dfn>
+        ::  A Boolean value indicating whether any [=credential=] from this [=public key credential source=]
+            has had the [=authData/flags/UV=] [=flag=] set.
+
+            When this is [TRUE], the [=[RP]=] MAY consider the [=authData/flags/UV=] [=flag=]
+            as an [=authentication factor=] in [=authentication ceremonies=].
+            For example, a [=[RP]=] might skip a password prompt if [$credential record/uvInitialized$] is [TRUE]
+            and the [=authData/flags/UV=] [=flag=] is set, even when [=user verification=] was not required.
+
+            When this is [FALSE], including an [=authentication ceremony=] where it would be updated to [TRUE],
+            the [=authData/flags/UV=] [=flag=] MUST NOT be relied upon as an [=authentication factor=].
+            This is because the first time a [=public key credential source=] sets the [=authData/flags/UV=] [=flag=] to 1,
+            there is not yet any trust relationship established between the [=[RP]=] and the [=authenticator=]'s [=user verification=].
+            Therefore, updating [$credential record/uvInitialized$] from [FALSE] to [TRUE]
+            SHOULD require authorization by an additional [=authentication factor=] equivalent to WebAuthn [=user verification=].
+
         :   <dfn>backupEligible</dfn>
         ::  The value of the [=authData/flags/BE=] [=flag=] when the [=public key credential source=] was created.
 
@@ -1412,6 +1428,7 @@ The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "S
     through various [=authorization gesture=] modalities; for example, through a touch plus pin code, password entry, or
     [=biometric recognition=] (e.g., presenting a fingerprint) [[ISOBiometricVocabulary]]. The intent is to
     distinguish individual users.
+    See also [[#sctn-authentication-factor-capability]].
 
     Note that [=user verification=] does not give the [=[RP]=] a concrete identification of the user,
     but when 2 or more ceremonies with [=user verification=] have been done with that [=credential=]
@@ -5384,6 +5401,9 @@ a numbered step. If outdented, it (today) is rendered as a bullet in the midst o
             :   [$credential record/signCount$]
             ::  <code>|authData|.[=authData/signCount=]</code>.
 
+            :   [$credential record/uvInitialized$]
+            ::  The value of the [=authData/flags/UV=] [=flag=] in |authData|.
+
             :   [$credential record/transports$]
             ::  The value returned from <code>|response|.{{AuthenticatorAttestationResponse/getTransports()}}</code>.
 
@@ -5505,8 +5525,13 @@ a numbered step. If outdented, it (today) is rendered as a bullet in the midst o
 
 1. Verify that the [=UP=] bit of the <code>[=flags=]</code> in |authData| is set.
 
-1. If the [=[RP]=] requires [=user verification=] for this assertion,
+1. Determine whether [=user verification=] is required for this assertion.
+    [=User verification=] SHOULD be required if, and only if,
+    <code>|options|.{{PublicKeyCredentialRequestOptions/userVerification}}</code> is set to {{UserVerificationRequirement/required}}.
+
+    If [=user verification=] was determined to be required,
     verify that the [=authData/flags/UV=] bit of the <code>[=flags=]</code> in |authData| is set.
+    Otherwise, ignore the value of the [=authData/flags/UV=] [=flag=].
 
 1. If the credential [=backup state=] is used as part of [=[RP]=] business logic or policy,
     let |currentBe| and |currentBs| be the values of the [=authData/flags/BE=] and [=authData/flags/BS=] bits, respectively,
@@ -5584,11 +5609,19 @@ a numbered step. If outdented, it (today) is rendered as a bullet in the midst o
 
             1. Update <code>|credentialRecord|.[$credential record/signCount$]</code> to the value of |authData|.<code>[=authData/signCount=]</code>.
             1. Update <code>|credentialRecord|.[$credential record/backupState$]</code> to the value of |currentBs|.
+            1. If <code>|credentialRecord|.[$credential record/uvInitialized$]</code> is [FALSE],
+                update it to the value of the [=authData/flags/UV=] bit in the [=flags=] in |authData|.
+                This change SHOULD require authorization by an additional [=authentication factor=] equivalent to WebAuthn [=user verification=];
+                if not authorized, skip this step.
+
             1. OPTIONALLY, if <code>|response|.{{AuthenticatorAssertionResponse/attestationObject}}</code> is present,
                 update <code>|credentialRecord|.[$credential record/attestationObject$]</code>
                 to the value of <code>|response|.{{AuthenticatorAssertionResponse/attestationObject}}</code>
                 and update <code>|credentialRecord|.[$credential record/attestationClientDataJSON$]</code>
                 to the value of <code>|response|.{{AuthenticatorResponse/clientDataJSON}}</code>.
+
+        If the [=[RP]=] performs additional security checks beyond these WebAuthn [=authentication ceremony=] steps,
+        the above state updates SHOULD be deferred to after those additional checks are completed successfully.
     </li>
 
 1. If all the above steps are successful, continue with the [=authentication ceremony=] as appropriate. Otherwise, fail the
