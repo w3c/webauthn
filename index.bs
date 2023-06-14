@@ -5317,7 +5317,13 @@ In order to perform a [=registration ceremony=], the [=[RP]=] MUST proceed as fo
 1. Verify that the value of <code>|C|.{{CollectedClientData/challenge}}</code> equals
     the base64url encoding of <code>|options|.{{PublicKeyCredentialCreationOptions/challenge}}</code>.
 
-1. Verify that the value of <code>|C|.{{CollectedClientData/origin}}</code> matches the [=[RP]=]'s [=origin=].
+<!-- Note: this next step is actually a top-level step, but bikeshed wanted it indented this much in order to render it as
+a numbered step. If outdented, it (today) is rendered as a bullet in the midst of a numbered list :-/
+-->
+    <li id='rp-op-registering-a-new-credential-step-origin'>
+      Verify that the value of <code>|C|.{{CollectedClientData/origin}}</code> is an [=origin=] expected by the [=[RP]=].
+      See [[#sctn-validating-origin]] for guidance.
+    </li>
 
 1. If <code>|C|.{{CollectedClientData/topOrigin}}</code> is present:
 
@@ -5326,6 +5332,7 @@ In order to perform a [=registration ceremony=], the [=[RP]=] MUST proceed as fo
 
     1. Verify that the value of <code>|C|.{{CollectedClientData/topOrigin}}</code> matches the [=origin=] of a page
         that the [=[RP]=] expects to be sub-framed within.
+        See [[#sctn-validating-origin]] for guidance.
 
 1. Let |hash| be the result of computing a hash over <code>|response|.{{AuthenticatorResponse/clientDataJSON}}</code> using SHA-256.
 
@@ -5536,7 +5543,8 @@ In order to perform an [=authentication ceremony=], the [=[RP]=] MUST proceed as
 a numbered step. If outdented, it (today) is rendered as a bullet in the midst of a numbered list :-/
 -->
     <li id='rp-op-verifying-assertion-step-origin'>
-      Verify that the value of <code>|C|.{{CollectedClientData/origin}}</code> matches the [=[RP]=]'s [=origin=].
+      Verify that the value of <code>|C|.{{CollectedClientData/origin}}</code> is an [=origin=] expected by the [=[RP]=].
+      See [[#sctn-validating-origin]] for guidance.
     </li>
 
 1. If <code>|C|.{{CollectedClientData/topOrigin}}</code> is present:
@@ -5545,6 +5553,7 @@ a numbered step. If outdented, it (today) is rendered as a bullet in the midst o
 
     1. Verify that the value of <code>|C|.{{CollectedClientData/topOrigin}}</code> matches the [=origin=] of a page
         that the [=[RP]=] expects to be sub-framed within.
+        See [[#sctn-validating-origin]] for guidance.
 
 <!-- Note: this next step is actually a top-level step, but bikeshed wanted it indented this much in order to render it as
 a numbered step. If outdented, it (today) is rendered as a bullet in the midst of a numbered list :-/
@@ -8330,6 +8339,60 @@ but is not an exhaustive list.
     then the [=[RP]=] MUST NOT serve untrusted code on any allowed subdomain of
     [=determines the set of origins on which the public key credential may be exercised|origins=]
     within the [=scope=] of its [=public key credentials=].
+
+
+### Validating the origin of a credential ### {#sctn-validating-origin}
+
+When [registering a credential](#rp-op-registering-a-new-credential-step-origin) and
+when [verifying an assertion](#rp-op-verifying-assertion-step-origin),
+the [=[RP]=] MUST validate the {{CollectedClientData/origin}} member of the [=client data=].
+
+Validation MAY be performed by exact string matching or any other method as needed by the [=[RP]=].
+For example:
+
+- A web application served only at <code>https://example.org</code> SHOULD require
+    {{CollectedClientData/origin}} to exactly equal <code>https://example.org</code>.
+
+    This is the simplest case, where {{CollectedClientData/origin}} is expected
+    to be the string <code>https://</code> followed by the [=RP ID=].
+
+- A web application served at a small number of domains might require
+    {{CollectedClientData/origin}} to exactly equal some element of a list of allowed origins,
+    for example the list <code>["https://example.org", "https://login.example.org"]</code>.
+
+- A web application served at a large set of domains that changes often might parse
+    {{CollectedClientData/origin}} structurally and require that the URL scheme is <code>https</code>
+    and that the authority equals or is any subdomain of the [=RP ID=] - for example,
+    <code>example.org</code> or any subdomain of <code>example.org</code>).
+
+    Note: See [[#sctn-code-injection]] for a discussion of the risks of allowing any subdomain of the [=RP ID=].
+
+- A web application with a companion native application might allow
+    {{CollectedClientData/origin}} to be an operating system dependent
+    identifier for the native application. For example, such a [=[RP]=] might require that
+    {{CollectedClientData/origin}} exactly equals some element of the list
+    <code>["https://example.org", "example-os:appid:204ffa1a5af110ac483f131a1bef8a841a7adb0d8d135908bbd964ed05d2653b"]</code>.
+
+In order to prevent [=man-in-the-middle attacks=],
+the [=[RP]=] MUST NOT accept unexpected values of {{CollectedClientData/origin}},
+as doing so could allow a malicious website to obtain valid [=credentials=].
+See [[#sctn-code-injection]] for further discussion.
+
+Similar considerations apply when validating the {{CollectedClientData/topOrigin}} member of the [=client data=].
+When {{CollectedClientData/topOrigin}} is present, the [=[RP]=] MUST validate that its value is expected.
+This validation MAY be performed by exact string matching or any other method as needed by the [=[RP]=].
+For example:
+
+- A web application that does not wish to be embedded in a cross-origin <{iframe}>
+    might require {{CollectedClientData/topOrigin}} to exactly equal {{CollectedClientData/origin}}.
+
+- A web application that wishes to be embedded in a cross-origin <{iframe}> on a small number of domains
+    might require {{CollectedClientData/topOrigin}} to exactly equal some element of a list of allowed origins,
+    for example the list <code>["https://example-partner1.org", "https://login.partner2-example.org"]</code>.
+
+- A web application that wishes to be embedded in a cross-origin <{iframe}> on a large number of domains
+    might allow any value of {{CollectedClientData/topOrigin}}, or use a dynamic procedure
+    to determine whether a given {{CollectedClientData/topOrigin}} value is allowed for a particular ceremony.
 
 
 # Privacy Considerations # {#sctn-privacy-considerations}
