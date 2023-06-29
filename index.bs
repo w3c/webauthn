@@ -1270,7 +1270,7 @@ The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "S
 
         :   <dfn>userHandle</dfn>
         ::  The [=user handle=] associated when this [=public key credential source=] was created. This [=struct/item=] is
-            nullable.
+            nullable, however [=user handle=] MUST always be populated for [=discoverable credentials=].
 
         :   <dfn>otherUI</dfn>
         ::  OPTIONAL other information used by the [=authenticator=] to inform its UI. For example, this might include the user's
@@ -1400,7 +1400,7 @@ The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "S
 :: A user handle is an identifier for a [=user account=], specified by the [=[RP]=] as
     <code>{{PublicKeyCredentialCreationOptions/user}}.{{PublicKeyCredentialUserEntity/id}}</code>
     during [=registration=].
-    [=Discoverable credentials=] store this identifier and return it as
+    [=Discoverable credentials=] store this identifier and MUST return it as
     <code>{{PublicKeyCredential/response}}.{{AuthenticatorAssertionResponse/userHandle}}</code>
     in [=authentication ceremonies=] started with an [=list/empty=]
     <code>{{PublicKeyCredentialRequestOptions/allowCredentials}}</code> argument.
@@ -1408,12 +1408,14 @@ The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "S
     The main use of the [=user handle=] is to identify the [=user account=] in such [=authentication ceremonies=],
     but the [=credential ID=] could be used instead.
     The main differences are
-    that the [=credential ID=] is chosen by the [=authenticator=] and unique for each credential,
+    that the [=credential ID=] is chosen by the [=authenticator=] and is unique for each credential,
     while the [=user handle=] is chosen by the [=[RP]=] and ought to be the same
     for all [=credentials=] registered to the same [=user account=].
 
     [=Authenticators=] [=credentials map|map=] pairs of [=RP ID=] and [=user handle=] to [=public key credential sources=].
-    As a consequence, an authenticator will store at most one [=discoverable credential=] per [=user handle=] per [=[RP]=].
+    As a consequence, an authenticator will store at most one [=discoverable credential=] per [=user handle=] per [=[RP]=]. Therefore 
+    a secondary use of the [=user handle=] is to allow [=authenticators=] to know when to replace any existing [=discoverable credential=]
+    with a new one during the [=registration ceremony=].
 
     A user handle is an opaque [=byte sequence=] with a maximum size of 64 bytes, and is not meant to be displayed to the user.
     It MUST NOT contain personally identifying information, see [[#sctn-user-handle-privacy]].
@@ -2508,6 +2510,8 @@ When this method is invoked, the user agent MUST execute the following algorithm
             1. If |credentialIdFilter| [=list/is not empty=] and |credentialIdFilter| does not contain an item whose
                 {{PublicKeyCredentialDescriptor/id}}'s value is set to the value of [=credentialIdResult=], [=continue=].
 
+            1. If |credentialIdFilter| [=list/is empty=] and [=userHandleResult=] is null, [=continue=].
+
             1.  Let |constructAssertionAlg| be an algorithm that takes a [=global object=]
                 |global|, and whose steps are:
 
@@ -2994,7 +2998,9 @@ optionally evidence of [=user consent=] to a specific transaction.
 
     :   <dfn>userHandle</dfn>
     ::  This attribute contains the [=user handle=] returned from the authenticator, or null if the authenticator did not return a
-        [=user handle=]. See [[#sctn-op-get-assertion]].
+        [=user handle=]. See [[#sctn-op-get-assertion]]. The authenticator MUST always return a [=user handle=] if
+        the {{PublicKeyCredentialRequestOptions/allowCredentials}} option used in the [=authentication ceremony=] is [=list/is empty|empty=], 
+        and MAY return one otherwise.
 
     :   <dfn>attestationObject</dfn>
     ::  This OPTIONAL attribute contains an [=attestation object=], if the [=authenticator=] supports attestation in assertions. The [=attestation object=], if present, includes an [=attestation statement=]. Unlike the {{AuthenticatorAttestationResponse/attestationObject}} in an {{AuthenticatorAttestationResponse}}, it does not contain an `authData` key because the [=authenticator data=] is provided directly in an {{AuthenticatorAssertionResponse}} structure. For more details on attestation, see [[#sctn-attestation]], [[#sctn-attestation-in-assertions]], [[#sctn-generating-an-attestation-object]], and [Figure 6](#fig-attStructs).
@@ -4780,8 +4786,8 @@ a numbered step. If outdented, it (today) is rendered as a bullet in the midst o
             - The attestation object, if an [=attestation object=] was created for this assertion.
             - |selectedCredential|.[=public key credential source/userHandle=]
 
-                    Note: the returned [=public key credential source/userHandle=] value may be `null`, see:
-                        [=assertionCreationData/userHandleResult=].
+                    Note: In cases where |allowCredentialDescriptorList| was supplied the returned 
+                    [=public key credential source/userHandle=] value may be `null`, see: [=assertionCreationData/userHandleResult=].
     </li>
 
 If the [=authenticator=] cannot find any [=public key credential|credential=] corresponding to the specified [=[RP]=] that
