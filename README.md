@@ -5,9 +5,9 @@ This is the repository for the W3C WebAuthn Working Group, producing the draft *
 
 * [The editor's copy is available at https://w3c.github.io/webauthn/](https://w3c.github.io/webauthn/), or in the [`gh-pages` branch of this repository](https://github.com/w3c/webauthn/blob/gh-pages/index.html).
   - The current *offically-published working-draft snapshot* [is here: https://www.w3.org/TR/webauthn/](https://www.w3.org/TR/webauthn/).
-* [The build history is available at Travis-CI.org](https://travis-ci.org/w3c/webauthn/builds)
+* [The build history is available from the repo Actions tab](https://github.com/w3c/webauthn/actions)
 * [W3C WebAuthn Blog](https://www.w3.org/blog/webauthn/)
-* [Web platform tests repository](https://github.com/w3c/web-platform-tests/tree/master/webauthn)
+* [Web platform tests repository](https://github.com/web-platform-tests/wpt/tree/master/webauthn)
 
 # Contributing
 
@@ -29,21 +29,19 @@ $ bikeshed watch
 
 # Bikeshed Installation and Setup
 
-You will need to have the Python tools `pygments` and `bikeshed` to build the draft. Pygments can be obtained via `pip`, but Bikeshed will need to be downloaded with `git`:
+See the full instructions at https://tabatkins.github.io/bikeshed/#installing.
+
+You will need to have the Python 3.7 or later installed. Once you do have Python 3.7 or later installed, to install Bikeshed itself, run the following:
 
 ```
-git clone --depth=1 --branch=master https://github.com/tabatkins/bikeshed.git ./bikeshed
-pip install pygments
-pip install --editable ./bikeshed
-cp -R .spec-data/* ./bikeshed/bikeshed/spec-data
+pip3 install bikeshed && bikeshed update
 ```
 
-Alternatively, you can use the [Vagrant VM with `bikeshed` already installed](vagrant/bikeshed).
-
+When that is completed, Bikeshed should be installed, and the `bikeshed` command should work in your shell.
 
 # Continuous Integration & Branches
 
-This repository uses `.deploy-output.sh` to generate the Editor's Draft on the `gh-pages` branch upon every merge to `master`. In order to prevent failed merges during continuous integration, the formatted Editor's Draft should not be checked in to `master`, and it is in the `.gitignore` file.
+https://w3c.github.io/webauthn/ is autopublished from the `gh-pages` branch on every push to the `main` branch, using https://github.com/w3c/webauthn/blob/main/.github/workflows/build-validate-publish.yml to configure the autopublishing behavior.
 
 # Creating a new Working Draft
 
