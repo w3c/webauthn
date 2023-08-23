@@ -6758,9 +6758,6 @@ Note: this extension may be implemented for [=authenticators=] that do not use [
     };
 
     dictionary AuthenticationExtensionsPRFImportCryptoKeyParams {
-        required KeyFormat format;
-        required AlgorithmIdentifier algorithm;
-        required boolean extractable;
         required sequence<KeyUsage> keyUsages;
     };
 
@@ -6777,17 +6774,20 @@ Note: this extension may be implemented for [=authenticators=] that do not use [
         ::  A record mapping [=base64url encoding|base64url encoded=] [=credential IDs=] to PRF inputs to evaluate for that credential. Only applicable during [=assertions=] when {{PublicKeyCredentialRequestOptions/allowCredentials}} is not empty.
 
         :   <dfn>importCryptoKey</dfn>
-        ::  Arguments for the [=client=] to invoke {{SubtleCrypto/importKey}}, along with the PRF result as the `keyData` argument.
+        ::  Arguments for the [=client=] to invoke {{SubtleCrypto/importKey}}.
             If present, the extension outputs will be {{Promise}}s resolving to {{CryptoKey}} values;
             if not present, the extension outputs will be {{BufferSource}} values.
+
+            The arguments in the {{SubtleCrypto/importKey}} invocation will be:
+            - `format`: `"raw"`
+            - `keyData`: The PRF output.
+            - `algorithm`: `"HKDF"`
+            - `extractable`: [FALSE]
+            - `keyUsages`: <code>{{importCryptoKey}}.{{AuthenticationExtensionsPRFImportCryptoKeyParams/keyUsages}}</code>
 
             The client ensures domain separation between {{BufferSource}} and {{CryptoKey}} results,
             so that an extension input requesting unextractable {{CryptoKey}} values cannot be "downgraded"
             to requesting the same results as extractable {{BufferSource}} values.
-            For the same reason, the client also ensures domain separation between the [TRUE] and [FALSE] values
-            of <code>{{importCryptoKey}}.{{AuthenticationExtensionsPRFImportCryptoKeyParams/extractable}}</code>.
-
-            Note: The {{KeyFormat}}, {{AlgorithmIdentifier}} and {{KeyUsage}} types are defined in [[!WebCryptoApi]].
     </div>
 
 : Client extension processing ([=registration extension|registration=])
@@ -6796,35 +6796,31 @@ Note: this extension may be implemented for [=authenticators=] that do not use [
        1. Set `hmac-secret` to [TRUE] in the authenticator extensions input.
        1. If {{AuthenticationExtensionsPRFInputs/eval}} is present and a future extension to [[FIDO-CTAP]] permits evaluation of the PRF at creation time, configure `hmac-secret` inputs accordingly:
 
-           * Let |prefix| be a byte string as follows:
-             * If {{AuthenticationExtensionsPRFInputs/importCryptoKey}} is not present, let |prefix| be <code>UTF8Encode("WebAuthn PRF")</code>.
-             * If {{AuthenticationExtensionsPRFInputs/importCryptoKey}} is present and <code>{{AuthenticationExtensionsPRFInputs/importCryptoKey}}.{{AuthenticationExtensionsPRFImportCryptoKeyParams/extractable}}</code> is [TRUE], let |prefix| be <code>UTF8Encode("WebAuthn PRF:CryptoKey")</code>.
-             * If {{AuthenticationExtensionsPRFInputs/importCryptoKey}} is present and <code>{{AuthenticationExtensionsPRFInputs/importCryptoKey}}.{{AuthenticationExtensionsPRFImportCryptoKeyParams/extractable}}</code> is [FALSE], let |prefix| be <code>UTF8Encode("WebAuthn PRF:CryptoKey:Extractable")</code>.
+           * Let |prefix| be a byte string as follows.
+             If {{AuthenticationExtensionsPRFInputs/importCryptoKey}} is present, let |prefix| be <code>UTF8Encode("WebAuthn PRF:CryptoKey")</code>.
+             Otherwise, let |prefix| be <code>UTF8Encode("WebAuthn PRF")</code>.
            * Let `salt1` be the value of <code>SHA-256(|prefix| || 0x00 || {{AuthenticationExtensionsPRFInputs/eval}}.{{AuthenticationExtensionsPRFValues/first}})</code>.
            * If <code>{{AuthenticationExtensionsPRFInputs/eval}}.{{AuthenticationExtensionsPRFValues/second}}</code> is present, let `salt2` be the value of <code>SHA-256(|prefix| || 0x00 || {{AuthenticationExtensionsPRFInputs/eval}}.{{AuthenticationExtensionsPRFValues/second}})</code>.
        1. Set {{AuthenticationExtensionsPRFOutputs/enabled}} to the value of `hmac-secret` in the authenticator extensions output. If not present, set {{AuthenticationExtensionsPRFOutputs/enabled}} to [FALSE].
-       1. If {{AuthenticationExtensionsPRFInputs/importCryptoKey}} is not present:
-           1. Set {{AuthenticationExtensionsPRFOutputs/results}} to the decrypted PRF result(s), if any.
+       1. If {{AuthenticationExtensionsPRFInputs/importCryptoKey}}
+           <dl class="switch">
+               : is not present,
+               :: Set {{AuthenticationExtensionsPRFOutputs/results}} to the decrypted PRF result(s), if any.
 
-       1. If {{AuthenticationExtensionsPRFInputs/importCryptoKey}} is present:
-           1. Let |firstOutput| and |secondOutput| be {{BufferSource}} values containing the respective decrypted PRF result(s), if any.
-           1. Let |subtleCrypto| be an instance of {{SubtleCrypto}}.
-           1. If |firstOutput| is present, set
-             <code>{{AuthenticationExtensionsPRFOutputs/results}}.{{AuthenticationExtensionsPRFValues/first}}</code>
-             to the result of invoking <code>|subtleCrypto|.{{SubtleCrypto/importKey}}</code> with the arguments
-             <code>{{AuthenticationExtensionsPRFInputs/importCryptoKey}}.{{AuthenticationExtensionsPRFImportCryptoKeyParams/format}}</code>,
-             |firstOutput|,
-             <code>{{AuthenticationExtensionsPRFInputs/importCryptoKey}}.{{AuthenticationExtensionsPRFImportCryptoKeyParams/algorithm}}</code>,
-             <code>{{AuthenticationExtensionsPRFInputs/importCryptoKey}}.{{AuthenticationExtensionsPRFImportCryptoKeyParams/extractable}}</code> and
-             <code>{{AuthenticationExtensionsPRFInputs/importCryptoKey}}.{{AuthenticationExtensionsPRFImportCryptoKeyParams/keyUsages}}</code>.
-           1. If |secondOutput| is present, set
-             <code>{{AuthenticationExtensionsPRFOutputs/results}}.{{AuthenticationExtensionsPRFValues/second}}</code>
-             to the result of invoking <code>|subtleCrypto|.{{SubtleCrypto/importKey}}</code> with the arguments
-             <code>{{AuthenticationExtensionsPRFInputs/importCryptoKey}}.{{AuthenticationExtensionsPRFImportCryptoKeyParams/format}}</code>,
-             |secondOutput|,
-             <code>{{AuthenticationExtensionsPRFInputs/importCryptoKey}}.{{AuthenticationExtensionsPRFImportCryptoKeyParams/algorithm}}</code>,
-             <code>{{AuthenticationExtensionsPRFInputs/importCryptoKey}}.{{AuthenticationExtensionsPRFImportCryptoKeyParams/extractable}}</code> and
-             <code>{{AuthenticationExtensionsPRFInputs/importCryptoKey}}.{{AuthenticationExtensionsPRFImportCryptoKeyParams/keyUsages}}</code>.
+               : is present,
+               ::  1. Let |firstOutput| and |secondOutput| be {{BufferSource}} values containing the respective decrypted PRF result(s), if any.
+                   1. Let |subtleCrypto| be an instance of {{SubtleCrypto}}.
+                   1. If |firstOutput| is present, set
+                      <code>{{AuthenticationExtensionsPRFOutputs/results}}.{{AuthenticationExtensionsPRFValues/first}}</code>
+                      to the result of invoking <code>|subtleCrypto|.{{SubtleCrypto/importKey}}</code> with the arguments
+                      <code>"raw"</code>, |firstOutput|, <code>"HKDF"</code>, [FALSE] and
+                      <code>{{AuthenticationExtensionsPRFInputs/importCryptoKey}}.{{AuthenticationExtensionsPRFImportCryptoKeyParams/keyUsages}}</code>.
+                   1. If |secondOutput| is present, set
+                      <code>{{AuthenticationExtensionsPRFOutputs/results}}.{{AuthenticationExtensionsPRFValues/second}}</code>
+                      to the result of invoking <code>|subtleCrypto|.{{SubtleCrypto/importKey}}</code> with the arguments
+                      <code>"raw"</code>, |secondOutput|, <code>"HKDF"</code>, [FALSE] and
+                      <code>{{AuthenticationExtensionsPRFInputs/importCryptoKey}}.{{AuthenticationExtensionsPRFImportCryptoKeyParams/keyUsages}}</code>.
+           </dl>
 
 Note: If PRF results are obtained during [=registration=] then the [=[RP]=] MUST inspect the [=UV=] bit in the [=flags=] of the response in order to determine the correct value of {{PublicKeyCredentialRequestOptions/userVerification}} for future [=assertions=]. Otherwise results from [=assertions=] may be inconsistent with those from the [=registration=].
 
@@ -6838,34 +6834,26 @@ Note: If PRF results are obtained during [=registration=] then the [=[RP]=] MUST
           1. If |ev| is null and {{AuthenticationExtensionsPRFInputs/eval}} is present, then let |ev| be the value of {{AuthenticationExtensionsPRFInputs/eval}}.
       1. If |ev| is not null:
 
-          1. Let |prefix| be a byte string as follows:
-            - If {{AuthenticationExtensionsPRFInputs/importCryptoKey}} is not present, let |prefix| be <code>UTF8Encode("WebAuthn PRF")</code>.
-            - If {{AuthenticationExtensionsPRFInputs/importCryptoKey}} is present and <code>{{AuthenticationExtensionsPRFInputs/importCryptoKey}}.{{AuthenticationExtensionsPRFImportCryptoKeyParams/extractable}}</code> is [TRUE], let |prefix| be <code>UTF8Encode("WebAuthn PRF:CryptoKey")</code>.
-            - If {{AuthenticationExtensionsPRFInputs/importCryptoKey}} is present and <code>{{AuthenticationExtensionsPRFInputs/importCryptoKey}}.{{AuthenticationExtensionsPRFImportCryptoKeyParams/extractable}}</code> is [FALSE], let |prefix| be <code>UTF8Encode("WebAuthn PRF:CryptoKey:Extractable")</code>.
+          1. Let |prefix| be a byte string as follows.
+            If {{AuthenticationExtensionsPRFInputs/importCryptoKey}} is present, let |prefix| be <code>UTF8Encode("WebAuthn PRF:CryptoKey")</code>.
+            Otherwise, let |prefix| be <code>UTF8Encode("WebAuthn PRF")</code>.
           1. Let `salt1` be the value of <code>SHA-256(|prefix| || 0x00 || |ev|.{{AuthenticationExtensionsPRFValues/first}})</code>.
           1. If <code>|ev|.{{AuthenticationExtensionsPRFValues/second}}</code> is present, let `salt2` be the value of <code>SHA-256(|prefix| || 0x00 || |ev|.{{AuthenticationExtensionsPRFValues/second}})</code>.
           1. Send an `hmac-secret` extension to the [=authenticator=] using the values of `salt1` and, if set, `salt2` as the parameters of the same name in that process.
           1. If {{AuthenticationExtensionsPRFInputs/importCryptoKey}} is not present:
-              1. Set {{AuthenticationExtensionsPRFOutputs/results}} to the decrypted PRF result(s), if any.
-
+              1.  Set {{AuthenticationExtensionsPRFOutputs/results}} to the decrypted PRF result(s), if any.
           1. If {{AuthenticationExtensionsPRFInputs/importCryptoKey}} is present:
               1. Let |firstOutput| and |secondOutput| be {{BufferSource}} values containing the respective decrypted PRF result(s), if any.
               1. Let |subtleCrypto| be an instance of {{SubtleCrypto}}.
               1. If |firstOutput| is present, set
                   <code>{{AuthenticationExtensionsPRFOutputs/results}}.{{AuthenticationExtensionsPRFValues/first}}</code>
                   to the result of invoking <code>|subtleCrypto|.{{SubtleCrypto/importKey}}</code> with the arguments
-                  <code>{{AuthenticationExtensionsPRFInputs/importCryptoKey}}.{{AuthenticationExtensionsPRFImportCryptoKeyParams/format}}</code>,
-                  |firstOutput|,
-                  <code>{{AuthenticationExtensionsPRFInputs/importCryptoKey}}.{{AuthenticationExtensionsPRFImportCryptoKeyParams/algorithm}}</code>,
-                  <code>{{AuthenticationExtensionsPRFInputs/importCryptoKey}}.{{AuthenticationExtensionsPRFImportCryptoKeyParams/extractable}}</code> and
+                  <code>"raw"</code>, |firstOutput|, <code>"HKDF"</code>, [FALSE] and
                   <code>{{AuthenticationExtensionsPRFInputs/importCryptoKey}}.{{AuthenticationExtensionsPRFImportCryptoKeyParams/keyUsages}}</code>.
               1. If |secondOutput| is present, set
                   <code>{{AuthenticationExtensionsPRFOutputs/results}}.{{AuthenticationExtensionsPRFValues/second}}</code>
                   to the result of invoking <code>|subtleCrypto|.{{SubtleCrypto/importKey}}</code> with the arguments
-                  <code>{{AuthenticationExtensionsPRFInputs/importCryptoKey}}.{{AuthenticationExtensionsPRFImportCryptoKeyParams/format}}</code>,
-                  |secondOutput|,
-                  <code>{{AuthenticationExtensionsPRFInputs/importCryptoKey}}.{{AuthenticationExtensionsPRFImportCryptoKeyParams/algorithm}}</code>,
-                  <code>{{AuthenticationExtensionsPRFInputs/importCryptoKey}}.{{AuthenticationExtensionsPRFImportCryptoKeyParams/extractable}}</code> and
+                  <code>"raw"</code>, |secondOutput|, <code>"HKDF"</code>, [FALSE] and
                   <code>{{AuthenticationExtensionsPRFInputs/importCryptoKey}}.{{AuthenticationExtensionsPRFImportCryptoKeyParams/keyUsages}}</code>.
 
 : Authenticator extension input / processing / output
