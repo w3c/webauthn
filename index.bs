@@ -1903,6 +1903,8 @@ a numbered step. If outdented, it (today) is rendered as a bullet in the midst o
     [=authenticators=] can be <a href="https://en.wikipedia.org/w/index.php?title=Hot_plug">hot-plugged</a> into (e.g., via USB)
     or discovered (e.g., via NFC or Bluetooth) by the [=client=] by various mechanisms, or permanently built into the [=client=].
 
+1. Consider the value of {{PublicKeyCredentialCreationOptions/hints}} and craft the user interface accordingly, as the user-agent sees fit.
+
 1. Start |lifetimeTimer|.
 
 <!-- Note: this next step is actually a top-level step, but bikeshed wanted it indented this much in order to render it as
@@ -2371,6 +2373,8 @@ When this method is invoked, the user agent MUST execute the following algorithm
     or discovered (e.g., via NFC or Bluetooth) by the [=client=] by various mechanisms, or permanently built into the [=client=].
 
 1. Let |silentlyDiscoveredCredentials| be a new [=map=] whose [=map/entry|entries=] are of the form: [=DiscoverableCredentialMetadata=] → [=authenticator=].
+
+1. Consider the value of {{PublicKeyCredentialRequestOptions/hints}} and craft the user interface accordingly, as the user-agent sees fit.
 
 1. Start |lifetimeTimer|.
 
@@ -2845,6 +2849,7 @@ value and terminate the operation.
         unsigned long                                           timeout;
         sequence<PublicKeyCredentialDescriptorJSON>             excludeCredentials = [];
         AuthenticatorSelectionCriteria                          authenticatorSelection;
+        sequence<DOMString>                                     hints = [];
         DOMString                                               attestation = "none";
         sequence<DOMString>                                     attestationFormats = [];
         AuthenticationExtensionsClientInputsJSON                extensions;
@@ -2902,6 +2907,7 @@ value and terminate the operation.
         DOMString                                               rpId;
         sequence<PublicKeyCredentialDescriptorJSON>             allowCredentials = [];
         DOMString                                               userVerification = "preferred";
+        sequence<DOMString>                                     hints = [];
         DOMString                                               attestation = "none";
         sequence<DOMString>                                     attestationFormats = [];
         AuthenticationExtensionsClientInputsJSON                extensions;
@@ -3072,6 +3078,7 @@ optionally evidence of [=user consent=] to a specific transaction.
         unsigned long                                timeout;
         sequence<PublicKeyCredentialDescriptor>      excludeCredentials = [];
         AuthenticatorSelectionCriteria               authenticatorSelection;
+        sequence<DOMString>                          hints = [];
         DOMString                                    attestation = "none";
         sequence<DOMString>                          attestationFormats = [];
         AuthenticationExtensionsClientInputs         extensions;
@@ -3140,6 +3147,9 @@ optionally evidence of [=user consent=] to a specific transaction.
     ::  The [=[RP]=] MAY use this OPTIONAL member to specify capabilities and settings
         that the [=authenticator=] MUST or SHOULD satisfy to participate in the {{CredentialsContainer/create()}} operation.
         See [[#dictionary-authenticatorSelection]].
+
+    :   <dfn>hints</dfn>
+    ::  This OPTIONAL member contains zero or more elements from {{PublicKeyCredentialHints}} to guide the user agent in interacting with the user. Note that the elements have type `DOMString` despite being taken from that enumeration. See [[#sct-domstring-backwards-compatibility]].
 
     :   <dfn>attestation</dfn>
     ::  The [=[RP]=] MAY use this OPTIONAL member to specify a preference regarding [=attestation conveyance=].
@@ -3461,6 +3471,7 @@ an assertion. Its {{PublicKeyCredentialRequestOptions/challenge}} member MUST be
         USVString                            rpId;
         sequence<PublicKeyCredentialDescriptor> allowCredentials = [];
         DOMString                            userVerification = "preferred";
+        sequence<DOMString>                  hints = [];
         DOMString                            attestation = "none";
         sequence<DOMString>                  attestationFormats = [];
         AuthenticationExtensionsClientInputs extensions;
@@ -3523,6 +3534,9 @@ an assertion. Its {{PublicKeyCredentialRequestOptions/challenge}} member MUST be
         {{CredentialsContainer/get()}} operation. The value SHOULD be a member of {{UserVerificationRequirement}} but [=client platforms=] MUST ignore unknown values, treating an unknown value as if the [=map/exist|member does not exist=]. Eligible authenticators are filtered to only those capable of satisfying this requirement.
 
         See {{UserVerificationRequirement}} for the description of {{AuthenticatorSelectionCriteria/userVerification}}'s values and semantics.
+
+    :   <dfn>hints</dfn>
+    ::  This OPTIONAL member contains zero or more elements from {{PublicKeyCredentialHints}} to guide the user agent in interacting with the user. Note that the elements have type `DOMString` despite being taken from that enumeration. See [[#sct-domstring-backwards-compatibility]].
 
     :   <dfn>attestation</dfn>
     ::  The [=[RP]=] MAY use this OPTIONAL member to specify a preference regarding [=attestation conveyance=].
@@ -3977,6 +3991,41 @@ Note: The {{UserVerificationRequirement}} enumeration is deliberately not refere
     :   <dfn>discouraged</dfn>
     ::  The [=[RP]=] does not want [=user verification=] employed during the operation (e.g., in the
         interest of minimizing disruption to the user interaction flow).
+</div>
+
+
+### User-agent Hints Enumeration (enum <dfn enum>PublicKeyCredentialHints</dfn>) ### {#enum-hints}
+
+<xmp class="idl">
+    enum PublicKeyCredentialHints {
+        "security-key",
+        "client-device",
+        "hybrid",
+    };
+</xmp>
+
+Note: The {{PublicKeyCredentialHints}} enumeration is deliberately not referenced, see [[#sct-domstring-backwards-compatibility]].
+
+<div dfn-type="enum-value" dfn-for="PublicKeyCredentialHints">
+    [=[WRPS]=] may use this enumeration to communicate hints to the user-agent about how a request may be best completed. These hints are not requirements, and do not bind the user-agent, but may guide it in providing the best experience by using contextual information that the [=[RP]=] has about the request. Hints are provided in order of decreasing preference so, if two hints are contradictory, the first one controls. Hints may also overlap: if a more-specific hint is defined a [=[RP]=] may still wish to send less specific ones for user-agents that may not recognise the more specific one. In this case the most specific hint should be sent before the less-specific ones.
+
+    Hints MAY contradict information contained in credential {{PublicKeyCredentialDescriptor/transports}} and {{AuthenticatorSelectionCriteria/authenticatorAttachment}}. When this occurs, the hints take precedence. (Note that {{PublicKeyCredentialDescriptor/transports}} values are not provided when using [=discoverable credentials=], leaving hints as the only avenue for expressing some aspects of such a request.)
+
+    :   <dfn>security-key</dfn>
+    ::  Indicates that the [=[RP]=] believes that users will satisfy this request with a physical security key. For example, an enterprise [=[RP]=] may set this hint if they have issued security keys to their employees and will only accept those [=authenticators=] for [=registration ceremony|registration=] and [=authentication ceremony|authentication=].
+
+        For compatibility with older user agents, when this hint is used in {{PublicKeyCredentialCreationOptions}}, the {{AuthenticatorSelectionCriteria/authenticatorAttachment}} SHOULD be set to {{AuthenticatorAttachment/cross-platform}}.
+
+    :   <dfn>client-device</dfn>
+    ::  Indicates that the [=[RP]=] believes that users will satisfy this request with a [=platform authenticator=] attached to the [=client device=].
+
+        For compatibility with older user agents, when this hint is used in {{PublicKeyCredentialCreationOptions}}, the {{AuthenticatorSelectionCriteria/authenticatorAttachment}} SHOULD be set to {{AuthenticatorAttachment/platform}}.
+
+    :   <dfn>hybrid</dfn>
+    ::  Indicates that the [=[RP]=] believes that users will satisfy this request with general-purpose [=authenticators=] such as smartphones. For example, a consumer [=[RP]=] may believe that only a small fraction of their customers possesses dedicated security keys. This option also implies that the local [=platform authenticator=] should not be promoted in the UI.
+
+        For compatibility with older user agents, when this hint is used in {{PublicKeyCredentialCreationOptions}}, the {{AuthenticatorSelectionCriteria/authenticatorAttachment}} SHOULD be set to {{AuthenticatorAttachment/cross-platform}}.
+
 </div>
 
 
