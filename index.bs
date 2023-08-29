@@ -1726,8 +1726,14 @@ To support obtaining assertions via {{CredentialsContainer/get()|navigator.crede
 {{PublicKeyCredential}}'s [=interface object=]'s implementation of the <dfn for="PublicKeyCredential" method>\[[Create]](origin,
 options, sameOriginWithAncestors)</dfn> [=internal method=] [[!CREDENTIAL-MANAGEMENT-1]] allows
 [=[WRP]=] scripts to call {{CredentialsContainer/create()|navigator.credentials.create()}} to request the creation of a new
-[=public key credential source=], [=bound credential|bound=] to an [=authenticator=]. This
-{{CredentialsContainer/create()|navigator.credentials.create()}} operation can be aborted by leveraging the {{AbortController}};
+[=public key credential source=], [=bound credential|bound=] to an [=authenticator=].
+
+By setting <code>|options|.{{CredentialRequestOptions/mediation}}</code> to {{CredentialMediationRequirement/conditional}},
+[=[RPS]=] can indicate that a prominent modal UI should <i>not</i> be shown <i>unless</i> the user has already consented to create a credential via the [=conditionalCreate|conditionalCreate extension=]). [=[RP]=] script SHOULD first check that [conditionalCreate] is present
+in {=ClientCapabilities=} in order to avoid the possibility of causing a user-visible error to be returned if the user agent does
+not support {{CredentialMediationRequirement/conditional}} [=user mediation=] for {{CredentialsContainer/create()|navigator.credentials.create()}}.
+
+This {{CredentialsContainer/create()|navigator.credentials.create()}} operation can be aborted by leveraging the {{AbortController}};
 see [[dom#abortcontroller-api-integration]] for detailed instructions.
 
 
@@ -1765,6 +1771,11 @@ When this method is invoked, the user agent MUST execute the following algorithm
 1. Assert: <code>|options|.{{CredentialCreationOptions/publicKey}}</code> is present.
 
 1. If <var ignore>sameOriginWithAncestors</var> is [FALSE]:
+
+    1. If <code>|options|.{{CredentialRequestOptions/mediation}}</code> is present with the value
+     {{CredentialMediationRequirement/conditional}}:
+
+        1. Throw a "{{NotAllowedError}}" {{DOMException}}
 
     1. If the [=relevant global object=], as determined by the calling
         {{CredentialsContainer/create()}} implementation, does not have
@@ -1902,6 +1913,13 @@ a numbered step. If outdented, it (today) is rendered as a bullet in the midst o
     Note: What qualifies an [=authenticator=] as "available" is intentionally unspecified; this is meant to represent how
     [=authenticators=] can be <a href="https://en.wikipedia.org/w/index.php?title=Hot_plug">hot-plugged</a> into (e.g., via USB)
     or discovered (e.g., via NFC or Bluetooth) by the [=client=] by various mechanisms, or permanently built into the [=client=].
+
+1. If <code>|options|.{{CredentialRequestOptions/mediation}}</code> is present with the value
+     {{CredentialMediationRequirement/conditional}}:
+
+    1. If |conditionalCreateLifetimeTimer| is expired or |conditionalCreateOrigin| is not |callerOrigin|, throw a "{{NotAllowedError}}" {{DOMException}}.
+
+    1. Set |lifetimeTimer| to a client-specific default.
 
 1. Consider the value of {{PublicKeyCredentialCreationOptions/hints}} and craft the user interface accordingly, as the user-agent sees fit.
 
@@ -2182,7 +2200,6 @@ a numbered step. If outdented, it (today) is rendered as a bullet in the midst o
                     |authenticator| and [=set/remove=] it from |issuedRequests|.
 
                 1. Return |constructCredentialAlg| and terminate this algorithm.
-
         </dl>
     </li>
 
@@ -2191,7 +2208,7 @@ a numbered step. If outdented, it (today) is rendered as a bullet in the midst o
     [[#sctn-make-credential-privacy]] for details.
 
 During the above process, the user agent SHOULD show some UI to the user to guide them in the process of selecting and
-authorizing an authenticator.
+authorizing an authenticator. When <code>|options|.{{CredentialRequestOptions/mediation}}</code> is set to {{CredentialMediationRequirement/conditional}}, prominent modal UI should <i>not</i> be shown <i>unless</i> credential creation was previously consented to.
 </div>
 
 
@@ -4888,7 +4905,6 @@ client ignores any further responses from the authenticator for the canceled ope
 This operation is ignored if it is invoked in an [=authenticator session=] which does not have an [=authenticatorMakeCredential=]
 or [=authenticatorGetAssertion=] operation currently in progress.
 
-
 ### The <dfn>silentCredentialDiscovery</dfn> operation ### {#sctn-op-silent-discovery}
 
 This is an OPTIONAL operation authenticators MAY support to enable {{CredentialMediationRequirement/conditional}}
@@ -6713,6 +6729,52 @@ During a transition from the FIDO U2F JavaScript API, a [=[RP]=] may have a popu
 
 : Authenticator extension output
 :: None.
+
+### Conditional Create Extension (<dfn>conditionalCreate</dfn>) ### {#sctn-authenticator-conditional-create-extension}
+
+This [=client extension|client=] [=authentication extension=] indicates that the RP would like to create a credential after an authenticaton ceremony is successfully mediated by the user agent.
+
+
+: Extension identifier
+:: `conditionalCreate`
+
+: Operation applicability
+:: [=authentication extension|Authentication=]
+
+: Client extension input
+:: The Boolean value [TRUE] to indicate that this extension is requested by the [=[RP]=].
+    <xmp class="idl">
+    partial dictionary AuthenticationExtensionsClientInputs {
+        boolean conditionalCreate;
+    };
+    </xmp>
+
+: Client extension processing
+
+:: When [[[#sctn-getAssertion|assertion]]:
+        1. Just after [establishing the RP ID](#GetAssertion-DetermineConditional) perform these steps:
+
+            1. If <code>|options|.{{CredentialRequestOptions/mediation}}</code> is not present or does not have the value
+     {{CredentialMediationRequirement/conditional}}:
+
+                1. Throw a "{{NotAllowedError}}" {{DOMException}}
+
+        1. When [showing conditional assertion form control](GetAssn-ConditionalMediation-Interact-FormControl):
+
+            1. Inform the user that the RP will create a credential if the user agent mediates the authentication ceremony.
+
+            1. Set conditionalCreateLifetimeTimer to a client-specific default.
+
+            1. Set conditionalCreateOrigin to the current origin.
+
+        1. If the user agent mediates the authentication ceremony while the conditional assertion is running:
+
+            1. Start conditionalCreateLifetimeTimer.
+
+            1. Optionally collect an [=authorization gesture=] confirming [=user consent=] to create the credential which may later be used to skip (this step)[#op-makecred-step-user-consent] when processing an associated {{CredentialsContainer/get()|navigator.credentials.get()}} call with <code>|options|.{{CredentialRequestOptions/mediation}}</code> set to {{CredentialMediationRequirement/conditional}}.
+
+: Client extension output
+:: None
 
 
 ### Credential Properties Extension (<dfn>credProps</dfn>) ### {#sctn-authenticator-credential-properties-extension}
