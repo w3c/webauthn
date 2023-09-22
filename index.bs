@@ -2503,6 +2503,9 @@ When this method is invoked, the user agent MUST execute the following algorithm
                 ::  If the [=authenticator=] returned an [=attestation=], set the value of [=assertionAttestation=] to be the bytes of
                     the [=attestation statement=]. Otherwise set it to null.
 
+                :   <code><dfn for="assertionCreationData">attestationConveyancePreferenceOption</dfn></code>
+                ::  whose value is the value of |pkOptions|.{{PublicKeyCredentialRequestOptions/attestation}}.
+
                 :   <code><dfn for="assertionCreationData">clientExtensionResults</dfn></code>
                 ::  whose value is an {{AuthenticationExtensionsClientOutputs}} object containing [=extension identifier=] →
                     [=client extension output=] entries. The entries are created by running each extension's
@@ -2516,6 +2519,26 @@ When this method is invoked, the user agent MUST execute the following algorithm
 
             1.  Let |constructAssertionAlg| be an algorithm that takes a [=global object=]
                 |global|, and whose steps are:
+
+                1.  If <code>|assertionCreationData|.[=assertionAttestation=]</code> value is not `null`:
+
+                    1.  If <code>|assertionCreationData|.[=attestationConveyancePreferenceOption=]</code>'s value is
+                        <dl class="switch">
+                            :   {{AttestationConveyancePreference/none}}
+                            ::  Replace potentially uniquely identifying information with non-identifying versions of the
+                                same:
+                                  1. If the [=AAGUID=] in the [=attested credential data=] is 16 zero bytes, <code>|assertionCreationData|.[=assertionAttestation=].fmt</code> is "packed", and "x5c" is absent from <code>|assertionCreationData|.[=assertionAttestation=]</code>, then [=self attestation=] is being used and no further action is needed.
+                                  1. Otherwise
+                                      1. Replace the [=AAGUID=] in the [=attested credential data=] with 16 zero bytes.
+                                      1. Set the value of <code>|assertionCreationData|.[=assertionAttestation=].fmt</code> to "none", and set the value of <code>|assertionCreationData|.[=assertionAttestation=].attStmt</code> to be an empty [=CBOR=] map. (See [[#sctn-none-attestation]] and [[#sctn-generating-an-attestation-object]]).
+
+                            :   {{AttestationConveyancePreference/indirect}}
+                            ::  The client MAY replace the [=AAGUID=] and [=attestation statement=] with a more privacy-friendly
+                                and/or more easily verifiable version of the same data (for example, by employing an [=Anonymization CA=]).
+
+                            :   {{AttestationConveyancePreference/direct}} or {{AttestationConveyancePreference/enterprise}}
+                            ::  Convey the [=authenticator=]'s [=AAGUID=] and [=attestation statement=], unaltered, to the [=[RP]=].
+                        </dl>
 
                 1.  Let |pubKeyCred| be a new {{PublicKeyCredential}} object associated with |global| whose fields are:
 
@@ -3441,8 +3464,6 @@ Note: The {{AttestationConveyancePreference}} enumeration is deliberately not re
         If the [=authenticator=] generates an [=attestation statement=] that is not a [=self attestation=],
         the [=client=] will replace it with a [=None=] attestation statement.
 
-        This is the default, and unknown values fall back to the behavior of this value.
-
     :   <dfn>indirect</dfn>
     ::  The [=[RP]=] wants to receive a verifiable [=attestation statement=],
         but allows the [=client=] to decide how to obtain such an [=attestation statement=].
@@ -3476,7 +3497,7 @@ an assertion. Its {{PublicKeyCredentialRequestOptions/challenge}} member MUST be
         sequence<PublicKeyCredentialDescriptor> allowCredentials = [];
         DOMString                            userVerification = "preferred";
         sequence<DOMString>                  hints = [];
-        DOMString                            attestation = "none";
+        DOMString                            attestation;
         sequence<DOMString>                  attestationFormats = [];
         AuthenticationExtensionsClientInputs extensions;
     };
@@ -3547,7 +3568,7 @@ an assertion. Its {{PublicKeyCredentialRequestOptions/challenge}} member MUST be
         Its value SHOULD be a member of {{AttestationConveyancePreference}}.
         [=Client platforms=] MUST ignore unknown values, treating an unknown value as if the [=map/exist|member does not exist=].
 
-        The default value is {{AttestationConveyancePreference/none}}.
+        If this member is not present or its value is `null`, the user agenet MUST NOT return {{AuthenticatorAssertionResponse/attestationObject}} in the assertions.
 
     :   <dfn>attestationFormats</dfn>
     ::  The [=[RP]=] MAY use this OPTIONAL member to specify a preference regarding the [=attestation=] statement format used by the [=authenticator=].
@@ -4832,11 +4853,11 @@ a numbered step. If outdented, it (today) is rendered as a bullet in the midst o
         :: let |attestationFormat| be the first supported [=attestation statement format=] from |attestationFormats|, taking into account |enterpriseAttestationPossible|. If none are supported, fallthrough to:
 
         : is [=list/is empty|empty=]
-        :: let |attestationFormat| be the [=attestation statement format=] most preferred by this authenticator. If it does not support attestation during assertion then let this be `none`.
+        :: let |attestationFormat| be the [=attestation statement format=] most preferred by this authenticator. If it does not support attestation during assertion then let this be `null`.
     </dl>
 1. Let |authenticatorData| [=perform the following steps to generate an authenticator data structure|be the byte array=]
     specified in [[#sctn-authenticator-data]] including |processedExtensions|, if any, as
-    the <code>[=authData/extensions=]</code> and excluding <code>[=attestedCredentialData=]</code>. This |authenticatorData| MUST include [=attested credential data=] if, and only if, |attestationFormat| is not `none`.
+    the <code>[=authData/extensions=]</code> and excluding <code>[=attestedCredentialData=]</code>. This |authenticatorData| MUST include [=attested credential data=] if, and only if, |attestationFormat| is not `null`.
 1. Let |signature| be the [=assertion signature=] of the concatenation <code>|authenticatorData| || |hash|</code> using the
     [=public key credential source/privateKey=] of |selectedCredential| as shown in <a href="#fig-signature">Figure <span class="figure-num-following"/></a>, below. A simple,
     undelimited
@@ -4848,7 +4869,7 @@ a numbered step. If outdented, it (today) is rendered as a bullet in the midst o
         <figcaption>Generating an [=assertion signature=].</figcaption>
     </figure>
 
-1. The |attestationFormat| is not `none` then create an [=attestation object=] for the new credential using the procedure specified in
+1. The |attestationFormat| is not `null` then create an [=attestation object=] for the new credential using the procedure specified in
     [[#sctn-generating-an-attestation-object]], the [=attestation statement format=] |attestationFormat|, and the values |authenticatorData|
     and |hash|, as well as {{enterprise|taking into account}} the value of |enterpriseAttestationPossible|. For more details on attestation, see [[#sctn-attestation]].
 
