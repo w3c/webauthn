@@ -911,7 +911,7 @@ The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "S
     and the data it emits. This includes such things as [=credential IDs=], [=credential key pairs=], [=signature counters=], etc.
 
     An [=attestation statement=] is provided within an [=attestation object=] during a [=registration=] ceremony. See also [[#sctn-attestation]]
-    and [Figure 6](#fig-attStructs). Whether or how the [=client=] conveys the [=attestation statement=] and [=AAGUID=]
+    and [Figure 6](#fig-attStructs). Whether or how the [=client=] conveys the [=attestation statement=] and [=authData/attestedCredentialData/aaguid=]
     portions of the [=attestation object=] to the [=[RP]=] is described by [=attestation conveyance=].
 
 : <dfn>Attestation Certificate</dfn>
@@ -2124,17 +2124,17 @@ a numbered step. If outdented, it (today) is rendered as a bullet in the midst o
                             :   {{AttestationConveyancePreference/none}}
                             ::  Replace potentially uniquely identifying information with non-identifying versions of the
                                 same:
-                                  1. If the [=AAGUID=] in the [=attested credential data=] is 16 zero bytes, <code>|credentialCreationData|.[=attestationObjectResult=].fmt</code> is "packed", and "x5c" is absent from <code>|credentialCreationData|.[=attestationObjectResult=]</code>, then [=self attestation=] is being used and no further action is needed.
+                                  1. If the [=authData/attestedCredentialData/aaguid=] in the [=attested credential data=] is 16 zero bytes, <code>|credentialCreationData|.[=attestationObjectResult=].fmt</code> is "packed", and "x5c" is absent from <code>|credentialCreationData|.[=attestationObjectResult=]</code>, then [=self attestation=] is being used and no further action is needed.
                                   1. Otherwise
-                                      1. Replace the [=AAGUID=] in the [=attested credential data=] with 16 zero bytes.
+                                      1. Replace the [=authData/attestedCredentialData/aaguid=] in the [=attested credential data=] with 16 zero bytes.
                                       1. Set the value of <code>|credentialCreationData|.[=attestationObjectResult=].fmt</code> to "none", and set the value of <code>|credentialCreationData|.[=attestationObjectResult=].attStmt</code> to be an empty [=CBOR=] map. (See [[#sctn-none-attestation]] and [[#sctn-generating-an-attestation-object]]).
 
                             :   {{AttestationConveyancePreference/indirect}}
-                            ::  The client MAY replace the [=AAGUID=] and [=attestation statement=] with a more privacy-friendly
+                            ::  The client MAY replace the [=authData/attestedCredentialData/aaguid=] and [=attestation statement=] with a more privacy-friendly
                                 and/or more easily verifiable version of the same data (for example, by employing an [=Anonymization CA=]).
 
                             :   {{AttestationConveyancePreference/direct}} or {{AttestationConveyancePreference/enterprise}}
-                            ::  Convey the [=authenticator=]'s [=AAGUID=] and [=attestation statement=], unaltered, to the [=[RP]=].
+                            ::  Convey the [=authenticator=]'s [=/AAGUID=] and [=attestation statement=], unaltered, to the [=[RP]=].
                         </dl>
 
                     1.  Let |attestationObject| be a new {{ArrayBuffer}}, created using |global|'s [=%ArrayBuffer%=], containing the
@@ -3462,7 +3462,7 @@ Note: The {{AttestationConveyancePreference}} enumeration is deliberately not re
     :   <dfn>enterprise</dfn>
     ::  The [=[RP]=] wants to receive an [=attestation statement=] that may include uniquely identifying information. This is intended for controlled deployments within an enterprise where the organization wishes to tie registrations to specific authenticators. User agents MUST NOT provide such an attestation unless the user agent or authenticator configuration permits it for the requested [=RP ID=].
 
-        If permitted, the user agent SHOULD signal to the authenticator (at [invocation time](#CreateCred-InvokeAuthnrMakeCred)) that enterprise attestation is requested, and convey the resulting [=AAGUID=] and [=attestation statement=], unaltered, to the [=[RP]=].
+        If permitted, the user agent SHOULD signal to the authenticator (at [invocation time](#CreateCred-InvokeAuthnrMakeCred)) that enterprise attestation is requested, and convey the resulting [=/AAGUID=] and [=attestation statement=], unaltered, to the [=[RP]=].
 </div>
 
 
@@ -4098,11 +4098,12 @@ considered more trustworthy than the rest of the authenticator.
 Each authenticator stores a <dfn for=authenticator>credentials map</dfn>, a [=map=] from ([=rpId=], [=public key credential source/userHandle=]) to
 [=public key credential source=].
 
-Additionally, each authenticator has an AAGUID, which is a 128-bit identifier indicating the type (e.g. make and model) of the
-authenticator. The AAGUID MUST be chosen by the manufacturer to be identical across all substantially identical authenticators
-made by that manufacturer, and different (with high probability) from the AAGUIDs of all other types of authenticators.
-The AAGUID for a given type of authenticator SHOULD be randomly generated to ensure this. The [=[RP]=] MAY use the AAGUID to infer certain
-properties of the authenticator, such as certification level and strength of key protection, using information from other sources.
+Additionally, each authenticator has an Authenticator Attestation Globally Unique Identifier or <dfn>AAGUID</dfn>, which is a 128-bit identifier 
+indicating the type (e.g. make and model) of the authenticator. The AAGUID MUST be chosen by its maker to be identical across all substantially identical 
+authenticators made by that maker, and different (with high probability) from the AAGUIDs of all other types of authenticators. The AAGUID for a given type 
+of authenticator SHOULD be randomly generated to ensure this. The [=[RP]=] MAY use the AAGUID to infer certain properties of the authenticator, such as 
+certification level and strength of key protection, using information from other sources. The [=[RP]=] MAY use the AAGUID to attempt to identify the maker of 
+the authenticator without requesting and verifying [=attestation=], but the AAGUID is not provably authentic without [=attestation=].
 
 The primary function of the authenticator is to provide [=WebAuthn signatures=], which are bound to various contextual data. These
 data are observed and added at different levels of the stack as a signature request passes from the server to the
@@ -5078,7 +5079,7 @@ object=] for a credential. Its format is shown in <a href="#table-attestedCreden
         <tr>
             <td><dfn>aaguid</dfn></td>
             <td>16</td>
-            <td>The AAGUID of the authenticator.</td>
+            <td>The [=/AAGUID=] of the authenticator.</td>
         </tr>
         <tr>
             <td><dfn>credentialIdLength</dfn></td>
@@ -5472,7 +5473,7 @@ a numbered step. If outdented, it (today) is rendered as a bullet in the midst o
         If validation is successful, obtain a list of acceptable trust anchors (i.e. attestation root certificates)
         for that attestation type and attestation statement format |fmt|, from a trusted source or from policy. For
         example, the FIDO Metadata Service [[FIDOMetadataService]] provides one way to obtain such information, using the
-        <code>[=aaguid=]</code> in the <code>[=attestedCredentialData=]</code> in |authData|.
+        <code>[=authData/attestedCredentialData/aaguid=]</code> in the <code>[=attestedCredentialData=]</code> in |authData|.
     </li>
 
 <!-- Note: this next step is actually a top-level step, but bikeshed wanted it indented this much in order to render it as
@@ -5722,7 +5723,7 @@ a numbered step. If outdented, it (today) is rendered as a bullet in the midst o
 
         Note: Each [=attestation statement format=] specifies its own [=verification procedure=]. See [[#sctn-defined-attestation-formats]] for the initially-defined formats, and [[!IANA-WebAuthn-Registries]] for the up-to-date list.
 
-    1. If validation is successful, obtain a list of acceptable trust anchors (i.e. attestation root certificates) for that attestation type and attestation statement format |fmt|, from a trusted source or from policy. The [=aaguid=] in the [=attested credential data=] can be used to guide this lookup.
+    1. If validation is successful, obtain a list of acceptable trust anchors (i.e. attestation root certificates) for that attestation type and attestation statement format |fmt|, from a trusted source or from policy. The [=authData/attestedCredentialData/aaguid=] in the [=attested credential data=] can be used to guide this lookup.
 
     <li id='authn-ceremony-update-credential-record'>
         Update |credentialRecord| with new state values:
@@ -5851,7 +5852,7 @@ implementable by [=authenticators=] with limited resources (e.g., secure element
                 attestation public key in |attestnCert| with the algorithm specified in |alg|.
             - Verify that |attestnCert| meets the requirements in [[#sctn-packed-attestation-cert-requirements]].
             - If |attestnCert| contains an extension with OID `1.3.6.1.4.1.45724.1.1.4` (`id-fido-gen-ce-aaguid`) verify that the
-                value of this extension matches the <code>[=aaguid=]</code> in |authenticatorData|.
+                value of this extension matches the <code>[=authData/attestedCredentialData/aaguid=]</code> in |authenticatorData|.
             - Optionally, inspect |x5c| and consult externally provided knowledge to determine whether |attStmt| conveys a
                 [=Basic=] or [=AttCA=] attestation.
             - If successful, return implementation-specific values representing [=attestation type=] [=Basic=], [=AttCA=] or
@@ -6000,7 +6001,7 @@ engine.
         algorithm specified in |alg|.
     - Verify that |aikCert| meets the requirements in [[#sctn-tpm-cert-requirements]].
     - If |aikCert| contains an extension with OID `1.3.6.1.4.1.45724.1.1.4` (`id-fido-gen-ce-aaguid`) verify that the value of this
-        extension matches the <code>[=aaguid=]</code> in |authenticatorData|.
+        extension matches the <code>[=authData/attestedCredentialData/aaguid=]</code> in |authenticatorData|.
     - If successful, return implementation-specific values representing [=attestation type=] [=AttCA=] and [=attestation trust
         path=] |x5c|.
 
@@ -7318,10 +7319,10 @@ The weight that [=[RPS]=] give to the presence of a signature from a [=device-bo
             :: |attFormat| is "none" or "self", at the authenticator's discretion, and |attAaguid| is 16 zero bytes. (Note that, since the [=device-bound key=] is already exercised during {{CredentialsContainer/get()|navigator.credentials.get()}} calls, the proof-of-possession property provided by "self" attestation is superfluous in that context.)
 
             : indirect, direct
-            :: |attFormat| is an [=attestation statement format=] appropriate for this [=authenticator=] based on {{AuthenticationExtensionsDevicePublicKeyInputs/attestationFormats}}, and |attAaguid| is the [=authenticator's=] [=AAGUID=]. (Since the [=hardware-bound device key pair=] is specific to a particular authenticator, its attestation can be tied to hardware roots of trust, although they do not have to be. This is in contrast to the associated [=user credential=]'s attestation, if it is a [=multi-device credential=].)
+            :: |attFormat| is an [=attestation statement format=] appropriate for this [=authenticator=] based on {{AuthenticationExtensionsDevicePublicKeyInputs/attestationFormats}}, and |attAaguid| is the [=authenticator's=] [=/AAGUID=]. (Since the [=hardware-bound device key pair=] is specific to a particular authenticator, its attestation can be tied to hardware roots of trust, although they do not have to be. This is in contrast to the associated [=user credential=]'s attestation, if it is a [=multi-device credential=].)
 
             : enterprise
-            :: The [=[RP]=] wants to receive an [=attestation statement=] that may include uniquely identifying information. This is intended for controlled deployments within an enterprise where the organization wishes to tie registrations to specific authenticators. [=Authenticators=] MUST NOT provide such an attestation unless the user agent or authenticator configuration expressly permits it for the requested [=RP ID=]. If <i>not</i> permitted, then |attFormat| is "none" and |attAaguid| is 16 zero bytes. Otherwise |attFormat| is an [=attestation statement format=] appropriate for this [=authenticator=] based on {{AuthenticationExtensionsDevicePublicKeyInputs/attestationFormats}}, and |attAaguid| is the [=authenticator's=] [=AAGUID=]. (Again, since the [=hardware-bound device key pair=] is specific to a particular authenticator, the attestation may be tied to hardware roots of trust.)
+            :: The [=[RP]=] wants to receive an [=attestation statement=] that may include uniquely identifying information. This is intended for controlled deployments within an enterprise where the organization wishes to tie registrations to specific authenticators. [=Authenticators=] MUST NOT provide such an attestation unless the user agent or authenticator configuration expressly permits it for the requested [=RP ID=]. If <i>not</i> permitted, then |attFormat| is "none" and |attAaguid| is 16 zero bytes. Otherwise |attFormat| is an [=attestation statement format=] appropriate for this [=authenticator=] based on {{AuthenticationExtensionsDevicePublicKeyInputs/attestationFormats}}, and |attAaguid| is the [=authenticator's=] [=/AAGUID=]. (Again, since the [=hardware-bound device key pair=] is specific to a particular authenticator, the attestation may be tied to hardware roots of trust.)
 
                 Note: CTAP2 does not currently provide for an <a href="https://fidoalliance.org/specs/fido-v2.1-ps-20210615/fido-client-to-authenticator-protocol-v2.1-ps-20210615.html#makecred-enterpriseattestation">enterpriseAttestation</a> signal during an <a href="https://fidoalliance.org/specs/fido-v2.1-ps-20210615/fido-client-to-authenticator-protocol-v2.1-ps-20210615.html#authenticatorGetAssertion">authenticatorGetAssertion</a> call. Until that is changed, <a href="https://fidoalliance.org/specs/fido-v2.1-ps-20210615/fido-client-to-authenticator-protocol-v2.1-ps-20210615.html#platform-managed-enterprise-attestation">platform-managed enterprise attestation</a> will not work in that context with CTAP2 [=authenticators=].
         </dl>
@@ -7362,7 +7363,7 @@ The weight that [=[RPS]=] give to the presence of a signature from a [=device-bo
 
 ##### AAGUIDs ##### {#sctn-device-publickey-attestation-aaguid}
 
-The [=AAGUID=] included in the <code>[=devicePubKey=]</code> extension output, if non-zero, identifies the make or model of hardware that is storing the [=device-bound key=]. This is distinct from the [=AAGUID=] in the [=attested credential data=] of a [=multi-device credential=], which likely identifies something broader since such credentials are not bound to a single device. Thus the two AAGUIDs MAY be different in a single response and either, or both, may be zero depending on the options requested and authenticator behaviour.
+The [=/AAGUID=] included in the <code>[=devicePubKey=]</code> extension output, if non-zero, identifies the make or model of hardware that is storing the [=device-bound key=]. This is distinct from the [=authData/attestedCredentialData/aaguid=] in the [=attested credential data=] of a [=multi-device credential=], which likely identifies something broader since such credentials are not bound to a single device. Thus the two AAGUIDs MAY be different in a single response and either, or both, may be zero depending on the options requested and authenticator behaviour.
 
 ##### Attestation calculations ##### {#sctn-device-publickey-attestation-calculations}
 
@@ -7392,8 +7393,8 @@ The [=devicePubKey=] extension adds the following [=struct/item=] to [=credentia
 
         <dl dfn-for="devicePubKey record" dfn-type="abstract-op">
             :   <dfn>aaguid</dfn>
-            ::  The [=AAGUID=] of the [=device-bound key=]'s [=managing authenticator=].
-                This MAY be different from the [=AAGUID=] in the [$credential record/attestationObject$], if any, of the containing [=credential record=].
+            ::  The [=/AAGUID=] of the [=device-bound key=]'s [=managing authenticator=].
+                This MAY be different from the [=authData/attestedCredentialData/aaguid=] in the [$credential record/attestationObject$], if any, of the containing [=credential record=].
 
             :   <dfn>dpk</dfn>
             ::  The public key portion of the [=device-bound key=].
