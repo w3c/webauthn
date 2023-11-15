@@ -2513,10 +2513,6 @@ When this method is invoked, the user agent MUST execute the following algorithm
                 ::  If the [=authenticator=] returned a [=user handle=], set the value of [=userHandleResult=] to be the bytes of
                     the returned [=user handle=]. Otherwise, set the value of [=userHandleResult=] to null.
 
-                :   <code><dfn for="assertionCreationData">assertionAttestation</dfn></code>
-                ::  If the [=authenticator=] returned an [=attestation=], set the value of [=assertionAttestation=] to be the bytes of
-                    the [=attestation statement=]. Otherwise set it to null.
-
                 :   <code><dfn for="assertionCreationData">clientExtensionResults</dfn></code>
                 ::  whose value is an {{AuthenticationExtensionsClientOutputs}} object containing [=extension identifier=] →
                     [=client extension output=] entries. The entries are created by running each extension's
@@ -2560,12 +2556,6 @@ When this method is invoked, the user agent MUST execute the following algorithm
                             field to null. Otherwise, set this field to a new {{ArrayBuffer}}, created using |global|'s
                             [=%ArrayBuffer%=], containing the bytes of
                             <code>|assertionCreationData|.[=assertionCreationData/userHandleResult=]</code>.
-
-                        :   {{AuthenticatorAssertionResponse/attestationObject}}
-                        ::  If <code>|assertionCreationData|.[=assertionCreationData/assertionAttestation=]</code> is null, set this
-                            field to null. Otherwise, set this field to a new {{ArrayBuffer}}, created using |global|'s
-                            [=%ArrayBuffer%=], containing the bytes of
-                            <code>|assertionCreationData|.[=assertionCreationData/assertionAttestation=]</code>.
 
                     :   {{PublicKeyCredential/[[clientExtensionsResults]]}}
                     ::  A new {{ArrayBuffer}}, created using |global|'s [=%ArrayBuffer%=], containing the bytes of
@@ -2649,30 +2639,6 @@ The steps for [=issuing a credential request to an authenticator=] are as follow
 
             </dl>
 
-    1. Let |enterpriseAttestationPossible| be a Boolean value, as follows. If
-        <code>|pkOptions|.{{PublicKeyCredentialRequestOptions/attestation}}</code>
-
-            <dl class="switch">
-
-                :   is set to {{AttestationConveyancePreference/enterprise}}
-                ::  Let |enterpriseAttestationPossible| be [TRUE] if the user agent wishes to support enterprise attestation for |rpId| (see [Step 7](#GetAssn-DetermineRpId) of [[#sctn-discover-from-external-source]]). Otherwise [FALSE].
-
-                :   otherwise
-                ::  Let |enterpriseAttestationPossible| be [FALSE].
-
-            </dl>
-
-    1. Let |attestationFormats| be a list of strings, initialized to the value of <code>|pkOptions|.{{PublicKeyCredentialRequestOptions/attestationFormats}}</code>.
-
-    1. If <code>|pkOptions|.{{PublicKeyCredentialRequestOptions/attestation}}</code>
-
-            <dl class="switch">
-
-                :   is set to {{AttestationConveyancePreference/none}}
-                ::  Set |attestationFormats| be the single-element list containing the string &ldquo;none&rdquo;
-
-            </dl>
-
     1. <span id="allowCredentialDescriptorListCreation"></span>
         If <code>|pkOptions|.{{PublicKeyCredentialRequestOptions/allowCredentials}}</code>
         <dl class="switch">
@@ -2710,23 +2676,19 @@ The steps for [=issuing a credential request to an authenticator=] are as follow
                             Then, using |transport|, invoke the [=authenticatorGetAssertion=] operation on
                             |authenticator|, with |rpId|, |clientDataHash|, |allowCredentialDescriptorList|,
                             |userVerification|,
-                            |enterpriseAttestationPossible|,
-                            |attestationFormats|,
                             and |authenticatorExtensions| as parameters.
 
                         :   [=list/is empty=]
                         ::  Using local configuration knowledge of the appropriate transport to use with |authenticator|,
                             invoke the [=authenticatorGetAssertion=] operation on |authenticator| with |rpId|,
                             |clientDataHash|, |allowCredentialDescriptorList|, |userVerification|,
-                            |enterpriseAttestationPossible|, |attestationFormats|, and |authenticatorExtensions| as parameters.
+                            and |authenticatorExtensions| as parameters.
                     </dl>
 
             :   [=list/is empty=]
             ::  Using local configuration knowledge of the appropriate transport to use with |authenticator|, invoke the
                 [=authenticatorGetAssertion=] operation on |authenticator| with |rpId|, |clientDataHash|,
                 |userVerification|,
-                |enterpriseAttestationPossible|,
-                |attestationFormats|,
                 and |authenticatorExtensions| as parameters.
 
                 Note: In this case, the [=[RP]=] did not supply a list of acceptable credential descriptors. Thus, the
@@ -2918,8 +2880,6 @@ value and terminate the operation.
         sequence<PublicKeyCredentialDescriptorJSON>             allowCredentials = [];
         DOMString                                               userVerification = "preferred";
         sequence<DOMString>                                     hints = [];
-        DOMString                                               attestation = "none";
-        sequence<DOMString>                                     attestationFormats = [];
         AuthenticationExtensionsClientInputsJSON                extensions;
     };
 </xmp>
@@ -3026,7 +2986,6 @@ optionally evidence of [=user consent=] to a specific transaction.
         [SameObject] readonly attribute ArrayBuffer      authenticatorData;
         [SameObject] readonly attribute ArrayBuffer      signature;
         [SameObject] readonly attribute ArrayBuffer?     userHandle;
-        [SameObject] readonly attribute ArrayBuffer?     attestationObject;
     };
 </xmp>
 <div dfn-type="attribute" dfn-for="AuthenticatorAssertionResponse">
@@ -3047,9 +3006,6 @@ optionally evidence of [=user consent=] to a specific transaction.
         [=user handle=]. See [[#sctn-op-get-assertion]]. The authenticator MUST always return a [=user handle=] if
         the {{PublicKeyCredentialRequestOptions/allowCredentials}} option used in the [=authentication ceremony=] is [=list/is empty|empty=],
         and MAY return one otherwise.
-
-    :   <dfn>attestationObject</dfn>
-    ::  This OPTIONAL attribute contains an [=attestation object=], if the [=authenticator=] supports attestation in assertions. The [=attestation object=], if present, includes an [=attestation statement=]. Unlike the {{AuthenticatorAttestationResponse/attestationObject}} in an {{AuthenticatorAttestationResponse}}, it does not contain an `authData` key because the [=authenticator data=] is provided directly in an {{AuthenticatorAssertionResponse}} structure. For more details on attestation, see [[#sctn-attestation]], [[#sctn-attestation-in-assertions]], [[#sctn-generating-an-attestation-object]], and [Figure 6](#fig-attStructs).
 </div>
 
 ## Parameters for Credential Generation (dictionary <dfn dictionary>PublicKeyCredentialParameters</dfn>) ## {#dictionary-credential-params}
@@ -3490,8 +3446,6 @@ an assertion. Its {{PublicKeyCredentialRequestOptions/challenge}} member MUST be
         sequence<PublicKeyCredentialDescriptor> allowCredentials = [];
         DOMString                            userVerification = "preferred";
         sequence<DOMString>                  hints = [];
-        DOMString                            attestation = "none";
-        sequence<DOMString>                  attestationFormats = [];
         AuthenticationExtensionsClientInputs extensions;
     };
 </xmp>
@@ -3555,21 +3509,6 @@ an assertion. Its {{PublicKeyCredentialRequestOptions/challenge}} member MUST be
 
     :   <dfn>hints</dfn>
     ::  This OPTIONAL member contains zero or more elements from {{PublicKeyCredentialHints}} to guide the user agent in interacting with the user. Note that the elements have type `DOMString` despite being taken from that enumeration. See [[#sct-domstring-backwards-compatibility]].
-
-    :   <dfn>attestation</dfn>
-    ::  The [=[RP]=] MAY use this OPTIONAL member to specify a preference regarding [=attestation conveyance=].
-        Its value SHOULD be a member of {{AttestationConveyancePreference}}.
-        [=Client platforms=] MUST ignore unknown values, treating an unknown value as if the [=map/exist|member does not exist=].
-
-        The default value is {{AttestationConveyancePreference/none}}.
-
-    :   <dfn>attestationFormats</dfn>
-    ::  The [=[RP]=] MAY use this OPTIONAL member to specify a preference regarding the [=attestation=] statement format used by the [=authenticator=].
-        Values SHOULD be taken from the IANA "WebAuthn Attestation Statement Format Identifiers" registry [[!IANA-WebAuthn-Registries]] established by [[!RFC8809]].
-        Values are ordered from most preferable to least preferable.
-        This parameter is advisory and the [=authenticator=] MAY use an attestation statement not enumerated in this parameter.
-
-        The default value is the empty list, which indicates no preference.
 
     :   <dfn>extensions</dfn>
     ::  The [=[RP]=] MAY use this OPTIONAL member to provide [=client extension inputs=]
@@ -5057,23 +4996,12 @@ The privacy, security and operational characteristics of [=attestation=] depend 
     operating environment, and so on.
 
 The [=attestation type=] and [=attestation statement format=] is chosen by the [=authenticator=];
-[=[RPS]=] can only signal their preferences by setting the {{PublicKeyCredentialCreationOptions/attestation}} and {{PublicKeyCredentialCreationOptions/attestationFormats}} parameters, or those with the same names in {{PublicKeyCredentialRequestOptions}}.
+[=[RPS]=] can only signal their preferences by setting the {{PublicKeyCredentialCreationOptions/attestation}} and {{PublicKeyCredentialCreationOptions/attestationFormats}} parameters.
 
 It is expected that most [=authenticators=] will support a small number of [=attestation types=] and [=attestation statement
 formats=], while [=[RPS]=] will decide what [=attestation types=] are acceptable to them by policy. [=[RPS]=] will also need to
 understand the characteristics of the [=authenticators=] that they trust, based on information they have about these
 [=authenticators=]. For example, the FIDO Metadata Service [[FIDOMetadataService]] provides one way to access such information.
-
-### Attestation in assertions ### {#sctn-attestation-in-assertions}
-
-Attestation is most commonly provided during credential creation. However, if supported by the authenticator and requested by the [=[RP]=] using the {{PublicKeyCredentialRequestOptions/attestation}} parameter, attestation MAY be provided in [=assertions=].
-
-Attestations in [=assertions=] could be helpful in at least the following situations:
-
-1. For [=multi-device credentials=], the [=generating authenticator=] may have returned a meaningfully different attestation than the authenticator currently exercising the credential. Thus returning an attestation for each use of the credential allows the [=[RP]=] to observe these changes.
-1. If the [=attestation statement format=] involves a 3rd-party attesting to the state of the authenticator, then returning an attestation with each use of the credential allows for the continued good health of the authenticator to be attested.
-
-[=Attestation objects=] provided in an {{AuthenticatorAttestationResponse}} structure (i.e. as the result of a {{CredentialsContainer/create()|create()}} operation) contain at least the three keys shown in [the previous figure](#fig-attStructs): `fmt`, `attStmt`, and `authData`. The `authData` key is not included when an [=attestation object=] is provided in an {{AuthenticatorAssertionResponse}} (i.e. as the result of a {{CredentialsContainer/get()|get()}} operation). That is because the [=authenticator data=] is provided directly in the {{AuthenticatorAssertionResponse/authenticatorData}} member of the {{AuthenticatorAssertionResponse}}. Otherwise, processing of the [=attestation object=] is identical.
 
 ### Attested Credential Data ### {#sctn-attested-credential-data}
 
@@ -5121,8 +5049,6 @@ object=] for a credential. Its format is shown in <a href="#table-attestedCreden
         present in the actual representation of the [=attested credential data=].
     </figcaption>
 </figure>
-
-Attested credential data is always present in any [=authenticator data=] that results from a {{CredentialsContainer/create()|create()}} operation. It MUST be present in an [=authenticator data=] resulting from a {{CredentialsContainer/get()|get()}} operation if, and only if, the {{AuthenticatorAssertionResponse/attestationObject}} attribute is present in the assertion result.
 
 #### Examples of `credentialPublicKey` Values Encoded in COSE_Key Format #### {#sctn-encoded-credPubKey-examples}
 
@@ -5721,20 +5647,6 @@ a numbered step. If outdented, it (today) is rendered as a bullet in the midst o
                   [=authentication ceremony=] or not, is
                   [=[RP]=]-specific. </dd>
            </dl>
-
-1. If <code>|response|.{{AuthenticatorAssertionResponse/attestationObject}}</code> is present and the [=[RP]=] wishes to verify the attestation then perform CBOR decoding on {{AuthenticatorAssertionResponse/attestationObject}} to obtain the attestation statement format |fmt|, and the attestation statement |attStmt|.
-
-    1. Verify that the `AT` bit in the [=flags=] field of |authData| is set, indicating that [=attested credential data=] is included.
-
-    1. Verify that the [=credentialPublicKey=] and [=credentialId=] fields of the [=attested credential data=] in |authData| match <code>|credentialRecord|.[$credential record/publicKey$]</code> and <code>|credentialRecord|.[$credential record/id$]</code>, respectively.
-
-    1. Determine the attestation statement format by performing a USASCII case-sensitive match on |fmt| against the set of supported WebAuthn Attestation Statement Format Identifier values. An up-to-date list of registered WebAuthn Attestation Statement Format Identifier values is maintained in the IANA "WebAuthn Attestation Statement Format Identifiers" registry [[!IANA-WebAuthn-Registries]] established by [[!RFC8809]].
-
-    1. Verify that |attStmt| is a correct [=attestation statement=], conveying a valid [=attestation signature=], by using the [=attestation statement format=] |fmt|'s [=verification procedure=] given |attStmt|, |authData| and |hash|.
-
-        Note: Each [=attestation statement format=] specifies its own [=verification procedure=]. See [[#sctn-defined-attestation-formats]] for the initially-defined formats, and [[!IANA-WebAuthn-Registries]] for the up-to-date list.
-
-    1. If validation is successful, obtain a list of acceptable trust anchors (i.e. attestation root certificates) for that attestation type and attestation statement format |fmt|, from a trusted source or from policy. The [=authData/attestedCredentialData/aaguid=] in the [=attested credential data=] can be used to guide this lookup.
 
     <li id='authn-ceremony-update-credential-record'>
         Update |credentialRecord| with new state values:
