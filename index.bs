@@ -1209,14 +1209,10 @@ The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "S
     :   {{PublicKeyCredentialDescriptor/transports}}
     ::  The [$credential record/transports$] of the [=credential record=].
 
-: <dfn>Hardware-bound Device Key Pair</dfn>
-: <dfn>Device-bound Key</dfn>
-: <dfn>Device Private Key</dfn>
-: <dfn>Device Public Key</dfn>
-:: A [=hardware-bound device key pair=], also known as a [=device-bound key=], is an [=authenticator=]-, [=[RP]=]-, and [=user credential=]-specific public key pair created upon a [=[RP]=]'s request via the [=devicePubKey=] [=WebAuthn extension=].
-    The [=authenticator=] that a [=hardware-bound device key pair=] is created upon guarantees that the [=device private key=] is securely stored in hardware, i.e., it is unextractable. See also [[#sctn-device-publickey-extension]].
+: <dfn>Supplemental public key</dfn>
+:: A additional public key, associated with a [=user credential=], that can be obtained (and exercised) with the [=supplementalPubKeys=] extension. These public keys provide more specific continuity signals. For example, a supplemental public key with `device` scope never leaves the device, while a [=multi-device credential=] can. Other supplemental public keys might have a broader scope, as described by their [=attestation=].
 
-    Note: All guarantees about the operation of an [=authenticator=] operation rely on [=attestation=]. In particular, [=[RPS]=] MUST NOT rely on the above guarantee of unextractability unless supported by a valid, trusted [=attestation statement=].
+    Supplemental public keys MUST NOT have a scope that exceeds the scope of their [=user credential=]&mdash;i.e. they never link two [=user credentials=] together. While this specification defines norms around scopes, [=[RPS]=] have to evaluate supplemental public keys in light of their [=attestation=], if any, and assign credibility to claimed scopes accordingly.
 
 : <dfn>Generating Authenticator</dfn>
 :: The Generating Authenticator is the authenticator involved in the [=authenticatorMakeCredential=] operation resulting
@@ -5457,7 +5453,7 @@ a numbered step. If outdented, it (today) is rendered as a bullet in the midst o
         Note: Since all extensions are OPTIONAL for both the [=client=] and the [=authenticator=], the [=[RP]=] MUST also be
         prepared to handle cases where none or not all of the requested extensions were acted upon.
 
-        Note: The [=devicePubKey=] extension has explicit verification procedures, see [[#sctn-device-publickey-extension-verification-create]].
+        Note: The [=supplementalPubKeys=] extension has explicit verification procedures, see [[#sctn-supplemental-public-keys-extension-verification-create]].
     </li>
 
 1. Determine the attestation statement format by performing a USASCII case-sensitive match on |fmt| against the set of
@@ -5690,7 +5686,7 @@ a numbered step. If outdented, it (today) is rendered as a bullet in the midst o
         Note: Since all extensions are OPTIONAL for both the [=client=] and the [=authenticator=], the [=[RP]=] MUST also be
         prepared to handle cases where none or not all of the requested extensions were acted upon.
 
-        Note: The [=devicePubKey=] extension has explicit verification procedures, see [[#sctn-device-publickey-extension-verification-get]].
+        Note: The [=supplementalPubKeys=] extension has explicit verification procedures, see [[#sctn-supplemental-public-keys-extension-verification-get]].
     </li>
 
 1. Let |hash| be the result of computing a hash over the |cData| using SHA-256.
@@ -7160,57 +7156,65 @@ This extension enables use of a user verification method.
     </pre>
 
 
-### Device-bound public key extension (<dfn>devicePubKey</dfn>) ### {#sctn-device-publickey-extension}
+### Supplemental public keys extension (<dfn>supplementalPubKeys</dfn>) ### {#sctn-supplemental-public-keys-extension}
 
-This [=authenticator extension|authenticator=] [=registration extension=] and [=authentication extension=] provides a [=[RP]=] with a "device continuity" signal for [=backup eligible=] credentials. This is done by creating a [=user credential=]-specific [=hardware-bound device key pair=] on the [=authenticator=], if such a key pair does not already exist for the [=user credential=] being created or exercised, and returning the [=device public key=] along with a signature by the [=device private key=] to the [=[RP]=]. This is done each time this [=devicePubKey=] extension is included with either a {{CredentialsContainer/create()|navigator.credentials.create()}} or {{CredentialsContainer/get()|navigator.credentials.get()}} call.
+This [=authenticator extension|authenticator=] [=registration extension=] and [=authentication extension=] provides a [=[RP]=] with additional public key(s) for credentials. This is done by creating [=user credential=]-specific key pairs on the [=authenticator=], when required key pairs do not already exist for the [=user credential=] being created or exercised, and returning these supplemental keys (along with signatures by them) to the [=[RP]=]. This is done each time this [=supplementalPubKeys=] extension is included with either a {{CredentialsContainer/create()|navigator.credentials.create()}} or {{CredentialsContainer/get()|navigator.credentials.get()}} call.
 
-If the [=authenticator=] is incapable of generating a [=hardware-bound device key pair=], or the registration or authentication operation fails for any reason, this extension is ignored and no [=hardware-bound device key pair=] is created. In this case, there is no [=devicePubKey=] extension output generated.
+If the [=authenticator=] is incapable of generating a supplemental key pair, or the registration or authentication operation fails for any reason, that key pair is omitted from the output. If no supplemental key pairs remain then this extension is ignored. In this case, there is no [=supplementalPubKeys=] extension output generated.
 
-The [=hardware-bound device key pair=] is not on its own a [=user credential=] and does not have its own [=credential ID=]. Instead, the returned [=device public key=] is a device-specific contextual attribute of its associated [=user credential=]. That is, when that [=user credential=] is used&mdash;along with the [=devicePubKey=] extension&mdash;on a particular [=authenticator=], a particular [=device public key=] is returned by the extension, along with a signature demonstrating proof-of-possession of the [=device private key=] by that device.
+Supplemental keys are not [=user credentials=] and they do not have their own [=credential IDs=]. Instead, any returned keys are a contextual attribute of their associated [=user credential=]. That is, when that [=user credential=] is used&mdash;along with the [=supplementalPubKeys=] extension&mdash;on a particular [=authenticator=], a particular set of supplemental keys are returned by the extension, along with signatures demonstrating proof-of-possession of those keys.
+
+Supplemental keys never have a scope that is larger than the [=user credential=]. That is, they are never shared between any two [=user credentials=] and can never be used to link two [=user credentials=] together. They only communicate continuity of some property of their associated [=user credential=].
 
 
-#### Relying Party Usage #### {#sctn-device-publickey-extension-usage}
+#### Relying Party Usage #### {#sctn-supplemental-public-keys-extension-usage}
 
-This extension is intended for use by those [=[RPS]=] employing risk-analysis systems informing their sign-in decisions. This extension provides a "device continuity" signal <i>when used consistently</i> with both {{CredentialsContainer/create()|navigator.credentials.create()}} and {{CredentialsContainer/get()|navigator.credentials.get()}} operations:
+This extension is intended for use by those [=[RPS]=] employing risk-analysis systems informing their sign-in decisions. This extension signals the continuity of some property <i>when used consistently</i> with both {{CredentialsContainer/create()|navigator.credentials.create()}} and {{CredentialsContainer/get()|navigator.credentials.get()}} operations. The property being signaled depends on the scope of the supplemental key and its [=attestation=] statement, if any. The clearest example of a supplemental key is one that is device-bound. Repeated observation of a device-bound supplemental key indicates that a credential is being used repeatedly from the same device. (Which cannot be otherwise assumed in the case of [=backup eligible=] credentials.) But supplemental keys with wider scopes are also defined and the exact properties that they communicate depend on the attestation included along with them.
 
-When a [=[RP]=] uses the `devicePubKey` extension with a {{CredentialsContainer/create()|create()}} call to create a new [=user credential=], a signature by a new [=device-bound key=] ("dpk&nbsp;1") is returned along with the new [=device public key=]. Even if the [=user credential=] is [=backed up=], "dpk&nbsp;1" never leaves the [=generating authenticator=] ("authenticator&nbsp;1"). The [=[RP]=]'s subsequent {{CredentialsContainer/get()|get()}} operations using the same user credential with that <i>same [=authenticator=]</i> generate [=assertions=] including further signatures by the <i>same</i> [=device-bound key=] ("dpk&nbsp;1"). This behavior on "authenticator&nbsp;1" is independent of whether this user credential has been copied to any other [=authenticator=].
+When a [=[RP]=] uses the `supplementalPubKeys` extension with a {{CredentialsContainer/create()|create()}} call to create a new [=user credential=], a signature by one or more new supplemental keys may be returned along with the new supplemental public keys themselves. For the sake of example, assume that a single supplemental public key is returned, called &ldquo;SPK1&rdquo;. For as long as the [=user credential=] is exercised within the scope of the supplemental key, the [=[RP]=]'s subsequent {{CredentialsContainer/get()|get()}} operations for that credential will likely generate [=assertions=] including further signatures by &ldquo;SPK1&rdquo;.
 
-Then, if this same user credential is copied to a different [=authenticator=] ("authenticator&nbsp;2"), the [=[RP]=]'s first {{CredentialsContainer/get()|get()}} call on "authenticator&nbsp;2" (that includes the `devicePubKey` extension) will produce an [=assertion=] including a signature by a <i>new</i> [=device-bound key=] ("dpk&nbsp;2"). Note that such a [=multi-device credential=] can be exercised on "authenticator&nbsp;2" without a {{CredentialsContainer/create()|create()}} having been performed on "authenticator&nbsp;2". The [=[RP]=]'s subsequent {{CredentialsContainer/get()|get()}} calls on "authenticator&nbsp;2", using the `devicePubKey` extension and the same user credential, yield further signatures by "dpk&nbsp;2".
+The credential may move beyond the scope of that supplemental key (for example, by being exported and imported elsewhere, if [=backup eligible=]) and, if used in this new domain, the {{CredentialsContainer/get()|get()}} operation will return a <i>new</i> supplemental key, SPK2, and its signature. Subsequent {{CredentialsContainer/get()|get()}} operations may observe either SPK1 or SPK2, depending on the context in which the [=user credential=] is being used.
 
 A usage example is thus:
 
-> Say that a sign-in request appears at a website along with some geolocation signal that has not been seen for this [=user account=] before, and is outside of the typical usage hours observed for the account. The risk may be deemed high enough not to allow the request, even with an assertion by a [=multi-device credential=] on its own. But if a signature by a [=device-bound key=] that is <i>well established</i> for this user can also be presented, then that may tip the balance.
+> A sign-in request is received by a website that, by regulation, must require certain authentication standards. The sign-in is done with a [=multi-device credential=], but also includes a supplemental key with an attestation that states that the supplemental key is only synced after a user has met or exceeded those standards. Since that supplemental key has been seen before, and was initially verified to meet the site's authentication standards, additional sign-in challenges are not required.
 
-Note: [=[RPS]=] need to take care to verify [=device-bound key=] signatures before associating and storing extension output value fields in conjunction with the [=user account=]. See [[#sctn-device-publickey-extension-verification]].
+Another example of supplemental keys:
 
-The weight that [=[RPS]=] give to the presence of a signature from a [=device-bound key=] may be based on information learned from its optional attestation. An attestation can indicate the level of protection that the hardware offers the private key, certifications for the hardware, etc.
+> Say that a sign-in request appears at a website along with some geolocation signal that has not been seen for this [=user account=] before, and is outside of the typical usage hours observed for the account. The risk may be deemed high enough not to allow the request, even with an assertion by a [=multi-device credential=] on its own. But if a signature from a supplemental key that is device-bound, and that is <i>well established</i> for this user can also be presented, then that may tip the balance.
 
-#### Extension Definition #### {#sctn-device-publickey-extension-definition}
+The weight that [=[RPS]=] give to the presence of a signature from a supplemental key may be based on information learned from its optional attestation. An attestation can indicate the level of protection enjoyed by a hardware-bound key, or the policies for other types of supplemental key.
+
+#### Extension Definition #### {#sctn-supplemental-public-keys-extension-definition}
 
 : Extension identifier
-:: `devicePubKey`
+:: `supplementalPubKeys`
 
 : Operation applicability
 :: [=registration extension|Registration=] and [=authentication extension|authentication=]
 
 : Client extension input
 :: <xmp class="idl">
-    dictionary AuthenticationExtensionsDevicePublicKeyInputs {
-        DOMString attestation = "none";
+    dictionary AuthenticationExtensionsSupplementalPubKeysInputs {
+        required sequence<DOMString> scopes;
+        DOMString attestation = "indirect";
         sequence<DOMString> attestationFormats = [];
     };
 
     partial dictionary AuthenticationExtensionsClientInputs {
-        AuthenticationExtensionsDevicePublicKeyInputs devicePubKey;
+        AuthenticationExtensionsSupplementalPubKeysInputs supplementalPubKeys;
     };
     </xmp>
-    <div dfn-type="dict-member" dfn-for="AuthenticationExtensionsDevicePublicKeyInputs">
+    <div dfn-type="dict-member" dfn-for="AuthenticationExtensionsSupplementalPubKeysInputs">
+        :   <dfn>scopes</dfn>
+        ::  This required member MUST be non-empty. It specifies the scopes of supplemental public keys that the [=[RP]=] requests. Values are taken from the CDDL below (i.e., currently defined values are `provider` and `device`); authenticators silently ignore unrecognized values. Specifying the scopes that a [=[RP]=] can use allows an [=authenticator=] to avoid the work of generating superfluous supplemental keys.
+
         :   <dfn>attestation</dfn>
         ::  The [=[RP]=] MAY use this OPTIONAL member to specify a preference regarding [=attestation conveyance=].
             Its value SHOULD be a member of {{AttestationConveyancePreference}}.
             [=Client platforms=] MUST ignore unknown values, treating an unknown value as if the [=map/exist|member does not exist=].
 
-            The default value is {{AttestationConveyancePreference/none}}.
+            The default value is {{AttestationConveyancePreference/indirect}}.
 
         :   <dfn>attestationFormats</dfn>
         ::  The [=[RP]=] MAY use this OPTIONAL member to specify a preference regarding the [=attestation=] statement format used by the [=authenticator=].
@@ -7221,20 +7225,18 @@ The weight that [=[RPS]=] give to the presence of a signature from a [=device-bo
             The default value is the empty list, which indicates no preference.
     </div>
 
-    Note: To request the `devicePubKey` extension processing with default options, pass an empty dictionary as the input.
-
 : Client extension processing
-:: If {{AuthenticationExtensionsClientInputs/devicePubKey}} is present, the client creates the authenticator extension input from the client extension input.
+:: If {{AuthenticationExtensionsClientInputs/supplementalPubKeys}} is present, the client creates the authenticator extension input from the client extension input.
 
 : Client extension output
-:: An ArrayBuffer containing the signature returned as the [=unsigned extension output=].
+:: A sequence of {{ArrayBuffer}}s containing the signatures returned as the [=unsigned extension output=].
     <xmp class="idl">
-    dictionary AuthenticationExtensionsDevicePublicKeyOutputs {
-        ArrayBuffer signature;
+    dictionary AuthenticationExtensionsSupplementalPubKeysOutputs {
+        sequence<ArrayBuffer> signatures;
     };
 
     partial dictionary AuthenticationExtensionsClientOutputs {
-        AuthenticationExtensionsDevicePublicKeyOutputs devicePubKey;
+        AuthenticationExtensionsSupplementalPubKeysOutputs supplementalPubKeys;
     };
     </xmp>
 
@@ -7243,47 +7245,48 @@ The weight that [=[RPS]=] give to the presence of a signature from a [=device-bo
 :: A CBOR expression of the client extension input
 
     ```
-    devicePublicKeyInputs = {
-      attestation: "none" / "indirect" / "direct" / "enterprise",
-      attestationFormats: [tstr],
+    supplementalPublicKeyInputs = {
+      scopes: [+
+        ; A key that has a broader scope than a single device, but still more
+        ; limited than a multi-device credential. The precise scope is specified
+        ; by the attestation of this supplemental public key.
+        "provider" /
+
+        ; A key with "device" scope MUST NOT leave the device on which it is
+        ; created.
+        "device"],
+      attestation: tstr,
+      attestationFormats: [* tstr],
     }
     $$extensionInput //= (
-      devicePubKey: devicePublicKeyInputs,
+      supplementalPubKeys: supplementalPublicKeyInputs,
     )
     ```
 
 : Authenticator extension output
-:: The <dfn>device public key attestation object</dfn>, defined by the `attObjForDevicePublicKey` type:
+:: The supplemental public key attestation objects, defined by the `attObjForSupplementalPubKey` type:
 
     ```
     $$extensionOutput //= (
-        devicePubKey: attObjForDevicePublicKey,
+        ; This array of supplemental public keys MUST be ordered
+        ; lexicographically by scope and MUST NOT include more than one element
+        ; with a given scope.
+
+        supplementalPubKeys: [+ attObjForSupplementalPubKey],
     )
 
-    attObjForDevicePublicKey = { ; Note: This object conveys an attested
-                                 ; device public key and is analogous to \`attObj\`.
-
-        aaguid:  bstr,  ; Authenticator's AAGUID (16 bytes fixed-length)
+    ; This object conveys an attested supplemental public key and is analogous
+    ; to \`attObj\`.
+    attObjForSupplementalPubKey = {
+        aaguid:  bstr,  ; AAGUID (16 bytes fixed-length)
                         ; https://www.w3.org/TR/webauthn/#aaguid
 
-        dpk:     bstr,  ; The Device Public Key (self-describing variable length,
+        spk:     bstr,  ; The public key (self-describing variable length,
                         ; COSE_Key format, CBOR-encoded)).
 
-        ; Whether this key is scoped to the entire device, or a loosely-defined,
-        ; narrower scope called "app". For example, a "device"-scoped key is expected
-        ; to be the same between an app and a browser on the same device, while
-        ; an "app"-scoped key would probably not be.
-        ;
-        ; Whatever the scope, a device key is still specific to a given credential
-        ; and does not provide any ability to link credentials.
-        ;
-        ; Whether device-scoped or not, keys are still device-bound. I.e. an
-        ; app-scoped key does not enjoy lesser protection from extraction.
+        ; See the definition of `scopes` in `supplementalPublicKeyInputs`.
 
-        scope: uint .size 1,  ; A value of 0x00 means "entire device" ("all apps")
-                              ; scope. 0x01 means "per-app" scope.
-                              ; Values other than 0x00 or 0x01 are reserved for future
-                              ; use.
+        scope: "provider" / "device",
 
         ; An authenticator-generated random nonce for inclusion in the attestation
         ; signature. If the authenticator chooses to not generate a nonce, it sets this
@@ -7297,12 +7300,12 @@ The weight that [=[RPS]=] give to the presence of a signature from a [=device-bo
         ; Attestation statement formats define the \`fmt\` and \`attStmt\` members of
         ; $$attStmtType.
         ; Note that \`fmt\` and \`attStmt\` are top-level members of
-        ; \`attObjForDevicePublicKey\`.
+        ; \`attObjForSupplementalPubKey\`.
         ;
         ; In summary, the \`attStmt\` will (typically) contain:
         ;   (1) a SIGNATURE value calculated (using the attestation private key)
-        ;       over (prefix || aaguid || dpk || nonce) where \`prefix\` is
-        ;       h'64657669636520626f756e64206b6579206174746573746174696f6e20736967
+        ;       over (prefix || aaguid || spk || nonce) where \`prefix\` is
+        ;       h'737570706c656d656e74616c5075624b657973206174746573746174696f6e2e
         ;         00ffffffff'.
         ;       (See the attestation calculations section, below, for a discussion
         ;       about the purpose of this \`prefix\` value.)
@@ -7327,272 +7330,305 @@ The weight that [=[RPS]=] give to the presence of a signature from a [=device-bo
     ```
 
 : Unsigned extension output
-:: A CBOR byte string containing a signature generated with the device private key.
+:: A non-empty CBOR array of byte strings containing the signatures generated with the supplemental private keys, in the same order as in the authenticator extension output.
+
+    ```
+    supplementalPublicKeyOutputs = [+ bstr]
+
+    $$unsignedExtensionOutputs //= (
+      supplementalPubKeys: supplementalPublicKeyOutputs,
+    )
+    ```
 
 : Authenticator extension processing
 :: For both [=authenticatorMakeCredential=] and [=authenticatorGetAssertion=] operations:
     1. Create or select the [=public key credential source=] as usual (see [[#sctn-op-make-cred]], or [[#sctn-op-get-assertion]] as appropriate).
 
-    1. If the [=public key credential source=] is not [=backup eligible=] then terminate these processing steps: this extension only applies to [=multi-device credentials=].
+    1. Let |scopes| be the [=set=] of all supplemental public key scopes that the [=authenticator=] supports. Update |scopes| to be the [=set/intersection=] of itself and {{AuthenticationExtensionsSupplementalPubKeysInputs/scopes}}. If |scopes| is empty, terminate these processing steps with no extension output.
 
-    1. If a [=hardware-bound device key pair=] does not already exist for this {[=public key credential source/id|Credential ID=], [=public key credential source/rpId|RP ID=], [=public key credential source/rpId|userHandle=]} tuple on the [=authenticator=], create it using the same public key algorithm as that used by the [=user credential=]'s [=credential key pair=], otherwise locate the existing [=device-bound key=].
+    1. Let |spks| and |spkSigs| be empty arrays.
 
-    1. Let |attFormat| be the chosen [=attestation statement format=], and |attAaguid| be a 16-byte value, based on the value of {{AuthenticationExtensionsDevicePublicKeyInputs/attestation}} in the extension input:
+    1. Sort |scopes| lexicographically.
 
-        <dl class="switch">
-            : none
-            :: |attFormat| is "none" or "self", at the authenticator's discretion, and |attAaguid| is 16 zero bytes. (Note that, since the [=device-bound key=] is already exercised during {{CredentialsContainer/get()|navigator.credentials.get()}} calls, the proof-of-possession property provided by "self" attestation is superfluous in that context.)
+    1. [=map/For each=] |scope| in |scopes|:
 
-            : indirect, direct
-            :: |attFormat| is an [=attestation statement format=] appropriate for this [=authenticator=] based on {{AuthenticationExtensionsDevicePublicKeyInputs/attestationFormats}}, and |attAaguid| is the [=authenticator's=] [=/AAGUID=]. (Since the [=hardware-bound device key pair=] is specific to a particular authenticator, its attestation can be tied to hardware roots of trust, although they do not have to be. This is in contrast to the associated [=user credential=]'s attestation, if it is a [=multi-device credential=].)
+        1. If a supplemental key with scope |scope| does not already exist for this {[=public key credential source/id|Credential ID=], [=public key credential source/rpId|RP ID=], [=public key credential source/rpId|userHandle=]} tuple on the [=authenticator=], create it using the same public key algorithm as that used by the [=user credential=]'s [=credential key pair=], otherwise locate the existing supplemental key.
 
-            : enterprise
-            :: The [=[RP]=] wants to receive an [=attestation statement=] that may include uniquely identifying information. This is intended for controlled deployments within an enterprise where the organization wishes to tie registrations to specific authenticators. [=Authenticators=] MUST NOT provide such an attestation unless the user agent or authenticator configuration expressly permits it for the requested [=RP ID=]. If <i>not</i> permitted, then |attFormat| is "none" and |attAaguid| is 16 zero bytes. Otherwise |attFormat| is an [=attestation statement format=] appropriate for this [=authenticator=] based on {{AuthenticationExtensionsDevicePublicKeyInputs/attestationFormats}}, and |attAaguid| is the [=authenticator's=] [=/AAGUID=]. (Again, since the [=hardware-bound device key pair=] is specific to a particular authenticator, the attestation may be tied to hardware roots of trust.)
+        1. Let |attFormat| be the chosen [=attestation statement format=], and |attAaguid| be a 16-byte value, based on the value of {{AuthenticationExtensionsSupplementalPubKeysInputs/attestation}} in the extension input:
 
-                Note: CTAP2 does not currently provide for an <a href="https://fidoalliance.org/specs/fido-v2.1-ps-20210615/fido-client-to-authenticator-protocol-v2.1-ps-20210615.html#makecred-enterpriseattestation">enterpriseAttestation</a> signal during an <a href="https://fidoalliance.org/specs/fido-v2.1-ps-20210615/fido-client-to-authenticator-protocol-v2.1-ps-20210615.html#authenticatorGetAssertion">authenticatorGetAssertion</a> call. Until that is changed, <a href="https://fidoalliance.org/specs/fido-v2.1-ps-20210615/fido-client-to-authenticator-protocol-v2.1-ps-20210615.html#platform-managed-enterprise-attestation">platform-managed enterprise attestation</a> will not work in that context with CTAP2 [=authenticators=].
-        </dl>
+            <dl class="switch">
+                : none
+                :: |attFormat| is "none" or "self", at the authenticator's discretion, and |attAaguid| is 16 zero bytes. (Note that, since the [=supplemental public key=] is already exercised during {{CredentialsContainer/create()|navigator.credentials.create()}} calls, the proof-of-possession property provided by "self" attestation is superfluous in that context.)
 
-    1. Let |dpk| be the newly created or existing [=device public key=], in COSE_Key format [=credentialPublicKey|in the same fashion as for the user credential's credentialPublicKey=] when the latter is conveyed in [=attested credential data=].
+                : indirect, direct
+                :: |attFormat| is an [=attestation statement format=] appropriate for this [=authenticator=] based on {{AuthenticationExtensionsSupplementalPubKeysInputs/attestationFormats}}, and |attAaguid| is the corresponding [=/AAGUID=], which MAY be the [=authenticator's=] AAGUID. (Since the [=supplemental public key=]'s scope is different from the [=user credential=], it will often have a different attestation. For example, the attestation for a [=supplemental public key=] with &ldquo;device&rdquo; scope can be tied to hardware roots of trust, although it does not have to be.)
 
-    1. Let |devicePrivateKey| be the newly created or existing [=device private key=].
+                : enterprise
+                :: The [=[RP]=] wants to receive an [=attestation statement=] that may include uniquely identifying information. This is intended for controlled deployments within an enterprise where the organization wishes to tie registrations to specific authenticators. [=Authenticators=] MUST NOT provide such an attestation unless the user agent or authenticator configuration expressly permits it for the requested [=RP ID=]. If <i>not</i> permitted, then follow the steps for `direct` attestation. Otherwise |attFormat| is an [=attestation statement format=] appropriate for this [=authenticator=] based on {{AuthenticationExtensionsSupplementalPubKeysInputs/attestationFormats}}, and |attAaguid| is the corresponding [=/AAGUID=], which MAY be the [=authenticator's=] AAGUID.
 
-    1. Let |randomNonce| be a fresh randomly-generated byte string of 32 bytes maximum length, or a zero length byte string if the authenticator chooses to not generate a nonce.
+                    Note: CTAP2 does not currently provide for an <a href="https://fidoalliance.org/specs/fido-v2.1-ps-20210615/fido-client-to-authenticator-protocol-v2.1-ps-20210615.html#makecred-enterpriseattestation">enterpriseAttestation</a> signal during an <a href="https://fidoalliance.org/specs/fido-v2.1-ps-20210615/fido-client-to-authenticator-protocol-v2.1-ps-20210615.html#authenticatorGetAssertion">authenticatorGetAssertion</a> call. Until that is changed, <a href="https://fidoalliance.org/specs/fido-v2.1-ps-20210615/fido-client-to-authenticator-protocol-v2.1-ps-20210615.html#platform-managed-enterprise-attestation">platform-managed enterprise attestation</a> will not work in that context with CTAP2 [=authenticators=].
+            </dl>
 
-        Note: |randomNonce|'s purpose is to randomize the `devicePubKey` extension's [=attestation signature=] value. If this is not done, then the `devicePubKey` extension's [=attestation signature=] value remains constant for all such signatures issued on behalf of this [=user credential=], possibly exposing the [=authenticator=]'s [=attestation private key=] to side-channel attacks. The randomness-generation mechanism should be carefully chosen by the authenticator implementer.
+        1. Let |spk| be the newly created or existing supplemental public key, in COSE_Key format [=credentialPublicKey|in the same fashion as for the user credential's credentialPublicKey=] when the latter is conveyed in [=attested credential data=].
 
-    1. Let the `devicePubKey` [=authenticator extension output=] value be a [=CBOR=] map as defined by `attObjForDevicePublicKey` above, with keys and values as follows:
+        1. Let |supplementalPrivateKey| be the newly created or existing private key corresponding to |spk|.
 
-        Note: as with all CBOR structures used in this specification, the [=CTAP2 canonical CBOR encoding form=] MUST be used.
+        1. Let |randomNonce| be a fresh randomly-generated byte string of 32 bytes maximum length, or a zero length byte string if the authenticator chooses to not generate a nonce.
 
-        1. Let the `aaguid` key's value be |attAaguid|.
+            Note: |randomNonce|'s purpose is to randomize the [=attestation signature=] value for [=supplemental public keys=]. If this is not done, then an [=attestation signature=] value remains constant for all such signatures issued on behalf of this [=user credential=], possibly exposing the [=authenticator=]'s [=attestation private key=] to side-channel attacks. The randomness-generation mechanism should be carefully chosen by the authenticator implementer.
 
-        1. Let the `dpk` key's value be |dpk|.
+        1. Let |supplementalPubKey| be a [=CBOR=] map as defined by `attObjForSupplementalPubKey` above, with keys and values as follows:
 
-        1. Let the `nonce` key's value be |randomNonce|.
+            Note: as with all CBOR structures used in this specification, the [=CTAP2 canonical CBOR encoding form=] MUST be used.
 
-        1. Let the `scope` key have the value zero (0x00) if this is an "entire device" [=device public key=]. Otherwise, let `scope` have the value one (0x01), indicating a more narrow per-app scope.
+            1. Set a key and value for the `scope` group based on the value of |scope|.
 
-        1. Let the values of the `$$attStmtType` [=group socket=] be the result of generating an [=attestation statement=] with the [=attestation statement format=], |attFormat|. See [[#sctn-device-publickey-attestation-calculations]].
+            1. Let the `aaguid` key's value be |attAaguid|.
 
-            Note: The details of the `$$attStmtType` values are dependent upon the particular [=attestation statement=] format. See [[#sctn-attestation-formats]]. Since the [=hardware-bound device key pair=] is specific to a particular authenticator, its attestation can be tied to hardware roots of trust (although they do not have to be). This is in contrast to the associated [=user credential=]'s attestation, if it is a [=multi-device credential=].
+            1. Let the `spk` key's value be |spk|.
 
-        1. If the `$$attStmtType` [=group socket=] contains uniquely identifying information then let `epAtt` be [TRUE]. Otherwise omit the `epAtt` field. (This field can only be [TRUE] when the {{AuthenticationExtensionsDevicePublicKeyInputs/attestation}} field of the extension input is "enterprise" and either the user-agent or the authenticator permits uniquely identifying attestation for the requested RP ID.)
+            1. Let the `nonce` key's value be |randomNonce|.
 
-    1. Let |dpkSig| be the result of signing the [=assertion signature=] [input](#fig-signature) with |devicePrivateKey|.
+            1. Let the values of the `$$attStmtType` [=group socket=] be the result of generating an [=attestation statement=] with the [=attestation statement format=], |attFormat|. See [[#sctn-supplemental-public-keys-attestation-calculations]].
 
-        Note: the [=assertion signature=] [input](#fig-signature), and thus |dpkSig|, covers the [=[RP]=]'s {{PublicKeyCredentialCreationOptions/challenge}} because it includes the [=hash of the serialized client data=]. Thus the [=[RP]=] knows that |dpkSig| is a fresh signature.
+                Note: The details of the `$$attStmtType` values are dependent upon the particular [=attestation statement=] format. See [[#sctn-attestation-formats]].
 
-    1. Output |dpkSig| as the extension's [=unsigned extension output=].
+            1. If the `$$attStmtType` [=group socket=] contains uniquely identifying information then let `epAtt` be [TRUE]. Otherwise omit the `epAtt` field. (This field can only be [TRUE] when the {{AuthenticationExtensionsSupplementalPubKeysInputs/attestation}} field of the extension input is "enterprise" and either the user-agent or the authenticator permits uniquely identifying attestation for the requested RP ID.)
 
-        Note: |dpkSig| cannot be included in the [=authenticator extension output=] because it is returned inside the [=authenticator data=] and that would imply that the signature signs over itself.
+        1. Append |supplementalPubKey| to |spks|.
 
-##### AAGUIDs ##### {#sctn-device-publickey-attestation-aaguid}
+        1. Let |spkSig| be the result of signing the [=assertion signature=] [input](#fig-signature) with |supplementalPrivateKey|.
 
-The [=/AAGUID=] included in the <code>[=devicePubKey=]</code> extension output, if non-zero, identifies the make or model of hardware that is storing the [=device-bound key=]. This is distinct from the [=authData/attestedCredentialData/aaguid=] in the [=attested credential data=] of a [=multi-device credential=], which likely identifies something broader since such credentials are not bound to a single device. Thus the two AAGUIDs MAY be different in a single response and either, or both, may be zero depending on the options requested and authenticator behaviour.
+            Note: the [=assertion signature=] [input](#fig-signature), and thus |spkSig|, covers the [=[RP]=]'s {{PublicKeyCredentialCreationOptions/challenge}} because it includes the [=hash of the serialized client data=]. Thus the [=[RP]=] knows that |spkSig| is a fresh signature.
 
-##### Attestation calculations ##### {#sctn-device-publickey-attestation-calculations}
+        1. Append |spkSig| to |spkSigs|.
 
-When computing attestations, the process in [[#sctn-generating-an-attestation-object]] takes two inputs: `authData` and `hash`. When calculating an attestation for a [=device-bound key=], the typical value for `hash` hashes over the attestation signature itself, which is impossible. Also the attestation of a [=device-bound key=] is potentially used repeatedly, thus may want to be cached. But signing over values that include [=[RP]=]-chosen nonces, like the [=hash of the serialized client data=], makes that impossible.
+    1. Let the `supplementalPubKeys` [=authenticator extension output=] value be the CBOR array |spks|.
 
-Therefore when calculating an attestation for a [=device-bound key=], the inputs are:
+    1. Let the CBOR encoding of |spkSigs| be the extension's [=unsigned extension output=].
 
-    * For `authData`, substitute the concatenation of the byte string h'64657669636520626f756e64206b6579206174746573746174696f6e2073696700ffffffff' and the value of |aaguid| from the extension output.
-    * For `hash`, substitute the concatenation of the |dpk| and |nonce| fields from the extension output. (The nonce MAY be empty.)
+        Note: |spkSigs| cannot be included in the [=authenticator extension output=] because it is returned inside the [=authenticator data=] and that would imply that the signature signs over itself.
 
-The attestation signature is thus typically calculated over the bytes of <code>(h'64657669636520626f756e64206b6579206174746573746174696f6e2073696700ffffffff' || |aaguid| || |dpk| || |nonce|)</code>. The 37-byte prefix ensures domain separation: it takes the place of the RP ID hash, flags, and signature counter fields in those messages and ensures that no attestation signature for a [=device-bound key=] can be confused with a signature for a [=user credential=].
+##### AAGUIDs ##### {#sctn-supplemental-public-keys-attestation-aaguid}
 
-Note that when |nonce| is empty, then the (signed) authenticator extension output MAY be constant. However, the (unsigned) |dpkSig| output is always unique and prevents replay of the (signed) extension output without knowledge of the [=device private key=].
+Any non-zero [=/AAGUID=]s included in the <code>[=supplementalPubKeys=]</code> extension output aid a [=[RP]=] in validating the [=attestation statement=] of the supplemental public key. The interpretation of each AAGUID depends on the scope of the corresponding key. Some or all may differ from the [=authData/attestedCredentialData/aaguid=] in the [=attested credential data=] of a [=multi-device credential=]. Thus the AAGUID of a [=supplemental public key=] MAY be different in a single response and either, or both, may be zero depending on the options requested and authenticator behaviour.
 
-#### `devicePubKey` Extension Output Verification Procedures #### {#sctn-device-publickey-extension-verification}
+##### Attestation calculations ##### {#sctn-supplemental-public-keys-attestation-calculations}
 
-Verifying the <code>[=devicePubKey=]</code> extension output is performed by the [=[RP]=] whenever a [=device public key=] is returned within the extension output.
+When computing attestations, the process in [[#sctn-generating-an-attestation-object]] takes two inputs: `authData` and `hash`. When calculating an attestation for a supplemental public key, the typical value for `authData` contains the attestation signature itself, which is impossible. Also the attestation of a supplemental public key is potentially used repeatedly, thus may want to be cached. But signing over values that include [=[RP]=]-chosen nonces, like the [=hash of the serialized client data=], makes that impossible.
 
-The [=devicePubKey=] extension adds the following [=struct/item=] to [=credential records=]:
+Therefore when calculating an attestation for a supplemental public key, the inputs are:
+
+    * For `authData`, substitute the concatenation of the byte string h'737570706c656d656e74616c5075624b657973206174746573746174696f6e2e00ffffffff' and the value of |aaguid| from the extension output.
+    * For `hash`, substitute the concatenation of the |spk| and |nonce| fields from the extension output. (The nonce MAY be empty.)
+
+The attestation signature is thus typically calculated over the bytes of <code>(h'737570706c656d656e74616c5075624b657973206174746573746174696f6e2e00ffffffff' || |aaguid| || |spk| || |nonce|)</code>. The 37-byte prefix ensures domain separation: it takes the place of the RP ID hash, flags, and signature counter fields in those messages and ensures that no attestation signature for a supplemental public key can be confused with a signature for a [=user credential=].
+
+Note that when |nonce| is empty, then the (signed) authenticator extension output MAY be constant. However, the (unsigned) |spkSig| output is always unique and prevents replay of the (signed) extension output without knowledge of the supplemental private key.
+
+#### `supplementalPubKeys` Extension Output Verification Procedures #### {#sctn-supplemental-public-keys-extension-verification}
+
+Verifying the <code>[=supplementalPubKeys=]</code> extension output is performed by the [=[RP]=] whenever a supplemental public key is returned within the extension output.
+
+The [=supplementalPubKeys=] extension adds the following [=struct/item=] to [=credential records=]:
 
 <dl dfn-for="credential record" dfn-type="abstract-op">
-    :   <dfn>devicePubKeys</dfn>
-    ::  An initially [=set/empty=] [=set=] of [=device-bound key records=] associated with this [=public key credential source=].
+    :   <dfn>supplementalPubKeys</dfn>
+    ::  An initially [=set/empty=] [=set=] of [=supplemental public key records=] associated with this [=public key credential source=].
 
-        A <dfn dfn>device-bound key record</dfn> is an abstract representation of a registered [=device-bound key=].
+        A <dfn dfn>supplemental public key record</dfn> is an abstract representation of a registered supplemental public key.
         It is a [=struct=] with the following [=struct/items=]:
 
-        <dl dfn-for="devicePubKey record" dfn-type="abstract-op">
+        <dl dfn-for="supplementalPubKeys record" dfn-type="abstract-op">
             :   <dfn>aaguid</dfn>
-            ::  The [=/AAGUID=] of the [=device-bound key=]'s [=managing authenticator=].
+            ::  The [=/AAGUID=] included with the supplemental public key.
                 This MAY be different from the [=authData/attestedCredentialData/aaguid=] in the [$credential record/attestationObject$], if any, of the containing [=credential record=].
 
-            :   <dfn>dpk</dfn>
-            ::  The public key portion of the [=device-bound key=].
+            :   <dfn>spk</dfn>
+            ::  The public key portion of the supplemental public key.
 
             :   <dfn>scope</dfn>
-            ::  The scope of the [=device-bound key=]. See [[#sctn-device-publickey-extension-definition]] for details.
+            ::  The scope of the supplemental public key. See [[#sctn-supplemental-public-keys-extension-definition]] for details.
 
             :   <dfn>fmt</dfn>
-            ::  The [=attestation statement format=] of the [=device-bound key=]'s [=attestation statement=].
+            ::  The [=attestation statement format=] of the supplemental public key's [=attestation statement=].
 
             :   <dfn>attStmt</dfn>
-            ::  The [=device-bound key=]'s [=attestation statement=].
+            ::  The supplemental public key's [=attestation statement=].
         </dl>
 </dl>
 
 
-##### Registration (`create()`) ##### {#sctn-device-publickey-extension-verification-create}
+##### Registration (`create()`) ##### {#sctn-supplemental-public-keys-extension-verification-create}
 
-If the [=[RP]=] requested the `devicePubKey` extension in a {{CredentialsContainer/create()|navigator.credentials.create()}} call,
+If the [=[RP]=] requested the `supplementalPubKeys` extension in a {{CredentialsContainer/create()|navigator.credentials.create()}} call,
 then the below verification steps are performed in the context of [step 19](#reg-ceremony-verify-extension-outputs)
 of [[#sctn-registering-a-new-credential]] using these variables established therein: |credential|, |clientExtensionResults|, |authData|, and |hash|.
-[=[RP]=] policy may specify whether a response without a `devicePubKey` extension output is acceptable.
+[=[RP]=] policy may specify whether a response without a `supplementalPubKeys` extension output is acceptable.
 
-1. Verify that {{AuthenticationExtensionsClientOutputs/devicePubKey}} member of |clientExtensionResults| exists, and contains the {{AuthenticationExtensionsDevicePublicKeyOutputs/signature}} field.
+1. Verify that the {{AuthenticationExtensionsClientOutputs/supplementalPubKeys}} member of |clientExtensionResults| exists, and contains the {{AuthenticationExtensionsSupplementalPubKeysOutputs/signatures}} field. Let |signatures| be the value of that field.
 
-1. Let |attObjForDevicePublicKey| be the value of the `devicePubKey` member of the [=authenticator extension output=] from |authData|.
+1. Let |attObjsForSupplementalPublicKey| be the value of the `supplementalPubKeys` member of the [=authenticator extension output=] from |authData|.
 
-1. Extract the contained fields from |attObjForDevicePublicKey|: |aaguid|, |dpk|, |scope|, |nonce|, |fmt|, |attStmt|.
+1. If the [=list/size=] of |attObjsForSupplementalPublicKey| is not equal to the [=list/size=] of |signatures| then abort the registration process with an error.
 
-    Note: The latter |attObjForDevicePublicKey| fields are referenced exclusively in the below steps and are not to be confused with other fields with the same names in other portions of the top-level [=attestation object=].
+1. [=list/Iterate=] over the indices of |attObjsForSupplementalPublicKey| (which, after the check in the previous step, must also be the indices of |signatures|). Then, for each (|attObjForSupplementalPubKey|, |signature|) from the two lists:
 
-1. Verify that {{AuthenticationExtensionsDevicePublicKeyOutputs/signature}} is a valid signature over the [=assertion signature=] [input](#fig-signature) (i.e. `authData` and `hash`) by the [=device public key=] |dpk|. (The signature algorithm is the same as for the [=user credential=].)
+    1. Extract the contained fields from |attObjForSupplementalPubKey|: |aaguid|, |spk|, |nonce|, |fmt| and |attStmt|. Also let |scope| reflect the scope, specified by the member of the `scope` group that is present.
 
-1. Optionally, if attestation was requested and the [=[RP]=] wishes to verify it, verify that |attStmt| is a correct [=attestation statement=], conveying a valid [=attestation signature=], by using the [=attestation statement format=] |fmt|'s [=verification procedure=] given |attStmt|. See [[#sctn-device-publickey-attestation-calculations]]. [=[RP]=] policy may specifiy which attestations are acceptable.
+        Note: The latter |attObjForSupplementalPubKey| fields are referenced exclusively in the below steps and are not to be confused with other fields with the same names in other portions of the top-level [=attestation object=].
 
-    Note: If |fmt|'s value is "[=none=]" there is no attestation signature to verify.
+    1. Verify that |signature| is a valid signature over the [=assertion signature=] [input](#fig-signature) (i.e. `authData` and `hash`) by the [=supplemental public key=] |spk|. (The signature algorithm is the same as for the [=user credential=].)
 
-1. Create a new [=device-bound key record=] with the contents:
+    1. Optionally, if attestation was requested and the [=[RP]=] wishes to verify it, verify that |attStmt| is a correct [=attestation statement=], conveying a valid [=attestation signature=], by using the [=attestation statement format=] |fmt|'s [=verification procedure=] given |attStmt|. See [[#sctn-supplemental-public-keys-attestation-calculations]]. [=[RP]=] policy may specifiy which attestations are acceptable.
 
-    <dl>
-        :   [$devicePubKey record/aaguid$]
-        ::  The value of |aaguid|.
+        Note: If |fmt|'s value is "[=none=]" there is no attestation signature to verify.
 
-        :   [$devicePubKey record/dpk$]
-        ::  The value of |dpk|.
-
-        :   [$devicePubKey record/scope$]
-        ::  The value of |scope|.
-
-        :   [$devicePubKey record/fmt$]
-        ::  The value of |fmt|.
-
-        :   [$devicePubKey record/attStmt$]
-        ::  The value of |attStmt|.
-    </dl>
-
-    In [step 26](#reg-ceremony-store-credential-record) of [[#sctn-registering-a-new-credential]],
-    add this [=device-bound key record=] to the [$credential record/devicePubKeys$] member of the new [=credential record=].
-
-See also [[#sctn-device-publickey-extension-usage]] for further details.
-
-##### Authentication (`get()`) ##### {#sctn-device-publickey-extension-verification-get}
-
-If the [=[RP]=] requested the `devicePubKey` extension in a {{CredentialsContainer/get()|navigator.credentials.get()}} call,
-then the below verification steps are performed in the context of [step 17](#authn-ceremony-verify-extension-outputs)
-of [[#sctn-verifying-assertion]] using these variables established therein: |credential|, |clientExtensionResults|, |authData|, |hash|, and |credentialRecord|.
-[=[RP]=] policy may specify whether a response without a `devicePubKey` extension output is acceptable.
-
-1. Verify that {{AuthenticationExtensionsClientOutputs/devicePubKey}} member of |clientExtensionResults| exists, and contains the {{AuthenticationExtensionsDevicePublicKeyOutputs/signature}} field.
-
-1. Let |attObjForDevicePublicKey| be the value of the `devicePubKey` member of the [=authenticator extension output=] from |authData|.
-
-1. Extract the contained fields from |attObjForDevicePublicKey|: |aaguid|, |dpk|, |scope|, |nonce|, |fmt|, |attStmt|.
-
-    Note: The latter |attObjForDevicePublicKey| fields are referenced exclusively in the below steps and are not to be confused with other fields with the same names in other portions of [=authenticator data=].
-
-1. Verify that {{AuthenticationExtensionsDevicePublicKeyOutputs/signature}} is a valid signature over the [=assertion signature=] [input](#fig-signature) (i.e. `authData` and `hash`) by the [=device public key=] |dpk|. (The signature algorithm is the same as for the [=user credential=].)
-
-1. Let |matchedDpkRecords| be a new [=set/empty=] [=set=].
-    [=set/For each=] |dpkRecord| in |credentialRecord|.[$credential record/devicePubKeys$]:
-        1. If |dpkRecord|.[$devicePubKey record/aaguid$] equals |aaguid|,
-              |dpkRecord|.[$devicePubKey record/dpk$] equals |dpk|,
-              and |dpkRecord|.[$devicePubKey record/scope$] equals |scope|:
-            1. [=set/Append=] |dpkRecord| to |matchedDpkRecords|.
-
-1.  If |matchedDpkRecords|
-
-    <dl class="switch">
-        : has [=set/size=] greater than one:
-        :: Some form of error has occurred. It is indeterminate whether this is a known device. Terminate these verification steps.
-
-        : has [=set/size=] equal to one:
-        :: This is likely a known device.
-
-            If |fmt|'s value is "none" then there is no attestation signature to verify and this is a known [=device public key=] with a valid signature and thus a known device. Terminate these verification steps.
-
-            Otherwise, let |dpkRecord| be |matchedDpkRecords|[0]. If the |attStmt| in |attObjForDevicePublicKey|:
-                <dl class="switch">
-                    : equals |dpkRecord|.[$devicePubKey record/attStmt$] by binary equality:
-                    :: This is a known [=device public key=] with a valid signature and valid attestation and thus a known device. Terminate these verification steps.
-
-                        Note: This authenticator is not generating a fresh per-response random nonce.
-
-                    : does not equal |dpkRecord|.[$devicePubKey record/attStmt$] by binary equality:
-                    :: Optionally, if attestation was requested and the RP wishes to verify it, verify that |attStmt| is a correct [=attestation statement=], conveying a valid [=attestation signature=], by using the [=attestation statement format=] |fmt|'s [=verification procedure=] given |attStmt|. See [[#sctn-device-publickey-attestation-calculations]]. [=[RP]=] policy may specifiy which attestations are acceptable.
-
-                        If the result is:
-
-                        <dl class="switch">
-                            : successful
-                            :: This is a known [=device public key=] with a valid signature and valid attestation and thus a known device. Terminate these verification steps.
-
-                            : unsuccessful
-                            :: Some form of error has occurred. It is indeterminate whether this is a known device. Terminate these verification steps.
-                        </dl>
-                </dl>
-
-        : is [=set/empty=]:
-        :: This is possibly a new [=device public key=] signifying a new device.
-
-            1. Let |matchedDpkKeys| be a new [=set/empty=] [=set=].
-                [=set/For each=] |dpkRecord| in |credentialRecord|.[$credential record/devicePubKeys$]:
-                    1. If |dpkRecord|.[$devicePubKey record/dpk$] equals |dpk|:
-                        1. [=set/Append=] |dpkRecord| to |matchedDpkKeys|.
-
-            1. If |matchedDpkKeys| is [=set/empty=]:
-
-                <dl class="switch">
-                    : If |fmt|'s value is "none":
-                    :: There is no attestation signature to verify and this is a new device. Unless [=[RP]=] policy specifies that this attestation is unacceptable, [$Create a new device-bound key record$] and then terminate these verification steps.
-
-                    : Otherwise:
-                    :: Optionally, if attestation was requested and the RP wishes to verify it, verify that |attStmt| is a correct [=attestation statement=], conveying a valid [=attestation signature=], by using the [=attestation statement format=] |fmt|'s [=verification procedure=] given |attStmt|. See [[#sctn-device-publickey-attestation-calculations]]. [=[RP]=] policy may specifiy which attestations are acceptable.
-
-                        If the result is:
-
-                        <dl class="switch">
-                            : successful
-                            :: This is a new [=device public key=] signifying a new device. [$Create a new device-bound key record$], then terminate these verification steps.
-
-                            : unsuccessful
-                            :: Some form of error has occurred. It is indeterminate whether this is a valid new device. Terminate these verification steps.
-                        </dl>
-                </dl>
-
-            1. Otherwise there is some form of error: we recieved a known |dpk| value, but one or more of the accompanying |aaguid| or |scope| values did not match what the [=[RP]=] has stored along with that |dpk| value. Terminate these verification steps.
-    </dl>
-
-See also [[#sctn-device-publickey-extension-usage]].
-
-To <dfn abstract-op>Create a new device-bound key record</dfn>, perform the following steps:
-
-    1. Create a new [=device-bound key record=] with the contents:
+    1. Create a new [=supplemental public key record=] with the contents:
 
         <dl>
-            :   [$devicePubKey record/aaguid$]
+            :   [$supplementalPubKeys record/aaguid$]
             ::  The value of |aaguid|.
 
-            :   [$devicePubKey record/dpk$]
-            ::  The value of |dpk|.
+            :   [$supplementalPubKeys record/spk$]
+            ::  The value of |spk|.
 
-            :   [$devicePubKey record/scope$]
+            :   [$supplementalPubKeys record/scope$]
             ::  The value of |scope|.
 
-            :   [$devicePubKey record/fmt$]
+            :   [$supplementalPubKeys record/fmt$]
             ::  The value of |fmt|.
 
-            :   [$devicePubKey record/attStmt$]
+            :   [$supplementalPubKeys record/attStmt$]
+            ::  The value of |attStmt|.
+        </dl>
+
+        In [step 26](#reg-ceremony-store-credential-record) of [[#sctn-registering-a-new-credential]],
+        add this [=supplemental public key record=] to the [$credential record/supplementalPubKeys$] member of the new [=credential record=].
+
+See also [[#sctn-supplemental-public-keys-extension-usage]] for further details.
+
+##### Authentication (`get()`) ##### {#sctn-supplemental-public-keys-extension-verification-get}
+
+If the [=[RP]=] requested the `supplementalPubKeys` extension in a {{CredentialsContainer/get()|navigator.credentials.get()}} call,
+then the below verification steps are performed in the context of [step 17](#authn-ceremony-verify-extension-outputs)
+of [[#sctn-verifying-assertion]] using these variables established therein: |credential|, |clientExtensionResults|, |authData|, |hash|, and |credentialRecord|.
+[=[RP]=] policy may specify whether a response without a `supplementalPubKeys` extension output is acceptable.
+
+1. Let |recognizedSpks| be a new [=set/empty=] [=set=].
+
+1. Verify that the {{AuthenticationExtensionsClientOutputs/supplementalPubKeys}} member of |clientExtensionResults| exists, and contains the {{AuthenticationExtensionsSupplementalPubKeysOutputs/signatures}} field. Let |signatures| be the value of that field.
+
+1. Let |attObjsForSupplementalPubKeys| be the value of the `supplementalPubKeys` member of the [=authenticator extension output=] from |authData|.
+
+1. If the [=list/size=] of |attObjsForSupplementalPubKeys| is not equal to the [=list/size=] of |signatures| then abort the authentication process with an error.
+
+1. [=list/Iterate=] over the indices of |attObjsForSupplementalPubKeys| (which, after the check in the previous step, must also be the indices of |signatures|). Then, for each (|attObjForSupplementalPubKey|, |signature|) from the two lists:
+
+    1. Extract the contained fields from |attObjForSupplementalPubKey|: |aaguid|, |spk|, |nonce|, |fmt|, |attStmt|. Also let |scope| reflect the scope, specified by the member of the `scope` group that is present.
+
+        Note: The latter |attObjForSupplementalPubKey| fields are referenced exclusively in the below steps and are not to be confused with other fields with the same names in other portions of [=authenticator data=].
+
+    1. Verify that |signature| is a valid signature over the [=assertion signature=] [input](#fig-signature) (i.e. `authData` and `hash`) by the [=supplemental public key=] |spk|. (The signature algorithm is the same as for the [=user credential=].)
+
+    1. Let |matchedSpkRecords| be a new [=set/empty=] [=set=].
+        [=set/For each=] |spkRecord| in |credentialRecord|.[$credential record/supplementalPubKeys$]:
+            1. If |spkRecord|.[$supplementalPubKeys record/aaguid$] equals |aaguid|,
+                  |spkRecord|.[$supplementalPubKeys record/spk$] equals |spk|,
+                  and |spkRecord|.[$supplementalPubKeys record/scope$] equals |scope|:
+                1. [=set/Append=] |spkRecord| to |matchedSpkRecords|.
+
+    1.  If |matchedSpkRecords|
+
+        <dl class="switch">
+            : has [=set/size=] greater than one:
+            :: Some form of error has occurred: |credentialRecord| invariants have been broken. Terminate these verification steps.
+
+            : has [=set/size=] equal to one:
+            :: This is a known [=supplemental public key=]
+
+                If |fmt|'s value is "none" then there is no attestation signature to verify and this is a known [=supplemental public key=] with a valid signature. Append |spkRecord| to |recognizedSpks| and continue to the next iteration, if any.
+
+                Otherwise, let |spkRecord| be |matchedSpkRecords|[0]. If the |attStmt| in |attObjForSupplementalPubKey|:
+                    <dl class="switch">
+                        : equals |spkRecord|.[$supplementalPubKeys record/attStmt$] by binary equality:
+                        :: This is a known [=supplemental public key=] with a valid signature and valid attestation. Append |spkRecord| to |recognizedSpks| and continue to the next iteration, if any.
+
+                            Note: This authenticator is not generating a fresh per-response random nonce.
+
+                        : does not equal |spkRecord|.[$supplementalPubKeys record/attStmt$] by binary equality:
+                        :: Optionally, if attestation was requested and the RP wishes to verify it, verify that |attStmt| is a correct [=attestation statement=], conveying a valid [=attestation signature=], by using the [=attestation statement format=] |fmt|'s [=verification procedure=] given |attStmt|. See [[#sctn-supplemental-public-keys-attestation-calculations]]. [=[RP]=] policy may specifiy which attestations are acceptable.
+
+                            If the result is:
+
+                            <dl class="switch">
+                                : successful
+                                :: This is a known [=supplemental public key=] with a valid signature and valid attestation. Append |spkRecord| to |recognizedSpks| and continue to the next iteration, if any.
+
+                                : unsuccessful
+                                :: Some form of error has occurred. It is indeterminate whether this is a valid [=supplemental public key=]. Either terminate these verification steps with an error or continue to the next iteration, if any, to ignore this key.
+
+                            </dl>
+                    </dl>
+
+            : is [=set/empty=]:
+            :: This is possibly a new [=supplemental public key=].
+
+                1. Let |matchedSpkKeys| be a new [=set/empty=] [=set=].
+                    [=set/For each=] |spkRecord| in |credentialRecord|.[$credential record/supplementalPubKeys$]:
+                        1. If |spkRecord|.[$supplementalPubKeys record/spk$] equals |spk|:
+                            1. [=set/Append=] |spkRecord| to |matchedSpkKeys|.
+
+                1. If |matchedSpkKeys| is [=set/empty=]:
+
+                    <dl class="switch">
+                        : If |fmt|'s value is "none":
+                        :: There is no attestation signature to verify and this is a new supplemental key. Unless [=[RP]=] policy specifies that this attestation is unacceptable, [$Create a new supplemental public key record$] and then continue to the next iteration, if any.
+
+                        : Otherwise:
+                        :: Optionally, if attestation was requested and the RP wishes to verify it, verify that |attStmt| is a correct [=attestation statement=], conveying a valid [=attestation signature=], by using the [=attestation statement format=] |fmt|'s [=verification procedure=] given |attStmt|. See [[#sctn-supplemental-public-keys-attestation-calculations]]. [=[RP]=] policy may specifiy which attestations are acceptable.
+
+                            If the result is:
+
+                            <dl class="switch">
+                                : successful
+                                :: This is a new [=supplemental public key=]. [$Create a new supplemental public key record$] then continue to the next iteration, if any.
+
+                                : unsuccessful
+                                :: Some form of error has occurred and a supplemental public key record cannot be created. Either terminate these verification steps with an error or continue to the next iteration, if any, to ignore this supplemental public key.
+                            </dl>
+                    </dl>
+
+                1. Otherwise there is some form of error: we recieved a known |spk| value, but one or more of the accompanying |aaguid| or |scope| values did not match what the [=[RP]=] has stored along with that |spk| value. Terminate these verification steps.
+        </dl>
+
+At the end of these steps, |recognizedSpks| contains zero or more [=supplemental public keys=] that were previously known for this [=user credential=]. These keys make claims about the continuity of certain factors between this authentication attempt and previous ones. The [=[RP]=] should judge those claims in light of the attestations provided, if any, and evaluate the risk of this authentication in light of this information.
+
+See also [[#sctn-supplemental-public-keys-extension-usage]].
+
+To <dfn abstract-op>Create a new supplemental public key record</dfn>, perform the following steps:
+
+    1. Create a new [=supplemental public key record=] with the contents:
+
+        <dl>
+            :   [$supplementalPubKeys record/aaguid$]
+            ::  The value of |aaguid|.
+
+            :   [$supplementalPubKeys record/spk$]
+            ::  The value of |spk|.
+
+            :   [$supplementalPubKeys record/scope$]
+            ::  The value of |scope|.
+
+            :   [$supplementalPubKeys record/fmt$]
+            ::  The value of |fmt|.
+
+            :   [$supplementalPubKeys record/attStmt$]
             ::  The value of |attStmt|.
         </dl>
 
         In [step 22](#authn-ceremony-update-credential-record) of [[#sctn-verifying-assertion]],
-        [=set/append=] this [=device-bound key record=] to |credentialRecord|.[$credential record/devicePubKeys$].
+        [=set/append=] this [=supplemental public key record=] to |credentialRecord|.[$credential record/supplementalPubKeys$].
 
 
 # User Agent Automation # {#sctn-automation}
