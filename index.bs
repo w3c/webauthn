@@ -7183,7 +7183,7 @@ A usage example is thus:
 
 Another example of supplemental keys:
 
-> Say that a sign-in request appears at a website along with some geolocation signal that has not been seen for this [=user account=] before, and is outside of the typical usage hours observed for the account. The risk may be deemed high enough not to allow the request, even with an assertion by a [=multi-device credential=] on its own. But if a signature from a supplimental key that is device-bound, and that is <i>well established</i> for this user can also be presented, then that may tip the balance.
+> Say that a sign-in request appears at a website along with some geolocation signal that has not been seen for this [=user account=] before, and is outside of the typical usage hours observed for the account. The risk may be deemed high enough not to allow the request, even with an assertion by a [=multi-device credential=] on its own. But if a signature from a supplemental key that is device-bound, and that is <i>well established</i> for this user can also be presented, then that may tip the balance.
 
 The weight that [=[RPS]=] give to the presence of a signature from a supplemental key may be based on information learned from its optional attestation. An attestation can indicate the level of protection enjoyed by a hardware-bound key, or the policies for other types of supplemental key.
 
@@ -7197,19 +7197,19 @@ The weight that [=[RPS]=] give to the presence of a signature from a supplementa
 
 : Client extension input
 :: <xmp class="idl">
-    dictionary AuthenticationExtensionsSupplementalPublicKeysInputs {
+    dictionary AuthenticationExtensionsSupplementalPubKeysInputs {
         required sequence<DOMString> scopes;
         DOMString attestation = "indirect";
         sequence<DOMString> attestationFormats = [];
     };
 
     partial dictionary AuthenticationExtensionsClientInputs {
-        AuthenticationExtensionsSupplementalPublicKeysInputs supplementalPubKeys;
+        AuthenticationExtensionsSupplementalPubKeysInputs supplementalPubKeys;
     };
     </xmp>
-    <div dfn-type="dict-member" dfn-for="AuthenticationExtensionsSupplementalPublicKeysInputs">
+    <div dfn-type="dict-member" dfn-for="AuthenticationExtensionsSupplementalPubKeysInputs">
         :   <dfn>scopes</dfn>
-        ::  This required member specifies the scopes of supplemental public keys that the [=[RP]=] requests. Values are taken from the `scope` group in the CDDL below. (I.e. currently valid values are `provider` and `device`.) Specifying the scopes that a [=[RP]=] can use allows an [=authenticator=] to avoid the work of generating superfluous supplemental keys.
+        ::  This required member MUST be non-empty. It specifies the scopes of supplemental public keys that the [=[RP]=] requests. Values are taken from the CDDL below (i.e., currently defined values are `provider` and `device`); authenticators silently ignore unrecognized values. Specifying the scopes that a [=[RP]=] can use allows an [=authenticator=] to avoid the work of generating superfluous supplemental keys.
 
         :   <dfn>attestation</dfn>
         ::  The [=[RP]=] MAY use this OPTIONAL member to specify a preference regarding [=attestation conveyance=].
@@ -7231,14 +7231,14 @@ The weight that [=[RPS]=] give to the presence of a signature from a supplementa
 :: If {{AuthenticationExtensionsClientInputs/supplementalPubKeys}} is present, the client creates the authenticator extension input from the client extension input.
 
 : Client extension output
-:: An ArrayBuffer containing the signature returned as the [=unsigned extension output=].
+:: A sequence of {{ArrayBuffer}}s containing the signatures returned as the [=unsigned extension output=].
     <xmp class="idl">
-    dictionary AuthenticationExtensionsSupplementalPublicKeysOutputs {
+    dictionary AuthenticationExtensionsSupplementalPubKeysOutputs {
         sequence<ArrayBuffer> signatures;
     };
 
     partial dictionary AuthenticationExtensionsClientOutputs {
-        AuthenticationExtensionsSupplementalPublicKeysOutputs supplementalPubKeys;
+        AuthenticationExtensionsSupplementalPubKeysOutputs supplementalPubKeys;
     };
     </xmp>
 
@@ -7248,9 +7248,17 @@ The weight that [=[RPS]=] give to the presence of a signature from a supplementa
 
     ```
     supplementalPublicKeyInputs = {
-      scopes: [tstr],
+      scopes: [+
+        ; A key that has a broader scope than a single device, but still more
+        ; limited than a multi-device credential. The precise scope is specified
+        ; by the attestation of this supplemental public key.
+        "provider" /
+
+        ; A key with "device" scope MUST NOT leave the device on which it is
+        ; created.
+        "device"],
       attestation: tstr,
-      attestationFormats: [tstr],
+      attestationFormats: [* tstr],
     }
     $$extensionInput //= (
       supplementalPubKeys: supplementalPublicKeyInputs,
@@ -7258,7 +7266,7 @@ The weight that [=[RPS]=] give to the presence of a signature from a supplementa
     ```
 
 : Authenticator extension output
-:: The supplemental public key attestation objects, defined by the `attObjForSupplementalPublicKey` type:
+:: The supplemental public key attestation objects, defined by the `attObjForSupplementalPubKey` type:
 
     ```
     $$extensionOutput //= (
@@ -7266,39 +7274,21 @@ The weight that [=[RPS]=] give to the presence of a signature from a supplementa
         ; lexicographically by scope and MUST NOT include more than one element
         ; with a given scope.
 
-        supplementalPubKeys: [attObjForSupplementalPublicKey],
-    )
-
-    scope = (
-      ; A key that has a broader scope than a single device, but still more
-      ; limited than a multi-device credential. The precise scope is specified
-      ; by the attestation of this supplemental public key.
-
-      provider: true //
-
-      ; A key with "device" scope MUST NOT leave the device on which it is
-      ; created. The value of this key communicates whether the key is scoped to
-      ; the entire device, or a loosely-defined, narrower scope called "per-app".
-      ; For example, a "device-wide" key is expected to be the same between an
-      ; app and a browser on the same device, while a "per-app" key would
-      ; probably not be.
-      ;
-      ; Whether device-wide or not, keys are still device-bound. I.e. a
-      ; per-app key does not enjoy lesser protection from extraction.
-
-      device: "device-wide" / "per-app"
+        supplementalPubKeys: [+ attObjForSupplementalPubKey],
     )
 
     ; This object conveys an attested supplemental public key and is analogous
     ; to \`attObj\`.
-    attObjForSupplementalPublicKey = {
+    attObjForSupplementalPubKey = {
         aaguid:  bstr,  ; AAGUID (16 bytes fixed-length)
                         ; https://www.w3.org/TR/webauthn/#aaguid
 
         spk:     bstr,  ; The public key (self-describing variable length,
                         ; COSE_Key format, CBOR-encoded)).
 
-        scope,          ; see scope group, above.
+        ; See the definition of `scopes` in `supplementalPublicKeyInputs`.
+
+        scope: "provider" / "device",
 
         ; An authenticator-generated random nonce for inclusion in the attestation
         ; signature. If the authenticator chooses to not generate a nonce, it sets this
@@ -7312,7 +7302,7 @@ The weight that [=[RPS]=] give to the presence of a signature from a supplementa
         ; Attestation statement formats define the \`fmt\` and \`attStmt\` members of
         ; $$attStmtType.
         ; Note that \`fmt\` and \`attStmt\` are top-level members of
-        ; \`attObjForSupplementalPublicKey\`.
+        ; \`attObjForSupplementalPubKey\`.
         ;
         ; In summary, the \`attStmt\` will (typically) contain:
         ;   (1) a SIGNATURE value calculated (using the attestation private key)
@@ -7342,13 +7332,21 @@ The weight that [=[RPS]=] give to the presence of a signature from a supplementa
     ```
 
 : Unsigned extension output
-:: A CBOR array of byte strings containing the signatures generated with the supplemental private keys, in the same order as in the authenticator extension output.
+:: A non-empty CBOR array of byte strings containing the signatures generated with the supplemental private keys, in the same order as in the authenticator extension output.
+
+    ```
+    supplementalPublicKeyOutputs = [+ bstr]
+
+    $$unsignedExtensionOutputs //= (
+      supplementalPubKeys: supplementalPublicKeyOutputs,
+    )
+    ```
 
 : Authenticator extension processing
 :: For both [=authenticatorMakeCredential=] and [=authenticatorGetAssertion=] operations:
     1. Create or select the [=public key credential source=] as usual (see [[#sctn-op-make-cred]], or [[#sctn-op-get-assertion]] as appropriate).
 
-    1. Let |scopes| be the [=set=] of all supplemental public key scopes that the [=authenticator=] supports. Updates |scopes| to be the [=set/intersection=] of itself and {{AuthenticationExtensionsSupplementalPublicKeysInputs/scopes}}. If |scopes| is empty, terminate these processing steps with no extension output.
+    1. Let |scopes| be the [=set=] of all supplemental public key scopes that the [=authenticator=] supports. Update |scopes| to be the [=set/intersection=] of itself and {{AuthenticationExtensionsSupplementalPubKeysInputs/scopes}}. If |scopes| is empty, terminate these processing steps with no extension output.
 
     1. Let |spks| and |spkSigs| be empty arrays.
 
@@ -7358,17 +7356,17 @@ The weight that [=[RPS]=] give to the presence of a signature from a supplementa
 
         1. If a supplemental key with scope |scope| does not already exist for this {[=public key credential source/id|Credential ID=], [=public key credential source/rpId|RP ID=], [=public key credential source/rpId|userHandle=]} tuple on the [=authenticator=], create it using the same public key algorithm as that used by the [=user credential=]'s [=credential key pair=], otherwise locate the existing supplemental key.
 
-        1. Let |attFormat| be the chosen [=attestation statement format=], and |attAaguid| be a 16-byte value, based on the value of {{AuthenticationExtensionsSupplementalPublicKeysInputs/attestation}} in the extension input:
+        1. Let |attFormat| be the chosen [=attestation statement format=], and |attAaguid| be a 16-byte value, based on the value of {{AuthenticationExtensionsSupplementalPubKeysInputs/attestation}} in the extension input:
 
             <dl class="switch">
                 : none
                 :: |attFormat| is "none" or "self", at the authenticator's discretion, and |attAaguid| is 16 zero bytes. (Note that, since the [=supplemental public key=] is already exercised during {{CredentialsContainer/create()|navigator.credentials.create()}} calls, the proof-of-possession property provided by "self" attestation is superfluous in that context.)
 
                 : indirect, direct
-                :: |attFormat| is an [=attestation statement format=] appropriate for this [=authenticator=] based on {{AuthenticationExtensionsSupplementalPublicKeysInputs/attestationFormats}}, and |attAaguid| is the corresponding [=/AAGUID=], which MAY be the [=authenticator's=] AAGUID. (Since the [=supplemental public key=]'s scope is different from the [=user credential=], it will often have a different attestation. For example, the attestation for a [=supplemental public key=] with &ldquo;device&rdquo; scope can be tied to hardware roots of trust, although it does not have to be.)
+                :: |attFormat| is an [=attestation statement format=] appropriate for this [=authenticator=] based on {{AuthenticationExtensionsSupplementalPubKeysInputs/attestationFormats}}, and |attAaguid| is the corresponding [=/AAGUID=], which MAY be the [=authenticator's=] AAGUID. (Since the [=supplemental public key=]'s scope is different from the [=user credential=], it will often have a different attestation. For example, the attestation for a [=supplemental public key=] with &ldquo;device&rdquo; scope can be tied to hardware roots of trust, although it does not have to be.)
 
                 : enterprise
-                :: The [=[RP]=] wants to receive an [=attestation statement=] that may include uniquely identifying information. This is intended for controlled deployments within an enterprise where the organization wishes to tie registrations to specific authenticators. [=Authenticators=] MUST NOT provide such an attestation unless the user agent or authenticator configuration expressly permits it for the requested [=RP ID=]. If <i>not</i> permitted, then follow the steps for `direct` attestation. Otherwise |attFormat| is an [=attestation statement format=] appropriate for this [=authenticator=] based on {{AuthenticationExtensionsSupplementalPublicKeysInputs/attestationFormats}}, and |attAaguid| is the corresponding [=/AAGUID=], which MAY be the [=authenticator's=] AAGUID.
+                :: The [=[RP]=] wants to receive an [=attestation statement=] that may include uniquely identifying information. This is intended for controlled deployments within an enterprise where the organization wishes to tie registrations to specific authenticators. [=Authenticators=] MUST NOT provide such an attestation unless the user agent or authenticator configuration expressly permits it for the requested [=RP ID=]. If <i>not</i> permitted, then follow the steps for `direct` attestation. Otherwise |attFormat| is an [=attestation statement format=] appropriate for this [=authenticator=] based on {{AuthenticationExtensionsSupplementalPubKeysInputs/attestationFormats}}, and |attAaguid| is the corresponding [=/AAGUID=], which MAY be the [=authenticator's=] AAGUID.
 
                     Note: CTAP2 does not currently provide for an <a href="https://fidoalliance.org/specs/fido-v2.1-ps-20210615/fido-client-to-authenticator-protocol-v2.1-ps-20210615.html#makecred-enterpriseattestation">enterpriseAttestation</a> signal during an <a href="https://fidoalliance.org/specs/fido-v2.1-ps-20210615/fido-client-to-authenticator-protocol-v2.1-ps-20210615.html#authenticatorGetAssertion">authenticatorGetAssertion</a> call. Until that is changed, <a href="https://fidoalliance.org/specs/fido-v2.1-ps-20210615/fido-client-to-authenticator-protocol-v2.1-ps-20210615.html#platform-managed-enterprise-attestation">platform-managed enterprise attestation</a> will not work in that context with CTAP2 [=authenticators=].
             </dl>
@@ -7381,7 +7379,7 @@ The weight that [=[RPS]=] give to the presence of a signature from a supplementa
 
             Note: |randomNonce|'s purpose is to randomize the [=attestation signature=] value for [=supplemental public keys=]. If this is not done, then an [=attestation signature=] value remains constant for all such signatures issued on behalf of this [=user credential=], possibly exposing the [=authenticator=]'s [=attestation private key=] to side-channel attacks. The randomness-generation mechanism should be carefully chosen by the authenticator implementer.
 
-        1. Let |supplementalPubKey| be a [=CBOR=] map as defined by `attObjForSupplementalPublicKey` above, with keys and values as follows:
+        1. Let |supplementalPubKey| be a [=CBOR=] map as defined by `attObjForSupplementalPubKey` above, with keys and values as follows:
 
             Note: as with all CBOR structures used in this specification, the [=CTAP2 canonical CBOR encoding form=] MUST be used.
 
@@ -7397,7 +7395,7 @@ The weight that [=[RPS]=] give to the presence of a signature from a supplementa
 
                 Note: The details of the `$$attStmtType` values are dependent upon the particular [=attestation statement=] format. See [[#sctn-attestation-formats]].
 
-            1. If the `$$attStmtType` [=group socket=] contains uniquely identifying information then let `epAtt` be [TRUE]. Otherwise omit the `epAtt` field. (This field can only be [TRUE] when the {{AuthenticationExtensionsSupplementalPublicKeysInputs/attestation}} field of the extension input is "enterprise" and either the user-agent or the authenticator permits uniquely identifying attestation for the requested RP ID.)
+            1. If the `$$attStmtType` [=group socket=] contains uniquely identifying information then let `epAtt` be [TRUE]. Otherwise omit the `epAtt` field. (This field can only be [TRUE] when the {{AuthenticationExtensionsSupplementalPubKeysInputs/attestation}} field of the extension input is "enterprise" and either the user-agent or the authenticator permits uniquely identifying attestation for the requested RP ID.)
 
         1. Append |supplementalPubKey| to |spks|.
 
@@ -7415,15 +7413,15 @@ The weight that [=[RPS]=] give to the presence of a signature from a supplementa
 
 ##### AAGUIDs ##### {#sctn-supplemental-public-keys-attestation-aaguid}
 
-The [=/AAGUID=] included in the <code>[=supplementalPubKeys=]</code> extension output, if non-zero, aids a [=[RP]=] in validating the [=attestation statement=] of the supplemental public key. Its interpretation depends on the scope of the key. It may differ from the [=authData/attestedCredentialData/aaguid=] in the [=attested credential data=] of a [=multi-device credential=]. Thus the AAGUID of [=supplemental public key=] MAY be different in a single response and either, or both, may be zero depending on the options requested and authenticator behaviour.
+Any non-zero [=/AAGUID=]s included in the <code>[=supplementalPubKeys=]</code> extension output aid a [=[RP]=] in validating the [=attestation statement=] of the supplemental public key. The interpretation of each AAGUID depends on the scope of the corresponding key. Some or all may differ from the [=authData/attestedCredentialData/aaguid=] in the [=attested credential data=] of a [=multi-device credential=]. Thus the AAGUID of a [=supplemental public key=] MAY be different in a single response and either, or both, may be zero depending on the options requested and authenticator behaviour.
 
 ##### Attestation calculations ##### {#sctn-supplemental-public-keys-attestation-calculations}
 
-When computing attestations, the process in [[#sctn-generating-an-attestation-object]] takes two inputs: `authData` and `hash`. When calculating an attestation for a supplemental public key, the typical value for `hash` hashes over the attestation signature itself, which is impossible. Also the attestation of a supplemental public key is potentially used repeatedly, thus may want to be cached. But signing over values that include [=[RP]=]-chosen nonces, like the [=hash of the serialized client data=], makes that impossible.
+When computing attestations, the process in [[#sctn-generating-an-attestation-object]] takes two inputs: `authData` and `hash`. When calculating an attestation for a supplemental public key, the typical value for `authHash` contains the attestation signature itself, which is impossible. Also the attestation of a supplemental public key is potentially used repeatedly, thus may want to be cached. But signing over values that include [=[RP]=]-chosen nonces, like the [=hash of the serialized client data=], makes that impossible.
 
 Therefore when calculating an attestation for a supplemental public key, the inputs are:
 
-    * For `authData`, substitute the concatenation of the byte string h'64657669636520626f756e64206b6579206174746573746174696f6e2073696700ffffffff' and the value of |aaguid| from the extension output.
+    * For `authData`, substitute the concatenation of the byte string h'737570706c656d656e74616c5075624b657973206174746573746174696f6e2e00ffffffff' and the value of |aaguid| from the extension output.
     * For `hash`, substitute the concatenation of the |spk| and |nonce| fields from the extension output. (The nonce MAY be empty.)
 
 The attestation signature is thus typically calculated over the bytes of <code>(h'64657669636520626f756e64206b6579206174746573746174696f6e2073696700ffffffff' || |aaguid| || |spk| || |nonce|)</code>. The 37-byte prefix ensures domain separation: it takes the place of the RP ID hash, flags, and signature counter fields in those messages and ensures that no attestation signature for a supplemental public key can be confused with a signature for a [=user credential=].
@@ -7470,17 +7468,17 @@ then the below verification steps are performed in the context of [step 19](#reg
 of [[#sctn-registering-a-new-credential]] using these variables established therein: |credential|, |clientExtensionResults|, |authData|, and |hash|.
 [=[RP]=] policy may specify whether a response without a `supplementalPubKeys` extension output is acceptable.
 
-1. Verify that the {{AuthenticationExtensionsClientOutputs/supplementalPubKeys}} member of |clientExtensionResults| exists, and contains the {{AuthenticationExtensionsSupplementalPublicKeysOutputs/signatures}} field. Let |signatures| be the value of that field.
+1. Verify that the {{AuthenticationExtensionsClientOutputs/supplementalPubKeys}} member of |clientExtensionResults| exists, and contains the {{AuthenticationExtensionsSupplementalPubKeysOutputs/signatures}} field. Let |signatures| be the value of that field.
 
 1. Let |attObjsForSupplementalPublicKey| be the value of the `supplementalPubKeys` member of the [=authenticator extension output=] from |authData|.
 
 1. If the [=list/size=] of |attObjsForSupplementalPublicKey| is not equal to the [=list/size=] of |signatures| then abort the registration process with an error.
 
-1. [=list/Iterate=] over the indices of |attObjsForSupplementalPublicKey| (which, after the check in the previous step, must also be the indices of |signatures|). Then, for each (|attObjForSupplementalPublicKey|, |signature|) from the two lists:
+1. [=list/Iterate=] over the indices of |attObjsForSupplementalPublicKey| (which, after the check in the previous step, must also be the indices of |signatures|). Then, for each (|attObjForSupplementalPubKey|, |signature|) from the two lists:
 
-    1. Extract the contained fields from |attObjForSupplementalPublicKey|: |aaguid|, |spk|, |nonce|, |fmt| and |attStmt|. Also let |scope| reflect the scope, specified by the member of the `scope` group that is present.
+    1. Extract the contained fields from |attObjForSupplementalPubKey|: |aaguid|, |spk|, |nonce|, |fmt| and |attStmt|. Also let |scope| reflect the scope, specified by the member of the `scope` group that is present.
 
-        Note: The latter |attObjForSupplementalPublicKey| fields are referenced exclusively in the below steps and are not to be confused with other fields with the same names in other portions of the top-level [=attestation object=].
+        Note: The latter |attObjForSupplementalPubKey| fields are referenced exclusively in the below steps and are not to be confused with other fields with the same names in other portions of the top-level [=attestation object=].
 
     1. Verify that |signature| is a valid signature over the [=assertion signature=] [input](#fig-signature) (i.e. `authData` and `hash`) by the [=supplemental public key=] |spk|. (The signature algorithm is the same as for the [=user credential=].)
 
@@ -7521,17 +7519,17 @@ of [[#sctn-verifying-assertion]] using these variables established therein: |cre
 
 1. Let |recognizedSpks| be a new [=set/empty=] [=set=].
 
-1. Verify that the {{AuthenticationExtensionsClientOutputs/supplementalPubKeys}} member of |clientExtensionResults| exists, and contains the {{AuthenticationExtensionsSupplementalPublicKeysOutputs/signatures}} field. Let |signatures| be the value of that field.
+1. Verify that the {{AuthenticationExtensionsClientOutputs/supplementalPubKeys}} member of |clientExtensionResults| exists, and contains the {{AuthenticationExtensionsSupplementalPubKeysOutputs/signatures}} field. Let |signatures| be the value of that field.
 
-1. Let |attObjsForSupplementalPublicKeys| be the value of the `supplementalPubKeys` member of the [=authenticator extension output=] from |authData|.
+1. Let |attObjsForSupplementalPubKeys| be the value of the `supplementalPubKeys` member of the [=authenticator extension output=] from |authData|.
 
-1. If the [=list/size=] of |attObjsForSupplementalPublicKeys| is not equal to the [=list/size=] of |signatures| then abort the authentication process with an error.
+1. If the [=list/size=] of |attObjsForSupplementalPubKeys| is not equal to the [=list/size=] of |signatures| then abort the authentication process with an error.
 
-1. [=list/Iterate=] over the indices of |attObjsForSupplementalPublicKeys| (which, after the check in the previous step, must also be the indices of |signatures|). Then, for each (|attObjForSupplementalPublicKey|, |signature|) from the two lists:
+1. [=list/Iterate=] over the indices of |attObjsForSupplementalPubKeys| (which, after the check in the previous step, must also be the indices of |signatures|). Then, for each (|attObjForSupplementalPubKey|, |signature|) from the two lists:
 
-    1. Extract the contained fields from |attObjForSupplementalPublicKey|: |aaguid|, |spk|, |nonce|, |fmt|, |attStmt|. Also let |scope| reflect the scope, specified by the member of the `scope` group that is present.
+    1. Extract the contained fields from |attObjForSupplementalPubKey|: |aaguid|, |spk|, |nonce|, |fmt|, |attStmt|. Also let |scope| reflect the scope, specified by the member of the `scope` group that is present.
 
-        Note: The latter |attObjForSupplementalPublicKey| fields are referenced exclusively in the below steps and are not to be confused with other fields with the same names in other portions of [=authenticator data=].
+        Note: The latter |attObjForSupplementalPubKey| fields are referenced exclusively in the below steps and are not to be confused with other fields with the same names in other portions of [=authenticator data=].
 
     1. Verify that |signature| is a valid signature over the [=assertion signature=] [input](#fig-signature) (i.e. `authData` and `hash`) by the [=supplemental public key=] |spk|. (The signature algorithm is the same as for the [=user credential=].)
 
@@ -7553,7 +7551,7 @@ of [[#sctn-verifying-assertion]] using these variables established therein: |cre
 
                 If |fmt|'s value is "none" then there is no attestation signature to verify and this is a known [=supplemental public key=] with a valid signature. Append |spkRecord| to |recognizedSpks| and continue to the next iteration, if any.
 
-                Otherwise, let |spkRecord| be |matchedSpkRecords|[0]. If the |attStmt| in |attObjForSupplementalPublicKey|:
+                Otherwise, let |spkRecord| be |matchedSpkRecords|[0]. If the |attStmt| in |attObjForSupplementalPubKey|:
                     <dl class="switch">
                         : equals |spkRecord|.[$supplementalPubKeys record/attStmt$] by binary equality:
                         :: This is a known [=supplemental public key=] with a valid signature and valid attestation. Append |spkRecord| to |recognizedSpks| and continue to the next iteration, if any.
