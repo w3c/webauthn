@@ -7135,7 +7135,7 @@ The weight that [=[RPS]=] give to the presence of a signature from a supplementa
     </xmp>
     <div dfn-type="dict-member" dfn-for="AuthenticationExtensionsSupplementalPubKeysInputs">
         :   <dfn>scopes</dfn>
-        ::  This required member specifies the scopes of supplemental public keys that the [=[RP]=] requests. Values are taken from the `scope` group in the CDDL below (i.e., currently defined values are `provider` and `device`); authenticators silently ignore unrecognized values. Specifying the scopes that a [=[RP]=] can use allows an [=authenticator=] to avoid the work of generating superfluous supplemental keys.
+        ::  This required member MUST be non-empty. It specifies the scopes of supplemental public keys that the [=[RP]=] requests. Values are taken from the CDDL below (i.e., currently defined values are `provider` and `device`); authenticators silently ignore unrecognized values. Specifying the scopes that a [=[RP]=] can use allows an [=authenticator=] to avoid the work of generating superfluous supplemental keys.
 
         :   <dfn>attestation</dfn>
         ::  The [=[RP]=] MAY use this OPTIONAL member to specify a preference regarding [=attestation conveyance=].
@@ -7174,7 +7174,15 @@ The weight that [=[RPS]=] give to the presence of a signature from a supplementa
 
     ```
     supplementalPublicKeyInputs = {
-      scopes: [+ tstr],
+      scopes: [+
+        ; A key that has a broader scope than a single device, but still more
+        ; limited than a multi-device credential. The precise scope is specified
+        ; by the attestation of this supplemental public key.
+        "provider" /
+
+        ; A key with "device" scope MUST NOT leave the device on which it is
+        ; created.
+        "device"],
       attestation: tstr,
       attestationFormats: [* tstr],
     }
@@ -7195,26 +7203,6 @@ The weight that [=[RPS]=] give to the presence of a signature from a supplementa
         supplementalPubKeys: [+ attObjForSupplementalPubKey],
     )
 
-    scope = (
-      ; A key that has a broader scope than a single device, but still more
-      ; limited than a multi-device credential. The precise scope is specified
-      ; by the attestation of this supplemental public key.
-
-      provider: true //
-
-      ; A key with "device" scope MUST NOT leave the device on which it is
-      ; created. The value of this key communicates whether the key is scoped to
-      ; the entire device, or a loosely-defined, narrower scope called "per-app".
-      ; For example, a "device-wide" key is expected to be the same between an
-      ; app and a browser on the same device, while a "per-app" key would
-      ; probably not be.
-      ;
-      ; Whether device-wide or not, keys are still device-bound. I.e. a
-      ; per-app key does not enjoy lesser protection from extraction.
-
-      device: "device-wide" / "per-app"
-    )
-
     ; This object conveys an attested supplemental public key and is analogous
     ; to \`attObj\`.
     attObjForSupplementalPubKey = {
@@ -7224,7 +7212,9 @@ The weight that [=[RPS]=] give to the presence of a signature from a supplementa
         spk:     bstr,  ; The public key (self-describing variable length,
                         ; COSE_Key format, CBOR-encoded)).
 
-        scope,          ; see scope group, above.
+        ; See the definition of `scopes` in `supplementalPublicKeyInputs`.
+
+        scope: "provider" / "device",
 
         ; An authenticator-generated random nonce for inclusion in the attestation
         ; signature. If the authenticator chooses to not generate a nonce, it sets this
@@ -7269,6 +7259,14 @@ The weight that [=[RPS]=] give to the presence of a signature from a supplementa
 
 : Unsigned extension output
 :: A non-empty CBOR array of byte strings containing the signatures generated with the supplemental private keys, in the same order as in the authenticator extension output.
+
+    ```
+    supplementalPublicKeyOutputs = [+ bstr]
+
+    $$unsignedExtensionOutputs //= (
+      supplementalPubKeys: supplementalPublicKeyOutputs,
+    )
+    ```
 
 : Authenticator extension processing
 :: For both [=authenticatorMakeCredential=] and [=authenticatorGetAssertion=] operations:
@@ -7345,11 +7343,11 @@ Any non-zero [=/AAGUID=]s included in the <code>[=supplementalPubKeys=]</code> e
 
 ##### Attestation calculations ##### {#sctn-supplemental-public-keys-attestation-calculations}
 
-When computing attestations, the process in [[#sctn-generating-an-attestation-object]] takes two inputs: `authData` and `hash`. When calculating an attestation for a supplemental public key, the typical value for `hash` hashes over the attestation signature itself, which is impossible. Also the attestation of a supplemental public key is potentially used repeatedly, thus may want to be cached. But signing over values that include [=[RP]=]-chosen nonces, like the [=hash of the serialized client data=], makes that impossible.
+When computing attestations, the process in [[#sctn-generating-an-attestation-object]] takes two inputs: `authData` and `hash`. When calculating an attestation for a supplemental public key, the typical value for `authHash` contains the attestation signature itself, which is impossible. Also the attestation of a supplemental public key is potentially used repeatedly, thus may want to be cached. But signing over values that include [=[RP]=]-chosen nonces, like the [=hash of the serialized client data=], makes that impossible.
 
 Therefore when calculating an attestation for a supplemental public key, the inputs are:
 
-    * For `authData`, substitute the concatenation of the byte string h'64657669636520626f756e64206b6579206174746573746174696f6e2073696700ffffffff' and the value of |aaguid| from the extension output.
+    * For `authData`, substitute the concatenation of the byte string h'737570706c656d656e74616c5075624b657973206174746573746174696f6e2e00ffffffff' and the value of |aaguid| from the extension output.
     * For `hash`, substitute the concatenation of the |spk| and |nonce| fields from the extension output. (The nonce MAY be empty.)
 
 The attestation signature is thus typically calculated over the bytes of <code>(h'64657669636520626f756e64206b6579206174746573746174696f6e2073696700ffffffff' || |aaguid| || |spk| || |nonce|)</code>. The 37-byte prefix ensures domain separation: it takes the place of the RP ID hash, flags, and signature counter fields in those messages and ensures that no attestation signature for a supplemental public key can be confused with a signature for a [=user credential=].
