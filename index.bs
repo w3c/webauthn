@@ -953,7 +953,7 @@ The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "S
     and [=assertion=].
 
     A [=[WAA]=] could be a [=roaming authenticator=], a dedicated hardware subsystem integrated into the [=client device=],
-    or a software component of the [=client=] or [=client device=]. A [=[WAA]=] is not necessarily confined to operating in 
+    or a software component of the [=client=] or [=client device=]. A [=[WAA]=] is not necessarily confined to operating in
     a local context, and can generate or store a [=credential key pair=] in a server outside of [=client-side=] hardware.
 
     In general, an [=authenticator=] is assumed to have only one user.
@@ -4111,11 +4111,11 @@ considered more trustworthy than the rest of the authenticator.
 Each authenticator stores a <dfn for=authenticator>credentials map</dfn>, a [=map=] from ([=rpId=], [=public key credential source/userHandle=]) to
 [=public key credential source=].
 
-Additionally, each authenticator has an Authenticator Attestation Globally Unique Identifier or <dfn>AAGUID</dfn>, which is a 128-bit identifier 
-indicating the type (e.g. make and model) of the authenticator. The AAGUID MUST be chosen by its maker to be identical across all substantially identical 
-authenticators made by that maker, and different (with high probability) from the AAGUIDs of all other types of authenticators. The AAGUID for a given type 
-of authenticator SHOULD be randomly generated to ensure this. The [=[RP]=] MAY use the AAGUID to infer certain properties of the authenticator, such as 
-certification level and strength of key protection, using information from other sources. The [=[RP]=] MAY use the AAGUID to attempt to identify the maker of 
+Additionally, each authenticator has an Authenticator Attestation Globally Unique Identifier or <dfn>AAGUID</dfn>, which is a 128-bit identifier
+indicating the type (e.g. make and model) of the authenticator. The AAGUID MUST be chosen by its maker to be identical across all substantially identical
+authenticators made by that maker, and different (with high probability) from the AAGUIDs of all other types of authenticators. The AAGUID for a given type
+of authenticator SHOULD be randomly generated to ensure this. The [=[RP]=] MAY use the AAGUID to infer certain properties of the authenticator, such as
+certification level and strength of key protection, using information from other sources. The [=[RP]=] MAY use the AAGUID to attempt to identify the maker of
 the authenticator without requesting and verifying [=attestation=], but the AAGUID is not provably authentic without [=attestation=].
 
 The primary function of the authenticator is to provide [=WebAuthn signatures=], which are bound to various contextual data. These
@@ -6377,7 +6377,7 @@ The "compound" attestation statement format is used to pass multiple, self-conta
 
     2. If sufficiently many (as determined by [=[RP]=] policy) [=list/items=] of |attStmt| verify successfully,
         return implementation-specific values representing any combination of outputs from successful [=verification procedures=].
-        
+
 
 # <dfn>WebAuthn Extensions</dfn> # {#sctn-extensions}
 
@@ -6783,13 +6783,13 @@ During a transition from the FIDO U2F JavaScript API, a [=[RP]=] may have a popu
 
 ### Credential Properties Extension (<dfn>credProps</dfn>) ### {#sctn-authenticator-credential-properties-extension}
 
-This [=client extension|client=] [=registration extension=] facilitates reporting certain [=credential properties=] known by the [=client=] to the requesting [=[WRP]=] upon creation of a [=public key credential source=] as a result of a [=registration ceremony=].
+This [=client extension|client=] [=registration extension=] and [=authentication extension=] facilitates reporting certain [=credential properties=] known by the [=client=] to the requesting [=[WRP]=] upon creation or use of a [=public key credential source=].
 
 : Extension identifier
 :: `credProps`
 
 : Operation applicability
-:: [=registration extension|Registration=]
+:: [=registration extension|Registration=] and [=authentication extension|authentication=]
 
 : Client extension input
 :: The Boolean value [TRUE] to indicate that this extension is requested by the [=[RP]=].
@@ -6800,12 +6800,15 @@ This [=client extension|client=] [=registration extension=] facilitates reportin
     </xmp>
 
 : Client extension processing
-::  None, other than to report on credential properties in the output.
+::  1. If processed during a [=registration ceremony=]:
+        1. Set {{CredentialPropertiesOutput/rk}} to the value of the |requireResidentKey| parameter that was used in the
+            <a href='#CreateCred-InvokeAuthnrMakeCred'>invocation</a> of the [=authenticatorMakeCredential=]
+            operation.
+    1. Set {{CredentialPropertiesOutput/authenticatorDisplayName}} as described in its definition, using some client-specific procedure.
+        If no suitable value is found, let {{CredentialPropertiesOutput/authenticatorDisplayName}} be undefined.
 
 : Client extension output
-:: [=map/Set=] <code>[=credentialCreationData/clientExtensionResults=]["{{AuthenticationExtensionsClientOutputs/credProps}}"]["rk"]</code> to the value of the |requireResidentKey| parameter that was used in the <a href='#CreateCred-InvokeAuthnrMakeCred'>invocation</a> of the [=authenticatorMakeCredential=] operation.
-
-    <xmp class="idl">
+::  <xmp class="idl">
     dictionary CredentialPropertiesOutput {
         boolean rk;
         USVString authenticatorDisplayName;
@@ -6832,19 +6835,32 @@ This [=client extension|client=] [=registration extension=] facilitates reportin
         ::  This OPTIONAL property is a [=human palatability|human-palatable=] description of the credential's [=managing authenticator=],
             chosen by the user.
 
-            The [=client=] MUST allow the user to choose this value,
-            MAY or MAY not present that choice during [=registration ceremonies=],
-            and MAY reuse the same value for multiple credentials with the same [=managing authenticator=] across multiple [=[RPS]=].
+            The [=client=] MUST allow the user to choose this value.
+            That choice MAY be presented during the [=registration ceremony|registration=] or
+            [=authentication ceremony|authentication=] ceremony or MAY be made available outside
+            the ceremony, for example in client settings. The [=client=] MAY reuse the same value
+            for multiple credentials with the same [=managing authenticator=] across multiple
+            [=[RPS]=].
 
-            The [=client=] MAY query the [=authenticator=], by some unspecified mechanism, for this value.
-            The [=authenticator=] MAY allow the user to configure the response to such a query.
-            The [=authenticator=] vendor MAY provide a default response to such a query.
+            The [=client=] MAY query the [=authenticator=], by some unspecified mechanism, for this
+            value. The [=authenticator=] MAY allow the user to configure the response to such a
+            query. The [=authenticator=] vendor MAY provide a default response to such a query.
             The [=client=] MAY consider a user-configured response chosen by the user,
             and SHOULD allow the user to modify a vendor-provided default response.
 
-            If the [=[RP]=] includes an <code>[$credential record/authenticatorDisplayName$]</code> [=struct/item=] in [=credential records=],
-            the [=[RP]=] MAY offer this value, if present,
-            as a default value for the <code>[$credential record/authenticatorDisplayName$]</code> of the new [=credential record=].
+            If the [=[RP]=] includes an <code>[$credential record/authenticatorDisplayName$]</code>
+            [=struct/item=] in its [=credential records=], the [=[RP]=] MAY offer this value, if
+            present, as a default value for the
+            <code>[$credential record/authenticatorDisplayName$]</code> of the new
+            [=credential record=] it stores after a [=registration ceremony=].
+
+            If the {{authenticatorDisplayName}} extension output from an [=authentication ceremony=]
+            is different from the <code>[$credential record/authenticatorDisplayName$]</code> of the
+            [=credential record=],
+            the [=[RP]=] MAY offer the user to update the
+            <code>[$credential record/authenticatorDisplayName$]</code> of the
+            [=credential record=].
+
     </div>
 
 
