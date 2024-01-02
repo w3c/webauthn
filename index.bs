@@ -1662,7 +1662,6 @@ that are returned to the caller when a new credential is created, or a new asser
         required Base64URLString authenticatorData;
         required Base64URLString signature;
         Base64URLString userHandle;
-        Base64URLString attestationObject;
     };
 
     dictionary AuthenticationExtensionsClientOutputsJSON {
@@ -4727,10 +4726,6 @@ It takes the following input parameters:
     wish to make a [=test of user presence=] optional although WebAuthn does not.
 : |requireUserVerification|
 :: The [=effective user verification requirement for assertion=], a Boolean value provided by the client.
-: |enterpriseAttestationPossible|
-:: A Boolean value that indicates that individually-identifying attestation MAY be returned by the authenticator.
-: |attestationFormats|
-:: A sequence of strings that expresses the [=[RP]=]'s preference for attestation statement formats, from most to least preferable. If the [=authenticator=] returns [=attestation=], then it makes a best-effort attempt to use the most preferable format that it supports.
 : |extensions|
 :: A [=CBOR=] [=map=] from [=extension identifiers=] to their [=authenticator extension inputs=], created by the client based on
     the extensions requested by the [=[RP]=], if any.
@@ -4776,17 +4771,9 @@ a numbered step. If outdented, it (today) is rendered as a bullet in the midst o
     which approach is implemented by the [=authenticator=], by some positive value.
     If the [=authenticator=] does not implement a [=signature counter=], let the [=signature counter=] value remain constant at
     zero.
-1. If |attestationFormats|:
-    <dl class="switch">
-        : is [=list/is not empty|not empty=]
-        :: let |attestationFormat| be the first supported [=attestation statement format=] from |attestationFormats|, taking into account |enterpriseAttestationPossible|. If none are supported, fallthrough to:
-
-        : is [=list/is empty|empty=]
-        :: let |attestationFormat| be the [=attestation statement format=] most preferred by this authenticator. If it does not support attestation during assertion then let this be `none`.
-    </dl>
 1. Let |authenticatorData| [=perform the following steps to generate an authenticator data structure|be the byte array=]
     specified in [[#sctn-authenticator-data]] including |processedExtensions|, if any, as
-    the <code>[=authData/extensions=]</code> and excluding <code>[=attestedCredentialData=]</code>. This |authenticatorData| MUST include [=attested credential data=] if, and only if, |attestationFormat| is not `none`.
+    the <code>[=authData/extensions=]</code> and excluding <code>[=attestedCredentialData=]</code>.
 1. Let |signature| be the [=assertion signature=] of the concatenation <code>|authenticatorData| || |hash|</code> using the
     [=public key credential source/privateKey=] of |selectedCredential| as shown in <a href="#fig-signature">Figure <span class="figure-num-following"></span></a>, below. A simple,
     undelimited
@@ -4798,11 +4785,8 @@ a numbered step. If outdented, it (today) is rendered as a bullet in the midst o
         <figcaption>Generating an [=assertion signature=].</figcaption>
     </figure>
 
-1. The |attestationFormat| is not `none` then create an [=attestation object=] for the new credential using the procedure specified in
-    [[#sctn-generating-an-attestation-object]], the [=attestation statement format=] |attestationFormat|, and the values |authenticatorData|
-    and |hash|, as well as {{enterprise|taking into account}} the value of |enterpriseAttestationPossible|. For more details on attestation, see [[#sctn-attestation]].
-
-1. If any error occurred then return an error code equivalent to "{{UnknownError}}" and terminate the operation.
+1. If any error occurred while generating the [=assertion signature=], return an error code equivalent to "{{UnknownError}}" and
+    terminate the operation.
 
 <!-- Note: this next step is actually a top-level step, but bikeshed wanted it indented this much in order to render it as
 a numbered step. If outdented, it (today) is rendered as a bullet in the midst of a numbered list :-/
@@ -4819,7 +4803,6 @@ a numbered step. If outdented, it (today) is rendered as a bullet in the midst o
 
             - |authenticatorData|
             - |signature|
-            - The attestation object, if an [=attestation object=] was created for this assertion.
             - |selectedCredential|.[=public key credential source/userHandle=]
 
                     Note: In cases where |allowCredentialDescriptorList| was supplied the returned
@@ -4941,11 +4924,10 @@ produce, for each [=credential public key=], an [=attestation statement=] verifi
 a challenge, as well as a certificate or similar data providing provenance information for the [=attestation public key=],
 enabling the [=[RP]=] to make a trust decision. However, if an [=attestation key pair=] is not available, then the authenticator
 MAY either perform [=self attestation=] of the [=credential public key=] with the corresponding [=credential private key=],
-or otherwise perform [=None|no attestation=].
-
-All this information is returned by [=authenticators=] any time a new [=public key credential=] is generated, and optionally when exercised, in the overall form of an
-<dfn>attestation object</dfn>. The relationship of the [=attestation object=] with [=authenticator data=] (containing
-[=attested credential data=]) and the [=attestation statement=] is illustrated in <a href="#fig-attStructs">figure <span class="figure-num-following"></span></a>, below.
+or otherwise perform [=None|no attestation=]. All this information is returned by [=authenticators=] any time a new
+[=public key credential=] is generated, in the overall form of an <dfn>attestation object</dfn>. The relationship of the
+[=attestation object=] with [=authenticator data=] (containing [=attested credential data=]) and the [=attestation statement=]
+is illustrated in <a href="#fig-attStructs">figure <span class="figure-num-following"></span></a>, below.
 
 If an [=authenticator=] employs [=self attestation=] or [=None|no attestation=], then no provenance information is provided
 for the [=[RP]=] to base a trust decision on.
@@ -4953,7 +4935,7 @@ In these cases, the [=authenticator=] provides no guarantees about its operation
 
 <figure id="fig-attStructs">
     <img src="images/fido-attestation-structures.svg"></img>
-    <figcaption>[=Attestation object=] layout illustrating the included [=authenticator data=] from a {{CredentialsContainer/create()|create()}} operation (containing [=attested credential
+    <figcaption>[=Attestation object=] layout illustrating the included [=authenticator data=] (containing [=attested credential
     data=]) and the [=attestation statement=].</figcaption>
 </figure>
 <div class="note">
