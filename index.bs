@@ -2793,24 +2793,31 @@ Note: Invoking this method from a [=browsing context=] where the [=Web Authentic
 
 </div>
 
-### Availability of a [=passkey platform authenticator=] - PublicKeyCredential's `isPasskeyPlatformAuthenticatorAvailable()` Method ### {#sctn-isPasskeyPlatformAuthenticatorAvailable}
+### Availability of [=client=] capabilities - PublicKeyCredential's `getClientCapabilities()` Method ### {#sctn-getClientCapabilities}
 
-<div link-for-hint="WebAuthentication/isPasskeyPlatformAuthenticatorAvailable">
+<div link-for-hint="WebAuthentication/getClientCapabilities">
 
-[=[WRPS]=] use this method to determine whether they can create a new [=passkey=] using a [=user-verifying platform authenticator=] or a {{AuthenticatorTransport/hybrid}} authenticator.
-Upon invocation, the [=client=] employs a [=client platform=]-specific procedure to discover available [=user-verifying platform authenticators=] and the
-availability of {{AuthenticatorTransport/hybrid}} transport.
-If one or both are discovered, the promise is resolved with the value of [TRUE].
-If neither is discovered, the promise is resolved with the value of [FALSE].
-Based on the result, the [=[RP]=] can take further actions to guide the user to create a [=passkey=].
+[=[WRPS]=] use this method to determine the availability of a limited set of [=WebAuthn Client|client=] capabilities to offer certain workflows and experiences to users. For example, an RP may offer a sign in button on clients where only {{AuthenticatorTransport/hybrid}} transport is available or where {{CredentialMediationRequirement/conditional}} mediation is unavailable (instead of showing a username field).
 
-This method has no arguments and returns a Boolean value.
+Upon invocation, the [=client=] employs a [=client platform=]-specific procedure to discover availablity of these capabilities.
+
+This method has no arguments and returns a record of capability keys to Boolean values.
 
 <xmp class="idl">
     partial interface PublicKeyCredential {
-        static Promise<boolean> isPasskeyPlatformAuthenticatorAvailable();
+        static Promise<PublicKeyCredentialClientCapabilities> getClientCapabilities();
     };
+
+    typedef record<DOMString, boolean> PublicKeyCredentialClientCapabilities;
 </xmp>
+
+[=map/Keys=] in {{PublicKeyCredentialClientCapabilities}} MUST be sorted in ascending lexicographical order.
+The set of [=map/keys=] SHOULD equal the set of [=enumeration values=] of {{ClientCapability}},
+but the client MAY omit keys as it deems necessary; see [[#sctn-disclosing-client-capabilities]].
+
+When the value for a given capability is [TRUE], the feature is known to be currently supported by the client.
+When the value for a given capability is [FALSE], the feature is known to be not currently supported by the client.
+When a capability does not [=map/exist=] as a key, the availability of the client feature is not known.
 
 Note: Invoking this method from a [=browsing context=] where the [=Web Authentication API=] is "disabled" according to the [=allowed to use=] algorithm&mdash;i.e., by a [=permissions policy=]&mdash;will result in the promise being rejected with a {{DOMException}} whose name is "{{NotAllowedError}}". See also [[#sctn-permissions-policy]].
 
@@ -4006,6 +4013,38 @@ Note: The {{UserVerificationRequirement}} enumeration is deliberately not refere
         interest of minimizing disruption to the user interaction flow).
 </div>
 
+### Client Capability Enumeration (enum <dfn enum>ClientCapability</dfn>) ### {#enum-clientCapability}
+
+<xmp class="idl">
+    enum ClientCapability {
+        "conditionalCreate",
+        "conditionalMediation",
+        "hybridTransport",
+        "passkeyPlatformAuthenticator",
+        "userVerifyingPlatformAuthenticator",
+    };
+</xmp>
+
+This enumeration defines a limited set of client capabilities which a [=[WRP]=] may evaluate to offer certain workflows and experiences to users.
+
+Note: The {{ClientCapability}} enumeration is deliberately not referenced, see [[#sct-domstring-backwards-compatibility]].
+
+<div dfn-type="enum-value" dfn-for="ClientCapability">
+    :   <dfn>conditionalCreate</dfn>
+    ::  The [=WebAuthn Client=] is capable of a {{CredentialMediationRequirement/conditional}} credential creation operation.
+
+    :   <dfn>conditionalMediation</dfn>
+    ::  The [=WebAuthn Client=] is capable of {{CredentialMediationRequirement/conditional}} mediation.
+
+    :   <dfn>hybridTransport</dfn>
+    ::  The [=WebAuthn Client=] supports usage of the {{AuthenticatorTransport/hybrid}} transport.
+
+    :   <dfn>passkeyPlatformAuthenticator</dfn>
+    ::  The [=WebAuthn Client=] supports usage of a [=passkey platform authenticator=], locally and/or via {{AuthenticatorTransport/hybrid}} transport.
+
+    :   <dfn>userVerifyingPlatformAuthenticator</dfn>
+    ::  The [=WebAuthn Client=] supports usage of a [=user-verifying platform authenticator=].
+</div>
 
 ### User-agent Hints Enumeration (enum <dfn enum>PublicKeyCredentialHints</dfn>) ### {#enum-hints}
 
@@ -8905,6 +8944,11 @@ If a [=platform authenticator=] is included in a [=client device=] with a multi-
 authenticator=] and [=client device=] SHOULD work together to ensure that the existence of any [=platform credential=] is revealed
 only to the operating system user that created that [=platform credential=].
 
+### Disclosing Client Capabilities ### {#sctn-disclosing-client-capabilities}
+
+The {{getClientCapabilities}} method assists [=[WRPS]=] in crafting registration and authentication experiences which have a high chance of success with the client and/or user.
+
+The client's support or lack of support of a WebAuthn capability may pose a fingerprinting risk. Client implementations MAY wish to limit capability disclosures based on client policy and/or user consent.
 
 ## Privacy considerations for [=[RPS]=] ## {#sctn-privacy-considerations-rp}
 
