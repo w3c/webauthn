@@ -1228,6 +1228,9 @@ The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "S
 : <dfn>Non-Discoverable Credential</dfn>
 :: This is a [=credential=] whose [=credential ID=] must be provided in {{PublicKeyCredentialRequestOptions/allowCredentials}} when calling {{CredentialsContainer/get()|navigator.credentials.get()}} because it is not [=client-side discoverable credential|client-side discoverable=]. See also [=server-side credentials=].
 
+: <dfn>Origin Label</dfn>
+:: The portion of a domain name preceding the effective top-level domain, as defined in the Public Suffix List [[PSL]]. This is often referred to as the eTLD+1. For example, the origin label for example.co.uk and example.de is `example`.
+
 : <dfn>Public Key Credential</dfn>
 :: Generically, a *credential* is data one entity presents to another in order to *authenticate* the former to the latter
     [[RFC4949]]. The term [=public key credential=] refers to one of: a [=public key credential source=], the
@@ -1824,11 +1827,37 @@ a numbered step. If outdented, it (today) is rendered as a bullet in the midst o
 
                 :   is present
                 ::  If <code>|pkOptions|.{{PublicKeyCredentialCreationOptions/rp}}.{{PublicKeyCredentialRpEntity/id}}</code> [=is not a
-                    registrable domain suffix of and is not equal to=] |effectiveDomain|, throw a "{{SecurityError}}" {{DOMException}}.
+                    registrable domain suffix of and is not equal to=] |effectiveDomain|, and if the client
+                
+                    <dl class="switch">
+                        :   supports [[#sctn-related-origins|related origin requests]]
+                        ::  1. let |rpIdRequested| be the value of |pkOptions|.{{PublicKeyCredentialCreationOptions/rp}}.{{PublicKeyCredentialRpEntity/id}}
 
-                :   Is not present
-                ::  Set <code>|pkOptions|.{{PublicKeyCredentialCreationOptions/rp}}.{{PublicKeyCredentialRpEntity/id}}</code> to
-                    |effectiveDomain|.
+                            1. let |maxLabels| be 
+                        
+                            1. fetch the well-known URL for the RP ID (<code>https://|rpIdRequested|/.well-known/webauthn-origins</code>).
+                        
+                                1. if the fetch fails, the response does not have a content type of `application/json`, or does not have a status code (after following redirects) of 200, then throw a "{{SecurityError}}" {{DOMException}}.
+                                1. if the body of the resource is not a valid JSON object, then throw a "{{SecurityError}}" {{DOMException}}.
+                                1. if the value of the |origins| member of the JSON object is missing, or is not a list of strings, then throw a "{{SecurityError}}" {{DOMException}}.
+    
+                            1. Let |originLabelsSeen| be an empty set
+                            1. [=set/For each=] string in |origins|:
+                                1. Let |url| be the result of parsing the string as a URL. If that fails, continue with the next element in the list.
+                                1. Let |domain| be the !!effective domain of |url|. If that is null, continue with the next element of the list.
+                                1. Remove any !!public suffix from the end of |domain|, including private registries and unknown registries. If |domain| is now empty, continue with the next element of the list.
+                                1. Split |domain| into [=origin labels|labels=] and let |label| be the right-most one.
+                                1. If |label| is not in |labelsSeen| then:
+                                    1. If the number of elements in |labelsSeen| is less than |maxLabels|, then insert |label| into |labelsSeen|.
+                                    1. Otherwise, continue with the next element of the list.
+                                1. If |rpIdRequested| and |url| are !!same origin!!, then [=continue=].
+
+                        :   does not support [[#sctn-related-origins|related origin requests]]
+                        ::  throw a "{{SecurityError}}" {{DOMException}}.
+                    </dl>
+
+                :   is not present
+                ::  Set <code>|pkOptions|.{{PublicKeyCredentialCreationOptions/rp}}.{{PublicKeyCredentialRpEntity/id}}</code> to |effectiveDomain|.
             </dl>
 
         Note: <code>|pkOptions|.{{PublicKeyCredentialCreationOptions/rp}}.{{PublicKeyCredentialRpEntity/id}}</code> represents the
@@ -4046,7 +4075,39 @@ To override this default policy and indicate that a cross-origin <{iframe}> is a
 
 [=[RPS]=] utilizing the WebAuthn API in an embedded context should review [[#sctn-seccons-visibility]] regarding [=UI redressing=] and its possible mitigations.
 
+## Using Web Authentication across related origins ## {#sctn-related-origins}
 
+By default, 
+
+[=[WRP]=] can opt in to allowing a [=WebAuthn Clients=] to select credentials created with a different, but related [=RP ID=] than the caller's [=origin=].
+
+WebAuthn credential to be used across a limited set of [=origin|origins=] to support use cases such as country code TLDs(!add reference!), vanity or brand domains, and platform as a service providers supporting mobile apps.
+
+Relying Parties MUST choose a common Relying Party ID to use across all ceremonies from related origins.
+
+A JSON document MUST be hosted at the `webauthn-origins` well-known URL ([[!RFC8615]]) for the [=RP ID=].
+
+The JSON document MUST be returned as follows:
+
+    - the content type must be `application/json`
+    - JSON document MUST contain a single object named `origins`
+    - the `origins` object MUST contain an array of one or more web origins
+
+For example, for the RP ID `example.com`:
+
+<xmp class="json" highlight="json">
+{
+    "origins": [
+        "https://example.co.uk",
+        "https://example.de",
+        "https://myexamplerewards.com"
+    ]
+}
+</xmp>
+
+[=WebAuthn Clients=] SHOULD limit the number of related origins, with a recommended maximum of 5 [=origin labels=].
+
+[=WebAuthn Clients=] supporting this feature SHOULD include `related-origin-requests` in their response to getClientCapabilities() as defined in !XYZ!.
 
 # WebAuthn <dfn>Authenticator Model</dfn> # {#sctn-authenticator-model}
 
