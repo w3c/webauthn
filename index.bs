@@ -36,6 +36,7 @@ Former Editor: Rolf Lindemann, w3cid 84447, Nok Nok Labs, rolf@noknok.com
 !Contributors: <a href="mailto:cbrand@google.com">Christiaan Brand</a> (Google)
 !Contributors: <a href="mailto:agl@google.com">Adam Langley</a> (Google)
 !Contributors: <a href="mailto:mandyam@qti.qualcomm.com">Giridhar Mandyam</a> (Qualcomm)
+!Contributors: <a href="mailto:pascoe@apple.com">Pascoe</a> (Apple)
 !Contributors: <a href="mailto:nsatragno@google.com">Nina Satragno</a> (Google)
 !Contributors: <a href="mailto:kieun.shin@sk.com">Ki-Eun Shin</a> (SK Telecom)
 !Contributors: <a href="mailto:nick.steele@agilebits.com">Nick Steele</a> (1Password)
@@ -1582,15 +1583,23 @@ that are returned to the caller when a new credential is created, or a new asser
 
     :   {{PublicKeyCredential/isConditionalMediationAvailable()}}
     ::  {{PublicKeyCredential}} overrides this method to indicate availability for {{CredentialMediationRequirement/conditional}}
-        mediation. [=[WRPS]=] SHOULD verify availability before attempting to set
-        <code>|options|.{{CredentialRequestOptions/mediation}}</code> to {{CredentialMediationRequirement/conditional}}.
+        mediation during {{CredentialsContainer/get()|navigator.credentials.get()}}. [=[WRPS]=] SHOULD verify availability before
+        attempting to set <code>|options|.{{CredentialRequestOptions/mediation}}</code> to {{CredentialMediationRequirement/conditional}}.
 
         Upon invocation, a promise is returned that resolves with a value of [TRUE] if {{CredentialMediationRequirement/conditional}}
         [=user mediation=] is available, or [FALSE] otherwise.
 
         This method has no arguments and returns a promise to a Boolean value.
 
-        Note: If this method is not present, {{CredentialMediationRequirement/conditional}} [=user mediation=] is not available.
+        The {{ClientCapability/conditionalMediation}} capability is equivalent to this promise resolving to [TRUE].
+
+        Note: If this method is not present, {{CredentialMediationRequirement/conditional}} [=user mediation=] is not available for
+        {{CredentialsContainer/get()|navigator.credentials.get()}}.
+
+        Note: This method does _not_ indicate
+        whether or not {{CredentialMediationRequirement/conditional}} [=user mediation=] is available
+        in {{CredentialsContainer/create()|navigator.credentials.create()}}.
+        For that, see the {{ClientCapability/conditionalCreate}} capability in {{PublicKeyCredential/getClientCapabilities()}}.
 
     :   {{PublicKeyCredential/toJSON()}}
     ::  This operation returns {{RegistrationResponseJSON}} or {{AuthenticationResponseJSON}},
@@ -1736,8 +1745,15 @@ To support obtaining assertions via {{CredentialsContainer/get()|navigator.crede
 {{PublicKeyCredential}}'s [=interface object=]'s implementation of the <dfn for="PublicKeyCredential" method>\[[Create]](origin,
 options, sameOriginWithAncestors)</dfn> [=internal method=] [[!CREDENTIAL-MANAGEMENT-1]] allows
 [=[WRP]=] scripts to call {{CredentialsContainer/create()|navigator.credentials.create()}} to request the creation of a new
-[=public key credential source=], [=bound credential|bound=] to an [=authenticator=]. This
-{{CredentialsContainer/create()|navigator.credentials.create()}} operation can be aborted by leveraging the {{AbortController}};
+[=public key credential source=], [=bound credential|bound=] to an [=authenticator=].
+
+By setting <code>|options|.{{CredentialCreationOptions/mediation}}</code> to {{CredentialMediationRequirement/conditional}},
+[=[RPS]=] can indicate that they would like to register a credential without prominent modal UI if user has already consented to create a credential.
+The [=[RP]=] SHOULD first use {{PublicKeyCredential/getClientCapabilities()}}
+to check that the [=client=] supports the {{ClientCapability/conditionalCreate}} capability
+in order to prevent a user-visible error in case this feature is not available.
+
+Any {{CredentialsContainer/create()|navigator.credentials.create()}} operation can be aborted by leveraging the {{AbortController}};
 see [[dom#abortcontroller-api-integration]] for detailed instructions.
 
 
@@ -1775,6 +1791,11 @@ When this method is invoked, the user agent MUST execute the following algorithm
 1. Assert: <code>|options|.{{CredentialCreationOptions/publicKey}}</code> is present.
 
 1. If <var ignore>sameOriginWithAncestors</var> is [FALSE]:
+
+    1. If <code>|options|.{{CredentialRequestOptions/mediation}}</code> is present with the value
+        {{CredentialMediationRequirement/conditional}}:
+
+        1. Throw a "{{NotAllowedError}}" {{DOMException}}
 
     1. If the [=relevant global object=], as determined by the calling
         {{CredentialsContainer/create()}} implementation, does not have
@@ -1911,6 +1932,16 @@ a numbered step. If outdented, it (today) is rendered as a bullet in the midst o
     Note: What qualifies an [=authenticator=] as "available" is intentionally unspecified; this is meant to represent how
     [=authenticators=] can be <a href="https://en.wikipedia.org/w/index.php?title=Hot_plug">hot-plugged</a> into (e.g., via USB)
     or discovered (e.g., via NFC or Bluetooth) by the [=client=] by various mechanisms, or permanently built into the [=client=].
+
+1. If <code>|options|.{{CredentialRequestOptions/mediation}}</code> is present with the value
+     {{CredentialMediationRequirement/conditional}}:
+
+    1. If |conditionalCreateLifetimeTimer| is expired or |conditionalCreateOrigin| is not |callerOrigin|, throw a "{{NotAllowedError}}" {{DOMException}}.
+
+    Note: |conditionalCreateLifetimeTimer| and |conditionalCreateOrigin| will be set by the user agent after it believes an authentication ceremony has
+    been completed and the user consents to this type of credential creation.
+
+    1. Set |lifetimeTimer| to a client-specific default.
 
 1. Consider the value of {{PublicKeyCredentialCreationOptions/hints}} and craft the user interface accordingly, as the user-agent sees fit.
 
@@ -2199,7 +2230,7 @@ a numbered step. If outdented, it (today) is rendered as a bullet in the midst o
     [[#sctn-make-credential-privacy]] for details.
 
 During the above process, the user agent SHOULD show some UI to the user to guide them in the process of selecting and
-authorizing an authenticator.
+authorizing an authenticator. When <code>|options|.{{CredentialRequestOptions/mediation}}</code> is set to {{CredentialMediationRequirement/conditional}}, prominent modal UI should <i>not</i> be shown <i>unless</i> credential creation was previously consented to via means determined by the user agent.
 </div>
 
 
@@ -2225,12 +2256,13 @@ for="PublicKeyCredential" method>\[[CollectFromCredentialStore]](origin, options
 {{Credential/[[CollectFromCredentialStore]]()|Credential.[[CollectFromCredentialStore]]()}}, of returning an empty set.
 
 In general, the user agent SHOULD show some UI to the user to guide them in selecting and authorizing an authenticator with which
-to complete the operation. By setting <code>|options|.{{CredentialRequestOptions/mediation}}</code> to {{CredentialMediationRequirement/conditional}}, [=[RPS]=] can indicate that a prominent modal UI should <i>not</i> be shown <i>unless</i> credentials are discovered. [=[RP]=]
-script SHOULD first check that {{PublicKeyCredential/isConditionalMediationAvailable()}} returns [TRUE] in order to avoid
-the possibility of causing a user-visible error to be returned if the user agent does not support
-{{CredentialMediationRequirement/conditional}} [=user mediation=].
+to complete the operation. By setting <code>|options|.{{CredentialRequestOptions/mediation}}</code> to {{CredentialMediationRequirement/conditional}}, [=[RPS]=] can indicate that a prominent modal UI should <i>not</i> be shown <i>unless</i> credentials are discovered.
+The [=[RP]=] SHOULD first use {{PublicKeyCredential/isConditionalMediationAvailable()}}
+or {{PublicKeyCredential/getClientCapabilities()}}
+to check that the [=client=] supports the {{ClientCapability/conditionalMediation}} capability
+in order to prevent a user-visible error in case this feature is not available.
 
-This
+Any
 {{CredentialsContainer/get()|navigator.credentials.get()}} operation can be aborted by leveraging the {{AbortController}};
 see [[dom#abortcontroller-api-integration]] for detailed instructions.
 
@@ -3969,14 +4001,25 @@ Note: The {{UserVerificationRequirement}} enumeration is deliberately not refere
 
 This enumeration defines a limited set of client capabilities which a [=[WRP]=] may evaluate to offer certain workflows and experiences to users.
 
+[=[RPS]=] may use the {{PublicKeyCredential/getClientCapabilities()}} method of {{PublicKeyCredential}}
+to obtain a description of available capabilities.
+
 Note: The {{ClientCapability}} enumeration is deliberately not referenced, see [[#sct-domstring-backwards-compatibility]].
 
 <div dfn-type="enum-value" dfn-for="ClientCapability">
     :   <dfn>conditionalCreate</dfn>
-    ::  The [=WebAuthn Client=] is capable of a {{CredentialMediationRequirement/conditional}} credential creation operation.
+    ::  The [=WebAuthn Client=] is capable of {{CredentialMediationRequirement/conditional}} mediation
+        in {{CredentialsContainer/create()|navigator.credentials.create()}}.
+
+        See [[#sctn-createCredential]] for more details.
 
     :   <dfn>conditionalMediation</dfn>
-    ::  The [=WebAuthn Client=] is capable of {{CredentialMediationRequirement/conditional}} mediation.
+    ::  The [=WebAuthn Client=] is capable of {{CredentialMediationRequirement/conditional}} mediation
+        in {{CredentialsContainer/get()|navigator.credentials.get()}}.
+
+        This capability is equivalent to {{PublicKeyCredential/isConditionalMediationAvailable()}} returning [TRUE].
+
+        See [[#sctn-getAssertion]] for more details.
 
     :   <dfn>hybridTransport</dfn>
     ::  The [=WebAuthn Client=] supports usage of the {{AuthenticatorTransport/hybrid}} transport.
