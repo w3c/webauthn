@@ -4923,28 +4923,62 @@ Authenticators may be required to store arbitrary strings chosen by a [=[RP]=], 
 ### String Truncation ### {#sctn-strings-truncation}
 
 Each arbitrary string in the API will have some accommodation for the potentially limited resources available to an [=authenticator=].
-If string truncation is the chosen accommodation,
-then the authenticator MAY choose a size limit equal to or greater than the specified minimum supported length
-and truncate the string so that its length in the UTF-8 character encoding satisfies that limit.
-Such truncation SHOULD also respect UTF-8 code point boundaries or [=grapheme cluster=] boundaries [[UAX29]].
-The resulting truncated value MAY be shorter than the chosen size limit
-but MUST NOT be shorter than the longest prefix substring that satisfies the size limit and ends on a [=grapheme cluster=] boundary.
+When the chosen accommodation is string truncation, care needs to be taken to not corrupt the string value.
 
-For example, in <a href="#fig-stringTruncation">figure <span class="figure-num-following"></span></a> the string is 65 bytes long. If truncating to 64 bytes then the final 0x88 byte must be removed purely because of space reasons. Since that leaves a partial UTF-8 code point the remainder of that code point may also be removed. Since that leaves a partial [=grapheme cluster=] an authenticator may remove the remainder of that cluster.
+For example, truncation based on Unicode code points alone may cause a [=grapheme cluster=] to be truncated.
+This could make the grapheme cluster render as a different glyph,
+potentially changing the meaning of the string, instead of removing the glyph entirely.
+For example, <a href="#fig-stringTruncation">figure <span class="figure-num-following"></span></a>
+shows the end of a UTF-8 encoded string whose encoding is 65 bytes long.
+If truncating to 64 bytes then the final 0x88 byte is removed first to satisfy the size limit.
+Since that leaves a partial UTF-8 code point, the remainder of that code point must also be removed.
+Since that leaves a partial [=grapheme cluster=], the remainder of that cluster should also be removed.
 
 <figure id="fig-stringTruncation">
     <img src="images/string-truncation.svg"></img>
     <figcaption>The end of a UTF-8 encoded string showing the positions of different truncation boundaries.</figcaption>
 </figure>
 
-[=Conforming User Agents=] are responsible for ensuring that the authenticator behavior observed by [=[RPS]=] conforms to this specification with respect to string handling. For example, if an authenticator is known to behave incorrectly when asked to store large strings, the user agent SHOULD perform the truncation for it in order to maintain the model from the point of view of the [=[RP]=]. User-agents that do this SHOULD truncate at [=grapheme cluster=] boundaries.
+The responsibility for handling these concerns falls primarily on the [=client=],
+to avoid burdening [=authenticators=] with understanding character encodings and Unicode character properties.
+The following subsections define requirements for how clients and authenticators,
+respectively, may perform string truncation.
 
-Truncation based on UTF-8 code points alone may cause a [=grapheme cluster=] to be truncated. This could make the grapheme cluster render as a different glyph, potentially changing the meaning of the string, instead of removing the glyph entirely.
 
-In addition to that, truncating on byte boundaries alone causes a known issue that user agents should be aware of: if the authenticator is using [[!FIDO-CTAP]] then future messages from the authenticator may contain invalid CBOR since the value is typed as a CBOR string and thus is required to be valid UTF-8. User agents are tasked with handling this to avoid burdening authenticators with understanding character encodings and Unicode character properties. Thus, when dealing with [=authenticators=], user agents SHOULD:
+#### String Truncation by Clients #### {#sctn-strings-truncation-client}
+
+When a [=[WAC]=] truncates a string,
+the truncation behaviour observable by the [=[RP]=] MUST satisfy the following requirements:
+
+Choose a size limit equal to or greater than the specified minimum supported length.
+The string MAY be truncated so that its length in bytes in the UTF-8 character encoding satisfies that limit.
+This truncation MUST respect UTF-8 code point boundaries, and SHOULD respect [=grapheme cluster=] boundaries [[UAX29]].
+The resulting truncated value MAY be shorter than the chosen size limit
+but MUST NOT be shorter than the longest prefix substring that satisfies the size limit and ends on a [=grapheme cluster=] boundary.
+
+The client MAY let the [=authenticator=] perform the truncation if it satisfies these requirements;
+otherwise the client MUST perform the truncation before relaying the string value to the authenticator.
+
+In addition to the above, truncating on byte boundaries alone causes a known issue that user agents should be aware of: if the authenticator is using [[!FIDO-CTAP]] then future messages from the authenticator may contain invalid CBOR since the value is typed as a CBOR string and thus is required to be valid UTF-8. Thus, when dealing with [=authenticators=], user agents SHOULD:
 
 1. Ensure that any strings sent to authenticators are validly encoded.
 1. Handle the case where strings have been truncated resulting in an invalid encoding. For example, any partial code point at the end may be dropped or replaced with [U+FFFD](http://unicode.org/cldr/utility/character.jsp?a=FFFD).
+
+
+#### String Truncation by Authenticators #### {#sctn-strings-truncation-authenticator}
+
+Because a [=[WAA]=] may be implemented in a constrained environment,
+the requirements on authenticators are relaxed compared to those for [=clients=].
+
+When a [=[WAA]=] truncates a string,
+the truncation behaviour MUST satisfy the following requirements:
+
+Choose a size limit equal to or greater than the specified minimum supported length.
+The string MAY be truncated so that its length in bytes in the UTF-8 character encoding satisfies that limit.
+This truncation SHOULD respect UTF-8 code point boundaries, and MAY respect [=grapheme cluster=] boundaries [[UAX29]].
+The resulting truncated value MAY be shorter than the chosen size limit
+but MUST NOT be shorter than the longest prefix substring that satisfies the size limit and ends on a [=grapheme cluster=] boundary.
+
 
 ### Language and Direction Encoding ### {#sctn-strings-langdir}
 
