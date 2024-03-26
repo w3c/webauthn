@@ -1833,27 +1833,17 @@ a numbered step. If outdented, it (today) is rendered as a bullet in the midst o
                         :   supports [[#sctn-related-origins|related origin requests]]
                         ::  1. Let |rpIdRequested| be the value of <code>|pkOptions|.{{PublicKeyCredentialCreationOptions/rp}}.{{PublicKeyCredentialRpEntity/id}}</code>.
 
-                            1. Let |maxLabels| be the number of maximum [=origin labels=] allowed by client policy.
-                        
-                            1. Fetch the well-known URL for the RP ID (<code>https://|rpIdRequested|/.well-known/webauthn</code>).
-                        
-                                1. If the fetch fails, the response does not have a content type of `application/json`, or does not have a status code (after following redirects) of 200, then throw a "{{SecurityError}}" {{DOMException}}.
-                                1. If the body of the resource is not a valid JSON object, then throw a "{{SecurityError}}" {{DOMException}}.
-                                1. If the value of the |origins| property of the JSON object is missing, or is not an array of strings, then throw a "{{SecurityError}}" {{DOMException}}.
-    
-                            1. Let |originLabelsSeen| be an empty set.
-                            1. [=set/For each=] string in |origins|:
-                                1. Let |url| be the result of parsing the string as a URL. If that fails, [=continue=].
-                                1. Let |domain| be the [=effective domain=] of |url|. If that is null, [=continue=].
-                                1. Remove any [=public suffix=] from the end of |domain|, including private registries and unknown registries. If |domain| is now empty, [=continue=].
-                                1. Split |domain| into [=origin labels|labels=] and let |label| be the right-most one.
-                                1. If |label| is not in |labelsSeen| and the number of elements in |labelsSeen| is less than |maxLabels|, then insert |label| into |labelsSeen|. Otherwise, [=continue=].
-                                1. If |rpIdRequested| and |url| are [=same origin=], then [=continue=].
-
+                            1. If the result of running the [[#sctn-validating-relation-origin|related origins validation procedure]] is
+                                <dl class="switch">
+                                    :   `false`
+                                    ::  throw a "{{SecurityError}}" {{DOMException}}.
+                                    :   `true`
+                                    ::  [=break=].
+                                </dl>
                         :   does not support [[#sctn-related-origins|related origin requests]]
                         ::  throw a "{{SecurityError}}" {{DOMException}}.
                     </dl>
-
+                    
                 :   is not present
                 ::  Set <code>|pkOptions|.{{PublicKeyCredentialCreationOptions/rp}}.{{PublicKeyCredentialRpEntity/id}}</code> to |effectiveDomain|.
             </dl>
@@ -2352,24 +2342,13 @@ When this method is invoked, the user agent MUST execute the following algorithm
                             :   supports [[#sctn-related-origins|related origin requests]]
                             ::  1. Let |rpIdRequested| be the value of <code>|pkOptions|.{{PublicKeyCredentialRequestOptions/rpId}}</code>
 
-                                1. Let |maxLabels| be the number of maximum [=origin labels=] allowed by client policy.
-
-                                1. Fetch the well-known URL for the RP ID (<code>https://|rpIdRequested|/.well-known/webauthn</code>).
-
-                                    1. If the fetch fails, the response does not have a content type of `application/json`, or does not have a status code (after following redirects) of 200, then throw a "{{SecurityError}}" {{DOMException}}.
-                                    1. If the body of the resource is not a valid JSON object, then throw a "{{SecurityError}}" {{DOMException}}.
-                                    1. If the value of the |origins| property of the JSON object is missing, or is not an array of strings, then throw a "{{SecurityError}}" {{DOMException}}.
-
-                                1. Let |originLabelsSeen| be an empty set.
-                                1. [=set/For each=] string in |origins|:
-                                    1. Let |url| be the result of parsing the string as a URL. If that fails, continue with the next element in the list.
-                                    1. Let |domain| be the [=effective domain=] of |url|. If that is null, continue with the next element of the list.
-                                    1. Remove any [=public suffix=] from the end of |domain|, including private registries and unknown registries. If |domain| is now empty, continue with the next element of the list.
-                                    1. Split |domain| into [=origin labels|labels=] and let |label| be the right-most one.
-                                    1. If |label| is not in |labelsSeen| and:
-                                        1. If the number of elements in |labelsSeen| is less than |maxLabels|, then insert |label| into |labelsSeen|.
-                                        1. Otherwise, continue with the next element of the list.
-                                    1. If |rpIdRequested| and |url| are [=same origin=], then [=continue=].
+                                1. If the result of running the [[#sctn-validating-relation-origin|related origins validation procedure]] is
+                                    <dl class="switch">
+                                        :   `false`
+                                        ::  throw a "{{SecurityError}}" {{DOMException}}.
+                                        :   `true`
+                                        ::  [=break=].
+                                    </dl>
 
                             :   does not support [[#sctn-related-origins|related origin requests]]
                             ::  throw a "{{SecurityError}}" {{DOMException}}.
@@ -4137,6 +4116,25 @@ For example, for the RP ID `example.com`:
 [=WebAuthn Clients=] supporting this feature MUST support at least five [=origin labels=]. Client policy SHOULD define an upper limit to prevent abuse.
 
 [=WebAuthn Clients=] supporting this feature SHOULD include {{ClientCapability/relatedOrigins}} in their response to [[#sctn-getClientCapabilities|getClientCapabilities()]].
+
+### Validating Related Origins ### {#sctn-validating-relation-origin}
+
+To validate the calling origin is an authorized related origin for a given ceremony:
+
+1. Let |maxLabels| be the number of maximum [=origin labels=] allowed by client policy.
+1. Fetch the well-known URL for the RP ID (<code>https://|rpIdRequested|/.well-known/webauthn</code>).
+    1. If the fetch fails, the response does not have a content type of `application/json`, or does not have a status code (after following redirects) of 200, then throw a "{{SecurityError}}" {{DOMException}}.
+    1. If the body of the resource is not a valid JSON object, then throw a "{{SecurityError}}" {{DOMException}}.
+    1. If the value of the |origins| property of the JSON object is missing, or is not an array of strings, then throw a "{{SecurityError}}" {{DOMException}}.
+1. Let |originLabelsSeen| be an empty set.
+1. [=set/For each=] string in |origins|:
+    1. Let |url| be the result of parsing the string as a URL. If that fails, [=continue=].
+    1. Let |domain| be the [=effective domain=] of |url|. If that is null, [=continue=].
+    1. Remove any [=public suffix=] from the end of |domain|, including private registries and unknown registries. If |domain| is now empty, [=continue=].
+    1. Split |domain| into [=origin labels|labels=] and let |label| be the right-most one.
+    1. If |label| is not in |labelsSeen| and the number of elements in |labelsSeen| is less than |maxLabels|, then insert |label| into |labelsSeen|. Otherwise, [=continue=]. 
+    1. If |rpIdRequested| and |url| are [=same origin=], return `true`.
+1. Return `false`.
 
 # WebAuthn <dfn>Authenticator Model</dfn> # {#sctn-authenticator-model}
 
