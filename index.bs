@@ -7642,6 +7642,496 @@ To <dfn abstract-op>Create a new supplemental public key record</dfn>, perform t
         [=set/append=] this [=supplemental public key record=] to |credentialRecord|.[$credential record/supplementalPubKeys$].
 
 
+### Signing extension (<dfn for="extension">sign</dfn>) ### {#sctn-sign-extension}
+
+This [=authenticator extension|authenticator=] [=registration extension=] and [=authentication extension=]
+allows a [=[RP]=] to sign arbitrary data using an asymmetric key pair associated with a [=credential=]
+but different from the [=credential key pair=].
+A [=registration ceremony=] creates the signing key pair and emits the signing public key,
+and [=authentication ceremonies=] can use the signing private key to sign arbitrary data.
+The signing private key is held exclusively by the [=authenticator=].
+
+The high-level usage flow is as follows:
+
+1. To create a signing key pair, the [=[RP]=] initiates a [=registration ceremony=] and requests the extension.
+    The [=authenticator=] returns a signing public key and a <dfn>signing key handle</dfn> for the key pair.
+
+1. To sign some chosen data, the [=[RP]=] initiates an [=authentication ceremony=] and requests the extension
+    with one or more [=signing key handles=] for key pairs eligible to perform the signature.
+    The [=authenticator=] returns a signature over the given data.
+    Unlike an [=assertion signature=], the given data is signed unaltered;
+    the signed data does not include [=authenticator data=] or [=client data=].
+
+    This step can be repeated any number of times.
+
+As a motivating example use case, a [=[RP]=] could generate an asymmetric key pair
+and use the generated public key as verification material for a [=verifiable credential=].
+Proofs for such a verifiable credential could then be generated only by getting an assertion from the associated WebAuthn credential.
+
+Each [=credential=] can be associated with at most one signing key pair,
+and the required values of the [=authData/flags/UP=] and [=authData/flags/UV=] [=flags=]
+for the signing key pair are fixed at the time of creation.
+If additional signing key pairs are required,
+or signing key pairs with different settings for the [=flags=],
+the [=[RP]=] MAY create a new [=credential=] for each.
+In that case, the [=[RP]=] SHOULD use a different [=user handle=] for each such [=registration ceremony=],
+to avoid overwriting existing credentials,
+and SHOULD NOT specify the {{PublicKeyCredentialCreationOptions/excludeCredentials}} parameter,
+to allow creating multiple credentials on the same [=authenticator=].
+Additional credentials created for this purpose SHOULD be stored and managed separately from ordinary authentication credentials,
+and SHOULD NOT be used for other purposes than signing data with the associated signing key pair.
+
+Although this extension can be used with [=discoverable credentials=],
+it does not support usage with an empty {{PublicKeyCredentialRequestOptions/allowCredentials}}
+because the intended use is for signing data that is meaningful on its own.
+This is unlike a random authentication challenge, which may be meaningless on its own
+and is used only to guarantee that an authentication signature was generated recently.
+In order to sign meaningful data, the [=[RP]=] must first know what is to be signed,
+thus presumably must also first know which user is performing the signature,
+and thus also which signing keys are eligible.
+Thus, the signing use case is largely incompatible with the anonymous authentication challenge use case.
+Therefore the restriction to non-empty {{PublicKeyCredentialRequestOptions/allowCredentials}}
+is unlikely to impose any additional restriction in practice,
+but does enable support for stateless [=authenticator=] implementations
+where neither the signing key pair nor the associated [=credential=] need to consume storage space on the [=authenticator=].
+
+
+: Extension identifier
+:: `sign`
+
+: Operation applicability
+:: [=registration extension|Registration=] and [=authentication extension|authentication=]
+
+: Client extension input
+::  <xmp class="idl">
+    partial dictionary AuthenticationExtensionsClientInputs {
+        AuthenticationExtensionsSignInputs sign;
+    };
+
+    dictionary AuthenticationExtensionsSignInputs {
+        AuthenticationExtensionsSignGenerateKeyInputs generateKey;
+        AuthenticationExtensionsSignSignInputs sign;
+    };
+    </xmp>
+
+    <div dfn-type="dict-member" dfn-for="AuthenticationExtensionsSignInputs">
+        :   <dfn>generateKey</dfn>
+        ::  If present, the [=authenticator=] is requested to generate a new signing key pair
+            and return the signing public key in the extension output.
+
+            This member MUST be present during a [=registration ceremony=], and only during a [=registration ceremony=].
+
+        :   <dfn>sign</dfn>
+        ::  If present, the [=authenticator=] is requested to sign the {{AuthenticationExtensionsSignSignInputs/data}} member
+            using a previously generated signing private key.
+
+            This member MUST be present during an [=authentication ceremony=], and only during an [=authentication ceremony=].
+    </div>
+
+    <xmp class="idl">
+    dictionary AuthenticationExtensionsSignGenerateKeyInputs {
+        required sequence<COSEAlgorithmIdentifier> algorithms;
+        BufferSource data;
+    };
+    </xmp>
+
+    <div dfn-type="dict-member" dfn-for="AuthenticationExtensionsSignGenerateKeyInputs">
+        :   <dfn>algorithms</dfn>
+        ::  A list of acceptable signature algorithms, ordered from most preferred to least preferred.
+            The [=authenticator=] will create a signing key pair of the most preferred type possible.
+            If none of the listed types can be created, the [=registration ceremony=] fails.
+
+        :   <dfn>data</dfn>
+        ::  Data to be signed.
+            If present, the [=authenticator=] will sign this value using the newly generated signing private key.
+    </div>
+
+    <xmp class="idl">
+    dictionary AuthenticationExtensionsSignSignInputs {
+        required BufferSource data;
+        required record<USVString, COSEKeyRef> keyHandleByCredential;
+    };
+    typedef BufferSource COSEKeyRef;
+    </xmp>
+
+    <div dfn-type="dict-member" dfn-for="AuthenticationExtensionsSignSignInputs">
+        :   <dfn>data</dfn>
+        ::  Data to be signed.
+            The [=authenticator=] will sign this value using the signing private key.
+
+        :   <dfn>keyHandleByCredential</dfn>
+        ::  A record mapping [=base64url encoding|base64url encoded=] [=credential IDs=] to signing key handles to use for each credential.
+            This MUST contain an [=map/entry=] for each [=credential ID=] in {{PublicKeyCredentialRequestOptions/allowCredentials}},
+            and no other entries.
+
+            {{COSEKeyRef}} is a type alias for a {{BufferSource}}
+            that MUST contain a CBOR map encoding a COSE_Key_Ref object [[!ARKG]].
+
+            If the authenticator [=contains=] any credentials whose [=credential IDs=] appear as [=map/keys=],
+            the authenticator selects one of them and uses the corresponding [=map/value=]
+            to retrieve or re-derive the signing private key.
+            If not, the [=authentication ceremony=] fails.
+    </div>
+
+
+: Client extension processing ([=registration extension|registration=])
+:: These extension processing steps use the variables |pkOptions| and |credentialCreationData|
+    defined in [[#sctn-createCredential]]
+
+    1. Let |extSign| denote <code>|pkOptions|.{{PublicKeyCredentialCreationOptions/extensions}}.{{AuthenticationExtensionsClientInputs/sign}}</code>.
+
+    1. If <code>|extSign|.{{AuthenticationExtensionsSignInputs/generateKey}}</code> is not present,
+        return a {{DOMException}} whose name is “{{NotSupportedError}}”.
+
+    1. If <code>|extSign|.{{AuthenticationExtensionsSignInputs/sign}}</code> is present,
+        return a {{DOMException}} whose name is “{{NotSupportedError}}”.
+
+    1. Set the `sign` [=authenticator extension input=] to a CBOR map with the entries:
+
+        - `data`: <code>|extSign|.{{AuthenticationExtensionsSignInputs/generateKey}}.{{AuthenticationExtensionsSignGenerateKeyInputs/data}}</code>
+            encoded as a CBOR byte string, if present.
+            Otherwise omit this entry.
+
+        - `alg`: <code>|extSign|.{{AuthenticationExtensionsSignInputs/generateKey}}.{{AuthenticationExtensionsSignGenerateKeyInputs/algorithms}}</code>
+            encoded as CBOR array of integers, in order.
+
+        - `flags`: The CDDL value `0b101` if <code>|pkOptions|.{{PublicKeyCredentialCreationOptions/authenticatorSelection}}.{{AuthenticatorSelectionCriteria/userVerification}}</code> is set to {{UserVerificationRequirement/required}},
+            otherwise the CDDL value `0b001`.
+
+    1. After the [=authenticatorMakeCredential=] operation is successful,
+        let |authData| denote <code>|credentialCreationData|.[=credentialCreationData/attestationObjectResult=]["authData"]</code>.
+        Set the [=client extension output=] <code>|credentialCreationData|.[=credentialCreationData/clientExtensionResults=].{{AuthenticationExtensionsClientOutputs/sign}}</code>
+        to an {{AuthenticationExtensionsSignOutputs}} value with the members:
+
+        - {{AuthenticationExtensionsSignOutputs/generatedKey}}: An {{AuthenticationExtensionsSignGeneratedKey}} value with the members:
+            - {{AuthenticationExtensionsSignGeneratedKey/publicKey}}:
+                The [=authenticator extension output=] <code>|authData|.[=authData/extensions=]["sign"][pk]</code>
+                parsed as an {{ArrayBuffer}}.
+
+            - {{AuthenticationExtensionsSignGeneratedKey/keyHandle}}:
+                An {{ArrayBuffer}} constructed as follows:
+
+                1. Let |parsedPk| be <code>|authData|.[=authData/extensions=]["sign"][pk]</code> parsed as a CBOR map.
+                1. Remove all entries from |parsedPk| whose key is not one of `kty`, `kid` or `alg`.
+                1. Let {{AuthenticationExtensionsSignGeneratedKey/keyHandle}} be an {{ArrayBuffer}} containing |parsedPk| encoded as CBOR.
+
+        - {{AuthenticationExtensionsSignOutputs/signature}}:
+            The [=authenticator extension output=] <code>|authData|.[=authData/extensions=]["sign"][sig]</code>
+            parsed as an {{ArrayBuffer}}, if present.
+            Otherwise omit this member.
+
+    The CBOR map keys `data`, `alg`, `flags`, `pk`, `kty`, `kid` and `sig` are aliases defined below
+    in the CDDL for the [=authenticator extension input=] and [=authenticator extension output=].
+
+
+: Client extension processing ([=authentication extension|authentication=])
+:: These extension processing steps use the variables |pkOptions| and |assertionCreationData|
+    defined in [[#sctn-getAssertion]].
+
+    1. Let |extSign| denote <code>|pkOptions|.{{PublicKeyCredentialRequestOptions/extensions}}.{{AuthenticationExtensionsClientInputs/sign}}</code>.
+
+    1. If <code>|extSign|.{{AuthenticationExtensionsSignInputs/sign}}</code> is not present,
+        return a {{DOMException}} whose name is “{{NotSupportedError}}”.
+
+    1. If <code>|extSign|.{{AuthenticationExtensionsSignInputs/generateKey}}</code> is present,
+        return a {{DOMException}} whose name is “{{NotSupportedError}}”.
+
+    1. If <code>|pkOptions|.{{PublicKeyCredentialRequestOptions/allowCredentials}}</code> [=list/is empty=],
+        return a {{DOMException}} whose name is “{{NotSupportedError}}”.
+
+    1. If the [=map/size=] of <code>|extSign|.{{AuthenticationExtensionsSignInputs/sign}}.{{AuthenticationExtensionsSignSignInputs/keyHandleByCredential}}</code>
+        does not equal the [=list/size=] of <code>|pkOptions|.{{PublicKeyCredentialRequestOptions/allowCredentials}}</code>,
+        return a {{DOMException}} whose name is “{{NotSupportedError}}”.
+
+    1. Let |keyHandles| be a new CBOR array.
+
+    1. [=list/For each=] |allowedCredential| in <code>|pkOptions|.{{PublicKeyCredentialRequestOptions/allowCredentials}}</code>:
+
+        1. Let |encodedCredentialId| be the base64url encoding of <code>|allowedCredential|.{{PublicKeyCredentialDescriptor/id}}</code>.
+        1. Let |keyHandle| be <code>|extSign|.{{AuthenticationExtensionsSignInputs/sign}}.{{AuthenticationExtensionsSignSignInputs/keyHandleByCredential}}[|encodedCredentialId|]</code>.
+        1. If |keyHandle| is undefined, return a {{DOMException}} whose name is “{{SyntaxError}}”.
+        1. Append |keyHandle| to |keyHandles|, encoded as a CBOR byte string.
+
+        If the [=client=] divides {{PublicKeyCredentialRequestOptions/allowCredentials}} into smaller batches
+        to fit [=authenticator=] message length limits,
+        the client MUST also divide |keyHandles| into batches of the same size and in the same order.
+
+    1. If the [=list/size=] of |keyHandles| does not equal the [=list/size=] of
+        <code>|pkOptions|.{{PublicKeyCredentialRequestOptions/allowCredentials}}</code>,
+        return a {{DOMException}} whose name is “{{SyntaxError}}”.
+
+    1. Set the `sign` authenticator extension input to a CBOR map with the entries:
+        - `data`: <code>|extSign|.{{AuthenticationExtensionsSignInputs/sign}}.{{AuthenticationExtensionsSignSignInputs/data}}</code> encoded as a CBOR byte string.
+        - `key-refs`: |keyHandles|.
+
+    1. After the [=authenticatorGetAssertion=] operation is successful,
+        let |authData| denote <code>|assertionCreationData|.[=assertionCreationData/authenticatorDataResult=]</code>.
+        Set the [=client extension output=] <code>|assertionCreationData|.[=assertionCreationData/clientExtensionResults=].{{AuthenticationExtensionsClientOutputs/sign}}</code>
+        to an {{AuthenticationExtensionsSignOutputs}} value with the members:
+
+        - {{AuthenticationExtensionsSignOutputs/generatedKey}}: Omit this member.
+
+        - {{AuthenticationExtensionsSignOutputs/signature}}:
+            The [=authenticator extension output=] <code>|authData|.[=authData/extensions=]["sign"][sig]</code>
+            parsed as an {{ArrayBuffer}}.
+
+    The CBOR map keys `data`, `key-refs` and `sig` are aliases defined below
+    in the CDDL for the [=authenticator extension input=] and [=authenticator extension output=].
+
+
+: Client extension output
+:: <xmp class="idl">
+    partial dictionary AuthenticationExtensionsClientOutputs {
+        AuthenticationExtensionsSignOutputs sign;
+    };
+
+    dictionary AuthenticationExtensionsSignOutputs {
+        AuthenticationExtensionsSignGeneratedKey generatedKey;
+        ArrayBuffer                              signature;
+    };
+    </xmp>
+
+    <div dfn-type="dict-member" dfn-for="AuthenticationExtensionsSignOutputs">
+        :   <dfn>generatedKey</dfn>
+        ::  The generated public key and key handle.
+            Present if and only if the {{AuthenticationExtensionsSignInputs/generateKey}} input was present.
+
+        :   <dfn>signature</dfn>
+        ::  The generated signature.
+            Present if and only if
+            the {{AuthenticationExtensionsSignInputs/sign}} input was present
+            or the <code>{{AuthenticationExtensionsSignInputs/generateKey}}.{{AuthenticationExtensionsSignGenerateKeyInputs/data}}</code>
+            input was present.
+    </div>
+
+    <xmp class="idl">
+    dictionary AuthenticationExtensionsSignGeneratedKey {
+        required ArrayBuffer publicKey;
+        required ArrayBuffer keyHandle;
+    };
+    </xmp>
+
+    <div dfn-type="dict-member" dfn-for="AuthenticationExtensionsSignGeneratedKey">
+        :   <dfn>publicKey</dfn>
+        ::  The generated signing public key in COSE_Key format.
+
+            This member is intended for use by [=[RPS]=] that do not request [=attestation=].
+            [=[RPS]=] that request attestation SHOULD instead retrieve the generated public key from the [=authenticator extension outputs=]
+            conveyed in the [=attestation object=], after verifying the [=attestation statement=].
+
+        :   <dfn>keyHandle</dfn>
+        ::  The [=signing key handle=], a byte array encoding a COSE_Key_Ref structure referencing the generated signing private key.
+            The [=[RP]=] MUST store this in order to later set it as one of the values in the
+            <code>{{AuthenticationExtensionsSignInputs/sign}}.{{AuthenticationExtensionsSignSignInputs/keyHandleByCredential}}</code>
+            input to request generation of a signature.
+
+            This member is intended for use by [=[RPS]=] that do not request [=attestation=].
+            [=[RPS]=] that request attestation SHOULD instead construct the key handle
+            from the signing public key conveyed in the [=authenticator extension outputs=]
+            of the [=attestation object=], after verifying the [=attestation statement=].
+    </div>
+
+
+: Authenticator extension input
+:: A CBOR map with the structure of the following CDDL:
+
+    ```
+    ; The symbolic names on the left are represented in CBOR by the integers on the right
+    data = 0
+    kty = 1
+    kid = 2
+    alg = 3
+    flags = 4
+    key-refs = 5
+
+    $$extensionInput //= (
+      sign: {
+        ; Registration (key generation) input
+        ? data     => bstr,
+        alg        => [ + COSEAlgorithmIdentifier ],
+        ? flags    => &(unattended: 0b000, require_up: 0b001, require_uv: 0b101) .default 0b001,
+        //
+        ; Authentication (signing) input
+        data       => bstr,
+        key-refs   => [ + bstr .cbor COSE_Key_Ref ],
+      },
+    )
+    ```
+
+Note: The `key-refs` (5) entry is defined as an array of byte strings containing CBOR-encoded data
+instead of direct CBOR maps because the [=CTAP2 canonical CBOR encoding form=] allows at most 4 levels of nested CBOR structures.
+If `key-refs` would contain CBOR maps as items, those maps would exceed this nesting limit
+when the extension input is embedded in the CTAP2 message structure.
+
+
+: Authenticator extension processing ([=registration extension|registration=])
+:: Using the |extensions| argument to the [=authenticatorMakeCredential=] operation,
+    let |extSign| denote <code>|extensions|["sign"]</code>.
+    Let |authData| denote the [=authenticator data=] that will be returned from the [=authenticatorMakeCredential=] operation.
+
+    1. Let |auxIkm| denote some, possibly empty, random entropy
+        and/or auxiliary data of the [=authenticator's=] choice to be used to generate a signing key pair.
+
+    1. Let |chosenAlg| be null.
+
+    1. [=list/For each=] |candidateAlg| in <code>|extSign|[alg]</code>:
+
+        1. If the [=authenticator=] supports |candidateAlg| for signing operations,
+            let |chosenAlg| be |candidateAlg| and [=break=].
+
+    1. If |chosenAlg| is null,
+        return an error code equivalent to "{{NotSupportedError}}" and terminate the operation.
+        Implementations in [[FIDO-CTAP]] return the error code `CTAP2_ERR_INVALID_CREDENTIAL`.
+
+    1. Let |createFlags| be the value of <code>|extSign|[flags]</code>.
+
+    1. Use |createFlags|, |auxIkm| and a per-credential authenticator secret
+        as the seeds to deterministically generate a new key pair for the algorithm |chosenAlg|.
+        Let |p| be the generated private key and |P| be the corresponding public key.
+
+    1. Let |kid| be an authenticator-specific encoding of |chosenAlg|, |createFlags| and |auxIkm|,
+        which the authenticator can later use to re-generate the same key pair |p|, |P|.
+        The encoding SHOULD include integrity protection
+        to ensure that a given |kid| is valid for a particular authenticator.
+
+        An example implementation of this encoding is given in [[#sctn-sign-extension-example-key-handle-encoding]].
+
+    1. Let |P_cose| be a CBOR map encoding |P| in COSE_Key format.
+
+    1. Set <code>|P_cose|[kid]</code> to |kid|.
+
+    1. Set <code>|authData|.[=authData/extensions=]["sign"]</code> to a new CBOR map with the entries:
+        - `pk`: |P_cose| encoded as a CBOR byte string.
+        - `sig`: The result of signing <code>|extensions|["sign"][data]</code>, if present, using private key |p|,
+            if |chosenAlg| supports signing during registration.
+            Otherwise omit this entry.
+
+    The CBOR map keys `alg`, `flags`, `pk`, `kid`, and `sig` are aliases defined above and below
+    in the CDDL for the [=authenticator extension input=] and [=authenticator extension output=].
+
+
+: Authenticator extension processing ([=authentication extension|authentication=])
+:: Using the |extensions| argument to the [=authenticatorGetAssertion=] operation,
+    let |extSign| denote <code>|extensions|["sign"]</code>.
+    Let |authData| denote the [=authenticator data=] that will be returned from the [=authenticatorGetAssertion=] operation.
+
+    1. If |allowCredentialDescriptorList| is empty,
+        return an error code equivalent to "{{NotAllowedError}}" and terminate these processing steps.
+        Implementations in [[FIDO-CTAP]] return the error code `CTAP2_ERR_NO_CREDENTIALS`.
+
+    1. If <code>|extSign|[data]</code> is not present or <code>|extSign|[key-refs]</code> is not present,
+        or if the [=list/size=] of <code>|extSign|[key-refs]</code> does not equal the [=list/size=] of |allowCredentialDescriptorList|,
+        return an error code equivalent to "{{UnknownError}}" and terminate these processing steps.
+        Implementations in [[FIDO-CTAP]] return the error code `CTAP2_ERR_INVALID_OPTION`.
+
+    1. Let |credentialId| be the [=credential ID=] of the [=credential=] being used for this assertion.
+
+    1. Let |credentialIdIndex| be the index of |credentialId| in |allowCredentialDescriptorList|.
+
+    1. Let |keyRefCbor| be <code>|extSign|[key-refs][|credentialIdIndex|]</code>.
+
+    1. If |keyRefCbor| is null or undefined,
+        return an error code equivalent to "{{UnknownError}}" and terminate these processing steps.
+        Implementations in [[FIDO-CTAP]] return the error code `CTAP2_ERR_INVALID_OPTION`.
+
+    1. Let |keyRef| be |keyRefCbor| decoded as a COSE_Key_Ref strucure.
+
+    1. Decode the authenticator-specific encoding of <code>|keyRef|[kid]</code> to extract the encoded |chosenAlg|, |createFlags| and |auxIkm|.
+        This procedure SHOULD verify integrity to ensure that <code>|keyRef|[kid]</code> was generated by this authenticator.
+
+        An example implementation of this decoding is given in [[#sctn-sign-extension-example-key-handle-encoding]].
+
+    1. If <code>|keyRef|[alg]</code> is present and does not equal |chosenAlg|,
+        return an error code equivalent to "{{NotSupportedError}}" and terminate the operation.
+        Implementations in [[FIDO-CTAP]] return the error code `CTAP2_ERR_INVALID_CREDENTIAL`.
+
+    1. If the [=authData/flags/UP=] bit is set in |createFlags| but not in <code>|authData|.[=authData/flags=]</code>,
+        return an error code equivalent to "{{ConstraintError}}" and terminate the operation.
+        Implementations in [[FIDO-CTAP]] return the error code `CTAP2_ERR_UP_REQUIRED`.
+
+    1. If the [=authData/flags/UV=] bit is set in |createFlags| but not in <code>|authData|.[=authData/flags=]</code>,
+        return an error code equivalent to "{{ConstraintError}}" and terminate the operation.
+        Implementations in [[FIDO-CTAP]] return the error code`CTAP2_ERR_PUAT_REQUIRED`.
+
+    1. Use |createFlags|, |auxIkm|, and a per-credential authenticator secret
+        as the seeds to deterministically re-generate the key pair with private key |p| and public key |P|
+        for the algorithm |chosenAlg|.
+
+    1. Set <code>|authData|.[=authData/extensions=]["sign"]</code>
+        to a new CBOR map with the entries:
+        - `sig`: The result of signing <code>|extSign|[data]</code> using the private key referenced by |keyRef|.
+
+    The CBOR map keys `data`, `key-refs`, `kid`, `alg` and `sig` are aliases defined above and below
+    in the CDDL for the [=authenticator extension input=] and [=authenticator extension output=].
+
+
+: Authenticator extension output
+:: A CBOR map with the structure of the following CDDL:
+
+    ```
+    ; The symbolic names on the left are represented in CBOR by the integers on the right
+    sig = 6
+    pk = 7
+
+    $$extensionOutput //= (
+      sign: {
+        ; Registration (key generation) outputs
+        pk    => bstr,    ; Generated signing public key
+        ? sig => bstr,    ; Signature over data input, if present
+        //
+        ; Authentication (signing) outputs
+        sig   => bstr,    ; Signature over data input
+      },
+    )
+    ```
+
+
+#### Example key handle encoding #### {#sctn-sign-extension-example-key-handle-encoding}
+
+This section defines one possible implementation of the encoding and decoding of the key handle |kid|
+in the [=authenticator extension processing=] steps defined above.
+[=Authenticator=] implementations MAY use these encoding and decoding procedures,
+or MAY use different encodings with the same inputs and outputs.
+
+To encode |chosenAlg|, |createFlags| and |auxIkm|, producing the output |kid|, perform the following steps:
+
+1. Let |macKey| be a per-credential authenticator secret.
+
+1. Let |kidParams| be a CBOR array with the items:
+    1. |chosenAlg| encoded as a CBOR integer.
+    1. |createFlags| encoded as a CBOR unsigned integer.
+    1. |auxIkm| encoded as a CBOR byte string.
+
+1. Let |kidMac| be the output of HMAC-SHA-256 [[RFC2104]] with the inputs:
+
+    - Secret key `K`: |macKey|
+    - Input `text`: <code>|kidParams| || UTF8Encode("sign") || |authData|.[=authData/rpIdHash=]</code>.
+
+1. Let |kid| be <code>|kidMac| || |kidParams|</code>.
+
+To decode |kid|, producing the output |chosenAlg|, |createFlags| and |auxIkm|, perform the following steps:
+
+1. Let |macKey| be a per-credential authenticator secret.
+
+1. Let |mac| be the first 32 bytes of |kid| and let |kidParams| be the remaining bytes of |kid| after removing the first 32 bytes.
+
+1. Verify that |mac| equals the output of HMAC-SHA-256 [[RFC2104]] with the inputs:
+
+    - Secret key `K`: |macKey|
+    - Input `text`: <code>|kidParams| || UTF8Encode("sign") || |authData|.[=authData/rpIdHash=]</code>.
+
+    If not, this |kid| was generated by a different authenticator.
+    Return an error code equivalent to "{{NotAllowedError}}" and terminate the extension processing steps.
+
+1. Parse |kidParams| as a CBOR array.
+
+1. Let |chosenAlg| be <code>|kidParams|[0]</code>.
+
+1. Let |createFlags| be <code>|kidParams|[1]</code>.
+
+1. Let |auxIkm| be <code>|kidParams|[2]</code>.
+
+
 # User Agent Automation # {#sctn-automation}
 
 For the purposes of user agent automation and [=web application=] testing, this document defines a number of [[WebDriver]] [=extension commands=].
@@ -9272,6 +9762,14 @@ for their contributions as our W3C Team Contacts.
     "title": "EduPerson",
     "href": "https://refeds.org/eduperson",
     "date": "ongoing"
+  },
+
+  "ARKG": {
+    "authors": ["E. Lundberg", "J. Bradley", "P. Altmann"],
+    "title": "The Asynchronous Remote Key Generation (ARKG) algorithm (Editor's copy)",
+    "href": "https://yubico.github.io/arkg-rfc/draft-bradleylundberg-cfrg-arkg.html",
+    "status": "IETF Internet-Draft",
+    "date": "17 May, 2024"
   }
 
 }
