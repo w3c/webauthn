@@ -18,9 +18,11 @@ Previous Version: https://www.w3.org/TR/2019/REC-webauthn-1-20190304/
 Shortname: webauthn
 Level: 3
 Include MDN Panels: maybe
+Editor: Tim Cappalli, w3cid 111190, Okta, tim.cappalli@okta.com
 Editor: Michael B. Jones, w3cid 38745, Self-Issued Consulting, michael_b_jones@hotmail.com
 Editor: Akshay Kumar, w3cid 99318, Microsoft, akshayku@microsoft.com
 Editor: Emil Lundberg, w3cid 102508, Yubico, emil@yubico.com
+Editor: Matthew Miller, w3cid 129314, Cisco, mattmil3@cisco.com
 Former Editor: Dirk Balfanz, w3cid 47648, Google, balfanz@google.com
 Former Editor: Vijay Bharadwaj, w3cid 55440, Microsoft, vijay.bharadwaj@microsoft.com
 Former Editor: Arnar Birgisson, w3cid 87332, Google, arnarb@google.com
@@ -32,10 +34,9 @@ Former Editor: Angelo Liao, w3cid 94342, Microsoft, huliao@microsoft.com
 Former Editor: Rolf Lindemann, w3cid 84447, Nok Nok Labs, rolf@noknok.com
 !Contributors: <a href="mailto:WebAuthn@ve7jtb.com">John Bradley</a> (Yubico)
 !Contributors: <a href="mailto:cbrand@google.com">Christiaan Brand</a> (Google)
-!Contributors: <a href="mailto:tim.cappalli@microsoft.com">Tim Cappalli</a> (Microsoft)
 !Contributors: <a href="mailto:agl@google.com">Adam Langley</a> (Google)
 !Contributors: <a href="mailto:mandyam@qti.qualcomm.com">Giridhar Mandyam</a> (Qualcomm)
-!Contributors: <a href="mailto:mattmil3@cisco.com">Matthew Miller</a> (Cisco)
+!Contributors: <a href="mailto:pascoe@apple.com">Pascoe</a> (Apple)
 !Contributors: <a href="mailto:nsatragno@google.com">Nina Satragno</a> (Google)
 !Contributors: <a href="mailto:kieun.shin@sk.com">Ki-Eun Shin</a> (SK Telecom)
 !Contributors: <a href="mailto:nick.steele@agilebits.com">Nick Steele</a> (1Password)
@@ -43,6 +44,7 @@ Former Editor: Rolf Lindemann, w3cid 84447, Nok Nok Labs, rolf@noknok.com
 !Contributors: <a href="mailto:sweeden@au1.ibm.com">Shane Weeden</a> (IBM)
 !Contributors: <a href="mailto:mkwst@google.com">Mike West</a> (Google)
 !Contributors: <a href="mailto:jyasskin@google.com">Jeffrey Yasskin</a> (Google)
+!Contributors: <a href="mailto:aaberg@bitwarden.com">Anders Åberg</a> (Bitwarden)
 group: webauthn
 Issue Tracking: GitHub https://github.com/w3c/webauthn/issues
 !Tests: <a href=https://github.com/web-platform-tests/wpt/tree/master/webauthn>web-platform-tests webauthn/</a> (<a href=https://github.com/web-platform-tests/wpt/labels/webauthn>ongoing work</a>)
@@ -883,10 +885,6 @@ below and in [[#index-defined-elsewhere]].
 : ECMAScript
 :: [=%ArrayBuffer%=] is defined in [[!ECMAScript]].
 
-: HTML
-:: The concepts of [=browsing context=], [=origin=], [=opaque origin=], [=tuple origin=], [=relevant settings object=], [=same site=]
-    and [=is a registrable domain suffix of or is equal to=] are defined in [[!HTML]].
-
 : URL
 :: The concepts of [=domain=], [=host=], [=port=], [=scheme=], [=valid domain=] and [=valid domain string=] are defined in [[!URL]].
 
@@ -900,8 +898,9 @@ below and in [[#index-defined-elsewhere]].
     [=determining if a caller's FacetID is authorized for an AppID=] (used only in
     the [=AppID|AppID extension=]) are defined by [[!FIDO-APPID]].
 
-The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "SHOULD NOT", "RECOMMENDED",  "MAY", and
-"OPTIONAL" in this document are to be interpreted as described in [[!RFC2119]].
+The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "SHOULD NOT", "RECOMMENDED",
+"NOT RECOMMENDED", "MAY", and "OPTIONAL" in this document are to be interpreted as described in
+BCP 14 [[!RFC2119]] [[!RFC8174]] when, and only when, they appear in all capitals, as shown here.
 
 
 # Terminology # {#sctn-terminology}
@@ -1581,15 +1580,16 @@ that are returned to the caller when a new credential is created, or a new asser
 
     :   {{PublicKeyCredential/isConditionalMediationAvailable()}}
     ::  {{PublicKeyCredential}} overrides this method to indicate availability for {{CredentialMediationRequirement/conditional}}
-        mediation. [=[WRPS]=] SHOULD verify availability before attempting to set
-        <code>|options|.{{CredentialRequestOptions/mediation}}</code> to {{CredentialMediationRequirement/conditional}}.
+        mediation during {{CredentialsContainer/get()|navigator.credentials.get()}}. [=[WRPS]=] SHOULD verify availability before
+        attempting to set <code>|options|.{{CredentialRequestOptions/mediation}}</code> to {{CredentialMediationRequirement/conditional}}.
 
         Upon invocation, a promise is returned that resolves with a value of [TRUE] if {{CredentialMediationRequirement/conditional}}
         [=user mediation=] is available, or [FALSE] otherwise.
 
         This method has no arguments and returns a promise to a Boolean value.
 
-        Note: If this method is not present, {{CredentialMediationRequirement/conditional}} [=user mediation=] is not available.
+        Note: If this method is not present, {{CredentialMediationRequirement/conditional}} [=user mediation=] is not available for
+        {{CredentialsContainer/get()|navigator.credentials.get()}}.
 
     :   {{PublicKeyCredential/toJSON()}}
     ::  This operation returns {{RegistrationResponseJSON}} or {{AuthenticationResponseJSON}},
@@ -1735,8 +1735,16 @@ To support obtaining assertions via {{CredentialsContainer/get()|navigator.crede
 {{PublicKeyCredential}}'s [=interface object=]'s implementation of the <dfn for="PublicKeyCredential" method>\[[Create]](origin,
 options, sameOriginWithAncestors)</dfn> [=internal method=] [[!CREDENTIAL-MANAGEMENT-1]] allows
 [=[WRP]=] scripts to call {{CredentialsContainer/create()|navigator.credentials.create()}} to request the creation of a new
-[=public key credential source=], [=bound credential|bound=] to an [=authenticator=]. This
-{{CredentialsContainer/create()|navigator.credentials.create()}} operation can be aborted by leveraging the {{AbortController}};
+[=public key credential source=], [=bound credential|bound=] to an [=authenticator=].
+
+By setting <code>|options|.{{CredentialCreationOptions/mediation}}</code> to {{CredentialMediationRequirement/conditional}},
+[=[RPS]=] can indicate that they would like to register a credential without prominent modal UI if user has already consented to create a credential. The [=[RP]=] SHOULD first check that {{ClientCapability/conditionalCreate}} is present
+in the result of {{PublicKeyCredential/getClientCapabilities()}} in order to avoid the possibility of causing a user-visible error to be returned if the user agent does
+not support {{CredentialMediationRequirement/conditional}} [=user mediation=] for {{CredentialsContainer/create()|navigator.credentials.create()}}.
+The client MUST set BOTH |requireUserPresence| and |requireUserVerification| to |FALSE| when <code>|options|.{{CredentialCreationOptions/mediation}}</code> is set to {{CredentialMediationRequirement/conditional}}
+unless they may explicitly performed during the ceremony.
+
+Any {{CredentialsContainer/create()|navigator.credentials.create()}} operation can be aborted by leveraging the {{AbortController}};
 see [[dom#abortcontroller-api-integration]] for detailed instructions.
 
 
@@ -1774,6 +1782,11 @@ When this method is invoked, the user agent MUST execute the following algorithm
 1. Assert: <code>|options|.{{CredentialCreationOptions/publicKey}}</code> is present.
 
 1. If <var ignore>sameOriginWithAncestors</var> is [FALSE]:
+
+    1. If <code>|options|.{{CredentialCreationOptions/mediation}}</code> is present with the value
+        {{CredentialMediationRequirement/conditional}}:
+
+        1. Throw a "{{NotAllowedError}}" {{DOMException}}
 
     1. If the [=relevant global object=], as determined by the calling
         {{CredentialsContainer/create()}} implementation, does not have
@@ -1911,6 +1924,16 @@ a numbered step. If outdented, it (today) is rendered as a bullet in the midst o
     [=authenticators=] can be <a href="https://en.wikipedia.org/w/index.php?title=Hot_plug">hot-plugged</a> into (e.g., via USB)
     or discovered (e.g., via NFC or Bluetooth) by the [=client=] by various mechanisms, or permanently built into the [=client=].
 
+1. If <code>|options|.{{CredentialCreationOptions/mediation}}</code> is present with the value
+     {{CredentialMediationRequirement/conditional}}:
+
+    1. If the user agent has not recently mediated an authentication, the origin of said authentication is not |callerOrigin|, or the user
+        does not consent to this type of credential creation, throw a "{{NotAllowedError}}" {{DOMException}}.
+
+        It is up to the user agent to decide when it believes an authentication ceremony has
+        been completed. That authentication ceremony MAY be performed via other means than the
+        [=Web Authentication API=].
+
 1. Consider the value of {{PublicKeyCredentialCreationOptions/hints}} and craft the user interface accordingly, as the user-agent sees fit.
 
 1. Start |lifetimeTimer|.
@@ -1999,7 +2022,10 @@ a numbered step. If outdented, it (today) is rendered as a bullet in the midst o
                         <dl class="switch">
 
                             :   is set to {{UserVerificationRequirement/required}}
-                            ::  Let |userVerification| be [TRUE].
+                            ::  1. If <code>|options|.{{CredentialCreationOptions/mediation}}</code> is set to {{CredentialMediationRequirement/conditional}}
+                                    and [=user verification=] cannot be collected during the ceremony,
+                                    throw a {{ConstraintError}} {{DOMException}}.
+                                1. Let |userVerification| be [TRUE].
 
                             :   is set to {{UserVerificationRequirement/preferred}}
                             ::  If the |authenticator|
@@ -2023,7 +2049,7 @@ a numbered step. If outdented, it (today) is rendered as a bullet in the midst o
                         <dl class="switch">
 
                             :   is set to {{AttestationConveyancePreference/enterprise}}
-                            ::  Let |enterpriseAttestationPossible| be [TRUE] if the user agent wishes to support enterprise attestation for <code>|pkOptions|.{{PublicKeyCredentialCreationOptions/rp}}.{{PublicKeyCredentialRpEntity/id}}</code> (see [Step 8](#CreateCred-DetermineRpId), above). Otherwise [FALSE].
+                            ::  Let |enterpriseAttestationPossible| be [TRUE] if the user agent wishes to support enterprise attestation for <code>|pkOptions|.{{PublicKeyCredentialCreationOptions/rp}}.{{PublicKeyCredentialRpEntity/id}}</code> (see [step 8](#CreateCred-DetermineRpId), above). Otherwise [FALSE].
 
                             :   otherwise
                             ::  Let |enterpriseAttestationPossible| be [FALSE].
@@ -2135,9 +2161,9 @@ a numbered step. If outdented, it (today) is rendered as a bullet in the midst o
                             ::  Replace potentially uniquely identifying information with non-identifying versions of the
                                 same:
                                   1. If the [=authData/attestedCredentialData/aaguid=] in the [=attested credential data=] is 16 zero bytes, <code>|credentialCreationData|.[=attestationObjectResult=].fmt</code> is "packed", and "x5c" is absent from <code>|credentialCreationData|.[=attestationObjectResult=]</code>, then [=self attestation=] is being used and no further action is needed.
-                                  1. Otherwise
-                                      1. Replace the [=authData/attestedCredentialData/aaguid=] in the [=attested credential data=] with 16 zero bytes.
+                                  1. Otherwise:
                                       1. Set the value of <code>|credentialCreationData|.[=attestationObjectResult=].fmt</code> to "none", and set the value of <code>|credentialCreationData|.[=attestationObjectResult=].attStmt</code> to be an empty [=CBOR=] map. (See [[#sctn-none-attestation]] and [[#sctn-generating-an-attestation-object]]).
+                                      1. If |authenticator| is not a [=platform authenticator=] then replace the [=authData/attestedCredentialData/aaguid=] in the [=attested credential data=] with 16 zero bytes.
 
                             :   {{AttestationConveyancePreference/indirect}}
                             ::  The client MAY replace the [=authData/attestedCredentialData/aaguid=] and [=attestation statement=] with a more privacy-friendly
@@ -2198,7 +2224,7 @@ a numbered step. If outdented, it (today) is rendered as a bullet in the midst o
     [[#sctn-make-credential-privacy]] for details.
 
 During the above process, the user agent SHOULD show some UI to the user to guide them in the process of selecting and
-authorizing an authenticator.
+authorizing an authenticator. When <code>|options|.{{CredentialCreationOptions/mediation}}</code> is set to {{CredentialMediationRequirement/conditional}}, prominent modal UI should <i>not</i> be shown <i>unless</i> credential creation was previously consented to via means determined by the user agent.
 </div>
 
 
@@ -2774,12 +2800,16 @@ This method has no arguments and returns a record of capability keys to Boolean 
 </xmp>
 
 [=map/Keys=] in {{PublicKeyCredentialClientCapabilities}} MUST be sorted in ascending lexicographical order.
-The set of [=map/keys=] SHOULD equal the set of [=enumeration values=] of {{ClientCapability}},
+The set of [=map/keys=] SHOULD contain the set of [=enumeration values=] of {{ClientCapability}},
 but the client MAY omit keys as it deems necessary; see [[#sctn-disclosing-client-capabilities]].
 
 When the value for a given capability is [TRUE], the feature is known to be currently supported by the client.
 When the value for a given capability is [FALSE], the feature is known to be not currently supported by the client.
 When a capability does not [=map/exist=] as a key, the availability of the client feature is not known.
+
+The set of [=map/keys=] SHOULD also contain a key for each [extension](#sctn-extensions) implemented by the client, where the key is formed by prefixing the string `extension:` to the [=extension identifier=]. The associated value for each implemented extension SHOULD be [TRUE]. If `getClientCapabilities()` is supported by a client, but an extension is not mapped to the value [TRUE], then a [=[RP]=] MAY assume that client processing steps for that extension will not be carried out by this client and that the extension MAY not be forwarded to the authenticator.
+
+Note: Even if an extension is mapped to [TRUE], the authenticator used for any given operation may not support that extension, so [=[RPS]=] MUST NOT assume that the authenticator processing steps for that extension will be performed on that basis.
 
 Note: Invoking this method from a [=browsing context=] where the [=Web Authentication API=] is "disabled" according to the [=allowed to use=] algorithm&mdash;i.e., by a [=permissions policy=]&mdash;will result in the promise being rejected with a {{DOMException}} whose name is "{{NotAllowedError}}". See also [[#sctn-permissions-policy]].
 
@@ -3195,7 +3225,9 @@ associated with or [=scoped=] to, respectively.
 
         When [=clients=], [=client platforms=], or [=authenticators=] display a {{PublicKeyCredentialEntity/name}}'s value, they should always use UI elements to provide a clear boundary around the displayed value, and not allow overflow into other elements [[css-overflow-3]].
 
-        Authenticators MAY truncate a {{PublicKeyCredentialEntity/name}} member's value so that it fits within 64 bytes, if the authenticator stores the value. See [[#sctn-strings-truncation]] about truncation and other considerations.
+        When storing a {{PublicKeyCredentialEntity/name}} member's value,
+        the value MAY be truncated as described in [[#sctn-strings-truncation]]
+        using a size limit greater than or equal to 64 bytes.
 </div>
 
 
@@ -3266,8 +3298,9 @@ credential.
 
         When [=clients=], [=client platforms=], or [=authenticators=] display a {{PublicKeyCredentialUserEntity/displayName}}'s value, they should always use UI elements to provide a clear boundary around the displayed value, and not allow overflow into other elements [[css-overflow-3]].
 
-        [=Authenticators=] MUST accept and store a 64-byte minimum length for a {{PublicKeyCredentialUserEntity/displayName}}
-        member's value. Authenticators MAY truncate a {{PublicKeyCredentialUserEntity/displayName}} member's value so that it fits within 64 bytes. See [[#sctn-strings-truncation]] about truncation and other considerations.
+        When storing a {{PublicKeyCredentialUserEntity/displayName}} member's value,
+        the value MAY be truncated as described in [[#sctn-strings-truncation]]
+        using a size limit greater than or equal to 64 bytes.
 </div>
 
 
@@ -3832,13 +3865,17 @@ Note: The {{PublicKeyCredentialType}} enumeration is deliberately not referenced
 This dictionary identifies a specific [=public key credential=].
 It is used in {{CredentialsContainer/create()}} to prevent creating duplicate credentials on the same [=authenticator=],
 and in {{CredentialsContainer/get()}} to determine if and how the credential can currently be reached by the [=client=].
-It mirrors some fields of the {{PublicKeyCredential}} object returned by
+
+The [=credential descriptor for a credential record=] is a subset of the properties of that [=credential record=],
+and mirrors some fields of the {{PublicKeyCredential}} object returned by
 {{CredentialsContainer/create()}} and {{CredentialsContainer/get()}}.
 
 <div dfn-type="dict-member" dfn-for="PublicKeyCredentialDescriptor">
     :   <dfn>type</dfn>
     ::  This member contains the type of the [=public key credential=] the caller is referring to. The value SHOULD be a member of {{PublicKeyCredentialType}} but [=client platforms=] MUST ignore any {{PublicKeyCredentialDescriptor}} with an unknown {{PublicKeyCredentialDescriptor/type}}.
 
+        This SHOULD be set to the value of the [$credential record/type$] item of the [=credential record=]
+        representing the identified [=public key credential source=].
         This mirrors the {{Credential/type}} field of {{PublicKeyCredential}}.
 
         Note: If all {{PublicKeyCredentialDescriptor}} elements in {{PublicKeyCredentialRequestOptions/allowCredentials}} are ignored then that MUST result in an error since an empty {{PublicKeyCredentialRequestOptions/allowCredentials}} is semantically distinct.
@@ -3846,19 +3883,18 @@ It mirrors some fields of the {{PublicKeyCredential}} object returned by
     :   <dfn>id</dfn>
     ::  This member contains the [=credential ID=] of the [=public key credential=] the caller is referring to.
 
+        This SHOULD be set to the value of the [$credential record/id$] item of the [=credential record=]
+        representing the identified [=public key credential source=].
         This mirrors the {{PublicKeyCredential/rawId}} field of {{PublicKeyCredential}}.
 
     :   <dfn>transports</dfn>
     ::  This OPTIONAL member contains a hint as to how the [=client=] might communicate with the [=managing authenticator=] of the
         [=public key credential=] the caller is referring to. The values SHOULD be members of {{AuthenticatorTransport}} but [=client platforms=] MUST ignore unknown values.
 
+        This SHOULD be set to the value of the [$credential record/transports$] item of the [=credential record=]
+        representing the identified [=public key credential source=].
         This mirrors the <code>{{PublicKeyCredential/response}}.{{AuthenticatorAttestationResponse/getTransports()}}</code> method
-        of a {{PublicKeyCredential}} structure created by a {{CredentialsContainer/create()}} operation.
-        When [[#sctn-registering-a-new-credential|registering a new credential]],
-        the [=[RP]=] SHOULD store the value returned from {{AuthenticatorAttestationResponse/getTransports()}}.
-        When creating a {{PublicKeyCredentialDescriptor}} for that credential,
-        the [=[RP]=] SHOULD retrieve that stored value
-        and set it as the value of the {{PublicKeyCredentialDescriptor/transports}} member.
+        of the {{PublicKeyCredential}} structure created by a {{CredentialsContainer/create()}} operation.
 </div>
 
 
@@ -3963,7 +3999,7 @@ Note: The {{UserVerificationRequirement}} enumeration is deliberately not refere
 <xmp class="idl">
     enum ClientCapability {
         "conditionalCreate",
-        "conditionalMediation",
+        "conditionalGet",
         "hybridTransport",
         "passkeyPlatformAuthenticator",
         "userVerifyingPlatformAuthenticator",
@@ -3976,10 +4012,10 @@ Note: The {{ClientCapability}} enumeration is deliberately not referenced, see [
 
 <div dfn-type="enum-value" dfn-for="ClientCapability">
     :   <dfn>conditionalCreate</dfn>
-    ::  The [=WebAuthn Client=] is capable of a {{CredentialMediationRequirement/conditional}} credential creation operation.
+    ::  The [=WebAuthn Client=] is capable of {{CredentialMediationRequirement/conditional}} mediation for [=registration ceremonies=]..
 
-    :   <dfn>conditionalMediation</dfn>
-    ::  The [=WebAuthn Client=] is capable of {{CredentialMediationRequirement/conditional}} mediation.
+    :   <dfn>conditionalGet</dfn>
+    ::  The [=WebAuthn Client=] is capable of {{CredentialMediationRequirement/conditional}} mediation for [=authentication ceremonies=].
 
     :   <dfn>hybridTransport</dfn>
     ::  The [=WebAuthn Client=] supports usage of the {{AuthenticatorTransport/hybrid}} transport.
@@ -4615,9 +4651,7 @@ It takes the following input parameters:
 : |requireResidentKey|
 :: The [=effective resident key requirement for credential creation=], a Boolean value determined by the [=client=].
 : |requireUserPresence|
-:: The constant Boolean value [TRUE].
-    It is included here as a pseudo-parameter to simplify applying this abstract authenticator model to implementations that may
-    wish to make a [=test of user presence=] optional although WebAuthn does not.
+:: The constant Boolean value [TRUE], or |FALSE| when <code>|options|.{{CredentialCreationOptions/mediation}}</code> is set to {{CredentialMediationRequirement/conditional}} and the user agent previously collected consent from the user.
 : |requireUserVerification|
 :: The [=effective user verification requirement for credential creation=], a Boolean value determined by the [=client=].
 : |credTypesAndPubKeyAlgs|
@@ -4926,23 +4960,63 @@ Authenticators may be required to store arbitrary strings chosen by a [=[RP]=], 
 
 ### String Truncation ### {#sctn-strings-truncation}
 
-Each arbitrary string in the API will have some accommodation for the potentially limited resources available to an [=authenticator=]. If string value truncation is the chosen accommodation then authenticators MAY truncate in order to make the string fit within a length equal or greater than the specified minimum supported length. Such truncation SHOULD also respect UTF-8 sequence boundaries or [=grapheme cluster=] boundaries [[UAX29]]. This defines the maximum truncation permitted and authenticators MUST NOT truncate further.
+Each arbitrary string in the API will have some accommodation for the potentially limited resources available to an [=authenticator=].
+When the chosen accommodation is string truncation, care needs to be taken to not corrupt the string value.
 
-For example, in <a href="#fig-stringTruncation">figure <span class="figure-num-following"></span></a> the string is 65 bytes long. If truncating to 64 bytes then the final 0x88 byte must be removed purely because of space reasons. Since that leaves a partial UTF-8 sequence the remainder of that sequence may also be removed. Since that leaves a partial [=grapheme cluster=] an authenticator may remove the remainder of that cluster.
+For example, truncation based on Unicode code points alone may cause a [=grapheme cluster=] to be truncated.
+This could make the grapheme cluster render as a different glyph,
+potentially changing the meaning of the string, instead of removing the glyph entirely.
+For example, <a href="#fig-stringTruncation">figure <span class="figure-num-following"></span></a>
+shows the end of a UTF-8 encoded string whose encoding is 65 bytes long.
+If truncating to 64 bytes then the final 0x88 byte is removed first to satisfy the size limit.
+Since that leaves a partial UTF-8 code point, the remainder of that code point must also be removed.
+Since that leaves a partial [=grapheme cluster=], the remainder of that cluster should also be removed.
 
 <figure id="fig-stringTruncation">
     <img src="images/string-truncation.svg"></img>
     <figcaption>The end of a UTF-8 encoded string showing the positions of different truncation boundaries.</figcaption>
 </figure>
 
-[=Conforming User Agents=] are responsible for ensuring that the authenticator behavior observed by [=[RPS]=] conforms to this specification with respect to string handling. For example, if an authenticator is known to behave incorrectly when asked to store large strings, the user agent SHOULD perform the truncation for it in order to maintain the model from the point of view of the [=[RP]=]. User-agents that do this SHOULD truncate at [=grapheme cluster=] boundaries.
+The responsibility for handling these concerns falls primarily on the [=client=],
+to avoid burdening [=authenticators=] with understanding character encodings and Unicode character properties.
+The following subsections define requirements for how clients and authenticators,
+respectively, may perform string truncation.
 
-Truncation based on UTF-8 sequences alone may cause a [=grapheme cluster=] to be truncated. This could make the grapheme cluster render as a different glyph, potentially changing the meaning of the string, instead of removing the glyph entirely.
 
-In addition to that, truncating on byte boundaries alone causes a known issue that user agents should be aware of: if the authenticator is using [[!FIDO-CTAP]] then future messages from the authenticator may contain invalid CBOR since the value is typed as a CBOR string and thus is required to be valid UTF-8. User agents are tasked with handling this to avoid burdening authenticators with understanding character encodings and Unicode character properties. Thus, when dealing with [=authenticators=], user agents SHOULD:
+#### String Truncation by Clients #### {#sctn-strings-truncation-client}
+
+When a [=[WAC]=] truncates a string,
+the truncation behaviour observable by the [=[RP]=] MUST satisfy the following requirements:
+
+Choose a size limit equal to or greater than the specified minimum supported length.
+The string MAY be truncated so that its length in bytes in the UTF-8 character encoding satisfies that limit.
+This truncation MUST respect UTF-8 code point boundaries, and SHOULD respect [=grapheme cluster=] boundaries [[UAX29]].
+The resulting truncated value MAY be shorter than the chosen size limit
+but MUST NOT be shorter than the longest prefix substring that satisfies the size limit and ends on a [=grapheme cluster=] boundary.
+
+The client MAY let the [=authenticator=] perform the truncation if it satisfies these requirements;
+otherwise the client MUST perform the truncation before relaying the string value to the authenticator.
+
+In addition to the above, truncating on byte boundaries alone causes a known issue that user agents should be aware of: if the authenticator is using [[!FIDO-CTAP]] then future messages from the authenticator may contain invalid CBOR since the value is typed as a CBOR string and thus is required to be valid UTF-8. Thus, when dealing with [=authenticators=], user agents SHOULD:
 
 1. Ensure that any strings sent to authenticators are validly encoded.
 1. Handle the case where strings have been truncated resulting in an invalid encoding. For example, any partial code point at the end may be dropped or replaced with [U+FFFD](http://unicode.org/cldr/utility/character.jsp?a=FFFD).
+
+
+#### String Truncation by Authenticators #### {#sctn-strings-truncation-authenticator}
+
+Because a [=[WAA]=] may be implemented in a constrained environment,
+the requirements on authenticators are relaxed compared to those for [=clients=].
+
+When a [=[WAA]=] truncates a string,
+the truncation behaviour MUST satisfy the following requirements:
+
+Choose a size limit equal to or greater than the specified minimum supported length.
+The string MAY be truncated so that its length in bytes in the UTF-8 character encoding satisfies that limit.
+This truncation SHOULD respect UTF-8 code point boundaries, and MAY respect [=grapheme cluster=] boundaries [[UAX29]].
+The resulting truncated value MAY be shorter than the chosen size limit
+but MUST NOT be shorter than the longest prefix substring that satisfies the size limit and ends on a [=grapheme cluster=] boundary.
+
 
 ### Language and Direction Encoding ### {#sctn-strings-langdir}
 
@@ -5191,7 +5265,7 @@ calling {{CredentialsContainer/create()|navigator.credentials.create()}} they se
 [=attestation type=] as a part of [=verification procedure|verification=]. See the "Verification procedure" subsections of
 [[#sctn-defined-attestation-formats]]. See also [[#sctn-attestation-privacy]]. For all [=attestation types=] defined in this
 section other than [=self attestation|Self=] and [=None=], [=[RP]=] [=verification procedure|verification=] is followed by
-matching the [=attestation trust path|trust path=] to an acceptable root certificate per [step 23](#reg-ceremony-assess-trust)
+matching the [=attestation trust path|trust path=] to an acceptable root certificate per [step 24](#reg-ceremony-assess-trust)
 of [[#sctn-registering-a-new-credential]].
 Differentiating these [=attestation types=] becomes useful primarily as a means for determining if the [=attestation=] is acceptable
 under [=[RP]=] policy.
@@ -5372,7 +5446,7 @@ a numbered step. If outdented, it (today) is rendered as a bullet in the midst o
 
 1. Verify that the <code>[=rpIdHash=]</code> in |authData| is the SHA-256 hash of the [=RP ID=] expected by the [=[RP]=].
 
-1. Verify that the [=UP=] bit of the <code>[=flags=]</code> in |authData| is set.
+1. Verify that the [=UP=] bit of the <code>[=flags=]</code> in |authData| is set, unless <code>|options|.{{CredentialCreationOptions/mediation}}</code> is set to {{CredentialMediationRequirement/conditional}}.
 
 1. If the [=[RP]=] requires [=user verification=] for this registration,
     verify that the [=authData/flags/UV=] bit of the <code>[=flags=]</code> in |authData| is set.
@@ -5438,12 +5512,12 @@ a numbered step. If outdented, it (today) is rendered as a bullet in the midst o
 <!-- Note: this next step is actually a top-level step, but bikeshed wanted it indented this much in order to render it as
 a numbered step. If outdented, it (today) is rendered as a bullet in the midst of a numbered list -->
     <li id="reg-ceremony-assess-trust">
-        Assess the attestation trustworthiness using the outputs of the [=verification procedure=] in [step 21](#reg-ceremony-verify-attestation), as follows:
+        Assess the attestation trustworthiness using the outputs of the [=verification procedure=] in [step 22](#reg-ceremony-verify-attestation), as follows:
             - If [=None|no attestation=] was provided, verify that [=None=] attestation is acceptable under [=[RP]=] policy.
             - If [=self attestation=] was used, verify that [=self attestation=] is acceptable under [=[RP]=] policy.
             - Otherwise, use the X.509 certificates returned as the [=attestation trust path=] from the [=verification procedure=]
                 to verify that the attestation public key either correctly chains up to an acceptable root certificate, or is itself an acceptable certificate
-                (i.e., it and the root certificate obtained in [Step 22](#reg-ceremony-attestation-trust-anchors) may be the same).
+                (i.e., it and the root certificate obtained in [step 23](#reg-ceremony-attestation-trust-anchors) may be the same).
     </li>
 
 1. Verify that the <code>[=credentialId=]</code> is &le; 1023 bytes. Credential IDs larger than this many bytes SHOULD cause the RP to fail this [=registration ceremony=].
@@ -5496,7 +5570,7 @@ a numbered step. If outdented, it (today) is rendered as a bullet in the midst o
         </dl>
     </li>
 
-1. If the attestation statement |attStmt| successfully verified but is not trustworthy per [step 23](#reg-ceremony-assess-trust) above,
+1. If the attestation statement |attStmt| successfully verified but is not trustworthy per [step 24](#reg-ceremony-assess-trust) above,
     the [=[RP]=] SHOULD fail the [=registration ceremony=].
 
     NOTE: However, if permitted by policy, the [=[RP]=] MAY register the [=credential ID=] and credential public key but treat the
@@ -5505,7 +5579,7 @@ a numbered step. If outdented, it (today) is rendered as a bullet in the midst o
         See [[FIDOSecRef]] and [[UAFProtocol]] for a more detailed discussion.
 
 Verification of [=attestation objects=] requires that the [=[RP]=] has a trusted method of determining acceptable trust anchors
-in [step 22](#reg-ceremony-attestation-trust-anchors) above.
+in [step 23](#reg-ceremony-attestation-trust-anchors) above.
 Also, if certificates are being used, the [=[RP]=] MUST have access to certificate status information for the
 intermediate CA certificates. The [=[RP]=] MUST also be able to build the attestation certificate chain if the client did not
 provide this chain in the attestation information.
@@ -5829,23 +5903,51 @@ The attestation certificate MUST have the following fields/extensions:
     is present, and if it is, then validate that it contains that same AAGUID as presented in the [=attestation object=].
 
     Note that an X.509 Extension encodes the DER-encoding of the value in an OCTET STRING.
-    Thus, the AAGUID MUST be wrapped in <i>two</i> OCTET STRINGS to be valid. Here is a sample, encoded Extension structure:
-
-    <pre>
-  30 21                                     -- SEQUENCE
-    06 0b 2b 06 01 04 01 82 e5 1c 01 01 04  -- 1.3.6.1.4.1.45724.1.1.4
-    04 12                                   -- OCTET STRING
-      04 10                                 -- OCTET STRING
-        cd 8c 39 5c 26 ed ee de             -- AAGUID
-        65 3b 00 79 7d 03 ca 3c
-    </pre>
+    Thus, the AAGUID MUST be wrapped in <i>two</i> OCTET STRINGS to be valid.
 
 - The Basic Constraints extension MUST have the CA component set to [FALSE].
 
-- An Authority Information Access (AIA) extension with entry `id-ad-ocsp` and a CRL Distribution Point extension [[RFC5280]]
-    are both OPTIONAL as the status of many attestation certificates is available through authenticator metadata services.
-    See, for example, the FIDO Metadata Service [[FIDOMetadataService]].
+Additionally, an Authority Information Access (AIA) extension with entry `id-ad-ocsp` and a CRL Distribution Point extension
+    [[RFC5280]] are both OPTIONAL as the status of many attestation certificates is available through authenticator metadata
+    services. See, for example, the FIDO Metadata Service [[FIDOMetadataService]].
 
+The firmware of a particular authenticator model MAY be differentiated using the Extension OID `1.3.6.1.4.1.45724.1.1.5`
+    (`id-fido-gen-ce-fw-version`). When present, this attribute contains an INTEGER with a non-negative value which is incremented for new
+    firmware release versions. The extension MUST NOT be marked as critical.
+
+For example, the following is an attestation certificate containing the above extension OIDs as well as required fields:
+
+~~~ pem
+-----BEGIN CERTIFICATE----- <!-- bikeshed emdash workaround -->
+MIIBzTCCAXOgAwIBAgIUYHS3FJEL/JTfFqafuAHvlAS+hDYwCgYIKoZIzj0EAwIw
+QTELMAkGA1UEBhMCVVMxFDASBgNVBAoMC1dlYkF1dGhuIFdHMRwwGgYDVQQDDBNF
+eGFtcGxlIEF0dGVzdGF0aW9uMCAXDTI0MDEwMzE3NDUyMVoYDzIwNTAwMTA2MTc0
+NTIxWjBBMQswCQYDVQQGEwJVUzEUMBIGA1UECgwLV2ViQXV0aG4gV0cxHDAaBgNV
+BAMME0V4YW1wbGUgQXR0ZXN0YXRpb24wWTATBgcqhkjOPQIBBggqhkjOPQMBBwNC
+AATDQN9uaFFH4BKBjthHTM1drpb7gIuPod67qyF6UdL4qah6XUp6tE7Prl+DfQ7P
+YH9yMOOcci3nr+Q/jOBaWVERo0cwRTAhBgsrBgEEAYLlHAEBBAQSBBDNjDlcJu3u
+3mU7AHl9A8o8MBIGCysGAQQBguUcAQEFBAMCASowDAYDVR0TAQH/BAIwADAKBggq
+hkjOPQQDAgNIADBFAiA3k3aAUVtLhDHLXOgY2kRnK2hrbRgf2EKdTDLJ1Ds/RAIh
+AOmIblhI3ALCHOaO0IO7YlMpw/lSTvFYv3qwO3m7H8Dc
+-----END CERTIFICATE----- <!-- bikeshed emdash workaround -->
+~~~
+
+The attributes above are structured within this certificate as such:
+
+~~~ text
+30 21                                    -- SEQUENCE
+  06 0B 2B 06 01 04 01 82 E5 1C 01 01 04 -- OID 1.3.6.1.4.1.45724.1.1.4
+  04 12                                  -- OCTET STRING
+    04  10                               -- OCTET STRING
+      CD 8C 39 5C 26 ED EE DE            -- AAGUID cd8c395c-26ed-eede-653b-00797d03ca3c
+      65 3B 00 79 7D 03 CA 3C 
+
+30 12                                    -- SEQUENCE
+  06 0B 2B 06 01 04 01 82 E5 1C 01 01 05 -- OID 1.3.6.1.4.1.45724.1.1.5
+  04 03                                  -- OCTET STRING
+    02 01                                -- INTEGER
+      2A                                 -- Firmware version: 42
+~~~
 
 ## TPM Attestation Statement Format ## {#sctn-tpm-attestation}
 
@@ -6952,10 +7054,10 @@ However, [=authenticators=] that do not utilize [[!FIDO-CTAP]] do not necessaril
            1. Set {{AuthenticationExtensionsLargeBlobOutputs/supported}} to [TRUE].
 
                Note: This is in anticipation of an authenticator capable of storing large blobs becoming available.
-               It occurs during extension processing in [Step 12](#CreateCred-process-extensions) of {{PublicKeyCredential/[[Create]]()}}.
+               It occurs during extension processing in [step 12](#CreateCred-process-extensions) of {{PublicKeyCredential/[[Create]]()}}.
                The {{AuthenticationExtensionsLargeBlobOutputs}} will be abandoned if no satisfactory authenticator becomes available.
 
-           1. If a [=create/candidate authenticator=] becomes available ([Step 20](#CreateCred-async-loop) of {{PublicKeyCredential/[[Create]]()}}) then,
+           1. If a [=create/candidate authenticator=] becomes available ([step 21](#CreateCred-async-loop) of {{PublicKeyCredential/[[Create]]()}}) then,
               before evaluating any <code>|options|</code>, [=iteration/continue=] (i.e. ignore the [=create/candidate authenticator=])
               if the [=create/candidate authenticator=] is not capable of storing large blobs.
        1. Otherwise (i.e. {{AuthenticationExtensionsLargeBlobInputs/support}} is absent or has the value {{LargeBlobSupport/preferred}}):
@@ -7418,7 +7520,7 @@ The [=supplementalPubKeys=] extension adds the following [=struct/item=] to [=cr
 ##### Registration (`create()`) ##### {#sctn-supplemental-public-keys-extension-verification-create}
 
 If the [=[RP]=] requested the `supplementalPubKeys` extension in a {{CredentialsContainer/create()|navigator.credentials.create()}} call,
-then the below verification steps are performed in the context of [step 19](#reg-ceremony-verify-extension-outputs)
+then the below verification steps are performed in the context of [step 20](#reg-ceremony-verify-extension-outputs)
 of [[#sctn-registering-a-new-credential]] using these variables established therein: |credential|, |clientExtensionResults|, |authData|, and |hash|.
 [=[RP]=] policy may specify whether a response without a `supplementalPubKeys` extension output is acceptable.
 
@@ -7459,7 +7561,7 @@ of [[#sctn-registering-a-new-credential]] using these variables established ther
             ::  The value of |attStmt|.
         </dl>
 
-        In [step 26](#reg-ceremony-store-credential-record) of [[#sctn-registering-a-new-credential]],
+        In [step 27](#reg-ceremony-store-credential-record) of [[#sctn-registering-a-new-credential]],
         add this [=supplemental public key record=] to the [$credential record/supplementalPubKeys$] member of the new [=credential record=].
 
 See also [[#sctn-supplemental-public-keys-extension-usage]] for further details.
@@ -7583,7 +7685,7 @@ To <dfn abstract-op>Create a new supplemental public key record</dfn>, perform t
             ::  The value of |attStmt|.
         </dl>
 
-        In [step 22](#authn-ceremony-update-credential-record) of [[#sctn-verifying-assertion]],
+        In [step 23](#authn-ceremony-update-credential-record) of [[#sctn-verifying-assertion]],
         [=set/append=] this [=supplemental public key record=] to |credentialRecord|.[$credential record/supplementalPubKeys$].
 
 
