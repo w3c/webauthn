@@ -3655,11 +3655,12 @@ Note: The {{CollectedClientData}} may be extended in the future. Therefore it's 
 
 <xmp class="idl">
     dictionary CollectedClientData {
-        required DOMString           type;
-        required DOMString           challenge;
-        required DOMString           origin;
-        DOMString                    topOrigin;
-        boolean                      crossOrigin;
+        required DOMString            type;
+        required DOMString            challenge;
+        required DOMString            origin;
+        DOMString                     topOrigin;
+        boolean                       crossOrigin;
+        CollectedClientDataExtensions extensions;
     };
 
     dictionary TokenBinding {
@@ -3668,6 +3669,9 @@ Note: The {{CollectedClientData}} may be extended in the future. Therefore it's 
     };
 
     enum TokenBindingStatus { "present", "supported" };
+
+    dictionary CollectedClientDataExtensions { 
+    };
 </xmp>
 
 <div dfn-type="dict-member" dfn-for="CollectedClientData">
@@ -7683,6 +7687,156 @@ To <dfn abstract-op>Create a new supplemental public key record</dfn>, perform t
 
         In [step 23](#authn-ceremony-update-credential-record) of [[#sctn-verifying-assertion]],
         [=set/append=] this [=supplemental public key record=] to |credentialRecord|.[$credential record/supplementalPubKeys$].
+
+
+### Confirmation Extension (confirmation) ### {#sctn-confirmation-extension}
+
+This extension allows for capturing user confirmation. A
+   [=[RP]=] can specify the structured details of a specific confirmation type. The confirmation tpe specific structured details are intended for display
+   by the platform and by the authenticator (if supported).
+   With this approach, [=Relying Parties=] can use the feature independently of the capabilities of the authenticator used by the user,
+   while still benefitting from the increased security level if the authenticator itself supports showing the confirmation prompt.
+
+Authenticators could use a Trusted UI to ensure that the user indeed sees the confirmation details.
+
+Example uses cases could be "I want to move $1234 from account A to account B" or "I want to share my health data with hospital X".
+
+: Extension identifier
+:: `confirmation`
+
+: Operation applicability
+:: [=authentication extension|Authentication=]
+
+: Client extension input
+:: The confirmationType plus additional details that depend on the confirmation type as specified below. 
+
+    <xmp class="idl">
+    dictionary ConfirmationDetailsJSON {
+    };
+
+    partial dictionary AuthenticationExtensionsClientInputsJSON {
+      USVString confirmationType; // "move-money", "monetary-limit", "trades", "accept-risk", "share-data"
+      ConfirmationDetailsJSON details;
+    };
+    </xmp>
+
+    <xmp class="idl"> 
+    partial dictionary ConfirmationDetailsJSON {       // confirmationType: "spc"
+      required USVString payeeName;                    // example: "Best Purchase, Inc"
+      required USVString payeeOrigin;                  // example: "best-purchase.com"
+      required PaymentCurrencyAmount total;            // example: { "currency": "US-$", "value": 400 }
+      required PaymentCredentialInstrument instrument; // example: "EBICS", "SCT Inst", …
+    };
+    </xmp>
+    
+    <xmp class="idl">
+    partial dictionary ConfirmationDetailsJSON { // confirmationType: "move-money"
+      required USVString moveFrom;               // example: "IBAN: IE12 BOFI 9000 0112 3456 78"
+      required USVString moveTo;                 // example: "Account 21343255, BIC NFBKUS33XXX"
+      required PaymentCurrencyAmount moveTotal;  // example: { "currency": "US-$", "value": 400 }
+      USVString moveDetails;                     // example: "EBICS", "SCT Inst", …
+    };
+    </xmp>
+
+    <xmp class="idl">
+    partial dictionary ConfirmationDetailsJSON { // confirmationType: "monetary-limit"
+      required USVString limitAccount;           // example: "IBAN: IE12 BOFI 9000 0112 3456 78"
+      required PaymentCurrencyAmount limitTotal; // example: { "currency": "US-$", "value": 400 }
+      USVString limitDetails;                    // example: "daily amount", "weekly ATM withdrawal", …
+    };
+    </xmp>
+
+    <xmp class="idl">
+    partial dictionary ConfirmationDetailsJSON { // confirmationType: "trades"
+      required USVString tradeAccount;           // example: "IBAN: IE12 BOFI 9000 0112 3456 78"
+      required USVString tradeItemName;          // example: "WKN: 43259887", "Stock Symbol: PYPL")
+      required USVString tradeItemCount;         // example: "234"
+      required USVString tradeExchange;          // example: “GETTEX", "XETRA", TRADEGATE", ...
+      required USVString tradeConditionTotal;    // example: { "currency": "US-$", "value": 400 }
+      USVString tradeConditionName;              // example: "limit", "stop"
+    };
+    </xmp>
+
+    <xmp class="idl">
+    partial dictionary ConfirmationDetailsJSON { // confirmationType: "accept-risk"
+      required USVString riskClass;              // example: "interest rate risk", "either interest rate or exchange rate risk", ...
+      required USVString riskRPName;             // example: "Best Bank, Berlin, Germany"
+      required USVString riskUserName;           // example: "John Doe, more identfying details"
+    };
+    </xmp>
+
+    <xmp class="idl">
+    partial dictionary ConfirmationDetailsJSON { // confirmationType: "share-data", e.g. according to GDPR article 7, ISO27701 etc.
+      required USVString dataClass;              // example: "personal health data since 2016", ...
+      required USVString dataRPName;             // data controller, example: "Mount Sinai Hospital, New York, New York, United States"
+      required USVString dataUserName;           // data subject, example: "John Doe, more identfying details"
+    };
+    </xmp>
+
+
+: Client extension processing
+::   1. use a dialog to the user that makes the user aware of the confirmation to be provided (as opposed to doing a simple sign-in).
+     1. display the confirmation type and confirmation details to the user. The client SHOULD
+           indicate that the confirmation details originate from a specific relying party
+           (as opposed to the platform itself).
+     
+     1. use the {{CollectedClientConfirmationData}} structure containing the confirmation prompt instead of using the {{CollectedClientData}} structure.
+     
+     1. pass-through the extension to the authenticator (see "authenticator extension input" below)
+     1. pass-through the "authenticator extension output" to the caller as part of the assertion
+
+
+    The {{CollectedClientDataExtensions}} dictionary contains the following
+    additional field:
+    <xmp class="idl">
+        partial dictionary CollectedClientDataExtensions {
+           USVString confirmationType;       // "move-money", "monetary-limit", "trades", "accept-risk", "share-data"
+           ConfirmationDetailsJSON details;
+        };
+    </xmp>
+
+: Client extension output
+:: Returns the value [TRUE] to indicate to the [=[RP]=] that the extension was acted upon.
+    <xmp class="idl">
+    partial dictionary AuthenticationExtensionsClientOutputs {
+      boolean confirmation;
+    };
+    </xmp>
+
+: Authenticator extension input
+:: The client provides the extension input encoded as a TODO // was: CBOR text string (major type 3).
+
+    ```
+    $$extensionInput //= (
+      confirmationType = tstr,
+      confirmationDetailsCBOR = map;
+
+    ```
+
+: Authenticator extension processing
+:: The authenticator supporting this extension MUST display the confirmation prompt to the user
+    before performing either [=user verification=] or [=test of user
+    presence=]. The authenticator MAY wrap lines that are too wide to be shown if needed.
+
+: Authenticator extension output
+:: A single CBOR text string, representing the confirmation prompt.
+
+    ```
+    $$extensionOutput //= (
+      confirmationType = tstr,
+      confirmationDetailsCBOR = map;
+    )
+    ```
+
+#### `confirmation` Extension Output Verification Procedures #### {#sctn-confirmation-extension-verification}
+
+The following verification steps are performed in the context of [step 19](#authn-ceremony-verify-extension-outputs)
+of [[#sctn-verifying-assertion]] using these variables established therein: |credential|, |clientExtensionResults|, |authData|, |hash|, and |credentialRecord|.
+[=[RP]=] policy may specify whether a response without a `confirmation` extension output is acceptable.
+
+1. Verify that the `confirmation` key exists in the [=authData/extensions=] in |authData|.
+1. Verify that the `confirmation` value in the [=authData/extensions=] in |authData| equals the confirmation prompt that is expected (i.e., that was used when requesting the `confirmation` extension).
+1. If processing a response without the `confirmation` extension is acceptable by policy: Fall back to <code>|credential|.{{PublicKeyCredential/response}}.{{AuthenticatorResponse/clientDataJSON}}</code> entry if authenticator extension output is absent.
 
 
 # User Agent Automation # {#sctn-automation}
