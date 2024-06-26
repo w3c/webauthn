@@ -7111,105 +7111,6 @@ However, [=authenticators=] that do not utilize [[!FIDO-CTAP]] do not necessaril
 
 This section defines extensions that are both [=client extensions=] and [=authenticator extensions=].
 
-### <dfn>User Verification Method</dfn> Extension (uvm) ### {#sctn-uvm-extension}
-
-This extension enables use of a user verification method.
-
-: Extension identifier
-:: `uvm`
-
-: Operation applicability
-:: [=registration extension|Registration=] and [=authentication extension|Authentication=]
-
-: Client extension input
-:: The Boolean value [TRUE] to indicate that this extension is requested by the [=[RP]=].
-    <xmp class="idl">
-    partial dictionary AuthenticationExtensionsClientInputs {
-      boolean uvm;
-    };
-    </xmp>
-
-: Client extension processing
-:: None, except creating the authenticator extension input from the client extension input.
-
-: Client extension output
-:: Returns a JSON array of 3-element arrays of numbers that encodes the factors in the authenticator extension output.
-    <xmp class="idl">
-    typedef sequence<unsigned long> UvmEntry;
-    typedef sequence<UvmEntry> UvmEntries;
-
-    partial dictionary AuthenticationExtensionsClientOutputs {
-      UvmEntries uvm;
-    };
-    </xmp>
-
-: Authenticator extension input
-:: The Boolean value [TRUE], encoded in CBOR (major type 7, value 21).
-
-    ```
-    $$extensionInput //= (
-      uvm: true,
-    )
-    ```
-
-: Authenticator extension processing
-:: The [=authenticator=] sets the [=authenticator extension output=] to be one or more user verification methods indicating the method(s) used
-    by the user to authorize the operation, as defined below. This extension can be added to attestation objects and assertions.
-
-: Authenticator extension output
-:: Authenticators can report up to 3 different user verification methods (factors) used in a single authentication instance,
-    using the CBOR syntax defined below:
-
-    ```
-    $$extensionOutput //= (
-      uvm: [ 1*3 uvmEntry ],
-    )
-
-    uvmEntry = [
-                   userVerificationMethod: uint .size 4,
-                   keyProtectionType: uint .size 2,
-                   matcherProtectionType: uint .size 2
-               ]
-    ```
-
-    The semantics of the fields in each `uvmEntry` are as follows:
-    : userVerificationMethod
-    :: The authentication method/factor used by the authenticator to verify the user. Available values are defined in
-        [=Section 3.1 User Verification Methods=] of [[!FIDO-Registry]].
-
-    : keyProtectionType
-    :: The method used by the authenticator to protect the FIDO registration private key material. Available values are defined
-        in [=Section 3.2 Key Protection Types=] of [[!FIDO-Registry]].
-
-    : matcherProtectionType
-    :: The method used by the authenticator to protect the matcher that performs user verification. Available values are defined
-        in [=Section 3.3 Matcher Protection Types=] of [[!FIDO-Registry]].
-
-    If >3 factors can be used in an authentication instance the authenticator vendor MUST select the 3 factors it believes
-    will be most relevant to the Server to include in the UVM.
-
-    Example for [=authenticator data=] containing one UVM extension for a multi-factor authentication instance where 2 factors
-    were used:
-    <pre>
-        ...                    -- RP ID hash (32 bytes)
-        81                     -- UP and ED set
-        00 00 00 01            -- (initial) signature counter
-        ...                    -- all public key alg etc.
-        A1                     -- extension: CBOR map of one element
-            63                 -- Key 1: CBOR text string of 3 bytes
-                75 76 6d       -- "uvm" [=UTF-8 encoded=] string
-            82                 -- Value 1: CBOR array of length 2 indicating two factor usage
-                83              -- Item 1: CBOR array of length 3
-                    02           -- Subitem 1: CBOR integer for User Verification Method Fingerprint
-                    04           -- Subitem 2: CBOR short for Key Protection Type TEE
-                    02           -- Subitem 3: CBOR short for Matcher Protection Type TEE
-                83              -- Item 2: CBOR array of length 3
-                    04           -- Subitem 1: CBOR integer for User Verification Method Passcode
-                    01           -- Subitem 2: CBOR short for Key Protection Type Software
-                    01           -- Subitem 3: CBOR short for Matcher Protection Type Software
-    </pre>
-
-
 ### Supplemental public keys extension (<dfn>supplementalPubKeys</dfn>) ### {#sctn-supplemental-public-keys-extension}
 
 This [=authenticator extension|authenticator=] [=registration extension=] and [=authentication extension=] provides a [=[RP]=] with additional public key(s) for credentials. This is done by creating [=user credential=]-specific key pairs on the [=authenticator=], when required key pairs do not already exist for the [=user credential=] being created or exercised, and returning these supplemental keys (along with signatures by them) to the [=[RP]=]. This is done each time this [=supplementalPubKeys=] extension is included with either a {{CredentialsContainer/create()|navigator.credentials.create()}} or {{CredentialsContainer/get()|navigator.credentials.get()}} call.
@@ -7742,12 +7643,6 @@ Additionally, [=extension capabilities=] are defined for every [=authenticator e
         </thead>
         <tbody>
             <tr>
-                <td>User Verification Method Extension Support</td>
-                <td>`"webauthn:extension:uvm"`</td>
-                <td>boolean</td>
-                <td>Indicates whether the [=endpoint node=] WebAuthn WebDriver implementation supports the [=User Verification Method=] extension.</td>
-            </tr>
-            <tr>
                 <td>Pseudo-Random Function Extension Support</td>
                 <td>`"webauthn:extension:prf"`</td>
                 <td>boolean</td>
@@ -7814,10 +7709,7 @@ Each stored [=virtual authenticator=] has the following properties:
 
     A [=Virtual authenticator=] MUST support all [=authenticator extensions=] present in its |extensions| array.
     It MUST NOT support any [=authenticator extension=] not present in its |extensions| array.
-: |uvm|
-:: A {{UvmEntries}} array to be set as the [=authenticator extension output=] when processing the [=User Verification Method=] extension.
 
-    Note: This property has no effect if the [=Virtual Authenticator=] does not support the [=User Verification Method=] extension.
 : |defaultBackupEligibility|
 :: Determines the default state of the [=backup eligibility=] [=credential property=] for any newly created [=Public Key Credential Source=].
     This value MUST be reflected by the [=BE=] [=authenticator data=] [=flag=] when performing an [=authenticatorMakeCredential=]
@@ -7902,12 +7794,6 @@ The <dfn>Authenticator Configuration</dfn> is a JSON [=Object=] passed to the [=
                 <td>|extensions|</td>
                 <td>string array</td>
                 <td>An array containing [=extension identifiers=]</td>
-                <td>Empty array</td>
-            </tr>
-            <tr>
-                <td>|uvm|</td>
-                <td>{{UvmEntries}}</td>
-                <td>Up to 3 [=User Verification Method=] entries</td>
                 <td>Empty array</td>
             </tr>
             <tr>
@@ -8397,11 +8283,6 @@ This section updates the below-listed [=extension identifier=] values defined in
     FIDO JavaScript APIs to request an assertion.
 - Specification Document: Section [[#sctn-appid-extension]] of this specification
     <br/><br/>
-- WebAuthn Extension Identifier: uvm
-- Description: This [=registration extension=] and [=authentication extension=] enables use of a user verification method.
-    The user verification method extension returns to the [=[WRP]=] which user verification methods (factors) were
-    used for the WebAuthn operation.
-- Specification Document: Section [[#sctn-uvm-extension]] of this specification
 
 
 ## WebAuthn Extension Identifier Registrations ## {#sctn-extensions-reg}
