@@ -2953,6 +2953,182 @@ value and terminate the operation.
 
 </div>
 
+### Signal Credential Changes to the Authenticator - PublicKeyCredential's `signal()` Method {#sctn-signal}
+
+<xmp class="idl">
+    partial interface PublicKeyCredential {
+        static Promise<undefined> signal(PublicKeyCredentialSignalOptions options);
+    };
+
+    dictionary PublicKeyCredentialSignalOptions {
+        USVString                              rpId;
+        Base64URLString                        unknownCredentialId;
+        PublicKeyCurrentCredentialDetails      currentCredentials;
+    };
+
+    dictionary PublicKeyCurrentCredentialDetails {
+        required Base64URLString               userId;
+        PublicKeyCurrentCredentialUserDetails  user;
+        sequence<Base64URLString>              allAcceptedCredentialIds;
+    };
+
+    dictionary PublicKeyCurrentCredentialUserDetails {
+        required DOMString                     name;
+        required DOMString                     displayName;
+    };
+</xmp>
+
+[=[WRPS]=] may use {{PublicKeyCredential/signal()}} to signal [=authenticators=]
+the state of [=public key credentials=], so that incorrect or revoked
+credentials may be updated or removed. [=User agents=] provide this
+functionality opportunistically, since an authenticator may not support updating
+its [=credentials map=] or it may not be attached at the time the request is
+made. Furthermore, in order to avoid revealing information about a user's
+credentials without [=user consent=], the {{PublicKeyCredential/signal()}}
+operation does indicate whether the operation succeeded. A successfully resolved
+promise only indicates that the {{PublicKeyCredentialSignalOptions}} object was
+well formed and accepted.
+
+A number of <dfn>credential reports</dfn> can be signalled by [=[WRPS]=]. Each
+[=credential report=] declares a <dfn>validation algorithm</dfn> and <dfn>
+authenticator actions</dfn>. The input for both these algorithms is the
+{{PublicKeyCredentialSignalOptions}} |options|.
+
+#### <dfn>unknownCredentialId</dfn> report #### {#sctn-unknownCredentialIdReport}
+
+Signals that a [=credential id=] was not recognized by the [=[WRP]=], e.g.
+because it was deleted by the user.
+
+    :  [=unknownCredentialId=] [=validation algorithm=]:
+    :: If the result of [=base64url encoding | base64url decoding=]
+         <code>|options|.{{PublicKeyCredentialSignalOptions/unknownCredentialId}}</code>
+         is an error, then throw a {{TypeError}}.
+
+    : [=unknownCredentialId=] [=authenticator actions=]:
+    ::  [=map/For each=] [=public key credential source=] |credential| in the
+        [=authenticator=]'s [=credential map=]:
+        * If the |credential|'s [=public key credential source/rpId=] does
+             not equal
+             <code>|options|.{{PublicKeyCredentialSignalOptions/rpId}}</code>,
+             [=continue=].
+        * If the |credential|'s [=public key credential source/id=] does
+             not equal the result of [=base64url encoding | base64url decoding=]
+             <code>|options|.{{PublicKeyCredentialSignalOptions/unknownCredentialId}}</code>,
+             [=continue=].
+        * [=map/Remove=] |credential| from the [=credentials map=] or hide it
+             from future [=authentication ceremonies=].
+
+<div class="example">
+
+A user deletes a [=credential=] on a [=[WRP]=] provided UI. Later, when trying
+to authenticate to the [=[WRP]=] with an [=list/empty=]
+{{PublicKeyCredentialRequestOptions/allowCredentials}}, the [=authenticator=] UI
+offers them the [=credential=] they previously deleted. If the user selects that
+[=credential=], after rejecting the sign-in attempt, the [=[WRP]=] can run:
+
+```
+PublicKeyCredential.signal({
+    rpId: "example.com",
+    unknownCredentialId: <id of the credential the user just tried, base64url>,
+});
+```
+
+The [=authenticator=] then deletes or hides the [=credential=] from future
+[=authentication ceremonies=].
+
+</div>
+
+#### <dfn>currentCredentials</dfn> report #### {#sctn-currentCredentialsReport}
+
+Signals the complete list of [=credential ids=] for a given user, as well as the
+user's current {{PublicKeyCredentialEntity/name}} and
+{{PublicKeyCredentialUserEntity/displayName}}.
+
+    : [=currentCredentials=] [=validation algorithm=]:
+    :: If the result of [=base64url encoding | base64url decoding=]
+         <code>|options|.{{PublicKeyCredentialSignalOptions/currentCredentials}}.{{PublicKeyCurrentCredentialDetails/userId}}</code>
+         is an error, then throw a {{TypeError}}.
+         If
+         <code>|options|.{{PublicKeyCredentialSignalOptions/currentCredentials}}.{{PublicKeyCurrentCredentialDetails/allAcceptedCredentialIds}}</code>
+         is present:
+         * [=list/For each=] |credentialId| in
+             <code>|options|.{{PublicKeyCredentialSignalOptions/currentCredentials}}.{{PublicKeyCurrentCredentialDetails/allAcceptedCredentialIds}}</code>:
+             * If the result of [=base64url encoding | base64url decoding=]
+                 |credentialId| is an error, then throw a {{TypeError}}.
+
+    : [=currentCredentials=] [=authenticator actions=]:
+    ::  Let |rpId| be |options|.{{PublicKeyCredentialSignalOptions/rpId}}.
+         Let |userId| be result of [=base64url encoding | base64url decoding=]
+         <code>|options|.{{PublicKeyCredentialSignalOptions/currentCredentials}}.{{PublicKeyCurrentCredentialDetails/userId}}</code>.
+         Assert: |userId| is not an error.
+         Let |credential| be <code>[=credentials map=]\[|rpId|, |userId|]</code>.
+         If |credential| does not exist, abort these steps.
+        * Let |userDetails| be
+             <code>|options|.{{PublicKeyCredentialSignalOptions/currentCredentials}}.{{PublicKeyCurrentCredentialDetails/user}}</code>.
+        * If |userDetails| is present, update the |credential|'s
+             [=public key credential source/otherUI=] to match
+             <code>|userDetails|.{{PublicKeyCurrentCredentialUserDetails/name}}</code>
+             and
+             <code>|userDetails|.{{PublicKeyCurrentCredentialUserDetails/displayName}}</code>
+        * Let |allAcceptedCredentialIds| be
+             <code>|options|.{{PublicKeyCredentialSignalOptions/currentCredentials}}.{{PublicKeyCurrentCredentialDetails/allAcceptedCredentialIds}}</code>.
+        * If |allAcceptedCredentialIds| is present and
+             |allAcceptedCredentialIds| does NOT [=list/contain=] the result of
+             [=base64url encoding=] the |credential|'s [=public key credential
+             source/id=], then [=map/remove=] |credential| from the
+             [=credentials map=] or hide it from future [=authentication
+             ceremonies=].
+
+<div class="example">
+
+A user updates their name on a [=[WRP]=] provided UI. The [=[WRP]=] runs:
+
+```
+PublicKeyCredential.signal({
+    rpId: "example.com",
+    currentCredentials: {
+        userId: <user handle, base64url>
+        user: {
+            name: <new user name>,
+            displayName: <new user display name>,
+        }
+    }
+});
+```
+
+The [=authenticator=] then updates the [=public key credential source/otherUI=]
+of the matching credential.
+
+</div>
+
+<div class="example">
+
+A user has two credentials with [=credential ids=] that [=base64url encode=] to
+`aa` and `bb`. The user deletes the credential `aa` on a [=[WRP]=] provided UI.
+The [=[WRP]=] runs:
+
+```
+PublicKeyCredential.signal({
+    rpId: "example.com",
+    currentCredentials: {
+        userId: <user handle, base64url>
+        allAcceptedCredentialIds: [
+            "bb",
+        ]
+    }
+});
+```
+
+If the [=authenticator=] is attached at the time of the report, it deletes or
+hides the [=credential=] corresponding to `aa` from future [=authentication
+ceremonies=].
+
+</div>
+
+Note: [=authenticators=] may not be attached at the time a report is signalled.
+Therefore, [=[WRPS]=] may choose to signal [=currentCredentials=] periodically,
+e.g. on every sign in.
+
 ## Authenticator Responses (interface <dfn interface>AuthenticatorResponse</dfn>) ## {#iface-authenticatorresponse}
 
 [=Authenticators=] respond to [=[RP]=] requests by returning an object derived from the
