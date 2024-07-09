@@ -2985,28 +2985,28 @@ value and terminate the operation.
 
 [=[WRPS]=] may use {{PublicKeyCredential/signal()}} to signal [=authenticators=]
 the state of [=public key credentials=], so that incorrect or revoked
-credentials may be updated or removed. [=User agents=] provide this
+credentials may be updated, removed, or hidden. [=Clients=] provide this
 functionality opportunistically, since an authenticator may not support updating
 its [=credentials map=] or it may not be attached at the time the request is
 made. Furthermore, in order to avoid revealing information about a user's
-credentials without [=user consent=], the {{PublicKeyCredential/signal()}}
-operation does indicate whether the operation succeeded. A successfully resolved
-promise only indicates that the {{PublicKeyCredentialSignalOptions}} object was
-well formed and accepted.
+credentials without [=user consent=], {{PublicKeyCredential/signal()}} does not
+indicate whether the operation succeeded. A successfully resolved promise only
+means that the {{PublicKeyCredentialSignalOptions}} object was well formed.
 
 A number of <dfn>credential reports</dfn> can be signalled by [=[WRPS]=]. Each
 [=credential report=] declares a <dfn for="credential report">validation
 algorithm</dfn> and <dfn for="credential report">authenticator actions</dfn>.
 
 [=Authenticators=] may choose to deviate in their [=credential
-report/authenticator actions=] from the present specification, e.g. to ignore an
-update they have a reasonable belief would be contrary to the user's wish, or to
-ask the user before making any changes. [=credential report/Authenticator
-actions=] are provided as the recommended way to handle [=credential reports=].
+report/authenticator actions=] from the present specification, e.g. to ignore a
+change they have a reasonable belief would be contrary to the user's wish, or to
+ask the user before making some change. [=credential report/Authenticator
+actions=] are thus provided as the recommended way to handle [=credential
+reports=].
 
 Note: In cases where an [=authenticator=] does not have the capability to
 process [=credential report/authenticator actions=], [=clients=] may choose to
-use existing interfaces such as [[!FIDO-CTAP]]'s
+use existing infrastructure such as [[!FIDO-CTAP]]'s
 `authenticatorCredentialManagement` command to achieve an equivalent effect.
 
 #### <dfn>unknownCredential</dfn> report #### {#sctn-unknownCredentialIdReport}
@@ -3015,13 +3015,17 @@ Signals that a [=credential id=] was not recognized by the [=[WRP]=], e.g.
 because it was deleted by the user.
 
 The [=unknownCredential=] [=validation algorithm=] takes an
-{{UnknownCredentialIdReport}} |options| and is as follows:
+{{UnknownCredentialIdReport}} |options| and executes these steps:
+
 1. Let |effectiveDomain| be the |callerOrigin|'s [=effective domain=]. If
-    [=effective domain=] is not a [=valid domain=], then return [=a promise
-    rejected with=] "{{SecurityError}}" {{DOMException}}.
-1. If <code>|options|.{{UnknownCredentialIdReport/rpId}}</code> [=is not a
-    registrable domain suffix of and is not equal to=] |effectiveDomain|, then
-    return [=a promise rejected with=] "{{SecurityError}}" {{DOMException}}.
+    [=effective domain=] is not a [=valid domain=], then throw a
+    "{{SecurityError}}" {{DOMException}}.
+1. If <code>|options|.{{UnknownCredentialIdReport/rpId}}</code> is not present,
+    then set <code>|options|.{{UnknownCredentialIdReport/rpId}}</code> to
+    |effectiveDomain|.
+1. Otherwise, if <code>|options|.{{UnknownCredentialIdReport/rpId}}</code> [=is
+    not a registrable domain suffix of and is not equal to=] |effectiveDomain|,
+    then throw a "{{SecurityError}}" {{DOMException}}.
 
     TODO: this may require updating once #2040 lands.
 1. If the result of [=base64url encoding | base64url decoding=]
@@ -3051,11 +3055,11 @@ to authenticate to the [=[WRP]=] with an [=list/empty=]
 offers them the [=credential=] they previously deleted. The user selects that
 [=credential=]. After rejecting the sign-in attempt, the [=[WRP]=] runs:
 
-```
+```javascript
 PublicKeyCredential.signal({
     unknownCredential: {
         rpId: "example.com",
-        credentialId: <id of the credential the user just tried, base64url>,
+        credentialId: "aabbcc"  // credential id the user just tried, base64url
     }
 });
 ```
@@ -3072,13 +3076,16 @@ user's current {{PublicKeyCredentialEntity/name}} and
 {{PublicKeyCredentialUserEntity/displayName}}.
 
 The [=currentCredentials=] [=validation algorithm=] takes a
-{{CurrentCredentialsReport}} |options| and is as follows:
+{{CurrentCredentialsReport}} |options| and executes these steps:
 1. Let |effectiveDomain| be the |callerOrigin|'s [=effective domain=].  If
-    [=effective domain=] is not a [=valid domain=], then return [=a promise
-    rejected with=] "{{SecurityError}}" {{DOMException}}.
-1. If <code>|options|.{{CurrentCredentialsReport/rpId}}</code> [=is not a
-    registrable domain suffix of and is not equal to=] |effectiveDomain|, then
-    return [=a promise rejected with=] "{{SecurityError}}" {{DOMException}}.
+    [=effective domain=] is not a [=valid domain=], then throw a
+    "{{SecurityError}}" {{DOMException}}.
+1. If <code>|options|.{{CurrentCredentialsReport/rpId}}</code> is not present,
+    then set <code>|options|.{{CurrentCredentialsReport/rpId}}</code> to
+    |effectiveDomain|.
+1. Otherwise, if <code>|options|.{{CurrentCredentialsReport/rpId}}</code> [=is
+    not a registrable domain suffix of and is not equal to=] |effectiveDomain|,
+    then throw a "{{SecurityError}}" {{DOMException}}.
 
     TODO: this may require updating once #2040 lands.
 1. If the result of [=base64url encoding | base64url decoding=]
@@ -3096,7 +3103,7 @@ The [=currentCredentials=] [=credential report/authenticator actions=] take a
 {{CurrentCredentialsReport}} |options| and are as follows:
 1. Let |userId| be result of [=base64url encoding | base64url decoding=]
     <code>|options|.{{CurrentCredentialsReport/userId}}</code>.
-1. Assert: |userId| is not an error.
+1. Assertion: |userId| is not an error.
 1. Let |credential| be
     <code>[=credentials map=][|options|.{{CurrentCredentialsReport/rpId}}, |userId|]</code>.
 1. If |credential| does not exist, abort these steps.
@@ -3119,14 +3126,14 @@ The [=currentCredentials=] [=credential report/authenticator actions=] take a
 
 A user updates their name on a [=[WRP]=] provided UI. The [=[WRP]=] runs:
 
-```
+```javascript
 PublicKeyCredential.signal({
     currentCredentials: {
         rpId: "example.com",
-        userId: <user handle, base64url>
+        userId: "aabbcc",  // user handle, base64url.
         user: {
-            name: <new user name>,
-            displayName: <new user display name>,
+            name: "New user name",
+            displayName: "New display name"
         }
     }
 });
@@ -3143,11 +3150,11 @@ A user has two credentials with [=credential ids=] that [=base64url encode=] to
 `aa` and `bb`. The user deletes the credential `aa` on a [=[WRP]=] provided UI.
 The [=[WRP]=] runs:
 
-```
+```javascript
 PublicKeyCredential.signal({
     currentCredentials: {
         rpId: "example.com",
-        userId: <user handle, base64url>
+        userId: "aabbcc",  // user handle, base64url.
         allAcceptedCredentialIds: [
             "bb",
         ]
@@ -3170,18 +3177,19 @@ e.g. on every sign in.
 Upon invocation of {{PublicKeyCredential/signal(options)}}, the [=client=] will:
 
 1. For every [=credential report=] |report| defined by this specification:
-    1. If |options|.|report| does NOT exist, [=continue=].
+    1. If <code>|options|[|report|]</code> does NOT exist, [=continue=].
     1. Run the |report|'s [=credential report/validation algorithm=] with
-        |options|.|report| as input.
+        <code>|options|[|report|]</code> as input.
     1. If that threw an [=exception=], then return [=a promise rejected with=]
         that exception and abort these steps.
 
 1. Run the following steps [=in parallel=]:
     1. For every [=credential report=] |report| defined by this specification:
-        1. If |options|.|report| does NOT exist, [=continue=].
+        1. If <code>|options|[|report|]</code> does NOT exist, [=continue=].
         1. For every [=authenticator=] presently available on this [=client
             platform=], invoke the the |report|'s [=credential
-            report/authenticator actions=].
+            report/authenticator actions=] with <code>|options|[|report|]</code>
+            as input.
 
 1. Return [=a promise resolved with=] `undefined`.
 
