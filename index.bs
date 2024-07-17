@@ -1228,8 +1228,11 @@ The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "S
 : <dfn>Non-Discoverable Credential</dfn>
 :: This is a [=credential=] whose [=credential ID=] must be provided in {{PublicKeyCredentialRequestOptions/allowCredentials}} when calling {{CredentialsContainer/get()|navigator.credentials.get()}} because it is not [=client-side discoverable credential|client-side discoverable=]. See also [=server-side credentials=].
 
-: <dfn>Origin Label</dfn>
-:: The portion of a domain name preceding the effective top-level domain, as defined in the Public Suffix List [[PSL]]. This is often referred to as the eTLD+1. For example, the origin label for example.co.uk and example.de is `example`.
+: <dfn>Registrable Origin Label</dfn>
+:: The first [=domain label=] of the [=registrable domain=] of a [=domain=],
+    or null if the [=registrable domain=] is null.
+    For example, the [=registrable origin label=] of both `example.co.uk` and `www.example.de` is `example`
+    if both `co.uk` and `de` are [=public suffixes=].
 
 : <dfn>Public Key Credential</dfn>
 :: Generically, a *credential* is data one entity presents to another in order to *authenticate* the former to the latter
@@ -4106,7 +4109,7 @@ For example, for the RP ID `example.com`:
 }
 </xmp>
 
-[=WebAuthn Clients=] supporting this feature MUST support at least five [=origin labels=]. Client policy SHOULD define an upper limit to prevent abuse.
+[=WebAuthn Clients=] supporting this feature MUST support at least five [=registrable origin labels=]. Client policy SHOULD define an upper limit to prevent abuse.
 
 [=WebAuthn Clients=] supporting this feature SHOULD include {{ClientCapability/relatedOrigins}} in their response to [[#sctn-getClientCapabilities|getClientCapabilities()]].
 
@@ -4114,21 +4117,20 @@ For example, for the RP ID `example.com`:
 
 To validate the calling origin is an authorized related origin for a given ceremony:
 
-1. Let |maxLabels| be the maximum number of [=origin labels=] allowed by client policy.
+1. Let |maxLabels| be the maximum number of [=registrable origin labels=] allowed by client policy.
 1. Fetch the well-known URL for the RP ID (<code>https://|rpIdRequested|/.well-known/webauthn</code>).
     1. If the fetch fails, the response does not have a content type of `application/json`, or does not have a status code (after following redirects) of 200, then throw a "{{SecurityError}}" {{DOMException}}.
     1. If the body of the resource is not a valid JSON object, then throw a "{{SecurityError}}" {{DOMException}}.
     1. If the value of the |origins| property of the JSON object is missing, or is not an array of strings, then throw a "{{SecurityError}}" {{DOMException}}.
 1. Let |labelsSeen| be a new empty [=set=].
-1. [=set/For each=] string in |origins|:
-    1. Let |url| be the result of parsing the string as a URL. If that fails, [=continue=].
+1. [=set/For each=] |originItem| of |origins|:
+    1. Let |url| be the result of running the [=URL parser=] with |originItem| as the input. If that fails, [=continue=].
     1. Let |domain| be the [=effective domain=] of |url|. If that is null, [=continue=].
-    1. Remove any [=public suffix=] from the end of |domain|, including private registries and unknown registries. If |domain| is now empty, [=continue=].
-    1. Split |domain| into |labels| and let |label| be the right-most one.
-    1. If the [=set/size=] of |labelsSeen| is greater than or equal to |maxLabels| and |labelsSeen|does not [=contains|contain=] |label|, [=continue=].
+    1. Let |label| be [=registrable origin label=] of |domain|.
+    1. If |label| is empty or null, [=continue=].
+    1. If the [=set/size=] of |labelsSeen| is greater than or equal to |maxLabels| and |labelsSeen| does not [=set/contain=] |label|, [=continue=].
     1. If |callerOrigin| and |url| are [=same origin=], return [TRUE].
-    1. If |labelsSeen| [=contains=] |label|, [=continue=].
-    1. If the [=set/size=] of |labelsSeen| is less than |maxLabels|, [=set/Append=] |label| to |labelsSeen|.
+    1. If the [=set/size=] of |labelsSeen| is less than |maxLabels|, [=set/append=] |label| to |labelsSeen|.
 1. Return [FALSE].
 
 # WebAuthn <dfn>Authenticator Model</dfn> # {#sctn-authenticator-model}
