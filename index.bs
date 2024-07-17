@@ -1588,8 +1588,15 @@ that are returned to the caller when a new credential is created, or a new asser
 
         This method has no arguments and returns a promise to a Boolean value.
 
+        The {{ClientCapability/conditionalGet}} capability is equivalent to this promise resolving to [TRUE].
+
         Note: If this method is not present, {{CredentialMediationRequirement/conditional}} [=user mediation=] is not available for
         {{CredentialsContainer/get()|navigator.credentials.get()}}.
+
+        Note: This method does _not_ indicate
+        whether or not {{CredentialMediationRequirement/conditional}} [=user mediation=] is available
+        in {{CredentialsContainer/create()|navigator.credentials.create()}}.
+        For that, see the {{ClientCapability/conditionalCreate}} capability in {{PublicKeyCredential/getClientCapabilities()}}.
 
     :   {{PublicKeyCredential/toJSON()}}
     ::  This operation returns {{RegistrationResponseJSON}} or {{AuthenticationResponseJSON}},
@@ -1738,9 +1745,10 @@ options, sameOriginWithAncestors)</dfn> [=internal method=] [[!CREDENTIAL-MANAGE
 [=public key credential source=], [=bound credential|bound=] to an [=authenticator=].
 
 By setting <code>|options|.{{CredentialCreationOptions/mediation}}</code> to {{CredentialMediationRequirement/conditional}},
-[=[RPS]=] can indicate that they would like to register a credential without prominent modal UI if user has already consented to create a credential. The [=[RP]=] SHOULD first check that {{ClientCapability/conditionalCreate}} is present
-in the result of {{PublicKeyCredential/getClientCapabilities()}} in order to avoid the possibility of causing a user-visible error to be returned if the user agent does
-not support {{CredentialMediationRequirement/conditional}} [=user mediation=] for {{CredentialsContainer/create()|navigator.credentials.create()}}.
+[=[RPS]=] can indicate that they would like to register a credential without prominent modal UI if the user has already consented to create a credential.
+The [=[RP]=] SHOULD first use {{PublicKeyCredential/getClientCapabilities()}}
+to check that the [=client=] supports the {{ClientCapability/conditionalCreate}} capability
+in order to prevent a user-visible error in case this feature is not available.
 The client MUST set BOTH |requireUserPresence| and |requireUserVerification| to |FALSE| when <code>|options|.{{CredentialCreationOptions/mediation}}</code> is set to {{CredentialMediationRequirement/conditional}}
 unless they may explicitly performed during the ceremony.
 
@@ -2250,12 +2258,13 @@ for="PublicKeyCredential" method>\[[CollectFromCredentialStore]](origin, options
 {{Credential/[[CollectFromCredentialStore]]()|Credential.[[CollectFromCredentialStore]]()}}, of returning an empty set.
 
 In general, the user agent SHOULD show some UI to the user to guide them in selecting and authorizing an authenticator with which
-to complete the operation. By setting <code>|options|.{{CredentialRequestOptions/mediation}}</code> to {{CredentialMediationRequirement/conditional}}, [=[RPS]=] can indicate that a prominent modal UI should <i>not</i> be shown <i>unless</i> credentials are discovered. [=[RP]=]
-script SHOULD first check that {{PublicKeyCredential/isConditionalMediationAvailable()}} returns [TRUE] in order to avoid
-the possibility of causing a user-visible error to be returned if the user agent does not support
-{{CredentialMediationRequirement/conditional}} [=user mediation=].
+to complete the operation. By setting <code>|options|.{{CredentialRequestOptions/mediation}}</code> to {{CredentialMediationRequirement/conditional}}, [=[RPS]=] can indicate that a prominent modal UI should <i>not</i> be shown <i>unless</i> credentials are discovered.
+The [=[RP]=] SHOULD first use {{PublicKeyCredential/isConditionalMediationAvailable()}}
+or {{PublicKeyCredential/getClientCapabilities()}}
+to check that the [=client=] supports the {{ClientCapability/conditionalGet}} capability
+in order to prevent a user-visible error in case this feature is not available.
 
-This
+Any
 {{CredentialsContainer/get()|navigator.credentials.get()}} operation can be aborted by leveraging the {{AbortController}};
 see [[dom#abortcontroller-api-integration]] for detailed instructions.
 
@@ -4004,14 +4013,23 @@ Note: The {{UserVerificationRequirement}} enumeration is deliberately not refere
 
 This enumeration defines a limited set of client capabilities which a [=[WRP]=] may evaluate to offer certain workflows and experiences to users.
 
+[=[RPS]=] may use the {{PublicKeyCredential/getClientCapabilities()}} method of {{PublicKeyCredential}}
+to obtain a description of available capabilities.
+
 Note: The {{ClientCapability}} enumeration is deliberately not referenced, see [[#sct-domstring-backwards-compatibility]].
 
 <div dfn-type="enum-value" dfn-for="ClientCapability">
     :   <dfn>conditionalCreate</dfn>
     ::  The [=WebAuthn Client=] is capable of {{CredentialMediationRequirement/conditional}} mediation for [=registration ceremonies=]..
 
+        See [[#sctn-createCredential]] for more details.
+
     :   <dfn>conditionalGet</dfn>
     ::  The [=WebAuthn Client=] is capable of {{CredentialMediationRequirement/conditional}} mediation for [=authentication ceremonies=].
+
+        This capability is equivalent to {{PublicKeyCredential/isConditionalMediationAvailable()}} resolving to [TRUE].
+
+        See [[#sctn-getAssertion]] for more details.
 
     :   <dfn>hybridTransport</dfn>
     ::  The [=WebAuthn Client=] supports usage of the {{AuthenticatorTransport/hybrid}} transport.
