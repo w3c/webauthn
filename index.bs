@@ -261,9 +261,10 @@ spec: SP800-800-63r3; urlPrefix: https://pages.nist.gov/800-63-3/sp800-63-3.html
         text: something you have; url: af
         text: something you are; url: af
 
-spec: webidl; urlPrefix: https://heycam.github.io/webidl
+spec: webidl; urlPrefix: https://webidl.spec.whatwg.org
     type: dfn;
         text: get a copy of the bytes held by the buffer source; url: dfn-get-buffer-source-copy
+        text: Exceptions; url: idl-exceptions
 
 spec: webdriver; urlPrefix: https://w3c.github.io/webdriver/
     type: dfn
@@ -1227,6 +1228,12 @@ BCP 14 [[!RFC2119]] [[!RFC8174]] when, and only when, they appear in all capital
 : <dfn>Non-Discoverable Credential</dfn>
 :: This is a [=credential=] whose [=credential ID=] must be provided in {{PublicKeyCredentialRequestOptions/allowCredentials}} when calling {{CredentialsContainer/get()|navigator.credentials.get()}} because it is not [=client-side discoverable credential|client-side discoverable=]. See also [=server-side credentials=].
 
+: <dfn>Registrable Origin Label</dfn>
+:: The first [=domain label=] of the [=registrable domain=] of a [=domain=],
+    or null if the [=registrable domain=] is null.
+    For example, the [=registrable origin label=] of both `example.co.uk` and `www.example.de` is `example`
+    if both `co.uk` and `de` are [=public suffixes=].
+
 : <dfn>Public Key Credential</dfn>
 :: Generically, a *credential* is data one entity presents to another in order to *authenticate* the former to the latter
     [[RFC4949]]. The term [=public key credential=] refers to one of: a [=public key credential source=], the
@@ -1588,8 +1595,15 @@ that are returned to the caller when a new credential is created, or a new asser
 
         This method has no arguments and returns a promise to a Boolean value.
 
+        The {{ClientCapability/conditionalGet}} capability is equivalent to this promise resolving to [TRUE].
+
         Note: If this method is not present, {{CredentialMediationRequirement/conditional}} [=user mediation=] is not available for
         {{CredentialsContainer/get()|navigator.credentials.get()}}.
+
+        Note: This method does _not_ indicate
+        whether or not {{CredentialMediationRequirement/conditional}} [=user mediation=] is available
+        in {{CredentialsContainer/create()|navigator.credentials.create()}}.
+        For that, see the {{ClientCapability/conditionalCreate}} capability in {{PublicKeyCredential/getClientCapabilities()}}.
 
     :   {{PublicKeyCredential/toJSON()}}
     ::  This operation returns {{RegistrationResponseJSON}} or {{AuthenticationResponseJSON}},
@@ -1738,9 +1752,10 @@ options, sameOriginWithAncestors)</dfn> [=internal method=] [[!CREDENTIAL-MANAGE
 [=public key credential source=], [=bound credential|bound=] to an [=authenticator=].
 
 By setting <code>|options|.{{CredentialCreationOptions/mediation}}</code> to {{CredentialMediationRequirement/conditional}},
-[=[RPS]=] can indicate that they would like to register a credential without prominent modal UI if user has already consented to create a credential. The [=[RP]=] SHOULD first check that {{ClientCapability/conditionalCreate}} is present
-in the result of {{PublicKeyCredential/getClientCapabilities()}} in order to avoid the possibility of causing a user-visible error to be returned if the user agent does
-not support {{CredentialMediationRequirement/conditional}} [=user mediation=] for {{CredentialsContainer/create()|navigator.credentials.create()}}.
+[=[RPS]=] can indicate that they would like to register a credential without prominent modal UI if the user has already consented to create a credential.
+The [=[RP]=] SHOULD first use {{PublicKeyCredential/getClientCapabilities()}}
+to check that the [=client=] supports the {{ClientCapability/conditionalCreate}} capability
+in order to prevent a user-visible error in case this feature is not available.
 The client MUST set BOTH |requireUserPresence| and |requireUserVerification| to |FALSE| when <code>|options|.{{CredentialCreationOptions/mediation}}</code> is set to {{CredentialMediationRequirement/conditional}}
 unless they may explicitly performed during the ceremony.
 
@@ -1837,11 +1852,21 @@ a numbered step. If outdented, it (today) is rendered as a bullet in the midst o
 
                 :   is present
                 ::  If <code>|pkOptions|.{{PublicKeyCredentialCreationOptions/rp}}.{{PublicKeyCredentialRpEntity/id}}</code> [=is not a
-                    registrable domain suffix of and is not equal to=] |effectiveDomain|, throw a "{{SecurityError}}" {{DOMException}}.
+                    registrable domain suffix of and is not equal to=] |effectiveDomain|, and if the client
+                
+                    <dl class="switch">
+                        :   supports [[#sctn-related-origins|related origin requests]]
+                        ::  1. Let |rpIdRequested| be the value of <code>|pkOptions|.{{PublicKeyCredentialCreationOptions/rp}}.{{PublicKeyCredentialRpEntity/id}}</code>.
 
-                :   Is not present
-                ::  Set <code>|pkOptions|.{{PublicKeyCredentialCreationOptions/rp}}.{{PublicKeyCredentialRpEntity/id}}</code> to
-                    |effectiveDomain|.
+                            1. Run the [$related origins validation procedure$] with arguments |callerOrigin| and |rpIdRequested|.
+                                If the result is [FALSE], throw a "{{SecurityError}}" {{DOMException}}.
+
+                        :   does not support [[#sctn-related-origins|related origin requests]]
+                        ::  throw a "{{SecurityError}}" {{DOMException}}.
+                    </dl>
+                    
+                :   is not present
+                ::  Set <code>|pkOptions|.{{PublicKeyCredentialCreationOptions/rp}}.{{PublicKeyCredentialRpEntity/id}}</code> to |effectiveDomain|.
             </dl>
 
         Note: <code>|pkOptions|.{{PublicKeyCredentialCreationOptions/rp}}.{{PublicKeyCredentialRpEntity/id}}</code> represents the
@@ -2247,7 +2272,15 @@ authorizing an authenticator. When <code>|options|.{{CredentialCreationOptions/m
 
 [INFORMATIVE]
 
-[=[WRPS]=] can encounter the following {{DOMException|DOMExceptions}} from a call to {{CredentialsContainer/create()|navigator.credentials.create()}}. Some errors can have multiple reasons for why they happened, requiring the [=[WRPS]=] to infer the actual reason based on their use of WebAuthn:
+[=[WRPS]=] can encounter a number of exceptions from a call to {{CredentialsContainer/create()|navigator.credentials.create()}}.
+Some exceptions can have multiple reasons for why they happened,
+requiring the [=[WRPS]=] to infer the actual reason based on their use of WebAuthn.
+
+Note: Exceptions that can be raised during processing of any [=WebAuthn Extensions=],
+including ones defined outside of this specification,
+are not listed here.
+
+The following {{DOMException}} exceptions can be raised:
 
 <dl>
     :   {{AbortError}}
@@ -2278,10 +2311,6 @@ authorizing an authenticator. When <code>|options|.{{CredentialCreationOptions/m
     ::  The ceremony was cancelled by the user agent after exceeding the time limit permitted for the ceremony.
         See [[#sctn-timeout-recommended-range]] for more information.
 
-    :   {{TypeError}}
-    ::  The <code>|options|</code> argument was not a valid [[#sctn-credentialcreationoptions-extension|CredentialCreationOptions]] value,
-        or the value of <code>{{PublicKeyCredentialCreationOptions/user}}.{{PublicKeyCredentialUserEntity/id}}</code> was empty or was longer than 64 bytes.
-
     :   {{UnknownError}}
     ::  The [=authenticator=] could not process the supplied options,
         or encountered an error while creating the new credential.
@@ -2301,8 +2330,17 @@ authorizing an authenticator. When <code>|options|.{{CredentialCreationOptions/m
     :   {{NotAllowedError}}
     ::  A catch-all error covering a wide range of possible reasons.
         Some of these causes are documented throughout this spec,
-        while others are client-specific
-        or caused by issues that may occur during processing of [=WebAuthn Extensions=] defined outside of this specification.
+        while others are client-specific.
+
+</dl>
+
+The following <code>[=Exceptions|Exception=]</code> exceptions can be raised:
+
+<dl>
+
+    :   {{TypeError}}
+    ::  The <code>|options|</code> argument was not a valid [[#sctn-credentialcreationoptions-extension|CredentialCreationOptions]] value,
+        or the value of <code>{{PublicKeyCredentialCreationOptions/user}}.{{PublicKeyCredentialUserEntity/id}}</code> was empty or was longer than 64 bytes.
 
 </dl>
 
@@ -2328,12 +2366,13 @@ for="PublicKeyCredential" method>\[[CollectFromCredentialStore]](origin, options
 {{Credential/[[CollectFromCredentialStore]]()|Credential.[[CollectFromCredentialStore]]()}}, of returning an empty set.
 
 In general, the user agent SHOULD show some UI to the user to guide them in selecting and authorizing an authenticator with which
-to complete the operation. By setting <code>|options|.{{CredentialRequestOptions/mediation}}</code> to {{CredentialMediationRequirement/conditional}}, [=[RPS]=] can indicate that a prominent modal UI should <i>not</i> be shown <i>unless</i> credentials are discovered. [=[RP]=]
-script SHOULD first check that {{PublicKeyCredential/isConditionalMediationAvailable()}} returns [TRUE] in order to avoid
-the possibility of causing a user-visible error to be returned if the user agent does not support
-{{CredentialMediationRequirement/conditional}} [=user mediation=].
+to complete the operation. By setting <code>|options|.{{CredentialRequestOptions/mediation}}</code> to {{CredentialMediationRequirement/conditional}}, [=[RPS]=] can indicate that a prominent modal UI should <i>not</i> be shown <i>unless</i> credentials are discovered.
+The [=[RP]=] SHOULD first use {{PublicKeyCredential/isConditionalMediationAvailable()}}
+or {{PublicKeyCredential/getClientCapabilities()}}
+to check that the [=client=] supports the {{ClientCapability/conditionalGet}} capability
+in order to prevent a user-visible error in case this feature is not available.
 
-This
+Any
 {{CredentialsContainer/get()|navigator.credentials.get()}} operation can be aborted by leveraging the {{AbortController}};
 see [[dom#abortcontroller-api-integration]] for detailed instructions.
 
@@ -2418,19 +2457,31 @@ When this method is invoked, the user agent MUST execute the following algorithm
         PKI-based security.
 
         <li id='GetAssn-DetermineRpId'>
-            If <code>|pkOptions|.{{PublicKeyCredentialRequestOptions/rpId}}</code> is not present, then set |rpId| to
-                |effectiveDomain|.
+            If <code>|pkOptions|.{{PublicKeyCredentialRequestOptions/rpId}}</code>
+                <dl class="switch">
 
-                Otherwise:
+                    :   is present
+                    ::  If <code>|pkOptions|.{{PublicKeyCredentialRequestOptions/rpId}}</code> [=is not a
+                        registrable domain suffix of and is not equal to=] |effectiveDomain|, and if the client
 
-                1. If <code>|pkOptions|.{{PublicKeyCredentialRequestOptions/rpId}}</code> [=is not a registrable domain suffix of and is not
-                    equal to=] |effectiveDomain|, throw a "{{SecurityError}}" {{DOMException}}.
+                        <dl class="switch">
+                            :   supports [[#sctn-related-origins|related origin requests]]
+                            ::  1. Let |rpIdRequested| be the value of <code>|pkOptions|.{{PublicKeyCredentialRequestOptions/rpId}}</code>
 
-                1. Set |rpId| to <code>|pkOptions|.{{PublicKeyCredentialRequestOptions/rpId}}</code>.
+                                1. Run the [$related origins validation procedure$] with arguments |callerOrigin| and |rpIdRequested|.
+                                    If the result is [FALSE], throw a "{{SecurityError}}" {{DOMException}}.
 
-                    Note: |rpId| represents the caller's [=RP ID=]. The [=RP ID=] defaults to being the caller's [=environment
-                    settings object/origin=]'s [=effective domain=] unless the caller has explicitly set
-                    <code>|pkOptions|.{{PublicKeyCredentialRequestOptions/rpId}}</code> when calling {{CredentialsContainer/get()}}.
+                            :   does not support [[#sctn-related-origins|related origin requests]]
+                            ::  throw a "{{SecurityError}}" {{DOMException}}.
+                        </dl>
+
+                    :   is not present
+                    ::  Set <code>|pkOptions|.{{PublicKeyCredentialRequestOptions/rpId}}</code> to |effectiveDomain|.
+                </dl>
+
+            Note: |rpId| represents the caller's [=RP ID=]. The [=RP ID=] defaults to being the caller's [=environment
+            settings object/origin=]'s [=effective domain=] unless the caller has explicitly set
+            <code>|pkOptions|.{{PublicKeyCredentialRequestOptions/rpId}}</code> when calling {{CredentialsContainer/get()}}.
         </li>
 
 1. Let |clientExtensions| be a new [=map=] and let |authenticatorExtensions| be a new [=map=].
@@ -2827,7 +2878,15 @@ The steps for [=issuing a credential request to an authenticator=] are as follow
 
 [INFORMATIVE]
 
-[=[WRPS]=] can encounter the following {{DOMException|DOMExceptions}} from a call to {{CredentialsContainer/get()|navigator.credentials.get()}}:
+[=[WRPS]=] can encounter a number of exceptions from a call to {{CredentialsContainer/get()|navigator.credentials.get()}}.
+Some exceptions can have multiple reasons for why they happened,
+requiring the [=[WRPS]=] to infer the actual reason based on their use of WebAuthn.
+
+Note: Exceptions that can be raised during processing of any [=WebAuthn Extensions=],
+including ones defined outside of this specification,
+are not listed here.
+
+The following {{DOMException}} exceptions can be raised:
 
 <dl>
     :   {{AbortError}}
@@ -2845,9 +2904,6 @@ The steps for [=issuing a credential request to an authenticator=] are as follow
     :   {{TimeoutError}}
     ::  The ceremony was cancelled by the user agent after exceeding the time limit permitted for the ceremony.
         See [[#sctn-timeout-recommended-range]] for more information.
-
-    :   {{TypeError}}
-    ::  The <code>|options|</code> argument was not a valid [[#sctn-credentialrequestoptions-extension|CredentialRequestOptions]] value.
 
     :   {{UnknownError}}
     ::  The [=authenticator=] could not process the supplied options,
@@ -2868,8 +2924,16 @@ The steps for [=issuing a credential request to an authenticator=] are as follow
     :   {{NotAllowedError}}
     ::  A catch-all error covering a wide range of possible reasons.
         Some of these causes are documented throughout this spec,
-        while others are client-specific
-        or caused by issues that may occur during processing of [=WebAuthn Extensions=] defined outside of this specification.
+        while others are client-specific.
+</dl>
+
+The following <code>[=Exceptions|Exception=]</code> exceptions can be raised:
+
+<dl>
+
+    :   {{TypeError}}
+    ::  The <code>|options|</code> argument was not a valid [[#sctn-credentialrequestoptions-extension|CredentialRequestOptions]] value.
+
 </dl>
 
 ### Store an Existing Credential - PublicKeyCredential's `[[Store]](credential, sameOriginWithAncestors)` Method ### {#sctn-storeCredential}
@@ -4173,10 +4237,14 @@ Note: The {{UserVerificationRequirement}} enumeration is deliberately not refere
         "hybridTransport",
         "passkeyPlatformAuthenticator",
         "userVerifyingPlatformAuthenticator",
+        "relatedOrigins"
     };
 </xmp>
 
 This enumeration defines a limited set of client capabilities which a [=[WRP]=] may evaluate to offer certain workflows and experiences to users.
+
+[=[RPS]=] may use the {{PublicKeyCredential/getClientCapabilities()}} method of {{PublicKeyCredential}}
+to obtain a description of available capabilities.
 
 Note: The {{ClientCapability}} enumeration is deliberately not referenced, see [[#sct-domstring-backwards-compatibility]].
 
@@ -4184,8 +4252,14 @@ Note: The {{ClientCapability}} enumeration is deliberately not referenced, see [
     :   <dfn>conditionalCreate</dfn>
     ::  The [=WebAuthn Client=] is capable of {{CredentialMediationRequirement/conditional}} mediation for [=registration ceremonies=]..
 
+        See [[#sctn-createCredential]] for more details.
+
     :   <dfn>conditionalGet</dfn>
     ::  The [=WebAuthn Client=] is capable of {{CredentialMediationRequirement/conditional}} mediation for [=authentication ceremonies=].
+
+        This capability is equivalent to {{PublicKeyCredential/isConditionalMediationAvailable()}} resolving to [TRUE].
+
+        See [[#sctn-getAssertion]] for more details.
 
     :   <dfn>hybridTransport</dfn>
     ::  The [=WebAuthn Client=] supports usage of the {{AuthenticatorTransport/hybrid}} transport.
@@ -4195,6 +4269,9 @@ Note: The {{ClientCapability}} enumeration is deliberately not referenced, see [
 
     :   <dfn>userVerifyingPlatformAuthenticator</dfn>
     ::  The [=WebAuthn Client=] supports usage of a [=user-verifying platform authenticator=].
+
+    :   <dfn>relatedOrigins</dfn>
+    ::  The [=WebAuthn Client=] supports [[#sctn-related-origins|Related Origin Requests]].
 </div>
 
 ### User-agent Hints Enumeration (enum <dfn enum>PublicKeyCredentialHints</dfn>) ### {#enum-hints}
@@ -4256,7 +4333,62 @@ To override this default policy and indicate that a cross-origin <{iframe}> is a
 
 [=[RPS]=] utilizing the WebAuthn API in an embedded context should review [[#sctn-seccons-visibility]] regarding [=UI redressing=] and its possible mitigations.
 
+## Using Web Authentication across related origins ## {#sctn-related-origins}
 
+By default, Web Authentication requires that the [=RP ID=] be equal to the [=determines the set of origins on which the public key credential may be exercised|origin=]'s [=effective domain=], or a [=is a registrable domain suffix of or is equal to|registrable domain suffix=] of the [=determines the set of origins on which the public key credential may be exercised|origin=]'s [=effective domain=].
+
+This can make deployment challenging for large environments where multiple country-specific domains are in use (e.g. example.com vs example.co.uk vs example.sg), where alternative or brand domains are required (e.g. myexampletravel.com vs examplecruises.com), and/or where platform as a service providers are used to support mobile apps. 
+
+[=[WRPS]=] can opt in to allowing [=WebAuthn Clients=] to enable a credential to be created and used across a limited set of related [=origin|origins=].
+Such [=[RPS]=] MUST choose a common [=RP ID=] to use across all ceremonies from related origins.
+
+A JSON document MUST be hosted at the `webauthn` well-known URL [[!RFC8615]] for the [=RP ID=]. The JSON document MUST be returned as follows:
+
+    - The content type MUST be `application/json`.
+    - The top-level JSON object MUST contain a key named `origins` whose value MUST be an array of one or more strings containing web origins.
+
+For example, for the RP ID `example.com`:
+
+<xmp class="json" highlight="json">
+{
+    "origins": [
+        "https://example.co.uk",
+        "https://example.de",
+        "https://example.sg",
+        "https://example.net",
+        "https://exampledelivery.com",
+        "https://exampledelivery.co.uk",
+        "https://exampledelivery.de",
+        "https://exampledelivery.sg",
+        "https://myexamplerewards.com",
+        "https://examplecars.com"
+    ]
+}
+</xmp>
+
+[=WebAuthn Clients=] supporting this feature MUST support at least five [=registrable origin labels=]. Client policy SHOULD define an upper limit to prevent abuse.
+
+[=WebAuthn Clients=] supporting this feature SHOULD include {{ClientCapability/relatedOrigins}} in their response to [[#sctn-getClientCapabilities|getClientCapabilities()]].
+
+### Validating Related Origins ### {#sctn-validating-relation-origin}
+
+The <dfn abstract-op>related origins validation procedure</dfn>, given arguments |callerOrigin| and |rpIdRequested|, is as follows:
+
+1. Let |maxLabels| be the maximum number of [=registrable origin labels=] allowed by client policy.
+1. Fetch the `webauthn` well-known URL [[!RFC8615]] for the RP ID |rpIdRequested| (i.e., <code>https://|rpIdRequested|/.well-known/webauthn</code>).
+    1. If the fetch fails, the response does not have a content type of `application/json`, or does not have a status code (after following redirects) of 200, then throw a "{{SecurityError}}" {{DOMException}}.
+    1. If the body of the resource is not a valid JSON object, then throw a "{{SecurityError}}" {{DOMException}}.
+    1. If the value of the |origins| property of the JSON object is missing, or is not an array of strings, then throw a "{{SecurityError}}" {{DOMException}}.
+1. Let |labelsSeen| be a new empty [=set=].
+1. [=set/For each=] |originItem| of |origins|:
+    1. Let |url| be the result of running the [=URL parser=] with |originItem| as the input. If that fails, [=continue=].
+    1. Let |domain| be the [=effective domain=] of |url|. If that is null, [=continue=].
+    1. Let |label| be [=registrable origin label=] of |domain|.
+    1. If |label| is empty or null, [=continue=].
+    1. If the [=set/size=] of |labelsSeen| is greater than or equal to |maxLabels| and |labelsSeen| does not [=set/contain=] |label|, [=continue=].
+    1. If |callerOrigin| and |url| are [=same origin=], return [TRUE].
+    1. If the [=set/size=] of |labelsSeen| is less than |maxLabels|, [=set/append=] |label| to |labelsSeen|.
+1. Return [FALSE].
 
 # WebAuthn <dfn>Authenticator Model</dfn> # {#sctn-authenticator-model}
 
@@ -8772,6 +8904,11 @@ For example:
 - A web application served at a small number of domains might require
     {{CollectedClientData/origin}} to exactly equal some element of a list of allowed origins,
     for example the list <code>["https://example.org", "https://login.example.org"]</code>.
+
+- A web application leveraging [[#sctn-related-origins|related origin requests]] might also require
+    {{CollectedClientData/origin}} to exactly equal some element of a list of allowed origins,
+    for example the list <code>["https://example.co.uk", "https://example.de", "https://myexamplerewards.com"]</code>.
+    This list will typically match the origins listed in the well-known URI for the [=RP ID=]. See [[#sctn-related-origins]].
 
 - A web application served at a large set of domains that changes often might parse
     {{CollectedClientData/origin}} structurally and require that the URL scheme is <code>https</code>
