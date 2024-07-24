@@ -2953,7 +2953,7 @@ value and terminate the operation.
 
 </div>
 
-### Signal Credential Changes to the Authenticator - PublicKeyCredential's [=signal methods=] ### {#sctn-signalMethods}
+### Signal Credential Changes to the Authenticator - PublicKeyCredential's [=signal methods=] ### {#sctn-signal-methods}
 
 <xmp class="idl">
     partial interface PublicKeyCredential {
@@ -2963,18 +2963,18 @@ value and terminate the operation.
     };
 
     dictionary UnknownCredentialIdOptions {
-        required USVString                     rpId;
+        required DOMString                     rpId;
         required Base64URLString               credentialId;
     };
 
     dictionary AllAcceptedCredentialIdsOptions {
-        required USVString                     rpId;
+        required DOMString                     rpId;
         required Base64URLString               userId;
         required sequence<Base64URLString>     allAcceptedCredentialIds;
     };
 
     dictionary CurrentUserDetailsOptions {
-        required USVString                     rpId;
+        required DOMString                     rpId;
         required Base64URLString               userId;
         required DOMString                     name;
         required DOMString                     displayName;
@@ -3008,6 +3008,28 @@ finish executing the [=signal method/authenticator actions=] to protect users
 from [=[WRPS]=] gaining information about availability of their credentials
 without [=user consent=] from the timing of the request.
 
+#### <dfn abstract-op>Asynchronous RP ID validation algorithm</dfn> #### {#sctn-signal-methods-async-rp-id-validation}
+
+The [$Asynchronous RP ID validation algorithm$] lets [=signal methods=] validate
+[=RP IDs=] [=in parallel=]. The algorithm takes a {{DOMString}} |rpId| as input
+and returns a promise that rejects if the validation fails. The steps are:
+
+1. Let |effectiveDomain| be the |callerOrigin|'s [=effective domain=]. If
+    [=effective domain=] is not a [=valid domain=], then return [=a promise
+    rejected with=] "{{SecurityError}}" {{DOMException}}.
+1. If |rpId| [=is a registrable domain suffix of or is equal to=]
+    |effectiveDomain|, return [=a promise resolved with=] undefined.
+1. If the client does not support [[#sctn-related-origins|related origin
+    requests]], return [=a promise rejected with=] a "{{SecurityError}}"
+    {{DOMException}}.
+1. Let |p| be [=a new promise=].
+1. Execute the following steps [=in parallel=]:
+    1. If the result of running the [$related origins validation procedure$]
+        with arguments |callerOrigin| and |rpId| is [TRUE], then [=resolve=]
+        |p|.
+    1. Otherwise, [=reject=] |p| with a "{{SecurityError}}" {{DOMException}}.
+1. Return |p|.
+
 #### {{PublicKeyCredential/signalUnknownCredentialId(options)}} #### {#sctn-signalUnknownCredentialId}
 
 Signals that a [=credential id=] was not recognized by the [=[WRP]=], e.g.
@@ -3020,26 +3042,18 @@ and the [=userHandle=], avoiding a privacy leak to an unauthenticated caller
 Upon execution of {{PublicKeyCredential/signalUnknownCredentialId(options)}},
 the [=client=] executes these steps:
 
-1. Let |effectiveDomain| be the |callerOrigin|'s [=effective domain=]. If
-    [=effective domain=] is not a [=valid domain=], then throw a
-    "{{SecurityError}}" {{DOMException}}.
-1. If <code>|options|.{{UnknownCredentialIdOptions/rpId}}</code> [=is not a
-    registrable domain suffix of and is not equal to=] |effectiveDomain|, then
-    throw a "{{SecurityError}}" {{DOMException}}.
-
-    TODO: this may require updating once #2040 lands.
 1. If the result of [=base64url encoding | base64url decoding=]
     <code>|options|.{{UnknownCredentialIdOptions/credentialId}}</code> is an
-    error, then throw a {{TypeError}}.
+    error, then return [=a promise rejected with=] a {{TypeError}}.
+1. Let |p| be the result of executing the [$Asynchronous RP ID validation
+    algorithm$] with <code>|options|.{{UnknownCredentialIdOptions/rpId}}</code>.
+1. [=Upon fulfillment=] of |p|, run the following steps [=in parallel=]:
+    1. For every [=authenticator=] presently available on this [=client
+        platform=], invoke the [=signal method/authenticator
+        action/unknownCredentialId=] [=authenticator action=] with |options| as
+        input.
+1. Return |p|.
 
-1. Run the following steps [=in parallel=]:
-        1. For every [=authenticator=] presently available on this [=client
-            platform=], invoke the [=signal method/authenticator
-            action/unknownCredentialId=] [=authenticator action=] with |options|
-            as input.
-
-1. Return [=a promise resolved with=] `undefined`.
-    
 The <dfn for="signal method/authenticator action">unknownCredentialId</dfn>
 [=signal method/authenticator action=] takes an {{UnknownCredentialIdOptions}}
 |options| and is as follows:
@@ -3082,27 +3096,23 @@ Upon execution of
 {{PublicKeyCredential/signalAllAcceptedCredentialIds(options)}}, the [=client=]
 executes these steps:
 
-1. Let |effectiveDomain| be the |callerOrigin|'s [=effective domain=].  If
-    [=effective domain=] is not a [=valid domain=], then throw a
-    "{{SecurityError}}" {{DOMException}}.
-1. If <code>|options|.{{AllAcceptedCredentialIdsOptions/rpId}}</code> [=is not a
-    registrable domain suffix of and is not equal to=] |effectiveDomain|, then
-    throw a "{{SecurityError}}" {{DOMException}}.
-
-    TODO: this may require updating once #2040 lands.
 1. If the result of [=base64url encoding | base64url decoding=]
     <code>|options|.{{AllAcceptedCredentialIdsOptions/userId}}</code> is an
-    error, then throw a {{TypeError}}.
+    error, then return [=a promise rejected with=] a {{TypeError}}.
 1. [=list/For each=] |credentialId| in
     <code>|options|.{{AllAcceptedCredentialIdsOptions/allAcceptedCredentialIds}}</code>:
     1. If the result of [=base64url encoding | base64url decoding=]
-        |credentialId| is an error, then throw a {{TypeError}}.
-
-1. Run the following steps [=in parallel=]:
+        |credentialId| is an error, then return [=a promise rejected with=] a
+        {{TypeError}}.
+1. Let |p| be the result of executing the [$Asynchronous RP ID validation
+    algorithm$] with
+    <code>|options|.{{AllAcceptedCredentialIdsOptions/rpId}}</code>.
+1. [=Upon fulfillment=] of |p|, run the following steps [=in parallel=]:
         1. For every [=authenticator=] presently available on this [=client
             platform=], invoke the [=signal method/authenticator
             actions/allAcceptedCredentialIds=] [=authenticator action=] with
             |options| as input.
+1. Return |p|.
 
 The <dfn for="signal method/authenticator
 actions">allAcceptedCredentialIds</dfn> [=signal method/authenticator
@@ -3169,23 +3179,18 @@ Signals the user's current {{PublicKeyCredentialEntity/name}} and
 Upon execution of {{PublicKeyCredential/signalCurrentUserDetails(options)}}, the
 [=client=] executes these steps:
 
-1. Let |effectiveDomain| be the |callerOrigin|'s [=effective domain=].  If
-    [=effective domain=] is not a [=valid domain=], then throw a
-    "{{SecurityError}}" {{DOMException}}.
-1. If <code>|options|.{{CurrentUserDetailsOptions/rpId}}</code> [=is not a
-    registrable domain suffix of and is not equal to=] |effectiveDomain|, then
-    throw a "{{SecurityError}}" {{DOMException}}.
-
-    TODO: this may require updating once #2040 lands.
 1. If the result of [=base64url encoding | base64url decoding=]
-    <code>|options|.{{CurrentUserDetailsOptions/userId}}</code> is an error, then
-    throw a {{TypeError}}.
-
-1. Run the following steps [=in parallel=]:
+    <code>|options|.{{CurrentUserDetailsOptions/userId}}</code> is an error,
+    then return [=a promise rejected with=] a {{TypeError}}.
+1. Let |p| be the result of executing the [$Asynchronous RP ID validation
+    algorithm$] with
+    <code>|options|.{{CurrentUserDetailsOptions/rpId}}</code>.
+1. [=Upon fulfillment=] of |p|, run the following steps [=in parallel=]:
         1. For every [=authenticator=] presently available on this [=client
             platform=], invoke the [=signal method/authenticator
             actions/currentUserDetails=] [=authenticator action=] with |options|
             as input.
+1. Return |p|.
 
 The <dfn for="signal method/authenticator actions">currentUserDetails</dfn>
 [=signal method/authenticator action=] takes a {{CurrentUserDetailsOptions}}
