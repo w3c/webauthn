@@ -2953,92 +2953,100 @@ value and terminate the operation.
 
 </div>
 
-### Signal Credential Changes to the Authenticator - PublicKeyCredential's `signal()` Method ### {#sctn-signal}
+### Signal Credential Changes to the Authenticator - PublicKeyCredential's [=signal methods=] ### {#sctn-signalMethods}
 
 <xmp class="idl">
     partial interface PublicKeyCredential {
-        static Promise<undefined> signal(optional PublicKeyCredentialSignalOptions options = {});
+        static Promise<undefined> signalUnknownCredentialId(UnknownCredentialIdOptions options);
+        static Promise<undefined> signalAllAcceptedCredentialIds(AllAcceptedCredentialIdsOptions options);
+        static Promise<undefined> signalCurrentUserDetails(CurrentUserDetailsOptions options);
     };
 
-    dictionary PublicKeyCredentialSignalOptions {
-        UnknownCredentialIdReport              unknownCredential;
-        CurrentCredentialsReport               currentCredentials;
-    };
-
-    dictionary UnknownCredentialIdReport {
+    dictionary UnknownCredentialIdOptions {
         required USVString                     rpId;
         required Base64URLString               credentialId;
     };
 
-    dictionary CurrentCredentialsReport {
+    dictionary AllAcceptedCredentialIdsOptions {
         required USVString                     rpId;
         required Base64URLString               userId;
-        CurrentCredentialUserDetails           user;
-        sequence<Base64URLString>              allAcceptedCredentialIds;
+        required sequence<Base64URLString>     allAcceptedCredentialIds;
     };
 
-    dictionary CurrentCredentialUserDetails {
+    dictionary CurrentUserDetailsOptions {
+        required USVString                     rpId;
+        required Base64URLString               userId;
         required DOMString                     name;
         required DOMString                     displayName;
     };
 </xmp>
 
-[=[WRPS]=] may use {{PublicKeyCredential/signal()}} to signal [=authenticators=]
+[=[WRPS]=] may use these <dfn>signal methods</dfn> to signal [=authenticators=]
 the state of [=public key credentials=], so that incorrect or revoked
 credentials may be updated, removed, or hidden. [=Clients=] provide this
 functionality opportunistically, since an authenticator may not support updating
 its [=credentials map=] or it may not be attached at the time the request is
 made. Furthermore, in order to avoid revealing information about a user's
-credentials without [=user consent=], {{PublicKeyCredential/signal()}} does not
-indicate whether the operation succeeded. A successfully resolved promise only
-means that the {{PublicKeyCredentialSignalOptions}} object was well formed.
+credentials without [=user consent=], [=signal methods=] do not indicate whether
+the operation succeeded. A successfully resolved promise only means that the
+<code>options</code> object was well formed.
 
-A number of <dfn>credential reports</dfn> can be signalled by [=[WRPS]=]. Each
-[=credential report=] declares a <dfn for="credential report">validation
-algorithm</dfn> and <dfn for="credential report">authenticator actions</dfn>.
-
-[=Authenticators=] may choose to deviate in their [=credential
-report/authenticator actions=] from the present specification, e.g. to ignore a
+Each [=signal method=] includes <dfn for="signal method">authenticator
+actions</dfn>. [=Authenticators=] may choose to deviate in their [=signal
+method/authenticator actions=] from the present specification, e.g. to ignore a
 change they have a reasonable belief would be contrary to the user's wish, or to
-ask the user before making some change. [=credential report/Authenticator
-actions=] are thus provided as the recommended way to handle [=credential
-reports=].
+ask the user before making some change. [=signal method/Authenticator actions=]
+are thus provided as the recommended way to handle [=signal methods=].
 
 Note: In cases where an [=authenticator=] does not have the capability to
-process [=credential report/authenticator actions=], [=clients=] may choose to
-use existing infrastructure such as [[!FIDO-CTAP]]'s
+process a [=signal method/authenticator action=], [=clients=] may choose to use
+existing infrastructure such as [[!FIDO-CTAP]]'s
 `authenticatorCredentialManagement` command to achieve an equivalent effect.
 
-#### <dfn>unknownCredential</dfn> report #### {#sctn-unknownCredentialIdReport}
+Note: [=signal methods] intentionally do not wait for the [=authenticators=] to
+finish executing the [=signal method/authenticator actions=] to protect users
+from [=[WRPS]=] gaining information about availability of their credentials
+without [=user consent=] from the timing of the request.
+
+#### {{PublicKeyCredential/signalUnknownCredentialId(options)}} #### {#sctn-signalUnknownCredentialId}
 
 Signals that a [=credential id=] was not recognized by the [=[WRP]=], e.g.
 because it was deleted by the user.
 
-The [=unknownCredential=] [=validation algorithm=] takes an
-{{UnknownCredentialIdReport}} |options| and executes these steps:
+Upon execution of {{PublicKeyCredential/signalUnknownCredentialId(options)}},
+the [=client=] executes these steps:
 
 1. Let |effectiveDomain| be the |callerOrigin|'s [=effective domain=]. If
     [=effective domain=] is not a [=valid domain=], then throw a
     "{{SecurityError}}" {{DOMException}}.
-1. If <code>|options|.{{UnknownCredentialIdReport/rpId}}</code> [=is not a
+1. If <code>|options|.{{UnknownCredentialIdOptions/rpId}}</code> [=is not a
     registrable domain suffix of and is not equal to=] |effectiveDomain|, then
     throw a "{{SecurityError}}" {{DOMException}}.
 
     TODO: this may require updating once #2040 lands.
 1. If the result of [=base64url encoding | base64url decoding=]
-    <code>|options|.{{UnknownCredentialIdReport/credentialId}}</code> is an
+    <code>|options|.{{UnknownCredentialIdOptions/credentialId}}</code> is an
     error, then throw a {{TypeError}}.
+
+1. Run the following steps [=in parallel=]:
+        1. For every [=authenticator=] presently available on this [=client
+            platform=], invoke the [=signal method/authenticator
+            action/unknownCredentialId=] [=authenticator action=] with |options|
+            as input.
+
+1. Return [=a promise resolved with=] `undefined`.
     
-The [=unknownCredential=] [=authenticator actions=] take an
-{{UnknownCredentialIdReport}} |options| and are as follows:
+The <dfn for="signal method/authenticator action">unknownCredentialId</dfn>
+[=signal method/authenticator action=] takes an {{UnknownCredentialIdOptions}}
+|options| and is as follows:
 1. [=map/For each=] [=public key credential source=] |credential| in the
     [=authenticator=]'s [=credential map=]:
     1. If the |credential|'s [=public key credential source/rpId=] does not
-        equal <code>|options|.{{UnknownCredentialIdReport/rpId}}</code>,
+        equal <code>|options|.{{UnknownCredentialIdOptions/rpId}}</code>,
         [=continue=].
     1. If the |credential|'s [=public key credential source/id=] does
         not equal the result of [=base64url encoding | base64url decoding=]
-        <code>|options|.{{UnknownCredentialIdReport/credentialId}}</code>,
+        <code>|options|.{{UnknownCredentialIdOptions/credentialId}}</code>,
         [=continue=].
     1. [=map/Remove=] |credential| from the [=credentials map=] or employ an
         [=authenticator=]-specific procedure to hide it from future
@@ -3053,11 +3061,9 @@ offers them the [=credential=] they previously deleted. The user selects that
 [=credential=]. After rejecting the sign-in attempt, the [=[WRP]=] runs:
 
 ```javascript
-PublicKeyCredential.signal({
-    unknownCredential: {
-        rpId: "example.com",
-        credentialId: "aabbcc"  // credential id the user just tried, base64url
-    }
+PublicKeyCredential.signalUnknownCredentialId({
+    rpId: "example.com",
+    credentialId: "aabbcc"  // credential id the user just tried, base64url
 });
 ```
 
@@ -3066,50 +3072,48 @@ The [=authenticator=] then deletes or hides the [=credential=] from future
 
 </div>
 
-#### <dfn>currentCredentials</dfn> report #### {#sctn-currentCredentialsReport}
+#### {{PublicKeyCredential/signalAllAcceptedCredentialIds(options)}} #### {#sctn-signalAllAcceptedCredentialIds}
 
-Signals the complete list of [=credential ids=] for a given user, as well as the
-user's current {{PublicKeyCredentialEntity/name}} and
-{{PublicKeyCredentialUserEntity/displayName}}.
+Signals the complete list of [=credential ids=] for a given user.
 
-The [=currentCredentials=] [=validation algorithm=] takes a
-{{CurrentCredentialsReport}} |options| and executes these steps:
+Upon execution of
+{{PublicKeyCredential/signalAllAcceptedCredentialIds(options)}}, the [=client=]
+executes these steps:
+
 1. Let |effectiveDomain| be the |callerOrigin|'s [=effective domain=].  If
     [=effective domain=] is not a [=valid domain=], then throw a
     "{{SecurityError}}" {{DOMException}}.
-1. If <code>|options|.{{CurrentCredentialsReport/rpId}}</code> [=is not a
+1. If <code>|options|.{{AllAcceptedCredentialIdsOptions/rpId}}</code> [=is not a
     registrable domain suffix of and is not equal to=] |effectiveDomain|, then
     throw a "{{SecurityError}}" {{DOMException}}.
 
     TODO: this may require updating once #2040 lands.
 1. If the result of [=base64url encoding | base64url decoding=]
-    <code>|options|.{{CurrentCredentialsReport/userId}}</code> is an error, then
-    throw a {{TypeError}}.
-1. If
-    <code>|options|.{{CurrentCredentialsReport/allAcceptedCredentialIds}}</code>
-    is present:
-    1. [=list/For each=] |credentialId| in
-        <code>|options|.{{CurrentCredentialsReport/allAcceptedCredentialIds}}</code>:
-       1. If the result of [=base64url encoding | base64url decoding=]
-           |credentialId| is an error, then throw a {{TypeError}}.
+    <code>|options|.{{AllAcceptedCredentialIdsOptions/userId}}</code> is an
+    error, then throw a {{TypeError}}.
+1. [=list/For each=] |credentialId| in
+    <code>|options|.{{AllAcceptedCredentialIdsOptions/allAcceptedCredentialIds}}</code>:
+    1. If the result of [=base64url encoding | base64url decoding=]
+        |credentialId| is an error, then throw a {{TypeError}}.
 
-The [=currentCredentials=] [=credential report/authenticator actions=] take a
-{{CurrentCredentialsReport}} |options| and are as follows:
+1. Run the following steps [=in parallel=]:
+        1. For every [=authenticator=] presently available on this [=client
+            platform=], invoke the [=signal method/authenticator
+            actions/allAcceptedCredentialIds=] [=authenticator action=] with
+            |options| as input.
+
+The <dfn for="signal method/authenticator
+actions">allAcceptedCredentialIds</dfn> [=signal method/authenticator
+actions=] take an {{AllAcceptedCredentialIdsOptions}} |options| and are as
+follows:
 1. Let |userId| be result of [=base64url encoding | base64url decoding=]
-    <code>|options|.{{CurrentCredentialsReport/userId}}</code>.
+    <code>|options|.{{AllAcceptedCredentialIdsOptions/userId}}</code>.
 1. Assertion: |userId| is not an error.
 1. Let |credential| be
-    <code>[=credentials map=][|options|.{{CurrentCredentialsReport/rpId}}, |userId|]</code>.
+    <code>[=credentials map=][|options|.{{AllAcceptedCredentialIdsOptions/rpId}}, |userId|]</code>.
 1. If |credential| does not exist, abort these steps.
-1. If <code>|options|.{{CurrentCredentialsReport/user}}</code> is present,
-    update the |credential|'s [=public key credential source/otherUI=] to match
-    <code>|options|.{{CurrentCredentialsReport/user}}.{{CurrentCredentialUserDetails/name}}</code>
-    and
-    <code>|options|.{{CurrentCredentialsReport/user}}.{{CurrentCredentialUserDetails/displayName}}</code>
 1. If
-    <code>|options|.{{CurrentCredentialsReport/allAcceptedCredentialIds}}</code>
-    is present and
-    <code>|options|.{{CurrentCredentialsReport/allAcceptedCredentialIds}}</code>
+    <code>|options|.{{AllAcceptedCredentialIdsOptions/allAcceptedCredentialIds}}</code>
     does NOT [=list/contain=] the result of [=base64url encoding=] the
     |credential|'s [=public key credential source/id=], then [=map/remove=]
     |credential| from the [=credentials map=] or employ an
@@ -3118,41 +3122,17 @@ The [=currentCredentials=] [=credential report/authenticator actions=] take a
 
 <div class="example">
 
-A user updates their name on a [=[WRP]=] provided UI. The [=[WRP]=] runs:
-
-```javascript
-PublicKeyCredential.signal({
-    currentCredentials: {
-        rpId: "example.com",
-        userId: "aabbcc",  // user handle, base64url.
-        user: {
-            name: "New user name",
-            displayName: "New display name"
-        }
-    }
-});
-```
-
-The [=authenticator=] then updates the [=public key credential source/otherUI=]
-of the matching credential.
-
-</div>
-
-<div class="example">
-
 A user has two credentials with [=credential ids=] that [=base64url encode=] to
 `aa` and `bb`. The user deletes the credential `aa` on a [=[WRP]=] provided UI.
 The [=[WRP]=] runs:
 
 ```javascript
-PublicKeyCredential.signal({
-    currentCredentials: {
-        rpId: "example.com",
-        userId: "aabbcc",  // user handle, base64url.
-        allAcceptedCredentialIds: [
-            "bb",
-        ]
-    }
+PublicKeyCredential.signalAllAcceptedCredentialIds({
+    rpId: "example.com",
+    userId: "aabbcc",  // user handle, base64url.
+    allAcceptedCredentialIds: [
+        "bb",
+    ]
 });
 ```
 
@@ -3163,35 +3143,71 @@ ceremonies=].
 </div>
 
 Note: [=Authenticators=] may not be attached at the time a report is signalled.
-Therefore, [=[WRPS]=] may choose to signal [=currentCredentials=] periodically,
+Therefore, [=[WRPS]=] may choose to run
+{{PublicKeyCredential/signalAllAcceptedCredentialIds(options)}} periodically,
 e.g. on every sign in.
 
-#### <code>{{PublicKeyCredential/signal()}}</code> algorithm #### {#sctn-signalAlgorithm}
+#### {{PublicKeyCredential/signalCurrentUserDetails(options)}} #### {#sctn-signalCurrentUserDetails}
 
-Upon invocation of {{PublicKeyCredential/signal(options)}}, the [=client=] will:
+Signals the user's current {{PublicKeyCredentialEntity/name}} and
+{{PublicKeyCredentialUserEntity/displayName}}.
 
-1. For every [=credential report=] |report| defined by this specification:
-    1. If <code>|options|[|report|]</code> does NOT exist, [=continue=].
-    1. Run the |report|'s [=credential report/validation algorithm=] with
-        <code>|options|[|report|]</code> as input.
-    1. If that threw an [=exception=], then return [=a promise rejected with=]
-        that exception and abort these steps.
+Upon execution of {{PublicKeyCredential/signalCurrentUserDetails(options)}}, the
+[=client=] executes these steps:
+
+1. Let |effectiveDomain| be the |callerOrigin|'s [=effective domain=].  If
+    [=effective domain=] is not a [=valid domain=], then throw a
+    "{{SecurityError}}" {{DOMException}}.
+1. If <code>|options|.{{CurrentUserDetailsOptions/rpId}}</code> [=is not a
+    registrable domain suffix of and is not equal to=] |effectiveDomain|, then
+    throw a "{{SecurityError}}" {{DOMException}}.
+
+    TODO: this may require updating once #2040 lands.
+1. If the result of [=base64url encoding | base64url decoding=]
+    <code>|options|.{{CurrentUserDetailsOptions/userId}}</code> is an error, then
+    throw a {{TypeError}}.
 
 1. Run the following steps [=in parallel=]:
-    1. For every [=credential report=] |report| defined by this specification:
-        1. If <code>|options|[|report|]</code> does NOT exist, [=continue=].
         1. For every [=authenticator=] presently available on this [=client
-            platform=], invoke the the |report|'s [=credential
-            report/authenticator actions=] with <code>|options|[|report|]</code>
+            platform=], invoke the [=signal method/authenticator
+            actions/currentUserDetails=] [=authenticator action=] with |options|
             as input.
 
-1. Return [=a promise resolved with=] `undefined`.
+The <dfn for="signal method/authenticator actions">currentUserDetails</dfn>
+[=signal method/authenticator action=] takes a {{CurrentUserDetailsOptions}}
+|options| and is as follows:
+1. Let |userId| be result of [=base64url encoding | base64url decoding=]
+    <code>|options|.{{CurrentUserDetailsOptions/userId}}</code>.
+1. Assertion: |userId| is not an error.
+1. Let |credential| be
+    <code>[=credentials map=][|options|.{{CurrentUserDetailsOptions/rpId}}, |userId|]</code>.
+1. If |credential| does not exist, abort these steps.
+1. Update the |credential|'s [=public key credential source/otherUI=] to match
+    <code>|options|.{{CurrentUserDetailsOptions/name}}</code> and
+    <code>|options|.{{CurrentUserDetailsOptions/displayName}}</code>.
 
-Note: This algorithm intentionally does not wait for the [=authenticators=] to
-finish executing the [=credential report=] [=credential report/authenticator
-actions=] to protect users from [=[WRPS]=] gaining information about
-availability of their credentials without [=user consent=] from the timing of
-the request.
+<div class="example">
+
+A user updates their name on a [=[WRP]=] provided UI. The [=[WRP]=] runs:
+
+```javascript
+PublicKeyCredential.signalCurrentUserDetails({
+    rpId: "example.com",
+    userId: "aabbcc",  // user handle, base64url.
+    name: "New user name",
+    displayName: "New display name"
+});
+```
+
+The [=authenticator=] then updates the [=public key credential source/otherUI=]
+of the matching credential.
+
+</div>
+
+Note: [=Authenticators=] may not be attached at the time a report is signalled.
+Therefore, [=[WRPS]=] may choose to run
+{{PublicKeyCredential/signalCurrentUserDetails(options)}} periodically, e.g. on
+every sign in.
 
 ## Authenticator Responses (interface <dfn interface>AuthenticatorResponse</dfn>) ## {#iface-authenticatorresponse}
 
