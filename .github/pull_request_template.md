@@ -1,5 +1,7 @@
 Closes #???
 
+<!-- Remove the following for non-normative changes -->
+
 The following tasks have been completed:
 
 - [ ] Modified Web platform tests ([link](https://github.com/web-platform-tests/wpt/))
