@@ -3040,6 +3040,293 @@ value and terminate the operation.
 
 </div>
 
+### Signal Credential Changes to the Authenticator - PublicKeyCredential's [=signal methods=] ### {#sctn-signal-methods}
+
+<xmp class="idl">
+    partial interface PublicKeyCredential {
+        static Promise<undefined> signalUnknownCredential(UnknownCredentialOptions options);
+        static Promise<undefined> signalAllAcceptedCredentials(AllAcceptedCredentialsOptions options);
+        static Promise<undefined> signalCurrentUserDetails(CurrentUserDetailsOptions options);
+    };
+
+    dictionary UnknownCredentialOptions {
+        required DOMString                     rpId;
+        required Base64URLString               credentialId;
+    };
+
+    dictionary AllAcceptedCredentialsOptions {
+        required DOMString                     rpId;
+        required Base64URLString               userId;
+        required sequence<Base64URLString>     allAcceptedCredentialIds;
+    };
+
+    dictionary CurrentUserDetailsOptions {
+        required DOMString                     rpId;
+        required Base64URLString               userId;
+        required DOMString                     name;
+        required DOMString                     displayName;
+    };
+</xmp>
+
+[=[WRPS]=] may use these <dfn>signal methods</dfn> to signal [=authenticators=]
+the state of [=public key credentials=], so that incorrect or revoked
+credentials may be updated, removed, or hidden. [=Clients=] provide this
+functionality opportunistically, since an authenticator may not support updating
+its [=credentials map=] or it may not be attached at the time the request is
+made. Furthermore, in order to avoid revealing information about a user's
+credentials without [=user consent=], [=signal methods=] do not indicate whether
+the operation succeeded. A successfully resolved promise only means that the
+<code>options</code> object was well formed.
+
+Each [=signal method=] includes <dfn for="signal method">authenticator
+actions</dfn>. [=Authenticators=] MAY choose to deviate in their [=signal
+method/authenticator actions=] from the present specification, e.g. to ignore a
+change they have a reasonable belief would be contrary to the user's wish, or to
+ask the user before making some change. [=signal method/Authenticator actions=]
+are thus provided as the recommended way to handle [=signal methods=].
+
+In cases where an [=authenticator=] does not have the capability to process an
+[=signal method/authenticator action=], [=clients=] MAY choose to use existing
+infrastructure such as [[!FIDO-CTAP]]'s `authenticatorCredentialManagement`
+command to achieve an equivalent effect.
+
+Note: [=Signal methods=] intentionally do not wait for the [=authenticators=] to
+finish executing the [=signal method/authenticator actions=] to protect users
+from [=[WRPS]=] gaining information about availability of their credentials
+without [=user consent=] from the timing of the request.
+
+#### <dfn abstract-op>Asynchronous RP ID validation algorithm</dfn> #### {#sctn-signal-methods-async-rp-id-validation}
+
+The [$Asynchronous RP ID validation algorithm$] lets [=signal methods=] validate
+[=RP IDs=] [=in parallel=]. The algorithm takes a {{DOMString}} |rpId| as input
+and returns a promise that rejects if the validation fails. The steps are:
+
+1. Let |effectiveDomain| be the [=relevant settings object=]'s [=environment
+    settings object/origin=]'s [=effective domain=]. If |effective domain| is
+    not a [=valid domain=], then return [=a promise rejected with=]
+    "{{SecurityError}}" {{DOMException}}.
+1. If |rpId| [=is a registrable domain suffix of or is equal to=]
+    |effectiveDomain|, return [=a promise resolved with=] undefined.
+1. If the client does not support [[#sctn-related-origins|related origin
+    requests]], return [=a promise rejected with=] a "{{SecurityError}}"
+    {{DOMException}}.
+1. Let |p| be [=a new promise=].
+1. Execute the following steps [=in parallel=]:
+    1. If the result of running the [$related origins validation procedure$]
+        with arguments |callerOrigin| and |rpId| is [TRUE], then [=resolve=]
+        |p|.
+    1. Otherwise, [=reject=] |p| with a "{{SecurityError}}" {{DOMException}}.
+1. Return |p|.
+
+#### {{PublicKeyCredential/signalUnknownCredential(options)}} #### {#sctn-signalUnknownCredential}
+
+Signals that a [=credential id=] was not recognized by the [=[WRP]=], e.g.
+because it was deleted by the user. Unlike
+{{PublicKeyCredential/signalAllAcceptedCredentials(options)}}, this
+method does not require passing the entire list of accepted [=credential IDs=]
+and the [=userHandle=], avoiding a privacy leak to an unauthenticated caller
+(see [[#sctn-credential-id-privacy-leak]]).
+
+Upon invocation of {{PublicKeyCredential/signalUnknownCredential(options)}},
+the [=client=] executes these steps:
+
+1. If the result of [=base64url encoding | base64url decoding=]
+    <code>|options|.{{UnknownCredentialOptions/credentialId}}</code> is an
+    error, then return [=a promise rejected with=] a {{TypeError}}.
+1. Let |p| be the result of executing the [$Asynchronous RP ID validation
+    algorithm$] with <code>|options|.{{UnknownCredentialOptions/rpId}}</code>.
+1. [=Upon fulfillment=] of |p|, run the following steps [=in parallel=]:
+    1. For every [=authenticator=] presently available on this [=client
+        platform=], invoke the [=signal method/authenticator
+        action/unknownCredentialId=] [=authenticator action=] with |options| as
+        input.
+1. Return |p|.
+
+The <dfn for="signal method/authenticator action">unknownCredentialId</dfn>
+[=signal method/authenticator action=] takes an {{UnknownCredentialOptions}}
+|options| and is as follows:
+1. [=map/For each=] [=public key credential source=] |credential| in the
+    [=authenticator=]'s [=credential map=]:
+    1. If the |credential|'s [=public key credential source/rpId=] equals
+        <code>|options|.{{UnknownCredentialOptions/rpId}}</code> and the
+        |credential|'s [=public key credential source/id=] equals the result of
+        [=base64url encoding | base64url decoding=]
+        <code>|options|.{{UnknownCredentialOptions/credentialId}}</code>,
+        [=map/remove=] |credential| from the [=credentials map=] or employ an
+        [=authenticator=]-specific procedure to hide it from future
+        [=authentication ceremonies=].
+
+<div class="example">
+
+A user deletes a [=credential=] on a [=[WRP]=] provided UI. Later, when trying
+to authenticate to the [=[WRP]=] with an [=list/empty=]
+{{PublicKeyCredentialRequestOptions/allowCredentials}}, the [=authenticator=] UI
+offers them the [=credential=] they previously deleted. The user selects that
+[=credential=]. After rejecting the sign-in attempt, the [=[WRP]=] runs:
+
+```javascript
+PublicKeyCredential.signalUnknownCredential({
+    rpId: "example.com",
+    credentialId: "aabbcc"  // credential id the user just tried, base64url
+});
+```
+
+The [=authenticator=] then deletes or hides the [=credential=] from future
+[=authentication ceremonies=].
+
+</div>
+
+#### {{PublicKeyCredential/signalAllAcceptedCredentials(options)}} #### {#sctn-signalAllAcceptedCredentials}
+
+Signals the complete list of [=credential ids=] for a given user. [=[WRPS]=]
+SHOULD prefer this method over {{PublicKeyCredential/signalUnknownCredential()}}
+when the user is authenticated and therefore there is no privacy leak risk (see
+[[#sctn-credential-id-privacy-leak]]), since the list offers a full snapshot of
+a user's [=public key credentials=] and might reflect changes that haven't yet
+been reported to currently attached authenticators.
+
+Upon invocation of
+{{PublicKeyCredential/signalAllAcceptedCredentials(options)}}, the [=client=]
+executes these steps:
+
+1. If the result of [=base64url encoding | base64url decoding=]
+    <code>|options|.{{AllAcceptedCredentialsOptions/userId}}</code> is an
+    error, then return [=a promise rejected with=] a {{TypeError}}.
+1. [=list/For each=] |credentialId| in
+    <code>|options|.{{AllAcceptedCredentialsOptions/allAcceptedCredentialIds}}</code>:
+    1. If the result of [=base64url encoding | base64url decoding=]
+        |credentialId| is an error, then return [=a promise rejected with=] a
+        {{TypeError}}.
+1. Let |p| be the result of executing the [$Asynchronous RP ID validation
+    algorithm$] with
+    <code>|options|.{{AllAcceptedCredentialsOptions/rpId}}</code>.
+1. [=Upon fulfillment=] of |p|, run the following steps [=in parallel=]:
+        1. For every [=authenticator=] presently available on this [=client
+            platform=], invoke the [=signal method/authenticator
+            actions/allAcceptedCredentialIds=] [=authenticator action=] with
+            |options| as input.
+1. Return |p|.
+
+The <dfn for="signal method/authenticator
+actions">allAcceptedCredentialIds</dfn> [=signal method/authenticator
+actions=] take an {{AllAcceptedCredentialsOptions}} |options| and are as
+follows:
+1. Let |userId| be result of [=base64url encoding | base64url decoding=]
+    <code>|options|.{{AllAcceptedCredentialsOptions/userId}}</code>.
+1. Assertion: |userId| is not an error.
+1. Let |credential| be
+    <code>[=credentials map=][|options|.{{AllAcceptedCredentialsOptions/rpId}}, |userId|]</code>.
+1. If |credential| does not exist, abort these steps.
+1. If
+    <code>|options|.{{AllAcceptedCredentialsOptions/allAcceptedCredentialIds}}</code>
+    does NOT [=list/contain=] the result of [=base64url encoding=] the
+    |credential|'s [=public key credential source/id=], then [=map/remove=]
+    |credential| from the [=credentials map=] or employ an
+    [=authenticator=]-specific procedure to hide it from future [=authentication
+    ceremonies=].
+1. Else, if |credential| has been hidden by an [=authenticator=]-specific
+    procecure, reverse the action so that |credential| is present in future
+    [=authentication ceremonies=].
+
+<div class="example">
+
+A user has two credentials with [=credential ids=] that [=base64url encode=] to
+`aa` and `bb`. The user deletes the credential `aa` on a [=[WRP]=] provided UI.
+The [=[WRP]=] runs:
+
+```javascript
+PublicKeyCredential.signalAllAcceptedCredentials({
+    rpId: "example.com",
+    userId: "aabbcc",  // user handle, base64url.
+    allAcceptedCredentialIds: [
+        "bb",
+    ]
+});
+```
+
+If the [=authenticator=] is attached at the time of execution, it deletes or
+hides the [=credential=] corresponding to `aa` from future [=authentication
+ceremonies=].
+
+</div>
+
+Note: [=Authenticators=] may not be attached at the time
+{{PublicKeyCredential/signalAllAcceptedCredentials(options)}} is executed.
+Therefore, [=[WRPS]=] may choose to run
+{{PublicKeyCredential/signalAllAcceptedCredentials(options)}} periodically,
+e.g. on every sign in.
+
+Note: Credentials not present in
+{{AllAcceptedCredentialsOptions/allAcceptedCredentialIds}} will be removed or
+hidden, potentially irreversibly. [=Relying parties=] must exercise care that
+valid credential IDs are never omitted from the list. If a valid [=credential
+ID=] were accidentally omitted, the [=relying party=] should immediately include
+it in {{PublicKeyCredential/signalAllAcceptedCredentials(options)}} as soon as
+possible to "unhide" it, if supported by the [=authenticator=].
+
+Note: [=Authenticators=] should prefer hiding [=public key credentials=] instead
+of permanently removing them whenever possible to aid recovery if a [=[WRP]=]
+accidentally omits valid [=credential IDs=] from
+{{AllAcceptedCredentialsOptions/allAcceptedCredentialIds}}.
+
+#### {{PublicKeyCredential/signalCurrentUserDetails(options)}} #### {#sctn-signalCurrentUserDetails}
+
+Signals the user's current {{PublicKeyCredentialEntity/name}} and
+{{PublicKeyCredentialUserEntity/displayName}}.
+
+Upon invocation of {{PublicKeyCredential/signalCurrentUserDetails(options)}}, the
+[=client=] executes these steps:
+
+1. If the result of [=base64url encoding | base64url decoding=]
+    <code>|options|.{{CurrentUserDetailsOptions/userId}}</code> is an error,
+    then return [=a promise rejected with=] a {{TypeError}}.
+1. Let |p| be the result of executing the [$Asynchronous RP ID validation
+    algorithm$] with
+    <code>|options|.{{CurrentUserDetailsOptions/rpId}}</code>.
+1. [=Upon fulfillment=] of |p|, run the following steps [=in parallel=]:
+        1. For every [=authenticator=] presently available on this [=client
+            platform=], invoke the [=signal method/authenticator
+            actions/currentUserDetails=] [=authenticator action=] with |options|
+            as input.
+1. Return |p|.
+
+The <dfn for="signal method/authenticator actions">currentUserDetails</dfn>
+[=signal method/authenticator action=] takes a {{CurrentUserDetailsOptions}}
+|options| and is as follows:
+1. Let |userId| be result of [=base64url encoding | base64url decoding=]
+    <code>|options|.{{CurrentUserDetailsOptions/userId}}</code>.
+1. Assertion: |userId| is not an error.
+1. Let |credential| be
+    <code>[=credentials map=][|options|.{{CurrentUserDetailsOptions/rpId}}, |userId|]</code>.
+1. If |credential| does not exist, abort these steps.
+1. Update the |credential|'s [=public key credential source/otherUI=] to match
+    <code>|options|.{{CurrentUserDetailsOptions/name}}</code> and
+    <code>|options|.{{CurrentUserDetailsOptions/displayName}}</code>.
+
+<div class="example">
+
+A user updates their name on a [=[WRP]=] provided UI. The [=[WRP]=] runs:
+
+```javascript
+PublicKeyCredential.signalCurrentUserDetails({
+    rpId: "example.com",
+    userId: "aabbcc",  // user handle, base64url.
+    name: "New user name",
+    displayName: "New display name"
+});
+```
+
+The [=authenticator=] then updates the [=public key credential source/otherUI=]
+of the matching credential.
+
+</div>
+
+Note: [=Authenticators=] may not be attached at the time
+{{PublicKeyCredential/signalCurrentUserDetails(options)}} is executed.
+Therefore, [=[WRPS]=] may choose to run
+{{PublicKeyCredential/signalCurrentUserDetails(options)}} periodically, e.g. on
+every sign in.
+
 ## Authenticator Responses (interface <dfn interface>AuthenticatorResponse</dfn>) ## {#iface-authenticatorresponse}
 
 [=Authenticators=] respond to [=[RP]=] requests by returning an object derived from the
@@ -4124,7 +4411,10 @@ Note: The {{UserVerificationRequirement}} enumeration is deliberately not refere
         "hybridTransport",
         "passkeyPlatformAuthenticator",
         "userVerifyingPlatformAuthenticator",
-        "relatedOrigins"
+        "relatedOrigins",
+        "signalAllAcceptedCredentials",
+        "signalCurrentUserDetails",
+        "signalUnknownCredential"
     };
 </xmp>
 
@@ -4159,6 +4449,15 @@ Note: The {{ClientCapability}} enumeration is deliberately not referenced, see [
 
     :   <dfn>relatedOrigins</dfn>
     ::  The [=WebAuthn Client=] supports [[#sctn-related-origins|Related Origin Requests]].
+
+    :   <dfn>signalAllAcceptedCredentials</dfn>
+    ::  The [=WebAuthn Client=] supports {{PublicKeyCredential/signalAllAcceptedCredentials()}}.
+
+    :   <dfn>signalCurrentUserDetails</dfn>,
+    ::  The [=WebAuthn Client=] supports {{PublicKeyCredential/signalCurrentUserDetails()}}.
+
+    :   <dfn>signalUnknownCredential</dfn>
+    ::  The [=WebAuthn Client=] supports {{PublicKeyCredential/signalUnknownCredential()}}.
 </div>
 
 ### User-agent Hints Enumeration (enum <dfn enum>PublicKeyCredentialHints</dfn>) ### {#enum-hints}
@@ -8651,6 +8950,11 @@ i.e., if {{PublicKeyCredentialRequestOptions/allowCredentials}} needs to be expo
 the [=[RP]=] could mitigate the privacy leak using the same approach of returning imaginary [=credential IDs=]
 as discussed in [[#sctn-username-enumeration]].
 
+When [=signal methods|signalling=] that a [=credential id=] was not recognized,
+the [=[WRP]=] SHOULD use the
+{{PublicKeyCredential/signalUnknownCredential(options)}} method instead of the
+{{PublicKeyCredential/signalAllAcceptedCredentials(options)}} method to avoid
+exposing [=credential IDs=] to an unauthenticated caller.
 
 # Accessibility Considerations # {#sctn-accessiblility-considerations}
 
