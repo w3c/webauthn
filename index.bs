@@ -3780,11 +3780,12 @@ Note: The {{CollectedClientData}} may be extended in the future. Therefore it's 
 
 <xmp class="idl">
     dictionary CollectedClientData {
-        required DOMString           type;
-        required DOMString           challenge;
-        required DOMString           origin;
-        DOMString                    topOrigin;
-        boolean                      crossOrigin;
+        required DOMString            type;
+        required DOMString            challenge;
+        required DOMString            origin;
+        DOMString                     topOrigin;
+        boolean                       crossOrigin;
+        CollectedClientDataExtensions extensions;
     };
 
     dictionary TokenBinding {
@@ -3793,6 +3794,9 @@ Note: The {{CollectedClientData}} may be extended in the future. Therefore it's 
     };
 
     enum TokenBindingStatus { "present", "supported" };
+
+    dictionary CollectedClientDataExtensions { 
+    };
 </xmp>
 
 <div dfn-type="dict-member" dfn-for="CollectedClientData">
@@ -7301,6 +7305,101 @@ However, [=authenticators=] that do not utilize [[!FIDO-CTAP]] do not necessaril
 This section defines extensions that are both [=client extensions=] and [=authenticator extensions=].
 
 This section is currently empty.
+
+
+### Confirmation Extension (confirmation) ### {#sctn-confirmation-extension}
+
+This <dfn>confirmation extension</dfn> allows for capturing user confirmation. A
+   [=[RP]=] can specify a confirmation prompt string, intended for display by the platform and by the authenticator (if supported).
+   With this approach, [=Relying Parties=] can use the feature independently of the capabilities of the authenticator used by the user,
+   while still benefitting from the increased security level if the authenticator itself supports showing the confirmation prompt.
+
+Authenticators could use a Trusted UI to ensure that the user indeed sees the confirmation prompt.
+
+Example uses cases could be "I want to move $1234 from account A to account B" or "I want to share my health data with hospital X".
+
+: Extension identifier
+:: `confirmation`
+
+: Operation applicability
+:: [=authentication extension|Authentication=]
+
+: Client extension input
+:: A single USVString confirmationPrompt.  This string might contain the following formatting tags: <code>&lt;b&gt;&lt;/b&gt;</code> to mark the text inbetween as bold and <code>&lt;br /&gt;</code> to force a line break.  Support of these formatting tags is "best effort".  Implementations not supporting it SHALL NOT display the tags in "verbatim".
+
+    <xmp class="idl">
+    partial dictionary AuthenticationExtensionsClientInputs {
+      USVString confirmation;
+    };
+    </xmp>
+
+: Client extension processing
+::   1. use a dialog to the user that makes the user aware of the confirmation to be provided (as opposed to doing a simple sign in).
+     1. display the confirmation prompt to the user. The client SHOULD
+           indicate that the confirmation prompt originates from a specific relying party
+           (as opposed to the platform itself).
+     
+     1. use the {{CollectedClientConfirmationData}} structure containing the confirmation prompt instead of using the {{CollectedClientData}} structure.
+     
+     1. pass-through the extension to the authenticator (see "authenticator extension input" below)
+     1. pass-through the "authenticator extension output" to the caller as part of the assertion
+
+
+    The {{CollectedClientDataExtensions}} dictionary contains the following
+    additional field:
+    <xmp class="idl">
+        partial dictionary CollectedClientDataExtensions {
+            USVString confirmation;
+        };
+    </xmp>
+
+: Client extension output
+:: Returns the value [TRUE] to indicate to the [=[RP]=] that the extension was acted upon.
+    <xmp class="idl">
+    partial dictionary AuthenticationExtensionsClientOutputs {
+      boolean confirmation;
+    };
+    </xmp>
+
+: Authenticator extension input
+:: The client provides the extension input encoded as a CBOR text string (major type 3).
+
+    ```
+    $$extensionInput //= (
+      confirmation = tstr,
+    )
+    ```
+
+: Authenticator extension processing
+:: The authenticator supporting this extension MUST display the confirmation prompt to the user
+    before performing either [=user verification=] or [=test of user
+    presence=]. The authenticator MAY wrap lines that are too wide to be shown if needed.
+
+: Authenticator extension output
+:: A single CBOR text string, representing the confirmation prompt.
+
+    ```
+    $$extensionOutput //= (
+      confirmation = tstr,
+    )
+    ```
+
+Note: It is up to the relying party to handle the different [=user verification=] options appropriately.
+    This includes appropriate settings for {{AuthenticatorSelectionCriteria/userVerification}} and
+    appropriate processing of [=authData/flags/UV=] and [=authData/flags/UP=].
+    This [=confirmation extension=] doesn't change the way [=user verification=] is
+    handled by the [=client platform=] / [=authenticator=].
+
+
+#### `confirmation` Extension Output Verification Procedures #### {#sctn-confirmation-extension-verification}
+
+The following verification steps are performed in the context of [step 19](#authn-ceremony-verify-extension-outputs)
+of [[#sctn-verifying-assertion]] using these variables established therein: |credential|, |clientExtensionResults|, |authData|, |hash|, and |credentialRecord|.
+[=[RP]=] policy may specify whether a response without a `confirmation` extension output is acceptable.
+
+1. Verify that the `confirmation` key exists in the [=authData/extensions=] in |authData|.
+1. Verify that the `confirmation` value in the [=authData/extensions=] in |authData| equals the confirmation prompt that is expected (i.e., that was used when requesting the `confirmation` extension).
+1. If processing a response without the `confirmation` extension is acceptable by policy: Fall back to <code>|credential|.{{PublicKeyCredential/response}}.{{AuthenticatorResponse/clientDataJSON}}</code> entry and the verify the field {{AuthenticatorExtensionsClientInputs}}.{{confirmationPrompt}} in [=client data=] if authenticator extension output is absent. This field represents the value as shown by the client (and not the authenticator).
 
 
 # User Agent Automation # {#sctn-automation}
