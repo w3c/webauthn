@@ -16,5 +16,4 @@ Documentation and checks
 
 - [ ] Affects privacy
 - [ ] Affects security
-- [ ] Pinged MDN
 - [ ] Updated explainer ([link](https://github.com/w3c/webauthn/wiki)
