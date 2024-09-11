@@ -261,10 +261,6 @@ spec: SP800-800-63r3; urlPrefix: https://pages.nist.gov/800-63-3/sp800-63-3.html
         text: something you have; url: af
         text: something you are; url: af
 
-spec: webidl; urlPrefix: https://heycam.github.io/webidl
-    type: dfn;
-        text: get a copy of the bytes held by the buffer source; url: dfn-get-buffer-source-copy
-
 spec: webdriver; urlPrefix: https://w3c.github.io/webdriver/
     type: dfn
         text: WebDriver error; url: dfn-error
@@ -1209,11 +1205,6 @@ BCP 14 [[!RFC2119]] [[!RFC8174]] when, and only when, they appear in all capital
     :   {{PublicKeyCredentialDescriptor/transports}}
     ::  The [$credential record/transports$] of the [=credential record=].
 
-: <dfn>Supplemental public key</dfn>
-:: A additional public key, associated with a [=user credential=], that can be obtained (and exercised) with the [=supplementalPubKeys=] extension. These public keys provide more specific continuity signals. For example, a supplemental public key with `device` scope never leaves the device, while a [=multi-device credential=] can. Other supplemental public keys might have a broader scope, as described by their [=attestation=].
-
-    Supplemental public keys MUST NOT have a scope that exceeds the scope of their [=user credential=]&mdash;i.e. they never link two [=user credentials=] together. While this specification defines norms around scopes, [=[RPS]=] have to evaluate supplemental public keys in light of their [=attestation=], if any, and assign credibility to claimed scopes accordingly.
-
 : <dfn>Generating Authenticator</dfn>
 :: The Generating Authenticator is the authenticator involved in the [=authenticatorMakeCredential=] operation resulting
     in the creation of a given [=public key credential source=]. The [=generating authenticator=] is the same as the [=managing authenticator=]
@@ -1226,6 +1217,12 @@ BCP 14 [[!RFC2119]] [[!RFC8174]] when, and only when, they appear in all capital
 
 : <dfn>Non-Discoverable Credential</dfn>
 :: This is a [=credential=] whose [=credential ID=] must be provided in {{PublicKeyCredentialRequestOptions/allowCredentials}} when calling {{CredentialsContainer/get()|navigator.credentials.get()}} because it is not [=client-side discoverable credential|client-side discoverable=]. See also [=server-side credentials=].
+
+: <dfn>Registrable Origin Label</dfn>
+:: The first [=domain label=] of the [=registrable domain=] of a [=domain=],
+    or null if the [=registrable domain=] is null.
+    For example, the [=registrable origin label=] of both `example.co.uk` and `www.example.de` is `example`
+    if both `co.uk` and `de` are [=public suffixes=].
 
 : <dfn>Public Key Credential</dfn>
 :: Generically, a *credential* is data one entity presents to another in order to *authenticate* the former to the latter
@@ -1588,8 +1585,15 @@ that are returned to the caller when a new credential is created, or a new asser
 
         This method has no arguments and returns a promise to a Boolean value.
 
+        The {{ClientCapability/conditionalGet}} capability is equivalent to this promise resolving to [TRUE].
+
         Note: If this method is not present, {{CredentialMediationRequirement/conditional}} [=user mediation=] is not available for
         {{CredentialsContainer/get()|navigator.credentials.get()}}.
+
+        Note: This method does _not_ indicate
+        whether or not {{CredentialMediationRequirement/conditional}} [=user mediation=] is available
+        in {{CredentialsContainer/create()|navigator.credentials.create()}}.
+        For that, see the {{ClientCapability/conditionalCreate}} capability in {{PublicKeyCredential/getClientCapabilities()}}.
 
     :   {{PublicKeyCredential/toJSON()}}
     ::  This operation returns {{RegistrationResponseJSON}} or {{AuthenticationResponseJSON}},
@@ -1625,7 +1629,7 @@ that are returned to the caller when a new credential is created, or a new asser
     typedef object PublicKeyCredentialJSON;
 
     dictionary RegistrationResponseJSON {
-        required Base64URLString id;
+        required DOMString id;
         required Base64URLString rawId;
         required AuthenticatorAttestationResponseJSON response;
         DOMString authenticatorAttachment;
@@ -1644,14 +1648,14 @@ that are returned to the caller when a new credential is created, or a new asser
         // algorithm then the public key must be parsed directly from
         // attestationObject or authenticatorData.
         Base64URLString publicKey;
-        required long long publicKeyAlgorithm;
+        required COSEAlgorithmIdentifier publicKeyAlgorithm;
         // This value contains copies of some of the fields above. See
         // section “Easily accessing credential data”.
         required Base64URLString attestationObject;
     };
 
     dictionary AuthenticationResponseJSON {
-        required Base64URLString id;
+        required DOMString id;
         required Base64URLString rawId;
         required AuthenticatorAssertionResponseJSON response;
         DOMString authenticatorAttachment;
@@ -1738,9 +1742,10 @@ options, sameOriginWithAncestors)</dfn> [=internal method=] [[!CREDENTIAL-MANAGE
 [=public key credential source=], [=bound credential|bound=] to an [=authenticator=].
 
 By setting <code>|options|.{{CredentialCreationOptions/mediation}}</code> to {{CredentialMediationRequirement/conditional}},
-[=[RPS]=] can indicate that they would like to register a credential without prominent modal UI if user has already consented to create a credential. The [=[RP]=] SHOULD first check that {{ClientCapability/conditionalCreate}} is present
-in the result of {{PublicKeyCredential/getClientCapabilities()}} in order to avoid the possibility of causing a user-visible error to be returned if the user agent does
-not support {{CredentialMediationRequirement/conditional}} [=user mediation=] for {{CredentialsContainer/create()|navigator.credentials.create()}}.
+[=[RPS]=] can indicate that they would like to register a credential without prominent modal UI if the user has already consented to create a credential.
+The [=[RP]=] SHOULD first use {{PublicKeyCredential/getClientCapabilities()}}
+to check that the [=client=] supports the {{ClientCapability/conditionalCreate}} capability
+in order to prevent a user-visible error in case this feature is not available.
 The client MUST set BOTH |requireUserPresence| and |requireUserVerification| to |FALSE| when <code>|options|.{{CredentialCreationOptions/mediation}}</code> is set to {{CredentialMediationRequirement/conditional}}
 unless they may explicitly performed during the ceremony.
 
@@ -1837,11 +1842,21 @@ a numbered step. If outdented, it (today) is rendered as a bullet in the midst o
 
                 :   is present
                 ::  If <code>|pkOptions|.{{PublicKeyCredentialCreationOptions/rp}}.{{PublicKeyCredentialRpEntity/id}}</code> [=is not a
-                    registrable domain suffix of and is not equal to=] |effectiveDomain|, throw a "{{SecurityError}}" {{DOMException}}.
+                    registrable domain suffix of and is not equal to=] |effectiveDomain|, and if the client
+                
+                    <dl class="switch">
+                        :   supports [[#sctn-related-origins|related origin requests]]
+                        ::  1. Let |rpIdRequested| be the value of <code>|pkOptions|.{{PublicKeyCredentialCreationOptions/rp}}.{{PublicKeyCredentialRpEntity/id}}</code>.
 
-                :   Is not present
-                ::  Set <code>|pkOptions|.{{PublicKeyCredentialCreationOptions/rp}}.{{PublicKeyCredentialRpEntity/id}}</code> to
-                    |effectiveDomain|.
+                            1. Run the [$related origins validation procedure$] with arguments |callerOrigin| and |rpIdRequested|.
+                                If the result is [FALSE], throw a "{{SecurityError}}" {{DOMException}}.
+
+                        :   does not support [[#sctn-related-origins|related origin requests]]
+                        ::  throw a "{{SecurityError}}" {{DOMException}}.
+                    </dl>
+                    
+                :   is not present
+                ::  Set <code>|pkOptions|.{{PublicKeyCredentialCreationOptions/rp}}.{{PublicKeyCredentialRpEntity/id}}</code> to |effectiveDomain|.
             </dl>
 
         Note: <code>|pkOptions|.{{PublicKeyCredentialCreationOptions/rp}}.{{PublicKeyCredentialRpEntity/id}}</code> represents the
@@ -1899,14 +1914,14 @@ a numbered step. If outdented, it (today) is rendered as a bullet in the midst o
     :: The [=base64url encoding=] of |pkOptions|.{{PublicKeyCredentialCreationOptions/challenge}}.
     : {{CollectedClientData/origin}}
     :: The [=ascii serialization of an origin|serialization of=] |callerOrigin|.
-    : {{CollectedClientData/topOrigin}}
-    :: The [=ascii serialization of an origin|serialization of=] |callerOrigin|'s [=top-level origin=] if
-        the {{PublicKeyCredential/[[Create]](origin, options, sameOriginWithAncestors)/sameOriginWithAncestors}}
-        argument passed to this [=internal method=] is [FALSE], else `undefined`.
     : {{CollectedClientData/crossOrigin}}
     :: The inverse of the value of the
         {{PublicKeyCredential/[[Create]](origin, options, sameOriginWithAncestors)/sameOriginWithAncestors}}
         argument passed to this [=internal method=].
+    : {{CollectedClientData/topOrigin}}
+    :: The [=ascii serialization of an origin|serialization of=] |callerOrigin|'s [=top-level origin=] if
+        the {{PublicKeyCredential/[[Create]](origin, options, sameOriginWithAncestors)/sameOriginWithAncestors}}
+        argument passed to this [=internal method=] is [FALSE], else `undefined`.
 
 1. Let |clientDataJSON| be the [=JSON-compatible serialization of client data=] constructed from |collectedClientData|.
 
@@ -2227,6 +2242,61 @@ During the above process, the user agent SHOULD show some UI to the user to guid
 authorizing an authenticator. When <code>|options|.{{CredentialCreationOptions/mediation}}</code> is set to {{CredentialMediationRequirement/conditional}}, prominent modal UI should <i>not</i> be shown <i>unless</i> credential creation was previously consented to via means determined by the user agent.
 </div>
 
+#### Create Request Exceptions #### {#sctn-create-request-exceptions}
+
+[INFORMATIVE]
+
+[=[WRPS]=] can encounter a number of exceptions from a call to {{CredentialsContainer/create()|navigator.credentials.create()}}.
+Some exceptions can have multiple reasons for why they happened,
+requiring the [=[WRPS]=] to infer the actual reason based on their use of WebAuthn.
+
+Note: Exceptions that can be raised during processing of any [=WebAuthn Extensions=],
+including ones defined outside of this specification,
+are not listed here.
+
+The following {{DOMException}} exceptions can be raised:
+
+<dl>
+    :   {{AbortError}}
+    ::  The ceremony was cancelled by an {{AbortController}}.
+        See [[#sctn-abortoperation]] and [[#sctn-sample-aborting]].
+
+    :   {{ConstraintError}}
+    ::  Either {{residentKey}} was set to {{ResidentKeyRequirement/required}} and no available authenticator supported resident keys,
+        or {{AuthenticatorSelectionCriteria/userVerification}} was set to {{UserVerificationRequirement/required}} and no available authenticator could perform [=user verification=].
+
+    :   {{InvalidStateError}}
+    ::  The authenticator used in the ceremony recognized an entry in {{PublicKeyCredentialCreationOptions/excludeCredentials}}
+        after the user [=user consent|consented=] to registering a credential.
+
+    :   {{NotSupportedError}}
+    ::  No entry in {{PublicKeyCredentialCreationOptions/pubKeyCredParams}} had a {{PublicKeyCredentialDescriptor/type}} property of {{PublicKeyCredentialType/public-key}},
+        or the [=authenticator=] did not support any of the signature algorithms specified in {{PublicKeyCredentialCreationOptions/pubKeyCredParams}}.
+
+    :   {{SecurityError}}
+    ::  The [=effective domain=] was not a [=valid domain=],
+        or <code>{{PublicKeyCredentialCreationOptions/rp}}.{{PublicKeyCredentialRpEntity/id}}</code> was not equal to or a registrable domain suffix of the [=effective domain=].
+        In the latter case,
+        the [=client=] does not support [[#sctn-related-origins|related origin requests]]
+        or the [$related origins validation procedure$] failed.
+
+    :   {{NotAllowedError}}
+    ::  A catch-all error covering a wide range of possible reasons,
+        including common ones like the user canceling out of the ceremony.
+        Some of these causes are documented throughout this spec,
+        while others are client-specific.
+
+</dl>
+
+The following [=simple exceptions=] can be raised:
+
+<dl>
+
+    :   {{TypeError}}
+    ::  The <code>|options|</code> argument was not a valid <code>[[#sctn-credentialcreationoptions-extension|CredentialCreationOptions]]</code> value,
+        or the value of <code>{{PublicKeyCredentialCreationOptions/user}}.{{PublicKeyCredentialUserEntity/id}}</code> was empty or was longer than 64 bytes.
+
+</dl>
 
 ### Use an Existing Credential to Make an Assertion - PublicKeyCredential's `[[Get]](options)` Method ### {#sctn-getAssertion}
 
@@ -2250,12 +2320,13 @@ for="PublicKeyCredential" method>\[[CollectFromCredentialStore]](origin, options
 {{Credential/[[CollectFromCredentialStore]]()|Credential.[[CollectFromCredentialStore]]()}}, of returning an empty set.
 
 In general, the user agent SHOULD show some UI to the user to guide them in selecting and authorizing an authenticator with which
-to complete the operation. By setting <code>|options|.{{CredentialRequestOptions/mediation}}</code> to {{CredentialMediationRequirement/conditional}}, [=[RPS]=] can indicate that a prominent modal UI should <i>not</i> be shown <i>unless</i> credentials are discovered. [=[RP]=]
-script SHOULD first check that {{PublicKeyCredential/isConditionalMediationAvailable()}} returns [TRUE] in order to avoid
-the possibility of causing a user-visible error to be returned if the user agent does not support
-{{CredentialMediationRequirement/conditional}} [=user mediation=].
+to complete the operation. By setting <code>|options|.{{CredentialRequestOptions/mediation}}</code> to {{CredentialMediationRequirement/conditional}}, [=[RPS]=] can indicate that a prominent modal UI should <i>not</i> be shown <i>unless</i> credentials are discovered.
+The [=[RP]=] SHOULD first use {{PublicKeyCredential/isConditionalMediationAvailable()}}
+or {{PublicKeyCredential/getClientCapabilities()}}
+to check that the [=client=] supports the {{ClientCapability/conditionalGet}} capability
+in order to prevent a user-visible error in case this feature is not available.
 
-This
+Any
 {{CredentialsContainer/get()|navigator.credentials.get()}} operation can be aborted by leveraging the {{AbortController}};
 see [[dom#abortcontroller-api-integration]] for detailed instructions.
 
@@ -2340,19 +2411,31 @@ When this method is invoked, the user agent MUST execute the following algorithm
         PKI-based security.
 
         <li id='GetAssn-DetermineRpId'>
-            If <code>|pkOptions|.{{PublicKeyCredentialRequestOptions/rpId}}</code> is not present, then set |rpId| to
-                |effectiveDomain|.
+            If <code>|pkOptions|.{{PublicKeyCredentialRequestOptions/rpId}}</code>
+                <dl class="switch">
 
-                Otherwise:
+                    :   is present
+                    ::  If <code>|pkOptions|.{{PublicKeyCredentialRequestOptions/rpId}}</code> [=is not a
+                        registrable domain suffix of and is not equal to=] |effectiveDomain|, and if the client
 
-                1. If <code>|pkOptions|.{{PublicKeyCredentialRequestOptions/rpId}}</code> [=is not a registrable domain suffix of and is not
-                    equal to=] |effectiveDomain|, throw a "{{SecurityError}}" {{DOMException}}.
+                        <dl class="switch">
+                            :   supports [[#sctn-related-origins|related origin requests]]
+                            ::  1. Let |rpIdRequested| be the value of <code>|pkOptions|.{{PublicKeyCredentialRequestOptions/rpId}}</code>
 
-                1. Set |rpId| to <code>|pkOptions|.{{PublicKeyCredentialRequestOptions/rpId}}</code>.
+                                1. Run the [$related origins validation procedure$] with arguments |callerOrigin| and |rpIdRequested|.
+                                    If the result is [FALSE], throw a "{{SecurityError}}" {{DOMException}}.
 
-                    Note: |rpId| represents the caller's [=RP ID=]. The [=RP ID=] defaults to being the caller's [=environment
-                    settings object/origin=]'s [=effective domain=] unless the caller has explicitly set
-                    <code>|pkOptions|.{{PublicKeyCredentialRequestOptions/rpId}}</code> when calling {{CredentialsContainer/get()}}.
+                            :   does not support [[#sctn-related-origins|related origin requests]]
+                            ::  throw a "{{SecurityError}}" {{DOMException}}.
+                        </dl>
+
+                    :   is not present
+                    ::  Set <code>|pkOptions|.{{PublicKeyCredentialRequestOptions/rpId}}</code> to |effectiveDomain|.
+                </dl>
+
+            Note: |rpId| represents the caller's [=RP ID=]. The [=RP ID=] defaults to being the caller's [=environment
+            settings object/origin=]'s [=effective domain=] unless the caller has explicitly set
+            <code>|pkOptions|.{{PublicKeyCredentialRequestOptions/rpId}}</code> when calling {{CredentialsContainer/get()}}.
         </li>
 
 1. Let |clientExtensions| be a new [=map=] and let |authenticatorExtensions| be a new [=map=].
@@ -2377,14 +2460,14 @@ When this method is invoked, the user agent MUST execute the following algorithm
     :: The [=base64url encoding=] of |pkOptions|.{{PublicKeyCredentialRequestOptions/challenge}}
     : {{CollectedClientData/origin}}
     :: The [=ascii serialization of an origin|serialization of=] |callerOrigin|.
-    : {{CollectedClientData/topOrigin}}
-    :: The [=ascii serialization of an origin|serialization of=] |callerOrigin|'s [=top-level origin=] if
-        the {{PublicKeyCredential/[[DiscoverFromExternalSource]](origin, options, sameOriginWithAncestors)/sameOriginWithAncestors}}
-        argument passed to this [=internal method=] is [FALSE], else `undefined`.
     : {{CollectedClientData/crossOrigin}}
     :: The inverse of the value of the
         {{PublicKeyCredential/[[DiscoverFromExternalSource]](origin, options, sameOriginWithAncestors)/sameOriginWithAncestors}}
         argument passed to this [=internal method=].
+    : {{CollectedClientData/topOrigin}}
+    :: The [=ascii serialization of an origin|serialization of=] |callerOrigin|'s [=top-level origin=] if
+        the {{PublicKeyCredential/[[DiscoverFromExternalSource]](origin, options, sameOriginWithAncestors)/sameOriginWithAncestors}}
+        argument passed to this [=internal method=] is [FALSE], else `undefined`.
 
 1. Let |clientDataJSON| be the [=JSON-compatible serialization of client data=] constructed from |collectedClientData|.
 
@@ -2729,6 +2812,47 @@ The steps for [=issuing a credential request to an authenticator=] are as follow
 
     1. Return [TRUE].
 
+#### Get Request Exceptions #### {#sctn-get-request-exceptions}
+
+[INFORMATIVE]
+
+[=[WRPS]=] can encounter a number of exceptions from a call to {{CredentialsContainer/get()|navigator.credentials.get()}}.
+Some exceptions can have multiple reasons for why they happened,
+requiring the [=[WRPS]=] to infer the actual reason based on their use of WebAuthn.
+
+Note: Exceptions that can be raised during processing of any [=WebAuthn Extensions=],
+including ones defined outside of this specification,
+are not listed here.
+
+The following {{DOMException}} exceptions can be raised:
+
+<dl>
+    :   {{AbortError}}
+    ::  The ceremony was cancelled by an {{AbortController}}.
+        See [[#sctn-abortoperation]] and [[#sctn-sample-aborting]].
+
+    :   {{SecurityError}}
+    ::  The [=effective domain=] was not a [=valid domain=],
+        or <code>{{PublicKeyCredentialCreationOptions/rp}}.{{PublicKeyCredentialRpEntity/id}}</code> was not equal to or a registrable domain suffix of the [=effective domain=].
+        In the latter case,
+        the [=client=] does not support [[#sctn-related-origins|related origin requests]]
+        or the [$related origins validation procedure$] failed.
+
+    :   {{NotAllowedError}}
+    ::  A catch-all error covering a wide range of possible reasons,
+        including common ones like the user canceling out of the ceremony.
+        Some of these causes are documented throughout this spec,
+        while others are client-specific.
+</dl>
+
+The following [=simple exceptions=] can be raised:
+
+<dl>
+
+    :   {{TypeError}}
+    ::  The <code>|options|</code> argument was not a valid <code>[[#sctn-credentialrequestoptions-extension|CredentialRequestOptions]]</code> value.
+
+</dl>
 
 ### Store an Existing Credential - PublicKeyCredential's `[[Store]](credential, sameOriginWithAncestors)` Method ### {#sctn-storeCredential}
 
@@ -2864,8 +2988,8 @@ value and terminate the operation.
     };
 
     dictionary PublicKeyCredentialDescriptorJSON {
-        required Base64URLString        id;
         required DOMString              type;
+        required Base64URLString        id;
         sequence<DOMString>             transports;
     };
 
@@ -2915,6 +3039,292 @@ value and terminate the operation.
 </xmp>
 
 </div>
+
+### Signal Credential Changes to the Authenticator - PublicKeyCredential's [=signal methods=] ### {#sctn-signal-methods}
+
+<xmp class="idl">
+    partial interface PublicKeyCredential {
+        static Promise<undefined> signalUnknownCredential(UnknownCredentialOptions options);
+        static Promise<undefined> signalAllAcceptedCredentials(AllAcceptedCredentialsOptions options);
+        static Promise<undefined> signalCurrentUserDetails(CurrentUserDetailsOptions options);
+    };
+
+    dictionary UnknownCredentialOptions {
+        required DOMString                     rpId;
+        required Base64URLString               credentialId;
+    };
+
+    dictionary AllAcceptedCredentialsOptions {
+        required DOMString                     rpId;
+        required Base64URLString               userId;
+        required sequence<Base64URLString>     allAcceptedCredentialIds;
+    };
+
+    dictionary CurrentUserDetailsOptions {
+        required DOMString                     rpId;
+        required Base64URLString               userId;
+        required DOMString                     name;
+        required DOMString                     displayName;
+    };
+</xmp>
+
+[=[WRPS]=] may use these <dfn>signal methods</dfn> to inform [=authenticators=]
+of the state of [=public key credentials=], so that incorrect or revoked
+credentials may be updated, removed, or hidden. [=Clients=] provide this
+functionality opportunistically, since an authenticator may not support updating
+its [=credentials map=] or may not be attached at the time the request is
+made. Furthermore, in order to avoid revealing information about a user's
+credentials without [=user consent=], [=signal methods=] do not indicate whether
+the operation succeeded. A successfully resolved promise only means that the
+<code>options</code> object was well formed.
+
+Each [=signal method=] includes <dfn for="signal method">authenticator
+actions</dfn>. [=Authenticators=] MAY choose to deviate in their [=signal
+method/authenticator actions=] from the present specification, e.g. to ignore a
+change they have a reasonable belief would be contrary to the user's wish, or to
+ask the user before making some change. [=signal method/Authenticator actions=]
+are thus provided as the recommended way to handle [=signal methods=].
+
+In cases where an [=authenticator=] does not have the capability to process an
+[=signal method/authenticator action=], [=clients=] MAY choose to use existing
+infrastructure such as [[!FIDO-CTAP]]'s `authenticatorCredentialManagement`
+command to achieve an equivalent effect.
+
+Note: [=Signal methods=] intentionally avoid waiting for [=authenticators=] to
+complete executing the [=signal method/authenticator actions=]. This measure protects users
+from [=[WRPS]=] gaining information about availability of their credentials
+without [=user consent=] based on the timing of the request.
+
+#### <dfn abstract-op>Asynchronous RP ID validation algorithm</dfn> #### {#sctn-signal-methods-async-rp-id-validation}
+
+The [$Asynchronous RP ID validation algorithm$] lets [=signal methods=] validate
+[=RP IDs=] [=in parallel=]. The algorithm takes a {{DOMString}} |rpId| as input
+and returns a promise that rejects if the validation fails. The steps are:
+
+1. Let |effectiveDomain| be the [=relevant settings object=]'s [=environment
+    settings object/origin=]'s [=effective domain=]. If |effective domain| is
+    not a [=valid domain=], then return [=a promise rejected with=]
+    "{{SecurityError}}" {{DOMException}}.
+1. If |rpId| [=is a registrable domain suffix of or is equal to=]
+    |effectiveDomain|, return [=a promise resolved with=] undefined.
+1. If the client does not support [[#sctn-related-origins|related origin
+    requests]], return [=a promise rejected with=] a "{{SecurityError}}"
+    {{DOMException}}.
+1. Let |p| be [=a new promise=].
+1. Execute the following steps [=in parallel=]:
+    1. If the result of running the [$related origins validation procedure$]
+        with arguments |callerOrigin| and |rpId| is [TRUE], then [=resolve=]
+        |p|.
+    1. Otherwise, [=reject=] |p| with a "{{SecurityError}}" {{DOMException}}.
+1. Return |p|.
+
+#### {{PublicKeyCredential/signalUnknownCredential(options)}} #### {#sctn-signalUnknownCredential}
+
+The {{PublicKeyCredential/signalUnknownCredential(options)|signalUnknownCredential}} method signals that a [=credential id=] was not recognized by the [=[WRP]=],
+e.g. because it was deleted by the user. Unlike {{PublicKeyCredential/signalAllAcceptedCredentials(options)}}, this
+method does not require passing the entire list of accepted [=credential IDs=]
+and the [=userHandle=], avoiding a privacy leak to an unauthenticated caller
+(see [[#sctn-credential-id-privacy-leak]]).
+
+Upon invocation of {{PublicKeyCredential/signalUnknownCredential(options)}},
+the [=client=] executes these steps:
+
+1. If the result of [=base64url encoding | base64url decoding=]
+    <code>|options|.{{UnknownCredentialOptions/credentialId}}</code> is an
+    error, then return [=a promise rejected with=] a {{TypeError}}.
+1. Let |p| be the result of executing the [$Asynchronous RP ID validation
+    algorithm$] with <code>|options|.{{UnknownCredentialOptions/rpId}}</code>.
+1. [=Upon fulfillment=] of |p|, run the following steps [=in parallel=]:
+    1. For every [=authenticator=] presently available on this [=client
+        platform=], invoke the [=signal method/authenticator
+        action/unknownCredentialId=] [=authenticator action=] with |options| as
+        input.
+1. Return |p|.
+
+The <dfn for="signal method/authenticator action">unknownCredentialId</dfn>
+[=signal method/authenticator action=] takes an {{UnknownCredentialOptions}}
+|options| and is as follows:
+1. [=map/For each=] [=public key credential source=] |credential| in the
+    [=authenticator=]'s [=credential map=]:
+    1. If the |credential|'s [=public key credential source/rpId=] equals
+        <code>|options|.{{UnknownCredentialOptions/rpId}}</code> and the
+        |credential|'s [=public key credential source/id=] equals the result of
+        [=base64url encoding | base64url decoding=]
+        <code>|options|.{{UnknownCredentialOptions/credentialId}}</code>,
+        [=map/remove=] |credential| from the [=credentials map=] or employ an
+        [=authenticator=]-specific procedure to hide it from future
+        [=authentication ceremonies=].
+
+<div class="example">
+
+A user deletes a [=credential=] on a [=[WRP]=] provided UI. Later, when trying
+to authenticate to the [=[WRP]=] with an [=list/empty=]
+{{PublicKeyCredentialRequestOptions/allowCredentials}}, the [=authenticator=] UI
+offers them the [=credential=] they previously deleted. The user selects that
+[=credential=]. After rejecting the sign-in attempt, the [=[WRP]=] runs:
+
+```javascript
+PublicKeyCredential.signalUnknownCredential({
+    rpId: "example.com",
+    credentialId: "aabbcc"  // credential id the user just tried, base64url
+});
+```
+
+The [=authenticator=] then deletes or hides the [=credential=] from future
+[=authentication ceremonies=].
+
+</div>
+
+#### {{PublicKeyCredential/signalAllAcceptedCredentials(options)}} #### {#sctn-signalAllAcceptedCredentials}
+
+Signals the complete list of [=credential ids=] for a given user. [=[WRPS]=]
+SHOULD prefer this method over {{PublicKeyCredential/signalUnknownCredential()}}
+when the user is authenticated and therefore there is no privacy leak risk (see
+[[#sctn-credential-id-privacy-leak]]), since the list offers a full snapshot of
+a user's [=public key credentials=] and might reflect changes that haven't yet
+been reported to currently attached authenticators.
+
+Upon invocation of
+{{PublicKeyCredential/signalAllAcceptedCredentials(options)}}, the [=client=]
+executes these steps:
+
+1. If the result of [=base64url encoding | base64url decoding=]
+    <code>|options|.{{AllAcceptedCredentialsOptions/userId}}</code> is an
+    error, then return [=a promise rejected with=] a {{TypeError}}.
+1. [=list/For each=] |credentialId| in
+    <code>|options|.{{AllAcceptedCredentialsOptions/allAcceptedCredentialIds}}</code>:
+    1. If the result of [=base64url encoding | base64url decoding=]
+        |credentialId| is an error, then return [=a promise rejected with=] a
+        {{TypeError}}.
+1. Let |p| be the result of executing the [$Asynchronous RP ID validation
+    algorithm$] with
+    <code>|options|.{{AllAcceptedCredentialsOptions/rpId}}</code>.
+1. [=Upon fulfillment=] of |p|, run the following steps [=in parallel=]:
+        1. For every [=authenticator=] presently available on this [=client
+            platform=], invoke the [=signal method/authenticator
+            actions/allAcceptedCredentialIds=] [=authenticator action=] with
+            |options| as input.
+1. Return |p|.
+
+The <dfn for="signal method/authenticator
+actions">allAcceptedCredentialIds</dfn> [=signal method/authenticator
+actions=] take an {{AllAcceptedCredentialsOptions}} |options| and are as
+follows:
+1. Let |userId| be result of [=base64url encoding | base64url decoding=]
+    <code>|options|.{{AllAcceptedCredentialsOptions/userId}}</code>.
+1. Assertion: |userId| is not an error.
+1. Let |credential| be
+    <code>[=credentials map=][|options|.{{AllAcceptedCredentialsOptions/rpId}}, |userId|]</code>.
+1. If |credential| does not exist, abort these steps.
+1. If
+    <code>|options|.{{AllAcceptedCredentialsOptions/allAcceptedCredentialIds}}</code>
+    does NOT [=list/contain=] the result of [=base64url encoding=] the
+    |credential|'s [=public key credential source/id=], then [=map/remove=]
+    |credential| from the [=credentials map=] or employ an
+    [=authenticator=]-specific procedure to hide it from future [=authentication
+    ceremonies=].
+1. Else, if |credential| has been hidden by an [=authenticator=]-specific
+    procecure, reverse the action so that |credential| is present in future
+    [=authentication ceremonies=].
+
+<div class="example">
+
+A user has two credentials with [=credential ids=] that [=base64url encode=] to
+`aa` and `bb`. The user deletes the credential `aa` on a [=[WRP]=] provided UI.
+The [=[WRP]=] runs:
+
+```javascript
+PublicKeyCredential.signalAllAcceptedCredentials({
+    rpId: "example.com",
+    userId: "aabbcc",  // user handle, base64url.
+    allAcceptedCredentialIds: [
+        "bb",
+    ]
+});
+```
+
+If the [=authenticator=] is attached at the time of execution, it deletes or
+hides the [=credential=] corresponding to `aa` from future [=authentication
+ceremonies=].
+
+</div>
+
+Note: [=Authenticators=] may not be attached at the time
+{{PublicKeyCredential/signalAllAcceptedCredentials(options)}} is executed.
+Therefore, [=[WRPS]=] may choose to run
+{{PublicKeyCredential/signalAllAcceptedCredentials(options)}} periodically,
+e.g. on every sign in.
+
+Note: Credentials not present in
+{{AllAcceptedCredentialsOptions/allAcceptedCredentialIds}} will be removed or
+hidden, potentially irreversibly. [=Relying parties=] must exercise care that
+valid credential IDs are never omitted from the list. If a valid [=credential
+ID=] were accidentally omitted, the [=relying party=] should immediately include
+it in {{PublicKeyCredential/signalAllAcceptedCredentials(options)}} as soon as
+possible to "unhide" it, if supported by the [=authenticator=].
+
+Note: [=Authenticators=] should prefer hiding [=public key credentials=] for a period of time instead
+of permanently removing them whenever possible to aid recovery if a [=[WRP]=]
+accidentally omits valid [=credential IDs=] from
+{{AllAcceptedCredentialsOptions/allAcceptedCredentialIds}}.
+
+#### {{PublicKeyCredential/signalCurrentUserDetails(options)}} #### {#sctn-signalCurrentUserDetails}
+
+The {{PublicKeyCredential/signalCurrentUserDetails(options)|signalCurrentUserDetails}} method signals the user's
+current {{PublicKeyCredentialEntity/name}} and {{PublicKeyCredentialUserEntity/displayName}}.
+
+Upon invocation of {{PublicKeyCredential/signalCurrentUserDetails(options)}}, the
+[=client=] executes these steps:
+
+1. If the result of [=base64url encoding | base64url decoding=]
+    <code>|options|.{{CurrentUserDetailsOptions/userId}}</code> is an error,
+    then return [=a promise rejected with=] a {{TypeError}}.
+1. Let |p| be the result of executing the [$Asynchronous RP ID validation
+    algorithm$] with
+    <code>|options|.{{CurrentUserDetailsOptions/rpId}}</code>.
+1. [=Upon fulfillment=] of |p|, run the following steps [=in parallel=]:
+        1. For every [=authenticator=] presently available on this [=client
+            platform=], invoke the [=signal method/authenticator
+            actions/currentUserDetails=] [=authenticator action=] with |options|
+            as input.
+1. Return |p|.
+
+The <dfn for="signal method/authenticator actions">currentUserDetails</dfn>
+[=signal method/authenticator action=] takes a {{CurrentUserDetailsOptions}}
+|options| and is as follows:
+1. Let |userId| be result of [=base64url encoding | base64url decoding=]
+    <code>|options|.{{CurrentUserDetailsOptions/userId}}</code>.
+1. Assertion: |userId| is not an error.
+1. Let |credential| be
+    <code>[=credentials map=][|options|.{{CurrentUserDetailsOptions/rpId}}, |userId|]</code>.
+1. If |credential| does not exist, abort these steps.
+1. Update the |credential|'s [=public key credential source/otherUI=] to match
+    <code>|options|.{{CurrentUserDetailsOptions/name}}</code> and
+    <code>|options|.{{CurrentUserDetailsOptions/displayName}}</code>.
+
+<div class="example">
+
+A user updates their name on a [=[WRP]=] provided UI. The [=[WRP]=] runs:
+
+```javascript
+PublicKeyCredential.signalCurrentUserDetails({
+    rpId: "example.com",
+    userId: "aabbcc",  // user handle, base64url.
+    name: "New user name",
+    displayName: "New display name"
+});
+```
+
+The [=authenticator=] then updates the [=public key credential source/otherUI=]
+of the matching credential.
+
+</div>
+
+Note: [=Authenticators=] may not be attached at the time
+{{PublicKeyCredential/signalCurrentUserDetails(options)}} is executed.
+Therefore, [=[WRPS]=] may choose to run
+{{PublicKeyCredential/signalCurrentUserDetails(options)}} periodically, e.g. on
+every sign in.
 
 ## Authenticator Responses (interface <dfn interface>AuthenticatorResponse</dfn>) ## {#iface-authenticatorresponse}
 
@@ -3225,7 +3635,9 @@ associated with or [=scoped=] to, respectively.
 
         When [=clients=], [=client platforms=], or [=authenticators=] display a {{PublicKeyCredentialEntity/name}}'s value, they should always use UI elements to provide a clear boundary around the displayed value, and not allow overflow into other elements [[css-overflow-3]].
 
-        Authenticators MAY truncate a {{PublicKeyCredentialEntity/name}} member's value so that it fits within 64 bytes, if the authenticator stores the value. See [[#sctn-strings-truncation]] about truncation and other considerations.
+        When storing a {{PublicKeyCredentialEntity/name}} member's value,
+        the value MAY be truncated as described in [[#sctn-strings-truncation]]
+        using a size limit greater than or equal to 64 bytes.
 </div>
 
 
@@ -3285,19 +3697,21 @@ credential.
 
         - [=[RPS]=] SHOULD perform enforcement, as prescribed in Section 2.3 of
             [[!RFC8266]] for the Nickname Profile of the PRECIS FreeformClass [[!RFC8264]],
-            when setting {{PublicKeyCredentialUserEntity/displayName}}'s value, or displaying the value to the user.
+            when setting {{PublicKeyCredentialUserEntity/displayName}}'s value to a non-empty string,
+            or displaying a non-empty value to the user.
 
         - This string MAY contain language and direction metadata. [=[RPS]=] SHOULD consider providing this information. See [[#sctn-strings-langdir]] about how this metadata is encoded.
 
         - [=Clients=] SHOULD perform enforcement, as prescribed in Section 2.3 of
             [[!RFC8266]] for the Nickname Profile of the PRECIS FreeformClass [[!RFC8264]],
-            on {{PublicKeyCredentialUserEntity/displayName}}'s value prior to displaying the value to the user or
-            including the value as a parameter of the [=authenticatorMakeCredential=] operation.
+            on {{PublicKeyCredentialUserEntity/displayName}}'s value prior to displaying a non-empty value to the user or
+            including a non-empty value as a parameter of the [=authenticatorMakeCredential=] operation.
 
         When [=clients=], [=client platforms=], or [=authenticators=] display a {{PublicKeyCredentialUserEntity/displayName}}'s value, they should always use UI elements to provide a clear boundary around the displayed value, and not allow overflow into other elements [[css-overflow-3]].
 
-        [=Authenticators=] MUST accept and store a 64-byte minimum length for a {{PublicKeyCredentialUserEntity/displayName}}
-        member's value. Authenticators MAY truncate a {{PublicKeyCredentialUserEntity/displayName}} member's value so that it fits within 64 bytes. See [[#sctn-strings-truncation]] about truncation and other considerations.
+        When storing a {{PublicKeyCredentialUserEntity/displayName}} member's value,
+        the value MAY be truncated as described in [[#sctn-strings-truncation]]
+        using a size limit greater than or equal to 64 bytes.
 </div>
 
 
@@ -3472,7 +3886,7 @@ an assertion. Its {{PublicKeyCredentialRequestOptions/challenge}} member MUST be
     dictionary PublicKeyCredentialRequestOptions {
         required BufferSource                challenge;
         unsigned long                        timeout;
-        USVString                            rpId;
+        DOMString                            rpId;
         sequence<PublicKeyCredentialDescriptor> allowCredentials = [];
         DOMString                            userVerification = "preferred";
         sequence<DOMString>                  hints = [];
@@ -3655,8 +4069,8 @@ Note: The {{CollectedClientData}} may be extended in the future. Therefore it's 
         required DOMString           type;
         required DOMString           challenge;
         required DOMString           origin;
-        DOMString                    topOrigin;
         boolean                      crossOrigin;
+        DOMString                    topOrigin;
     };
 
     dictionary TokenBinding {
@@ -3681,14 +4095,14 @@ Note: The {{CollectedClientData}} may be extended in the future. Therefore it's 
     ::  This member contains the fully qualified [=origin=] of the requester, as provided to the authenticator by the client, in
         the syntax defined by [[!RFC6454]].
 
+    :   <dfn>crossOrigin</dfn>
+    ::  This OPTIONAL member contains the inverse of the `sameOriginWithAncestors` argument value
+        that was passed into the [=internal method=].
+
     :   <dfn>topOrigin</dfn>
     ::  This OPTIONAL member contains the fully qualified [=top-level origin=] of the requester, in the syntax defined
         by [[!RFC6454]]. It is set only if the call was made from context that is not [=same-origin with its
         ancestors=], i.e. if {{CollectedClientData/crossOrigin}} is [TRUE].
-
-    :   <dfn>crossOrigin</dfn>
-    ::  This OPTIONAL member contains the inverse of the `sameOriginWithAncestors` argument value
-        that was passed into the [=internal method=].
 
         <!-- Setting explicit dfn ID (this becomes the fragment part of the anchor URL) for backwards compatibility;
              without this Bikeshed generates the ID "collectedclientdata-tokenbinding". -->
@@ -3992,23 +4406,36 @@ Note: The {{UserVerificationRequirement}} enumeration is deliberately not refere
 <xmp class="idl">
     enum ClientCapability {
         "conditionalCreate",
-        "conditionalMediation",
+        "conditionalGet",
         "hybridTransport",
         "passkeyPlatformAuthenticator",
         "userVerifyingPlatformAuthenticator",
+        "relatedOrigins",
+        "signalAllAcceptedCredentials",
+        "signalCurrentUserDetails",
+        "signalUnknownCredential"
     };
 </xmp>
 
 This enumeration defines a limited set of client capabilities which a [=[WRP]=] may evaluate to offer certain workflows and experiences to users.
 
+[=[RPS]=] may use the {{PublicKeyCredential/getClientCapabilities()}} method of {{PublicKeyCredential}}
+to obtain a description of available capabilities.
+
 Note: The {{ClientCapability}} enumeration is deliberately not referenced, see [[#sct-domstring-backwards-compatibility]].
 
 <div dfn-type="enum-value" dfn-for="ClientCapability">
     :   <dfn>conditionalCreate</dfn>
-    ::  The [=WebAuthn Client=] is capable of a {{CredentialMediationRequirement/conditional}} credential creation operation.
+    ::  The [=WebAuthn Client=] is capable of {{CredentialMediationRequirement/conditional}} mediation for [=registration ceremonies=]..
 
-    :   <dfn>conditionalMediation</dfn>
-    ::  The [=WebAuthn Client=] is capable of {{CredentialMediationRequirement/conditional}} mediation.
+        See [[#sctn-createCredential]] for more details.
+
+    :   <dfn>conditionalGet</dfn>
+    ::  The [=WebAuthn Client=] is capable of {{CredentialMediationRequirement/conditional}} mediation for [=authentication ceremonies=].
+
+        This capability is equivalent to {{PublicKeyCredential/isConditionalMediationAvailable()}} resolving to [TRUE].
+
+        See [[#sctn-getAssertion]] for more details.
 
     :   <dfn>hybridTransport</dfn>
     ::  The [=WebAuthn Client=] supports usage of the {{AuthenticatorTransport/hybrid}} transport.
@@ -4018,6 +4445,18 @@ Note: The {{ClientCapability}} enumeration is deliberately not referenced, see [
 
     :   <dfn>userVerifyingPlatformAuthenticator</dfn>
     ::  The [=WebAuthn Client=] supports usage of a [=user-verifying platform authenticator=].
+
+    :   <dfn>relatedOrigins</dfn>
+    ::  The [=WebAuthn Client=] supports [[#sctn-related-origins|Related Origin Requests]].
+
+    :   <dfn>signalAllAcceptedCredentials</dfn>
+    ::  The [=WebAuthn Client=] supports {{PublicKeyCredential/signalAllAcceptedCredentials()}}.
+
+    :   <dfn>signalCurrentUserDetails</dfn>,
+    ::  The [=WebAuthn Client=] supports {{PublicKeyCredential/signalCurrentUserDetails()}}.
+
+    :   <dfn>signalUnknownCredential</dfn>
+    ::  The [=WebAuthn Client=] supports {{PublicKeyCredential/signalUnknownCredential()}}.
 </div>
 
 ### User-agent Hints Enumeration (enum <dfn enum>PublicKeyCredentialHints</dfn>) ### {#enum-hints}
@@ -4079,7 +4518,62 @@ To override this default policy and indicate that a cross-origin <{iframe}> is a
 
 [=[RPS]=] utilizing the WebAuthn API in an embedded context should review [[#sctn-seccons-visibility]] regarding [=UI redressing=] and its possible mitigations.
 
+## Using Web Authentication across related origins ## {#sctn-related-origins}
 
+By default, Web Authentication requires that the [=RP ID=] be equal to the [=determines the set of origins on which the public key credential may be exercised|origin=]'s [=effective domain=], or a [=is a registrable domain suffix of or is equal to|registrable domain suffix=] of the [=determines the set of origins on which the public key credential may be exercised|origin=]'s [=effective domain=].
+
+This can make deployment challenging for large environments where multiple country-specific domains are in use (e.g. example.com vs example.co.uk vs example.sg), where alternative or brand domains are required (e.g. myexampletravel.com vs examplecruises.com), and/or where platform as a service providers are used to support mobile apps. 
+
+[=[WRPS]=] can opt in to allowing [=WebAuthn Clients=] to enable a credential to be created and used across a limited set of related [=origin|origins=].
+Such [=[RPS]=] MUST choose a common [=RP ID=] to use across all ceremonies from related origins.
+
+A JSON document MUST be hosted at the `webauthn` well-known URL [[!RFC8615]] for the [=RP ID=]. The JSON document MUST be returned as follows:
+
+    - The content type MUST be `application/json`.
+    - The top-level JSON object MUST contain a key named `origins` whose value MUST be an array of one or more strings containing web origins.
+
+For example, for the RP ID `example.com`:
+
+<xmp class="json" highlight="json">
+{
+    "origins": [
+        "https://example.co.uk",
+        "https://example.de",
+        "https://example.sg",
+        "https://example.net",
+        "https://exampledelivery.com",
+        "https://exampledelivery.co.uk",
+        "https://exampledelivery.de",
+        "https://exampledelivery.sg",
+        "https://myexamplerewards.com",
+        "https://examplecars.com"
+    ]
+}
+</xmp>
+
+[=WebAuthn Clients=] supporting this feature MUST support at least five [=registrable origin labels=]. Client policy SHOULD define an upper limit to prevent abuse.
+
+[=WebAuthn Clients=] supporting this feature SHOULD include {{ClientCapability/relatedOrigins}} in their response to [[#sctn-getClientCapabilities|getClientCapabilities()]].
+
+### Validating Related Origins ### {#sctn-validating-relation-origin}
+
+The <dfn abstract-op>related origins validation procedure</dfn>, given arguments |callerOrigin| and |rpIdRequested|, is as follows:
+
+1. Let |maxLabels| be the maximum number of [=registrable origin labels=] allowed by client policy.
+1. Fetch the `webauthn` well-known URL [[!RFC8615]] for the RP ID |rpIdRequested| (i.e., <code>https://|rpIdRequested|/.well-known/webauthn</code>).
+    1. If the fetch fails, the response does not have a content type of `application/json`, or does not have a status code (after following redirects) of 200, then throw a "{{SecurityError}}" {{DOMException}}.
+    1. If the body of the resource is not a valid JSON object, then throw a "{{SecurityError}}" {{DOMException}}.
+    1. If the value of the |origins| property of the JSON object is missing, or is not an array of strings, then throw a "{{SecurityError}}" {{DOMException}}.
+1. Let |labelsSeen| be a new empty [=set=].
+1. [=set/For each=] |originItem| of |origins|:
+    1. Let |url| be the result of running the [=URL parser=] with |originItem| as the input. If that fails, [=continue=].
+    1. Let |domain| be the [=effective domain=] of |url|. If that is null, [=continue=].
+    1. Let |label| be [=registrable origin label=] of |domain|.
+    1. If |label| is empty or null, [=continue=].
+    1. If the [=set/size=] of |labelsSeen| is greater than or equal to |maxLabels| and |labelsSeen| does not [=set/contain=] |label|, [=continue=].
+    1. If |callerOrigin| and |url| are [=same origin=], return [TRUE].
+    1. If the [=set/size=] of |labelsSeen| is less than |maxLabels|, [=set/append=] |label| to |labelsSeen|.
+1. Return [FALSE].
 
 # WebAuthn <dfn>Authenticator Model</dfn> # {#sctn-authenticator-model}
 
@@ -4953,23 +5447,63 @@ Authenticators may be required to store arbitrary strings chosen by a [=[RP]=], 
 
 ### String Truncation ### {#sctn-strings-truncation}
 
-Each arbitrary string in the API will have some accommodation for the potentially limited resources available to an [=authenticator=]. If string value truncation is the chosen accommodation then authenticators MAY truncate in order to make the string fit within a length equal or greater than the specified minimum supported length. Such truncation SHOULD also respect UTF-8 sequence boundaries or [=grapheme cluster=] boundaries [[UAX29]]. This defines the maximum truncation permitted and authenticators MUST NOT truncate further.
+Each arbitrary string in the API will have some accommodation for the potentially limited resources available to an [=authenticator=].
+When the chosen accommodation is string truncation, care needs to be taken to not corrupt the string value.
 
-For example, in <a href="#fig-stringTruncation">figure <span class="figure-num-following"></span></a> the string is 65 bytes long. If truncating to 64 bytes then the final 0x88 byte must be removed purely because of space reasons. Since that leaves a partial UTF-8 sequence the remainder of that sequence may also be removed. Since that leaves a partial [=grapheme cluster=] an authenticator may remove the remainder of that cluster.
+For example, truncation based on Unicode code points alone may cause a [=grapheme cluster=] to be truncated.
+This could make the grapheme cluster render as a different glyph,
+potentially changing the meaning of the string, instead of removing the glyph entirely.
+For example, <a href="#fig-stringTruncation">figure <span class="figure-num-following"></span></a>
+shows the end of a UTF-8 encoded string whose encoding is 65 bytes long.
+If truncating to 64 bytes then the final 0x88 byte is removed first to satisfy the size limit.
+Since that leaves a partial UTF-8 code point, the remainder of that code point must also be removed.
+Since that leaves a partial [=grapheme cluster=], the remainder of that cluster should also be removed.
 
 <figure id="fig-stringTruncation">
     <img src="images/string-truncation.svg"></img>
     <figcaption>The end of a UTF-8 encoded string showing the positions of different truncation boundaries.</figcaption>
 </figure>
 
-[=Conforming User Agents=] are responsible for ensuring that the authenticator behavior observed by [=[RPS]=] conforms to this specification with respect to string handling. For example, if an authenticator is known to behave incorrectly when asked to store large strings, the user agent SHOULD perform the truncation for it in order to maintain the model from the point of view of the [=[RP]=]. User-agents that do this SHOULD truncate at [=grapheme cluster=] boundaries.
+The responsibility for handling these concerns falls primarily on the [=client=],
+to avoid burdening [=authenticators=] with understanding character encodings and Unicode character properties.
+The following subsections define requirements for how clients and authenticators,
+respectively, may perform string truncation.
 
-Truncation based on UTF-8 sequences alone may cause a [=grapheme cluster=] to be truncated. This could make the grapheme cluster render as a different glyph, potentially changing the meaning of the string, instead of removing the glyph entirely.
 
-In addition to that, truncating on byte boundaries alone causes a known issue that user agents should be aware of: if the authenticator is using [[!FIDO-CTAP]] then future messages from the authenticator may contain invalid CBOR since the value is typed as a CBOR string and thus is required to be valid UTF-8. User agents are tasked with handling this to avoid burdening authenticators with understanding character encodings and Unicode character properties. Thus, when dealing with [=authenticators=], user agents SHOULD:
+#### String Truncation by Clients #### {#sctn-strings-truncation-client}
+
+When a [=[WAC]=] truncates a string,
+the truncation behaviour observable by the [=[RP]=] MUST satisfy the following requirements:
+
+Choose a size limit equal to or greater than the specified minimum supported length.
+The string MAY be truncated so that its length in bytes in the UTF-8 character encoding satisfies that limit.
+This truncation MUST respect UTF-8 code point boundaries, and SHOULD respect [=grapheme cluster=] boundaries [[UAX29]].
+The resulting truncated value MAY be shorter than the chosen size limit
+but MUST NOT be shorter than the longest prefix substring that satisfies the size limit and ends on a [=grapheme cluster=] boundary.
+
+The client MAY let the [=authenticator=] perform the truncation if it satisfies these requirements;
+otherwise the client MUST perform the truncation before relaying the string value to the authenticator.
+
+In addition to the above, truncating on byte boundaries alone causes a known issue that user agents should be aware of: if the authenticator is using [[!FIDO-CTAP]] then future messages from the authenticator may contain invalid CBOR since the value is typed as a CBOR string and thus is required to be valid UTF-8. Thus, when dealing with [=authenticators=], user agents SHOULD:
 
 1. Ensure that any strings sent to authenticators are validly encoded.
 1. Handle the case where strings have been truncated resulting in an invalid encoding. For example, any partial code point at the end may be dropped or replaced with [U+FFFD](http://unicode.org/cldr/utility/character.jsp?a=FFFD).
+
+
+#### String Truncation by Authenticators #### {#sctn-strings-truncation-authenticator}
+
+Because a [=[WAA]=] may be implemented in a constrained environment,
+the requirements on authenticators are relaxed compared to those for [=clients=].
+
+When a [=[WAA]=] truncates a string,
+the truncation behaviour MUST satisfy the following requirements:
+
+Choose a size limit equal to or greater than the specified minimum supported length.
+The string MAY be truncated so that its length in bytes in the UTF-8 character encoding satisfies that limit.
+This truncation SHOULD respect UTF-8 code point boundaries, and MAY respect [=grapheme cluster=] boundaries [[UAX29]].
+The resulting truncated value MAY be shorter than the chosen size limit
+but MUST NOT be shorter than the longest prefix substring that satisfies the size limit and ends on a [=grapheme cluster=] boundary.
+
 
 ### Language and Direction Encoding ### {#sctn-strings-langdir}
 
@@ -5341,10 +5875,10 @@ structures.
 
 In order to perform a [=registration ceremony=], the [=[RP]=] MUST proceed as follows:
 
-1. Let |options| be a new {{PublicKeyCredentialCreationOptions}} structure configured to the [=[RP]=]'s needs for the ceremony.
+1. Let |options| be a new {{CredentialCreationOptions}} structure configured to the [=[RP]=]'s needs for the ceremony.
+    Let |pkOptions| be <code>|options|.{{CredentialCreationOptions/publicKey}}</code>.
 
-1. Call {{CredentialsContainer/create()|navigator.credentials.create()}} and pass |options|
-    as the <code>{{CredentialCreationOptions/publicKey}}</code> option.
+1. Call {{CredentialsContainer/create()|navigator.credentials.create()}} and pass |options| as the argument.
     Let |credential| be the result of the successfully resolved promise.
     If the promise is rejected, abort the ceremony with a user-visible error, or otherwise guide the user experience as
     might be determinable from the context available in the rejected promise. For example if the promise is rejected with
@@ -5372,7 +5906,7 @@ In order to perform a [=registration ceremony=], the [=[RP]=] MUST proceed as fo
 1. Verify that the value of <code>|C|.{{CollectedClientData/type}}</code> is `webauthn.create`.
 
 1. Verify that the value of <code>|C|.{{CollectedClientData/challenge}}</code> equals
-    the base64url encoding of <code>|options|.{{PublicKeyCredentialCreationOptions/challenge}}</code>.
+    the base64url encoding of <code>|pkOptions|.{{PublicKeyCredentialCreationOptions/challenge}}</code>.
 
 <!-- Note: this next step is actually a top-level step, but bikeshed wanted it indented this much in order to render it as
 a numbered step. If outdented, it (today) is rendered as a bullet in the midst of a numbered list :-/
@@ -5414,27 +5948,25 @@ a numbered step. If outdented, it (today) is rendered as a bullet in the midst o
 
 1. Verify that the "alg" parameter in the [=credentialPublicKey|credential public key=] in |authData|
     matches the {{PublicKeyCredentialParameters/alg}} attribute of one of the [=list/items=] in
-    <code>|options|.{{PublicKeyCredentialCreationOptions/pubKeyCredParams}}</code>.
+    <code>|pkOptions|.{{PublicKeyCredentialCreationOptions/pubKeyCredParams}}</code>.
 
     <li id='reg-ceremony-verify-extension-outputs'>
         Verify that the values of the [=client extension outputs=] in |clientExtensionResults| and the [=authenticator extension
         outputs=] in the <code>[=authData/extensions=]</code> in |authData| are as expected, considering the [=client
-        extension input=] values that were given in <code>|options|.{{PublicKeyCredentialCreationOptions/extensions}}</code>
+        extension input=] values that were given in <code>|pkOptions|.{{PublicKeyCredentialCreationOptions/extensions}}</code>
         and any specific policy of the [=[RP]=] regarding unsolicited extensions, i.e., those that were not specified as part of
-        <code>|options|.{{PublicKeyCredentialCreationOptions/extensions}}</code>.
+        <code>|pkOptions|.{{PublicKeyCredentialCreationOptions/extensions}}</code>.
         In the general case, the meaning of "are as expected" is specific to the [=[RP]=] and which extensions are in use.
 
         Note:  [=Client platforms=] MAY enact local policy that sets additional [=authenticator extensions=] or
         [=client extensions=] and thus cause values to appear in the [=authenticator extension outputs=] or
         [=client extension outputs=] that were not originally specified as part of
-        <code>|options|.{{PublicKeyCredentialCreationOptions/extensions}}</code>. [=[RPS]=] MUST be prepared to handle such
+        <code>|pkOptions|.{{PublicKeyCredentialCreationOptions/extensions}}</code>. [=[RPS]=] MUST be prepared to handle such
         situations, whether it be to ignore the unsolicited extensions or reject the attestation. The [=[RP]=] can make this
         decision based on local policy and the extensions in use.
 
         Note: Since all extensions are OPTIONAL for both the [=client=] and the [=authenticator=], the [=[RP]=] MUST also be
         prepared to handle cases where none or not all of the requested extensions were acted upon.
-
-        Note: The [=supplementalPubKeys=] extension has explicit verification procedures, see [[#sctn-supplemental-public-keys-extension-verification-create]].
     </li>
 
 1. Determine the attestation statement format by performing a USASCII case-sensitive match on |fmt| against the set of
@@ -5482,7 +6014,7 @@ a numbered step. If outdented, it (today) is rendered as a bullet in the midst o
     <li id="reg-ceremony-store-credential-record">
         If the attestation statement |attStmt| verified successfully and is found to be trustworthy,
         then create and store a new [=credential record=] in the [=user account=]
-        that was denoted in <code>|options|.{{PublicKeyCredentialCreationOptions/user}}</code>,
+        that was denoted in <code>|pkOptions|.{{PublicKeyCredentialCreationOptions/user}}</code>,
         with the following contents:
 
         <dl>
@@ -5542,10 +6074,10 @@ provide this chain in the attestation information.
 
 In order to perform an [=authentication ceremony=], the [=[RP]=] MUST proceed as follows:
 
-1. Let |options| be a new {{PublicKeyCredentialRequestOptions}} structure configured to the [=[RP]=]'s needs for the ceremony.
+1. Let |options| be a new {{CredentialRequestOptions}} structure configured to the [=[RP]=]'s needs for the ceremony.
+    Let |pkOptions| be <code>|options|.{{CredentialCreationOptions/publicKey}}</code>.
 
-1. Call {{CredentialsContainer/get()|navigator.credentials.get()}} and pass |options|
-    as the <code>{{CredentialRequestOptions/publicKey}}</code> option.
+1. Call {{CredentialsContainer/get()|navigator.credentials.get()}} and pass |options| as the argument.
     Let |credential| be the result of the successfully resolved promise.
     If the promise is rejected, abort the ceremony with a user-visible error, or otherwise guide the user experience as might
     be determinable from the context available in the rejected promise. For information on different error contexts and the
@@ -5556,9 +6088,9 @@ In order to perform an [=authentication ceremony=], the [=[RP]=] MUST proceed as
 
 1. Let |clientExtensionResults| be the result of calling <code>|credential|.{{PublicKeyCredential/getClientExtensionResults()}}</code>.
 
-1. If <code>|options|.{{PublicKeyCredentialRequestOptions/allowCredentials}}</code> [=list/is not empty=],
+1. If <code>|pkOptions|.{{PublicKeyCredentialRequestOptions/allowCredentials}}</code> [=list/is not empty=],
     verify that <code>|credential|.{{Credential/id}}</code> identifies one of the [=public key credentials=]
-    listed in <code>|options|.{{PublicKeyCredentialRequestOptions/allowCredentials}}</code>.
+    listed in <code>|pkOptions|.{{PublicKeyCredentialRequestOptions/allowCredentials}}</code>.
 
 1. Identify the user being authenticated and let |credentialRecord|
     be the [=credential record=] for the [=credential=]:
@@ -5596,7 +6128,7 @@ In order to perform an [=authentication ceremony=], the [=[RP]=] MUST proceed as
 1. Verify that the value of <code>|C|.{{CollectedClientData/type}}</code> is the string `webauthn.get`.
 
 1. Verify that the value of <code>|C|.{{CollectedClientData/challenge}}</code> equals
-    the base64url encoding of <code>|options|.{{PublicKeyCredentialRequestOptions/challenge}}</code>.
+    the base64url encoding of <code>|pkOptions|.{{PublicKeyCredentialRequestOptions/challenge}}</code>.
 
 <!-- Note: this next step is actually a top-level step, but bikeshed wanted it indented this much in order to render it as
 a numbered step. If outdented, it (today) is rendered as a bullet in the midst of a numbered list :-/
@@ -5627,7 +6159,7 @@ a numbered step. If outdented, it (today) is rendered as a bullet in the midst o
 
 1. Determine whether [=user verification=] is required for this assertion.
     [=User verification=] SHOULD be required if, and only if,
-    <code>|options|.{{PublicKeyCredentialRequestOptions/userVerification}}</code> is set to {{UserVerificationRequirement/required}}.
+    <code>|pkOptions|.{{PublicKeyCredentialRequestOptions/userVerification}}</code> is set to {{UserVerificationRequirement/required}}.
 
     If [=user verification=] was determined to be required,
     verify that the [=authData/flags/UV=] bit of the <code>[=flags=]</code> in |authData| is set.
@@ -5652,22 +6184,20 @@ a numbered step. If outdented, it (today) is rendered as a bullet in the midst o
     <li id='authn-ceremony-verify-extension-outputs'>
         Verify that the values of the [=client extension outputs=] in |clientExtensionResults| and the [=authenticator extension
         outputs=] in the <code>[=authData/extensions=]</code> in |authData| are as expected, considering the [=client
-        extension input=] values that were given in <code>|options|.{{PublicKeyCredentialRequestOptions/extensions}}</code>
+        extension input=] values that were given in <code>|pkOptions|.{{PublicKeyCredentialRequestOptions/extensions}}</code>
         and any specific policy of the [=[RP]=] regarding unsolicited extensions, i.e., those that were not specified as part of
-        <code>|options|.{{PublicKeyCredentialRequestOptions/extensions}}</code>.
+        <code>|pkOptions|.{{PublicKeyCredentialRequestOptions/extensions}}</code>.
         In the general case, the meaning of "are as expected" is specific to the [=[RP]=] and which extensions are in use.
 
         Note:  [=Client platforms=] MAY enact local policy that sets additional [=authenticator extensions=] or
         [=client extensions=] and thus cause values to appear in the [=authenticator extension outputs=] or
         [=client extension outputs=] that were not originally specified as part of
-        <code>|options|.{{PublicKeyCredentialRequestOptions/extensions}}</code>. [=[RPS]=] MUST be prepared to handle such
+        <code>|pkOptions|.{{PublicKeyCredentialRequestOptions/extensions}}</code>. [=[RPS]=] MUST be prepared to handle such
         situations, whether it be to ignore the unsolicited extensions or reject the assertion. The [=[RP]=] can make this
         decision based on local policy and the extensions in use.
 
         Note: Since all extensions are OPTIONAL for both the [=client=] and the [=authenticator=], the [=[RP]=] MUST also be
         prepared to handle cases where none or not all of the requested extensions were acted upon.
-
-        Note: The [=supplementalPubKeys=] extension has explicit verification procedures, see [[#sctn-supplemental-public-keys-extension-verification-get]].
     </li>
 
 1. Let |hash| be the result of computing a hash over the |cData| using SHA-256.
@@ -6794,7 +7324,7 @@ This [=client extension|client=] [=registration extension=] and [=authentication
 ::  <xmp class="idl">
     dictionary CredentialPropertiesOutput {
         boolean rk;
-        USVString authenticatorDisplayName;
+        DOMString authenticatorDisplayName;
     };
 
     partial dictionary AuthenticationExtensionsClientOutputs {
@@ -7067,579 +7597,6 @@ However, [=authenticators=] that do not utilize [[!FIDO-CTAP]] do not necessaril
 ## Authenticator Extensions ## {#sctn-defined-authenticator-extensions}
 
 This section defines extensions that are both [=client extensions=] and [=authenticator extensions=].
-
-### <dfn>User Verification Method</dfn> Extension (uvm) ### {#sctn-uvm-extension}
-
-This extension enables use of a user verification method.
-
-: Extension identifier
-:: `uvm`
-
-: Operation applicability
-:: [=registration extension|Registration=] and [=authentication extension|Authentication=]
-
-: Client extension input
-:: The Boolean value [TRUE] to indicate that this extension is requested by the [=[RP]=].
-    <xmp class="idl">
-    partial dictionary AuthenticationExtensionsClientInputs {
-      boolean uvm;
-    };
-    </xmp>
-
-: Client extension processing
-:: None, except creating the authenticator extension input from the client extension input.
-
-: Client extension output
-:: Returns a JSON array of 3-element arrays of numbers that encodes the factors in the authenticator extension output.
-    <xmp class="idl">
-    typedef sequence<unsigned long> UvmEntry;
-    typedef sequence<UvmEntry> UvmEntries;
-
-    partial dictionary AuthenticationExtensionsClientOutputs {
-      UvmEntries uvm;
-    };
-    </xmp>
-
-: Authenticator extension input
-:: The Boolean value [TRUE], encoded in CBOR (major type 7, value 21).
-
-    ```
-    $$extensionInput //= (
-      uvm: true,
-    )
-    ```
-
-: Authenticator extension processing
-:: The [=authenticator=] sets the [=authenticator extension output=] to be one or more user verification methods indicating the method(s) used
-    by the user to authorize the operation, as defined below. This extension can be added to attestation objects and assertions.
-
-: Authenticator extension output
-:: Authenticators can report up to 3 different user verification methods (factors) used in a single authentication instance,
-    using the CBOR syntax defined below:
-
-    ```
-    $$extensionOutput //= (
-      uvm: [ 1*3 uvmEntry ],
-    )
-
-    uvmEntry = [
-                   userVerificationMethod: uint .size 4,
-                   keyProtectionType: uint .size 2,
-                   matcherProtectionType: uint .size 2
-               ]
-    ```
-
-    The semantics of the fields in each `uvmEntry` are as follows:
-    : userVerificationMethod
-    :: The authentication method/factor used by the authenticator to verify the user. Available values are defined in
-        [=Section 3.1 User Verification Methods=] of [[!FIDO-Registry]].
-
-    : keyProtectionType
-    :: The method used by the authenticator to protect the FIDO registration private key material. Available values are defined
-        in [=Section 3.2 Key Protection Types=] of [[!FIDO-Registry]].
-
-    : matcherProtectionType
-    :: The method used by the authenticator to protect the matcher that performs user verification. Available values are defined
-        in [=Section 3.3 Matcher Protection Types=] of [[!FIDO-Registry]].
-
-    If >3 factors can be used in an authentication instance the authenticator vendor MUST select the 3 factors it believes
-    will be most relevant to the Server to include in the UVM.
-
-    Example for [=authenticator data=] containing one UVM extension for a multi-factor authentication instance where 2 factors
-    were used:
-    <pre>
-        ...                    -- RP ID hash (32 bytes)
-        81                     -- UP and ED set
-        00 00 00 01            -- (initial) signature counter
-        ...                    -- all public key alg etc.
-        A1                     -- extension: CBOR map of one element
-            63                 -- Key 1: CBOR text string of 3 bytes
-                75 76 6d       -- "uvm" [=UTF-8 encoded=] string
-            82                 -- Value 1: CBOR array of length 2 indicating two factor usage
-                83              -- Item 1: CBOR array of length 3
-                    02           -- Subitem 1: CBOR integer for User Verification Method Fingerprint
-                    04           -- Subitem 2: CBOR short for Key Protection Type TEE
-                    02           -- Subitem 3: CBOR short for Matcher Protection Type TEE
-                83              -- Item 2: CBOR array of length 3
-                    04           -- Subitem 1: CBOR integer for User Verification Method Passcode
-                    01           -- Subitem 2: CBOR short for Key Protection Type Software
-                    01           -- Subitem 3: CBOR short for Matcher Protection Type Software
-    </pre>
-
-
-### Supplemental public keys extension (<dfn>supplementalPubKeys</dfn>) ### {#sctn-supplemental-public-keys-extension}
-
-This [=authenticator extension|authenticator=] [=registration extension=] and [=authentication extension=] provides a [=[RP]=] with additional public key(s) for credentials. This is done by creating [=user credential=]-specific key pairs on the [=authenticator=], when required key pairs do not already exist for the [=user credential=] being created or exercised, and returning these supplemental keys (along with signatures by them) to the [=[RP]=]. This is done each time this [=supplementalPubKeys=] extension is included with either a {{CredentialsContainer/create()|navigator.credentials.create()}} or {{CredentialsContainer/get()|navigator.credentials.get()}} call.
-
-If the [=authenticator=] is incapable of generating a supplemental key pair, or the registration or authentication operation fails for any reason, that key pair is omitted from the output. If no supplemental key pairs remain then this extension is ignored. In this case, there is no [=supplementalPubKeys=] extension output generated.
-
-Supplemental keys are not [=user credentials=] and they do not have their own [=credential IDs=]. Instead, any returned keys are a contextual attribute of their associated [=user credential=]. That is, when that [=user credential=] is used&mdash;along with the [=supplementalPubKeys=] extension&mdash;on a particular [=authenticator=], a particular set of supplemental keys are returned by the extension, along with signatures demonstrating proof-of-possession of those keys.
-
-Supplemental keys never have a scope that is larger than the [=user credential=]. That is, they are never shared between any two [=user credentials=] and can never be used to link two [=user credentials=] together. They only communicate continuity of some property of their associated [=user credential=].
-
-
-#### Relying Party Usage #### {#sctn-supplemental-public-keys-extension-usage}
-
-This extension is intended for use by those [=[RPS]=] employing risk-analysis systems informing their sign-in decisions. This extension signals the continuity of some property <i>when used consistently</i> with both {{CredentialsContainer/create()|navigator.credentials.create()}} and {{CredentialsContainer/get()|navigator.credentials.get()}} operations. The property being signaled depends on the scope of the supplemental key and its [=attestation=] statement, if any. The clearest example of a supplemental key is one that is device-bound. Repeated observation of a device-bound supplemental key indicates that a credential is being used repeatedly from the same device. (Which cannot be otherwise assumed in the case of [=backup eligible=] credentials.) But supplemental keys with wider scopes are also defined and the exact properties that they communicate depend on the attestation included along with them.
-
-When a [=[RP]=] uses the `supplementalPubKeys` extension with a {{CredentialsContainer/create()|create()}} call to create a new [=user credential=], a signature by one or more new supplemental keys may be returned along with the new supplemental public keys themselves. For the sake of example, assume that a single supplemental public key is returned, called &ldquo;SPK1&rdquo;. For as long as the [=user credential=] is exercised within the scope of the supplemental key, the [=[RP]=]'s subsequent {{CredentialsContainer/get()|get()}} operations for that credential will likely generate [=assertions=] including further signatures by &ldquo;SPK1&rdquo;.
-
-The credential may move beyond the scope of that supplemental key (for example, by being exported and imported elsewhere, if [=backup eligible=]) and, if used in this new domain, the {{CredentialsContainer/get()|get()}} operation will return a <i>new</i> supplemental key, SPK2, and its signature. Subsequent {{CredentialsContainer/get()|get()}} operations may observe either SPK1 or SPK2, depending on the context in which the [=user credential=] is being used.
-
-A usage example is thus:
-
-> A sign-in request is received by a website that, by regulation, must require certain authentication standards. The sign-in is done with a [=multi-device credential=], but also includes a supplemental key with an attestation that states that the supplemental key is only synced after a user has met or exceeded those standards. Since that supplemental key has been seen before, and was initially verified to meet the site's authentication standards, additional sign-in challenges are not required.
-
-Another example of supplemental keys:
-
-> Say that a sign-in request appears at a website along with some geolocation signal that has not been seen for this [=user account=] before, and is outside of the typical usage hours observed for the account. The risk may be deemed high enough not to allow the request, even with an assertion by a [=multi-device credential=] on its own. But if a signature from a supplemental key that is device-bound, and that is <i>well established</i> for this user can also be presented, then that may tip the balance.
-
-The weight that [=[RPS]=] give to the presence of a signature from a supplemental key may be based on information learned from its optional attestation. An attestation can indicate the level of protection enjoyed by a hardware-bound key, or the policies for other types of supplemental key.
-
-#### Extension Definition #### {#sctn-supplemental-public-keys-extension-definition}
-
-: Extension identifier
-:: `supplementalPubKeys`
-
-: Operation applicability
-:: [=registration extension|Registration=] and [=authentication extension|authentication=]
-
-: Client extension input
-:: <xmp class="idl">
-    dictionary AuthenticationExtensionsSupplementalPubKeysInputs {
-        required sequence<DOMString> scopes;
-        DOMString attestation = "indirect";
-        sequence<DOMString> attestationFormats = [];
-    };
-
-    partial dictionary AuthenticationExtensionsClientInputs {
-        AuthenticationExtensionsSupplementalPubKeysInputs supplementalPubKeys;
-    };
-    </xmp>
-    <div dfn-type="dict-member" dfn-for="AuthenticationExtensionsSupplementalPubKeysInputs">
-        :   <dfn>scopes</dfn>
-        ::  This required member MUST be non-empty. It specifies the scopes of supplemental public keys that the [=[RP]=] requests. Values are taken from the CDDL below (i.e., currently defined values are `provider` and `device`); authenticators silently ignore unrecognized values. Specifying the scopes that a [=[RP]=] can use allows an [=authenticator=] to avoid the work of generating superfluous supplemental keys.
-
-        :   <dfn>attestation</dfn>
-        ::  The [=[RP]=] MAY use this OPTIONAL member to specify a preference regarding [=attestation conveyance=].
-            Its value SHOULD be a member of {{AttestationConveyancePreference}}.
-            [=Client platforms=] MUST ignore unknown values, treating an unknown value as if the [=map/exist|member does not exist=].
-
-            The default value is {{AttestationConveyancePreference/indirect}}.
-
-        :   <dfn>attestationFormats</dfn>
-        ::  The [=[RP]=] MAY use this OPTIONAL member to specify a preference regarding the [=attestation=] statement format used by the [=authenticator=].
-            Values SHOULD be taken from the IANA "WebAuthn Attestation Statement Format Identifiers" registry [[!IANA-WebAuthn-Registries]] established by [[!RFC8809]].
-            Values are ordered from most preferable to least preferable.
-            This parameter is advisory and the [=authenticator=] MAY use an attestation statement not enumerated in this parameter.
-
-            The default value is the empty list, which indicates no preference.
-    </div>
-
-: Client extension processing
-:: If {{AuthenticationExtensionsClientInputs/supplementalPubKeys}} is present, the client creates the authenticator extension input from the client extension input.
-
-: Client extension output
-:: A sequence of {{ArrayBuffer}}s containing the signatures returned as the [=unsigned extension output=].
-    <xmp class="idl">
-    dictionary AuthenticationExtensionsSupplementalPubKeysOutputs {
-        required sequence<ArrayBuffer> signatures;
-    };
-
-    partial dictionary AuthenticationExtensionsClientOutputs {
-        AuthenticationExtensionsSupplementalPubKeysOutputs supplementalPubKeys;
-    };
-    </xmp>
-
-
-: Authenticator extension input
-:: A CBOR expression of the client extension input
-
-    ```
-    supplementalPublicKeyInputs = {
-      scopes: [+
-        ; A key that has a broader scope than a single device, but still more
-        ; limited than a multi-device credential. The precise scope is specified
-        ; by the attestation of this supplemental public key.
-        "provider" /
-
-        ; A key with "device" scope MUST NOT leave the device on which it is
-        ; created.
-        "device"],
-      attestation: tstr,
-      attestationFormats: [* tstr],
-    }
-    $$extensionInput //= (
-      supplementalPubKeys: supplementalPublicKeyInputs,
-    )
-    ```
-
-: Authenticator extension output
-:: The supplemental public key attestation objects, defined by the `attObjForSupplementalPubKey` type:
-
-    ```
-    $$extensionOutput //= (
-        ; This array of supplemental public keys MUST be ordered
-        ; lexicographically by scope and MUST NOT include more than one element
-        ; with a given scope.
-
-        supplementalPubKeys: [+ attObjForSupplementalPubKey],
-    )
-
-    ; This object conveys an attested supplemental public key and is analogous
-    ; to \`attObj\`.
-    attObjForSupplementalPubKey = {
-        aaguid:  bstr,  ; AAGUID (16 bytes fixed-length)
-                        ; https://www.w3.org/TR/webauthn/#aaguid
-
-        spk:     bstr,  ; The public key (self-describing variable length,
-                        ; COSE_Key format, CBOR-encoded)).
-
-        ; See the definition of `scopes` in `supplementalPublicKeyInputs`.
-
-        scope: "provider" / "device",
-
-        ; An authenticator-generated random nonce for inclusion in the attestation
-        ; signature. If the authenticator chooses to not generate a nonce, it sets this
-        ; to a zero-length byte string. See the note below about "randomNonce" for a
-        ; discussion on the nonce's purpose.
-
-        nonce: bstr .size (0..32),
-
-        ; See https://www.w3.org/TR/webauthn/#sctn-generating-an-attestation-object
-        ;
-        ; Attestation statement formats define the \`fmt\` and \`attStmt\` members of
-        ; $$attStmtType.
-        ; Note that \`fmt\` and \`attStmt\` are top-level members of
-        ; \`attObjForSupplementalPubKey\`.
-        ;
-        ; In summary, the \`attStmt\` will (typically) contain:
-        ;   (1) a SIGNATURE value calculated (using the attestation private key)
-        ;       over (prefix || aaguid || spk || nonce) where \`prefix\` is
-        ;       h'737570706c656d656e74616c5075624b657973206174746573746174696f6e2e
-        ;         00ffffffff'.
-        ;       (See the attestation calculations section, below, for a discussion
-        ;       about the purpose of this \`prefix\` value.)
-        ;   (2) the attestation certificate or public key, and supporting certificates,
-        ;       if any.
-        ;
-        ; Note that there are details dependent upon the particular attestation
-        ; statement format.
-        ; See https://www.w3.org/TR/webauthn/#sctn-defined-attestation-formats.
-
-        $$attStmtType,
-
-        ; An optional boolean that indicates whether the attestation statement
-        ; contains uniquely identifying information. This can only be true
-        ; when the \`attestation\` field of the extension input is "enterprise"
-        ; and either the user-agent or the authenticator permits uniquely
-        ; identifying attestation for the requested RP ID.
-
-        ? epAtt: bool .default false,
-    }
-
-    ```
-
-: Unsigned extension output
-:: A non-empty CBOR array of byte strings containing the signatures generated with the supplemental private keys, in the same order as in the authenticator extension output.
-
-    ```
-    supplementalPublicKeyOutputs = [+ bstr]
-
-    $$unsignedExtensionOutputs //= (
-      supplementalPubKeys: supplementalPublicKeyOutputs,
-    )
-    ```
-
-: Authenticator extension processing
-:: For both [=authenticatorMakeCredential=] and [=authenticatorGetAssertion=] operations:
-    1. Create or select the [=public key credential source=] as usual (see [[#sctn-op-make-cred]], or [[#sctn-op-get-assertion]] as appropriate).
-
-    1. Let |scopes| be the [=set=] of all supplemental public key scopes that the [=authenticator=] supports. Update |scopes| to be the [=set/intersection=] of itself and {{AuthenticationExtensionsSupplementalPubKeysInputs/scopes}}. If |scopes| is empty, terminate these processing steps with no extension output.
-
-    1. Let |spks| and |spkSigs| be empty arrays.
-
-    1. Sort |scopes| lexicographically.
-
-    1. [=map/For each=] |scope| in |scopes|:
-
-        1. If a supplemental key with scope |scope| does not already exist for this {[=public key credential source/id|Credential ID=], [=public key credential source/rpId|RP ID=], [=public key credential source/rpId|userHandle=]} tuple on the [=authenticator=], create it using the same public key algorithm as that used by the [=user credential=]'s [=credential key pair=], otherwise locate the existing supplemental key.
-
-        1. Let |attFormat| be the chosen [=attestation statement format=], and |attAaguid| be a 16-byte value, based on the value of {{AuthenticationExtensionsSupplementalPubKeysInputs/attestation}} in the extension input:
-
-            <dl class="switch">
-                : none
-                :: |attFormat| is "none" or "self", at the authenticator's discretion, and |attAaguid| is 16 zero bytes. (Note that, since the [=supplemental public key=] is already exercised during {{CredentialsContainer/create()|navigator.credentials.create()}} calls, the proof-of-possession property provided by "self" attestation is superfluous in that context.)
-
-                : indirect, direct
-                :: |attFormat| is an [=attestation statement format=] appropriate for this [=authenticator=] based on {{AuthenticationExtensionsSupplementalPubKeysInputs/attestationFormats}}, and |attAaguid| is the corresponding [=/AAGUID=], which MAY be the [=authenticator's=] AAGUID. (Since the [=supplemental public key=]'s scope is different from the [=user credential=], it will often have a different attestation. For example, the attestation for a [=supplemental public key=] with &ldquo;device&rdquo; scope can be tied to hardware roots of trust, although it does not have to be.)
-
-                : enterprise
-                :: The [=[RP]=] wants to receive an [=attestation statement=] that may include uniquely identifying information. This is intended for controlled deployments within an enterprise where the organization wishes to tie registrations to specific authenticators. [=Authenticators=] MUST NOT provide such an attestation unless the user agent or authenticator configuration expressly permits it for the requested [=RP ID=]. If <i>not</i> permitted, then follow the steps for `direct` attestation. Otherwise |attFormat| is an [=attestation statement format=] appropriate for this [=authenticator=] based on {{AuthenticationExtensionsSupplementalPubKeysInputs/attestationFormats}}, and |attAaguid| is the corresponding [=/AAGUID=], which MAY be the [=authenticator's=] AAGUID.
-
-                    Note: CTAP2 does not currently provide for an <a href="https://fidoalliance.org/specs/fido-v2.1-ps-20210615/fido-client-to-authenticator-protocol-v2.1-ps-errata-20220621.html#makecred-enterpriseattestation">enterpriseAttestation</a> signal during an <a href="https://fidoalliance.org/specs/fido-v2.1-ps-20210615/fido-client-to-authenticator-protocol-v2.1-ps-errata-20220621.html#authenticatorGetAssertion">authenticatorGetAssertion</a> call. Until that is changed, <a href="https://fidoalliance.org/specs/fido-v2.1-ps-20210615/fido-client-to-authenticator-protocol-v2.1-ps-errata-20220621.html#platform-managed-enterprise-attestation">platform-managed enterprise attestation</a> will not work in that context with CTAP2 [=authenticators=].
-            </dl>
-
-        1. Let |spk| be the newly created or existing supplemental public key, in COSE_Key format [=credentialPublicKey|in the same fashion as for the user credential's credentialPublicKey=] when the latter is conveyed in [=attested credential data=].
-
-        1. Let |supplementalPrivateKey| be the newly created or existing private key corresponding to |spk|.
-
-        1. Let |randomNonce| be a fresh randomly-generated byte string of 32 bytes maximum length, or a zero length byte string if the authenticator chooses to not generate a nonce.
-
-            Note: |randomNonce|'s purpose is to randomize the [=attestation signature=] value for [=supplemental public keys=]. If this is not done, then an [=attestation signature=] value remains constant for all such signatures issued on behalf of this [=user credential=], possibly exposing the [=authenticator=]'s [=attestation private key=] to side-channel attacks. The randomness-generation mechanism should be carefully chosen by the authenticator implementer.
-
-        1. Let |supplementalPubKey| be a [=CBOR=] map as defined by `attObjForSupplementalPubKey` above, with keys and values as follows:
-
-            Note: as with all CBOR structures used in this specification, the [=CTAP2 canonical CBOR encoding form=] MUST be used.
-
-            1. Set a key and value for the `scope` group based on the value of |scope|.
-
-            1. Let the `aaguid` key's value be |attAaguid|.
-
-            1. Let the `spk` key's value be |spk|.
-
-            1. Let the `nonce` key's value be |randomNonce|.
-
-            1. Let the values of the `$$attStmtType` [=group socket=] be the result of generating an [=attestation statement=] with the [=attestation statement format=], |attFormat|. See [[#sctn-supplemental-public-keys-attestation-calculations]].
-
-                Note: The details of the `$$attStmtType` values are dependent upon the particular [=attestation statement=] format. See [[#sctn-attestation-formats]].
-
-            1. If the `$$attStmtType` [=group socket=] contains uniquely identifying information then let `epAtt` be [TRUE]. Otherwise omit the `epAtt` field. (This field can only be [TRUE] when the {{AuthenticationExtensionsSupplementalPubKeysInputs/attestation}} field of the extension input is "enterprise" and either the user-agent or the authenticator permits uniquely identifying attestation for the requested RP ID.)
-
-        1. Append |supplementalPubKey| to |spks|.
-
-        1. Let |spkSig| be the result of signing the [=assertion signature=] [input](#fig-signature) with |supplementalPrivateKey|.
-
-            Note: the [=assertion signature=] [input](#fig-signature), and thus |spkSig|, covers the [=[RP]=]'s {{PublicKeyCredentialCreationOptions/challenge}} because it includes the [=hash of the serialized client data=]. Thus the [=[RP]=] knows that |spkSig| is a fresh signature.
-
-        1. Append |spkSig| to |spkSigs|.
-
-    1. Let the `supplementalPubKeys` [=authenticator extension output=] value be the CBOR array |spks|.
-
-    1. Let the CBOR encoding of |spkSigs| be the extension's [=unsigned extension output=].
-
-        Note: |spkSigs| cannot be included in the [=authenticator extension output=] because it is returned inside the [=authenticator data=] and that would imply that the signature signs over itself.
-
-##### AAGUIDs ##### {#sctn-supplemental-public-keys-attestation-aaguid}
-
-Any non-zero [=/AAGUID=]s included in the <code>[=supplementalPubKeys=]</code> extension output aid a [=[RP]=] in validating the [=attestation statement=] of the supplemental public key. The interpretation of each AAGUID depends on the scope of the corresponding key. Some or all may differ from the [=authData/attestedCredentialData/aaguid=] in the [=attested credential data=] of a [=multi-device credential=]. Thus the AAGUID of a [=supplemental public key=] MAY be different in a single response and either, or both, may be zero depending on the options requested and authenticator behaviour.
-
-##### Attestation calculations ##### {#sctn-supplemental-public-keys-attestation-calculations}
-
-When computing attestations, the process in [[#sctn-generating-an-attestation-object]] takes two inputs: `authData` and `hash`. When calculating an attestation for a supplemental public key, the typical value for `authData` contains the attestation signature itself, which is impossible. Also the attestation of a supplemental public key is potentially used repeatedly, thus may want to be cached. But signing over values that include [=[RP]=]-chosen nonces, like the [=hash of the serialized client data=], makes that impossible.
-
-Therefore when calculating an attestation for a supplemental public key, the inputs are:
-
-    * For `authData`, substitute the concatenation of the byte string h'737570706c656d656e74616c5075624b657973206174746573746174696f6e2e00ffffffff' and the value of |aaguid| from the extension output.
-    * For `hash`, substitute the concatenation of the |spk| and |nonce| fields from the extension output. (The nonce MAY be empty.)
-
-The attestation signature is thus typically calculated over the bytes of <code>(h'737570706c656d656e74616c5075624b657973206174746573746174696f6e2e00ffffffff' || |aaguid| || |spk| || |nonce|)</code>. The 37-byte prefix ensures domain separation: it takes the place of the RP ID hash, flags, and signature counter fields in those messages and ensures that no attestation signature for a supplemental public key can be confused with a signature for a [=user credential=].
-
-Note that when |nonce| is empty, then the (signed) authenticator extension output MAY be constant. However, the (unsigned) |spkSig| output is always unique and prevents replay of the (signed) extension output without knowledge of the supplemental private key.
-
-#### `supplementalPubKeys` Extension Output Verification Procedures #### {#sctn-supplemental-public-keys-extension-verification}
-
-Verifying the <code>[=supplementalPubKeys=]</code> extension output is performed by the [=[RP]=] whenever a supplemental public key is returned within the extension output.
-
-The [=supplementalPubKeys=] extension adds the following [=struct/item=] to [=credential records=]:
-
-<dl dfn-for="credential record" dfn-type="abstract-op">
-    :   <dfn>supplementalPubKeys</dfn>
-    ::  An initially [=set/empty=] [=set=] of [=supplemental public key records=] associated with this [=public key credential source=].
-
-        A <dfn dfn>supplemental public key record</dfn> is an abstract representation of a registered supplemental public key.
-        It is a [=struct=] with the following [=struct/items=]:
-
-        <dl dfn-for="supplementalPubKeys record" dfn-type="abstract-op">
-            :   <dfn>aaguid</dfn>
-            ::  The [=/AAGUID=] included with the supplemental public key.
-                This MAY be different from the [=authData/attestedCredentialData/aaguid=] in the [$credential record/attestationObject$], if any, of the containing [=credential record=].
-
-            :   <dfn>spk</dfn>
-            ::  The public key portion of the supplemental public key.
-
-            :   <dfn>scope</dfn>
-            ::  The scope of the supplemental public key. See [[#sctn-supplemental-public-keys-extension-definition]] for details.
-
-            :   <dfn>fmt</dfn>
-            ::  The [=attestation statement format=] of the supplemental public key's [=attestation statement=].
-
-            :   <dfn>attStmt</dfn>
-            ::  The supplemental public key's [=attestation statement=].
-        </dl>
-</dl>
-
-
-##### Registration (`create()`) ##### {#sctn-supplemental-public-keys-extension-verification-create}
-
-If the [=[RP]=] requested the `supplementalPubKeys` extension in a {{CredentialsContainer/create()|navigator.credentials.create()}} call,
-then the below verification steps are performed in the context of [step 20](#reg-ceremony-verify-extension-outputs)
-of [[#sctn-registering-a-new-credential]] using these variables established therein: |credential|, |clientExtensionResults|, |authData|, and |hash|.
-[=[RP]=] policy may specify whether a response without a `supplementalPubKeys` extension output is acceptable.
-
-1. Verify that the {{AuthenticationExtensionsClientOutputs/supplementalPubKeys}} member of |clientExtensionResults| exists, and contains the {{AuthenticationExtensionsSupplementalPubKeysOutputs/signatures}} field. Let |signatures| be the value of that field.
-
-1. Let |attObjsForSupplementalPublicKey| be the value of the `supplementalPubKeys` member of the [=authenticator extension output=] from |authData|.
-
-1. If the [=list/size=] of |attObjsForSupplementalPublicKey| is not equal to the [=list/size=] of |signatures| then abort the registration process with an error.
-
-1. [=list/Iterate=] over the indices of |attObjsForSupplementalPublicKey| (which, after the check in the previous step, must also be the indices of |signatures|). Then, for each (|attObjForSupplementalPubKey|, |signature|) from the two lists:
-
-    1. Extract the contained fields from |attObjForSupplementalPubKey|: |aaguid|, |spk|, |nonce|, |fmt| and |attStmt|. Also let |scope| reflect the scope, specified by the member of the `scope` group that is present.
-
-        Note: The latter |attObjForSupplementalPubKey| fields are referenced exclusively in the below steps and are not to be confused with other fields with the same names in other portions of the top-level [=attestation object=].
-
-    1. Verify that |signature| is a valid signature over the [=assertion signature=] [input](#fig-signature) (i.e. `authData` and `hash`) by the [=supplemental public key=] |spk|. (The signature algorithm is the same as for the [=user credential=].)
-
-    1. Optionally, if attestation was requested and the [=[RP]=] wishes to verify it, verify that |attStmt| is a correct [=attestation statement=], conveying a valid [=attestation signature=], by using the [=attestation statement format=] |fmt|'s [=verification procedure=] given |attStmt|. See [[#sctn-supplemental-public-keys-attestation-calculations]]. [=[RP]=] policy may specifiy which attestations are acceptable.
-
-        Note: If |fmt|'s value is "[=none=]" there is no attestation signature to verify.
-
-    1. Create a new [=supplemental public key record=] with the contents:
-
-        <dl>
-            :   [$supplementalPubKeys record/aaguid$]
-            ::  The value of |aaguid|.
-
-            :   [$supplementalPubKeys record/spk$]
-            ::  The value of |spk|.
-
-            :   [$supplementalPubKeys record/scope$]
-            ::  The value of |scope|.
-
-            :   [$supplementalPubKeys record/fmt$]
-            ::  The value of |fmt|.
-
-            :   [$supplementalPubKeys record/attStmt$]
-            ::  The value of |attStmt|.
-        </dl>
-
-        In [step 27](#reg-ceremony-store-credential-record) of [[#sctn-registering-a-new-credential]],
-        add this [=supplemental public key record=] to the [$credential record/supplementalPubKeys$] member of the new [=credential record=].
-
-See also [[#sctn-supplemental-public-keys-extension-usage]] for further details.
-
-##### Authentication (`get()`) ##### {#sctn-supplemental-public-keys-extension-verification-get}
-
-If the [=[RP]=] requested the `supplementalPubKeys` extension in a {{CredentialsContainer/get()|navigator.credentials.get()}} call,
-then the below verification steps are performed in the context of [step 19](#authn-ceremony-verify-extension-outputs)
-of [[#sctn-verifying-assertion]] using these variables established therein: |credential|, |clientExtensionResults|, |authData|, |hash|, and |credentialRecord|.
-[=[RP]=] policy may specify whether a response without a `supplementalPubKeys` extension output is acceptable.
-
-1. Let |recognizedSpks| be a new [=set/empty=] [=set=].
-
-1. Verify that the {{AuthenticationExtensionsClientOutputs/supplementalPubKeys}} member of |clientExtensionResults| exists, and contains the {{AuthenticationExtensionsSupplementalPubKeysOutputs/signatures}} field. Let |signatures| be the value of that field.
-
-1. Let |attObjsForSupplementalPubKeys| be the value of the `supplementalPubKeys` member of the [=authenticator extension output=] from |authData|.
-
-1. If the [=list/size=] of |attObjsForSupplementalPubKeys| is not equal to the [=list/size=] of |signatures| then abort the authentication process with an error.
-
-1. [=list/Iterate=] over the indices of |attObjsForSupplementalPubKeys| (which, after the check in the previous step, must also be the indices of |signatures|). Then, for each (|attObjForSupplementalPubKey|, |signature|) from the two lists:
-
-    1. Extract the contained fields from |attObjForSupplementalPubKey|: |aaguid|, |spk|, |nonce|, |fmt|, |attStmt|. Also let |scope| reflect the scope, specified by the member of the `scope` group that is present.
-
-        Note: The latter |attObjForSupplementalPubKey| fields are referenced exclusively in the below steps and are not to be confused with other fields with the same names in other portions of [=authenticator data=].
-
-    1. Verify that |signature| is a valid signature over the [=assertion signature=] [input](#fig-signature) (i.e. `authData` and `hash`) by the [=supplemental public key=] |spk|. (The signature algorithm is the same as for the [=user credential=].)
-
-    1. Let |matchedSpkRecords| be a new [=set/empty=] [=set=].
-        [=set/For each=] |spkRecord| in |credentialRecord|.[$credential record/supplementalPubKeys$]:
-            1. If |spkRecord|.[$supplementalPubKeys record/aaguid$] equals |aaguid|,
-                  |spkRecord|.[$supplementalPubKeys record/spk$] equals |spk|,
-                  and |spkRecord|.[$supplementalPubKeys record/scope$] equals |scope|:
-                1. [=set/Append=] |spkRecord| to |matchedSpkRecords|.
-
-    1.  If |matchedSpkRecords|
-
-        <dl class="switch">
-            : has [=set/size=] greater than one:
-            :: Some form of error has occurred: |credentialRecord| invariants have been broken. Terminate these verification steps.
-
-            : has [=set/size=] equal to one:
-            :: This is a known [=supplemental public key=]
-
-                If |fmt|'s value is "none" then there is no attestation signature to verify and this is a known [=supplemental public key=] with a valid signature. Append |spkRecord| to |recognizedSpks| and continue to the next iteration, if any.
-
-                Otherwise, let |spkRecord| be |matchedSpkRecords|[0]. If the |attStmt| in |attObjForSupplementalPubKey|:
-                    <dl class="switch">
-                        : equals |spkRecord|.[$supplementalPubKeys record/attStmt$] by binary equality:
-                        :: This is a known [=supplemental public key=] with a valid signature and valid attestation. Append |spkRecord| to |recognizedSpks| and continue to the next iteration, if any.
-
-                            Note: This authenticator is not generating a fresh per-response random nonce.
-
-                        : does not equal |spkRecord|.[$supplementalPubKeys record/attStmt$] by binary equality:
-                        :: Optionally, if attestation was requested and the RP wishes to verify it, verify that |attStmt| is a correct [=attestation statement=], conveying a valid [=attestation signature=], by using the [=attestation statement format=] |fmt|'s [=verification procedure=] given |attStmt|. See [[#sctn-supplemental-public-keys-attestation-calculations]]. [=[RP]=] policy may specifiy which attestations are acceptable.
-
-                            If the result is:
-
-                            <dl class="switch">
-                                : successful
-                                :: This is a known [=supplemental public key=] with a valid signature and valid attestation. Append |spkRecord| to |recognizedSpks| and continue to the next iteration, if any.
-
-                                : unsuccessful
-                                :: Some form of error has occurred. It is indeterminate whether this is a valid [=supplemental public key=]. Either terminate these verification steps with an error or continue to the next iteration, if any, to ignore this key.
-
-                            </dl>
-                    </dl>
-
-            : is [=set/empty=]:
-            :: This is possibly a new [=supplemental public key=].
-
-                1. Let |matchedSpkKeys| be a new [=set/empty=] [=set=].
-                    [=set/For each=] |spkRecord| in |credentialRecord|.[$credential record/supplementalPubKeys$]:
-                        1. If |spkRecord|.[$supplementalPubKeys record/spk$] equals |spk|:
-                            1. [=set/Append=] |spkRecord| to |matchedSpkKeys|.
-
-                1. If |matchedSpkKeys| is [=set/empty=]:
-
-                    <dl class="switch">
-                        : If |fmt|'s value is "none":
-                        :: There is no attestation signature to verify and this is a new supplemental key. Unless [=[RP]=] policy specifies that this attestation is unacceptable, [$Create a new supplemental public key record$] and then continue to the next iteration, if any.
-
-                        : Otherwise:
-                        :: Optionally, if attestation was requested and the RP wishes to verify it, verify that |attStmt| is a correct [=attestation statement=], conveying a valid [=attestation signature=], by using the [=attestation statement format=] |fmt|'s [=verification procedure=] given |attStmt|. See [[#sctn-supplemental-public-keys-attestation-calculations]]. [=[RP]=] policy may specifiy which attestations are acceptable.
-
-                            If the result is:
-
-                            <dl class="switch">
-                                : successful
-                                :: This is a new [=supplemental public key=]. [$Create a new supplemental public key record$] then continue to the next iteration, if any.
-
-                                : unsuccessful
-                                :: Some form of error has occurred and a supplemental public key record cannot be created. Either terminate these verification steps with an error or continue to the next iteration, if any, to ignore this supplemental public key.
-                            </dl>
-                    </dl>
-
-                1. Otherwise there is some form of error: we recieved a known |spk| value, but one or more of the accompanying |aaguid| or |scope| values did not match what the [=[RP]=] has stored along with that |spk| value. Terminate these verification steps.
-        </dl>
-
-At the end of these steps, |recognizedSpks| contains zero or more [=supplemental public keys=] that were previously known for this [=user credential=]. These keys make claims about the continuity of certain factors between this authentication attempt and previous ones. The [=[RP]=] should judge those claims in light of the attestations provided, if any, and evaluate the risk of this authentication in light of this information.
-
-See also [[#sctn-supplemental-public-keys-extension-usage]].
-
-To <dfn abstract-op>Create a new supplemental public key record</dfn>, perform the following steps:
-
-    1. Create a new [=supplemental public key record=] with the contents:
-
-        <dl>
-            :   [$supplementalPubKeys record/aaguid$]
-            ::  The value of |aaguid|.
-
-            :   [$supplementalPubKeys record/spk$]
-            ::  The value of |spk|.
-
-            :   [$supplementalPubKeys record/scope$]
-            ::  The value of |scope|.
-
-            :   [$supplementalPubKeys record/fmt$]
-            ::  The value of |fmt|.
-
-            :   [$supplementalPubKeys record/attStmt$]
-            ::  The value of |attStmt|.
-        </dl>
-
-        In [step 23](#authn-ceremony-update-credential-record) of [[#sctn-verifying-assertion]],
-        [=set/append=] this [=supplemental public key record=] to |credentialRecord|.[$credential record/supplementalPubKeys$].
 
 
 ### Signing extension (<dfn for="extension">sign</dfn>) ### {#sctn-sign-extension}
@@ -8325,12 +8282,6 @@ Additionally, [=extension capabilities=] are defined for every [=authenticator e
         </thead>
         <tbody>
             <tr>
-                <td>User Verification Method Extension Support</td>
-                <td>`"webauthn:extension:uvm"`</td>
-                <td>boolean</td>
-                <td>Indicates whether the [=endpoint node=] WebAuthn WebDriver implementation supports the [=User Verification Method=] extension.</td>
-            </tr>
-            <tr>
                 <td>Pseudo-Random Function Extension Support</td>
                 <td>`"webauthn:extension:prf"`</td>
                 <td>boolean</td>
@@ -8397,10 +8348,7 @@ Each stored [=virtual authenticator=] has the following properties:
 
     A [=Virtual authenticator=] MUST support all [=authenticator extensions=] present in its |extensions| array.
     It MUST NOT support any [=authenticator extension=] not present in its |extensions| array.
-: |uvm|
-:: A {{UvmEntries}} array to be set as the [=authenticator extension output=] when processing the [=User Verification Method=] extension.
 
-    Note: This property has no effect if the [=Virtual Authenticator=] does not support the [=User Verification Method=] extension.
 : |defaultBackupEligibility|
 :: Determines the default state of the [=backup eligibility=] [=credential property=] for any newly created [=Public Key Credential Source=].
     This value MUST be reflected by the [=BE=] [=authenticator data=] [=flag=] when performing an [=authenticatorMakeCredential=]
@@ -8485,12 +8433,6 @@ The <dfn>Authenticator Configuration</dfn> is a JSON [=Object=] passed to the [=
                 <td>|extensions|</td>
                 <td>string array</td>
                 <td>An array containing [=extension identifiers=]</td>
-                <td>Empty array</td>
-            </tr>
-            <tr>
-                <td>|uvm|</td>
-                <td>{{UvmEntries}}</td>
-                <td>Up to 3 [=User Verification Method=] entries</td>
                 <td>Empty array</td>
             </tr>
             <tr>
@@ -8980,11 +8922,6 @@ This section updates the below-listed [=extension identifier=] values defined in
     FIDO JavaScript APIs to request an assertion.
 - Specification Document: Section [[#sctn-appid-extension]] of this specification
     <br/><br/>
-- WebAuthn Extension Identifier: uvm
-- Description: This [=registration extension=] and [=authentication extension=] enables use of a user verification method.
-    The user verification method extension returns to the [=[WRP]=] which user verification methods (factors) were
-    used for the WebAuthn operation.
-- Specification Document: Section [[#sctn-uvm-extension]] of this specification
 
 
 ## WebAuthn Extension Identifier Registrations ## {#sctn-extensions-reg}
@@ -9300,6 +9237,11 @@ For example:
 - A web application served at a small number of domains might require
     {{CollectedClientData/origin}} to exactly equal some element of a list of allowed origins,
     for example the list <code>["https://example.org", "https://login.example.org"]</code>.
+
+- A web application leveraging [[#sctn-related-origins|related origin requests]] might also require
+    {{CollectedClientData/origin}} to exactly equal some element of a list of allowed origins,
+    for example the list <code>["https://example.co.uk", "https://example.de", "https://myexamplerewards.com"]</code>.
+    This list will typically match the origins listed in the well-known URI for the [=RP ID=]. See [[#sctn-related-origins]].
 
 - A web application served at a large set of domains that changes often might parse
     {{CollectedClientData/origin}} structurally and require that the URL scheme is <code>https</code>
@@ -9631,6 +9573,11 @@ i.e., if {{PublicKeyCredentialRequestOptions/allowCredentials}} needs to be expo
 the [=[RP]=] could mitigate the privacy leak using the same approach of returning imaginary [=credential IDs=]
 as discussed in [[#sctn-username-enumeration]].
 
+When [=signal methods|signalling=] that a [=credential id=] was not recognized,
+the [=[WRP]=] SHOULD use the
+{{PublicKeyCredential/signalUnknownCredential(options)}} method instead of the
+{{PublicKeyCredential/signalAllAcceptedCredentials(options)}} method to avoid
+exposing [=credential IDs=] to an unauthenticated caller.
 
 # Accessibility Considerations # {#sctn-accessiblility-considerations}
 
