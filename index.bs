@@ -7696,7 +7696,7 @@ where neither the signing key pair nor the associated [=credential=] need to con
     <xmp class="idl">
     dictionary AuthenticationExtensionsSignGenerateKeyInputs {
         required sequence<COSEAlgorithmIdentifier> algorithms;
-        BufferSource data;
+        BufferSource phData;
     };
     </xmp>
 
@@ -7706,23 +7706,36 @@ where neither the signing key pair nor the associated [=credential=] need to con
             The [=authenticator=] will create a signing key pair of the most preferred type possible.
             If none of the listed types can be created, the [=registration ceremony=] fails.
 
-        :   <dfn>data</dfn>
-        ::  Data to be signed.
+            Because {{AuthenticationExtensionsSignGenerateKeyInputs/phData}} must be pre-hashed,
+            {{AuthenticationExtensionsSignGenerateKeyInputs/algorithms}} MUST NOT contain values representing algorithms
+            with incompatible pre-hashing procedures
+            if {{AuthenticationExtensionsSignGenerateKeyInputs/phData}} is present.
+
+        :   <dfn>phData</dfn>
+        ::  Pre-hashed data to be signed.
             If present, the [=authenticator=] will sign this value using the newly generated signing private key.
+
+            The data MUST be pre-hashed as appropriate for all signature algorithms listed in {{AuthenticationExtensionsSignGenerateKeyInputs/algorithms}}.
+
+            ISSUE: Need to define pre-hashing more precisely.
     </div>
 
     <xmp class="idl">
     dictionary AuthenticationExtensionsSignSignInputs {
-        required BufferSource data;
+        required BufferSource phData;
         required record<USVString, COSEKeyRef> keyHandleByCredential;
     };
     typedef BufferSource COSEKeyRef;
     </xmp>
 
     <div dfn-type="dict-member" dfn-for="AuthenticationExtensionsSignSignInputs">
-        :   <dfn>data</dfn>
-        ::  Data to be signed.
+        :   <dfn>phData</dfn>
+        ::  Pre-hashed data to be signed.
             The [=authenticator=] will sign this value using the signing private key.
+
+            The data MUST be pre-hashed as appropriate for the signature algorithm of the private key.
+
+            ISSUE: Need to define pre-hashing more precisely.
 
         :   <dfn>keyHandleByCredential</dfn>
         ::  A record mapping [=base64url encoding|base64url encoded=] [=credential IDs=] to [=signing key handles=] to use for each credential.
@@ -7764,7 +7777,7 @@ where neither the signing key pair nor the associated [=credential=] need to con
 
     1. Set the `sign` [=authenticator extension input=] to a CBOR map with the entries:
 
-        - `data`: <code>|extSign|.{{AuthenticationExtensionsSignInputs/generateKey}}.{{AuthenticationExtensionsSignGenerateKeyInputs/data}}</code>
+        - `phData`: <code>|extSign|.{{AuthenticationExtensionsSignInputs/generateKey}}.{{AuthenticationExtensionsSignGenerateKeyInputs/phData}}</code>
             encoded as a CBOR byte string, if present.
             Otherwise omit this entry.
 
@@ -7798,7 +7811,7 @@ where neither the signing key pair nor the associated [=credential=] need to con
             parsed as an {{ArrayBuffer}}, if present.
             Otherwise omit this member.
 
-    The CBOR map keys `data`, `alg`, `flags`, `att-obj` and `sig` are aliases defined below
+    The CBOR map keys `phData`, `alg`, `flags`, `att-obj` and `sig` are aliases defined below
     in the CDDL for the [=authenticator extension input=] and [=authenticator extension output=].
 
 
@@ -7839,7 +7852,7 @@ where neither the signing key pair nor the associated [=credential=] need to con
         return a {{DOMException}} whose name is “{{SyntaxError}}”.
 
     1. Set the `sign` authenticator extension input to a CBOR map with the entries:
-        - `data`: <code>|extSign|.{{AuthenticationExtensionsSignInputs/sign}}.{{AuthenticationExtensionsSignSignInputs/data}}</code> encoded as a CBOR byte string.
+        - `phData`: <code>|extSign|.{{AuthenticationExtensionsSignInputs/sign}}.{{AuthenticationExtensionsSignSignInputs/phData}}</code> encoded as a CBOR byte string.
         - `key-refs`: |keyHandles|.
 
     1. After the [=authenticatorGetAssertion=] operation is successful,
@@ -7853,7 +7866,7 @@ where neither the signing key pair nor the associated [=credential=] need to con
             The [=authenticator extension output=] <code>|authData|.[=authData/extensions=]["sign"][sig]</code>
             parsed as an {{ArrayBuffer}}.
 
-    The CBOR map keys `data`, `key-refs` and `sig` are aliases defined below
+    The CBOR map keys `phData`, `key-refs` and `sig` are aliases defined below
     in the CDDL for the [=authenticator extension input=] and [=authenticator extension output=].
 
 
@@ -7878,7 +7891,7 @@ where neither the signing key pair nor the associated [=credential=] need to con
         ::  The generated signature.
             Present if and only if
             the {{AuthenticationExtensionsSignInputs/sign}} input was present
-            or the <code>{{AuthenticationExtensionsSignInputs/generateKey}}.{{AuthenticationExtensionsSignGenerateKeyInputs/data}}</code>
+            or the <code>{{AuthenticationExtensionsSignInputs/generateKey}}.{{AuthenticationExtensionsSignGenerateKeyInputs/phData}}</code>
             input was present.
     </div>
 
@@ -7916,7 +7929,7 @@ where neither the signing key pair nor the associated [=credential=] need to con
 
     ```
     ; The symbolic names on the left are represented in CBOR by the integers on the right
-    data = 0
+    phData = 0
     kty = 1
     kid = 2
     alg = 3
@@ -7926,28 +7939,36 @@ where neither the signing key pair nor the associated [=credential=] need to con
     $$extensionInput //= (
       sign: {
         ; Registration (key generation) input
-        ? data     => bstr,
+        ? phData   => bstr,
         alg        => [ + COSEAlgorithmIdentifier ],
         ? flags    => &(unattended: 0b000,
                         require-up: 0b001,
                         require-uv: 0b101) .default 0b001,
         //
         ; Authentication (signing) input
-        data       => bstr,
+        phData     => bstr,
         key-refs   => [ + bstr .cbor COSE_Key_Ref ],
       },
     )
     ```
 
-    :   data
-    ::  The data to sign.
+    :   phData
+    ::  The pre-hashed data to sign.
         MAY be present during [=registration ceremonies=].
         MUST be present during [=authentication ceremonies=].
+        MUST be pre-hashed as appropriate for each algorithm in `alg`.
+
+        ISSUE: Need to define pre-hashing more precisely.
 
     :   alg
     ::  A list of acceptable signature algorithms, ordered from most preferred to least preferred.
         MUST be present during [=registration ceremonies=].
         MUST NOT be present during [=authentication ceremonies=].
+
+        If `phData` is present, then `alg` MUST NOT contain values
+        representing signature algorithms with incompatible pre-hashing procedures.
+
+        ISSUE: Need to define pre-hashing more precisely.
 
         The [=authenticator=] will create a signing key pair of the most preferred type possible.
         If none of the listed types can be created, the [=registration ceremony=] fails.
@@ -8053,11 +8074,16 @@ where neither the signing key pair nor the associated [=credential=] need to con
 
             - |hash|: |hash|.
 
-        - `sig`: The result of signing <code>|extensions|["sign"][data]</code>, if present, using private key |p|,
+        - `sig`: The result of signing <code>|extensions|["sign"][phData]</code>, if present, using private key |p|,
             if |chosenAlg| supports signing during registration.
             Otherwise omit this entry.
 
-    The CBOR map keys `alg`, `flags`, `kid`, `sig` and `att-obj` are aliases defined above and below
+            The signing procedure MUST interpret <code>|extensions|["sign"][phData]</code> as pre-hashed
+            as appropriate for the chosen signing algorithm.
+
+            ISSUE: Need to define pre-hashing more precisely.
+
+    The CBOR map keys `alg`, `flags`, `kid`, `sig`, `att-obj` and `phData` are aliases defined above and below
     in the CDDL for the [=authenticator extension input=] and [=authenticator extension output=].
 
 
@@ -8070,7 +8096,7 @@ where neither the signing key pair nor the associated [=credential=] need to con
         return an error code equivalent to "{{NotAllowedError}}" and terminate these processing steps.
         Implementations in [[FIDO-CTAP]] return the error code `CTAP2_ERR_NO_CREDENTIALS`.
 
-    1. If <code>|extSign|[data]</code> is not present or <code>|extSign|[key-refs]</code> is not present,
+    1. If <code>|extSign|[phData]</code> is not present or <code>|extSign|[key-refs]</code> is not present,
         or if the [=list/size=] of <code>|extSign|[key-refs]</code> does not equal the [=list/size=] of |allowCredentialDescriptorList|,
         return an error code equivalent to "{{UnknownError}}" and terminate these processing steps.
         Implementations in [[FIDO-CTAP]] return the error code `CTAP2_ERR_INVALID_OPTION`.
@@ -8110,9 +8136,14 @@ where neither the signing key pair nor the associated [=credential=] need to con
 
     1. Set <code>|authData|.[=authData/extensions=]["sign"]</code>
         to a new CBOR map with the entries:
-        - `sig`: The result of signing <code>|extSign|[data]</code> using the private key referenced by |keyRef|.
+        - `sig`: The result of signing <code>|extSign|[phData]</code> using the private key referenced by |keyRef|.
 
-    The CBOR map keys `data`, `key-refs`, `kid`, `alg` and `sig` are aliases defined above and below
+          The signing procedure MUST interpret <code>|extSign|[phData]</code> as pre-hashed
+          as appropriate for the chosen signing algorithm.
+
+          ISSUE: Need to define pre-hashing more precisely.
+
+    The CBOR map keys `phData`, `key-refs`, `kid`, `alg` and `sig` are aliases defined above and below
     in the CDDL for the [=authenticator extension input=] and [=authenticator extension output=].
 
 
@@ -8129,10 +8160,10 @@ where neither the signing key pair nor the associated [=credential=] need to con
       sign: {
         ; Registration (key generation) outputs
         att-obj => bstr .cbor attObj,  ; Attestation object for signing key pair
-        ? sig   => bstr,               ; Signature over data input, if present
+        ? sig   => bstr,               ; Signature over phData input, if present
         //
         ; Authentication (signing) outputs
-        sig     => bstr,               ; Signature over data input
+        sig     => bstr,               ; Signature over phData input
         //
         ; Attestation fields
         flags   => &(unattended: 0b000,
@@ -8151,7 +8182,7 @@ where neither the signing key pair nor the associated [=credential=] need to con
         MUST NOT be present in [=authentication ceremonies=].
 
     :   sig
-    ::  A signature over the extension input `data`, if present, by the signing private key.
+    ::  A signature over the extension input `phData`, if present, by the signing private key.
         MAY be present in [=registration ceremonies=].
         MUST be present in [=authentication ceremonies=].
 
