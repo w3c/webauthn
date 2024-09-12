@@ -4205,7 +4205,15 @@ Verifiers may use the following algorithm to verify an encoded {{CollectedClient
     1. A string, |type|, that contains the expected {{CollectedClientData/type}}.
     1. A byte string, |challenge|, that contains the challenge byte string that was given in the {{PublicKeyCredentialRequestOptions}} or {{PublicKeyCredentialCreationOptions}}.
     1. A string, |origin|, that contains the expected {{CollectedClientData/origin}} that issued the request to the user agent.
-    1. A boolean, |crossOrigin|, that is true if, and only if, the request should have been performed within a cross-origin <{iframe}>.
+    1. An optional string, |topOrigin|, that contains the expected {{CollectedClientData/topOrigin}} that issued the request to the user agent, if available.
+    1. A boolean, |requireTopOrigin|, that is true if, and only if, the verification should fail
+        if |topOrigin| is defined and the {{CollectedClientData/topOrigin}} attribute is not present in |clientDataJSON|.
+
+        This means that the verification algorithm is backwards compatible
+        with the [[webauthn-2-20210408#clientdatajson-serialization|JSON-compatible serialization algorithm]]
+        in Web Authentication Level 2 [[webauthn-2-20210408]]
+        if, and only if, |requireTopOrigin| is [FALSE].
+
 1. Let |expected| be an empty byte string.
 1. Append 0x7b2274797065223a (`{"type":`) to |expected|.
 1. Append [=CCDToString=](|type|) to |expected|.
@@ -4215,9 +4223,14 @@ Verifiers may use the following algorithm to verify an encoded {{CollectedClient
 1. Append 0x2c226f726967696e223a (`,"origin":`) to |expected|.
 1. Append [=CCDToString=](|origin|) to |expected|.
 1. Append 0x2c2263726f73734f726967696e223a (`,"crossOrigin":`) to |expected|.
-1. If |crossOrigin| is true:
+1. If |topOrigin| is defined:
     1. Append 0x74727565 (`true`) to |expected|.
-1. Otherwise, i.e. |crossOrigin| is false:
+    1. If |requireTopOrigin| is true
+        or if 0x2c22746f704f726967696e223a (`,"topOrigin":`) is a prefix
+        of the substring of |clientDataJSON| beginning at the offset equal to the length of |expected|:
+        1. Append 0x2c22746f704f726967696e223a (`,"topOrigin":`) to |expected|.
+        1. Append [=CCDToString=](|topOrigin|) to |expected|.
+1. Otherwise, i.e. |topOrigin| is not defined:
     1. Append 0x66616c7365 (`false`) to |expected|.
 1. If |expected| is not a prefix of |clientDataJSON| then the verification has failed.
 1. If |clientDataJSON| is not at least one byte longer than |expected| then the verification has failed.
