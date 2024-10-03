@@ -4811,9 +4811,9 @@ leave the <code>[=authData/signCount=]</code> in the [=authenticator data=] cons
 
 A [=[RP]=] stores the [=signature counter=] of the most recent [=authenticatorGetAssertion=] operation. (Or the counter from the [=authenticatorMakeCredential=] operation if no [=authenticatorGetAssertion=] has ever been performed on a credential.) In subsequent
 [=authenticatorGetAssertion=] operations, the [=[RP]=] compares the stored [=signature counter=] value with the new
-<code>[=authData/signCount=]</code> value returned in the assertion's [=authenticator data=]. If either is non-zero, and the new <code>[=authData/signCount=]</code> value is less than or equal to the stored value, a cloned authenticator may exist, or the authenticator may be malfunctioning.
+<code>[=authData/signCount=]</code> value returned in the assertion's [=authenticator data=]. If either is non-zero, and the new <code>[=authData/signCount=]</code> value is less than or equal to the stored value, a cloned authenticator may exist, or the authenticator may be malfunctioning, or a race condition might exist where the relying party is receiving and processing assertions in an order other than the order they were generated at the authenticator.
 
-Detecting a [=signature counter=] mismatch does not indicate whether the current operation was performed by a cloned authenticator or the original authenticator.  [=[RPS]=] should address this situation appropriately relative to their individual situations, i.e., their risk tolerance.
+Detecting a [=signature counter=] mismatch does not indicate whether the current operation was performed by a cloned authenticator or the original authenticator.  [=[RPS]=] should address this situation appropriately relative to their individual situations, i.e., their risk tolerance or operational factors that might result in an acceptable reason for non-increasing values.
 
 Authenticators:
 - SHOULD implement per credential [=signature counters=].  This prevents the
@@ -6240,15 +6240,17 @@ a numbered step. If outdented, it (today) is rendered as a bullet in the midst o
               <dt>greater than <code>|credentialRecord|.[$credential record/signCount$]</code>:</dt>
               <dd>The signature counter is valid.</dd>
               <dt>less than or equal to <code>|credentialRecord|.[$credential record/signCount$]</code>:</dt>
-              <dd>This is a signal that
-                  the authenticator may be cloned, i.e. at least
-                  two copies of the [=credential private key=] may exist and are
-                  being used in parallel. [=[RPS]=] should incorporate this information
-                  into their risk scoring.
+              <dd>This is a signal, but not proof, that the authenticator may be cloned. For example it might mean that:
+                  - Two or more copies of the [=credential private key=] may exist and are being used in parallel. 
+                  - An authenticator is malfunctioning.
+                  - A race condition exists where the [=[RP]=] is processing assertion responses in an order other than the order they were generated at the authenticator.
+                  
+                  [=[RPS]=] should evaluate their own operational characteristics and incorporate this information into their risk scoring.
                   Whether the [=[RP]=] updates <code>|credentialRecord|.[$credential record/signCount$]</code>
-                  below in this case, or not, or fails the
-                  [=authentication ceremony=] or not, is
-                  [=[RP]=]-specific. </dd>
+                  below in this case, or not, or fails the [=authentication ceremony=] or not, is [=[RP]=]-specific. 
+
+                  For more information on signature counter considerations, see [[#sctn-sign-counter]].
+              </dd>
            </dl>
 
     <li id='authn-ceremony-update-credential-record'>
