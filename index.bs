@@ -6536,8 +6536,11 @@ engine.
     setting the `extraData` parameter to the digest of |attToBeSigned| using the hash algorithm corresponding to the "alg" signature algorithm.
     (For the "RS256" algorithm, this would be a SHA-256 digest.)
 
-    Set the |pubArea| field to the public area of the credential public key, the |certInfo| field to the output parameter of the
-    same name, and the |sig| field to the signature obtained from the above procedure.
+    Set the |pubArea| field to the public area of the credential public key (the TPMT_PUBLIC structure), the |certInfo| field (the TPMS_ATTEST structure)
+    to the output parameter of the same name, and the |sig| field to the signature obtained from the above procedure.
+
+    Note: If the |pubArea| is read from the TPM using the TPM2_ReadPublic command, that command returns a TPM2B_PUBLIC structure. TPM2B_PUBLIC
+    is two bytes of length followed by the TPMT_PUBLIC structure. The two bytes of length must be removed prior to putting this into the |pubArea|.
 
 : Verification procedure
 :: Given the [=verification procedure inputs=] |attStmt|, |authenticatorData| and |clientDataHash|, the [=verification procedure=] is
@@ -6552,13 +6555,15 @@ engine.
     Concatenate |authenticatorData| and |clientDataHash| to form |attToBeSigned|.
 
     Validate that |certInfo| is valid:
+    Note: |certInfo| is a TPMS_ATTEST structure.
     - Verify that `magic` is set to `TPM_GENERATED_VALUE`.
     - Verify that `type` is set to `TPM_ST_ATTEST_CERTIFY`.
     - Verify that `extraData` is set to the hash of |attToBeSigned| using the hash algorithm employed in "alg".
     - Verify that `attested` contains a `TPMS_CERTIFY_INFO` structure as specified in [[!TPMv2-Part2]] section 10.12.3,
         whose `name` field contains a valid Name for |pubArea|,
         as computed using the procedure specified in [[!TPMv2-Part1]]
-        section 16. Note that the hash algorithm is included within the attested `name` field of the TPMS_CERTIFY_INFO structure.
+        section 16 using the nameAlg in the |pubArea|. Note that the hash algorithm is also included within the attested `name`
+	field of the TPMS_CERTIFY_INFO structure and will also match nameAlg in |pubArea| when returned by the TPM.
     - Verify that |x5c| is present.
     - Note that the remaining fields in the "Standard Attestation Structure" [[!TPMv2-Part1]]
         section 31.2, i.e., `qualifiedSigner`, `clockInfo` and `firmwareVersion` are ignored.
