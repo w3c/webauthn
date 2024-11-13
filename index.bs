@@ -1182,17 +1182,6 @@ BCP 14 [[!RFC2119]] [[!RFC8174]] when, and only when, they appear in all capital
             when the [=public key credential source=] was [=registration|registered=].
             Storing this in combination with the above [$credential record/attestationObject$] [=struct/item=]
             enables the [=[RP]=] to re-verify the [=attestation signature=] at a later time.
-
-        :   <dfn>authenticatorDisplayName</dfn>
-        ::  A [=human-palatable=] description of the [=public key credential source=].
-
-            If used, the [=[RP]=] SHOULD use this to describe the [=credential record=] in the user's account settings.
-            The [=[RP]=] SHOULD allow the user to choose this value, and MAY allow the user to modify it at will.
-
-            The [=credProps|Credential Properties Extension=] defines the [=credential property=]
-            {{CredentialPropertiesOutput/authenticatorDisplayName}}
-            which, when available, MAY be offered as a default for this value.
-            The [=[RP]=] MAY alternatively derive a default value from the authenticator's [=attestation statement=], if any.
     </dl>
 
     [=WebAuthn extensions=] MAY define additional [=struct/items=] needed to process the extension.
@@ -6070,15 +6059,12 @@ a numbered step. If outdented, it (today) is rendered as a bullet in the midst o
 
             :   [$credential record/attestationClientDataJSON$]
             ::  <code>|response|.{{AuthenticatorResponse/clientDataJSON}}</code>.
-
-            :   [$credential record/authenticatorDisplayName$]
-            ::  A [=human-palatable=] description of the [=public key credential source=].
-                This SHOULD be chosen by the user.
-
-                If <code>|clientExtensionResults|.{{AuthenticationExtensionsClientOutputs/credProps}}.{{CredentialPropertiesOutput/authenticatorDisplayName}}</code> is present,
-                then its value MAY be offered as a default for this value.
-                The [=[RP]=] MAY alternatively derive a default value from the authenticator's [=attestation statement=], if any.
         </dl>
+
+        The [=[RP]=] MAY also include any additional [=struct/items=] as necessary.
+        As a non-normative example, the [=[RP]=] might allow the user to set a "nickname" for the credential
+        to help the user remember which [=credential=] is [=bound credential|bound=] to which [=authenticator=]
+        when interacting with account settings.
     </li>
 
 <!-- Note: this next step is actually a top-level step, but bikeshed wanted it indented this much in order to render it as a numbered step. If outdented, it (today) is rendered as a bullet in the midst of a numbered list -->
@@ -6269,11 +6255,6 @@ a numbered step. If outdented, it (today) is rendered as a bullet in the midst o
                 update it to the value of the [=authData/flags/UV=] bit in the [=flags=] in |authData|.
                 This change SHOULD require authorization by an additional [=authentication factor=] equivalent to WebAuthn [=user verification=];
                 if not authorized, skip this step.
-            1. If <code>|credentialRecord|.[$credential record/authenticatorDisplayName$]</code> is used,
-                and <code>|clientExtensionResults|.{{AuthenticationExtensionsClientOutputs/credProps}}.{{CredentialPropertiesOutput/authenticatorDisplayName}}</code>
-                is present and not equal to <code>|credentialRecord|.[$credential record/authenticatorDisplayName$]</code>,
-                then OPTIONALLY offer the user to update <code>|credentialRecord|.[$credential record/authenticatorDisplayName$]</code>
-                to the value of <code>|clientExtensionResults|.{{AuthenticationExtensionsClientOutputs/credProps}}.{{CredentialPropertiesOutput/authenticatorDisplayName}}</code>.
 
         If the [=[RP]=] performs additional security checks beyond these WebAuthn [=authentication ceremony=] steps,
         the above state updates SHOULD be deferred to after those additional checks are completed successfully.
@@ -7382,14 +7363,11 @@ This [=client extension|client=] [=registration extension=] and [=authentication
         1. Set {{CredentialPropertiesOutput/rk}} to the value of the |requireResidentKey| parameter that was used in the
             <a href='#CreateCred-InvokeAuthnrMakeCred'>invocation</a> of the [=authenticatorMakeCredential=]
             operation.
-    1. Set {{CredentialPropertiesOutput/authenticatorDisplayName}} as described in its definition, using some client-specific procedure.
-        If no suitable value is found, let {{CredentialPropertiesOutput/authenticatorDisplayName}} be undefined.
 
 : Client extension output
 ::  <xmp class="idl">
     dictionary CredentialPropertiesOutput {
         boolean rk;
-        DOMString authenticatorDisplayName;
     };
 
     partial dictionary AuthenticationExtensionsClientOutputs {
@@ -7407,38 +7385,6 @@ This [=client extension|client=] [=registration extension=] and [=authentication
             If {{rk}} is not present, it is not known whether the credential is a [=discoverable credential=] or a [=server-side credential=].
 
             Note: some [=authenticators=] create [=discoverable credentials=] even when not requested by the [=client platform=]. Because of this, [=client platforms=] may be forced to omit the {{rk}} property because they lack the assurance to be able to set it to [FALSE]. [=[RPS]=] should assume that, if the `credProps` extension is supported, then [=client platforms=] will endeavour to populate the {{rk}} property. Therefore a missing {{rk}} indicates that the created credential is most likely a [=non-discoverable credential=].
-
-        :   <dfn>authenticatorDisplayName</dfn>
-        ::  This OPTIONAL property is a [=human-palatable=] description of the credential's [=managing authenticator=],
-            chosen by the user.
-
-            The [=client=] MUST allow the user to choose this value.
-            That choice MAY be presented during the [=registration ceremony|registration=] or
-            [=authentication ceremony|authentication=] ceremony or MAY be made available outside
-            the ceremony, for example in client settings. The [=client=] MAY reuse the same value
-            for multiple credentials with the same [=managing authenticator=] across multiple
-            [=[RPS]=].
-
-            The [=client=] MAY query the [=authenticator=], by some unspecified mechanism, for this
-            value. The [=authenticator=] MAY allow the user to configure the response to such a
-            query. The [=authenticator=] vendor MAY provide a default response to such a query.
-            The [=client=] MAY consider a user-configured response chosen by the user,
-            and SHOULD allow the user to modify a vendor-provided default response.
-
-            If the [=[RP]=] includes an <code>[$credential record/authenticatorDisplayName$]</code>
-            [=struct/item=] in its [=credential records=],
-            the [=[RP]=] MAY offer this {{authenticatorDisplayName}} extension output,
-            if present, as a default value for the
-            <code>[$credential record/authenticatorDisplayName$]</code> of the new
-            [=credential record=] it stores after a [=registration ceremony=].
-
-            If the {{authenticatorDisplayName}} extension output from an [=authentication ceremony=]
-            is different from the <code>[$credential record/authenticatorDisplayName$]</code> of the
-            [=credential record=],
-            the [=[RP]=] MAY offer the user to update the
-            <code>[$credential record/authenticatorDisplayName$]</code> of the
-            [=credential record=].
-
     </div>
 
 
