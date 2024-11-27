@@ -1183,17 +1183,6 @@ BCP 14 [[!RFC2119]] [[!RFC8174]] when, and only when, they appear in all capital
             when the [=public key credential source=] was [=registration|registered=].
             Storing this in combination with the above [$credential record/attestationObject$] [=struct/item=]
             enables the [=[RP]=] to re-verify the [=attestation signature=] at a later time.
-
-        :   <dfn>authenticatorDisplayName</dfn>
-        ::  A [=human-palatable=] description of the [=public key credential source=].
-
-            If used, the [=[RP]=] SHOULD use this to describe the [=credential record=] in the user's account settings.
-            The [=[RP]=] SHOULD allow the user to choose this value, and MAY allow the user to modify it at will.
-
-            The [=credProps|Credential Properties Extension=] defines the [=credential property=]
-            {{CredentialPropertiesOutput/authenticatorDisplayName}}
-            which, when available, MAY be offered as a default for this value.
-            The [=[RP]=] MAY alternatively derive a default value from the authenticator's [=attestation statement=], if any.
     </dl>
 
     [=WebAuthn extensions=] MAY define additional [=struct/items=] needed to process the extension.
@@ -2188,7 +2177,6 @@ a numbered step. If outdented, it (today) is rendered as a bullet in the midst o
                                   1. If the [=authData/attestedCredentialData/aaguid=] in the [=attested credential data=] is 16 zero bytes, <code>|credentialCreationData|.[=attestationObjectResult=].fmt</code> is "packed", and "x5c" is absent from <code>|credentialCreationData|.[=attestationObjectResult=]</code>, then [=self attestation=] is being used and no further action is needed.
                                   1. Otherwise:
                                       1. Set the value of <code>|credentialCreationData|.[=attestationObjectResult=].fmt</code> to "none", and set the value of <code>|credentialCreationData|.[=attestationObjectResult=].attStmt</code> to be an empty [=CBOR=] map. (See [[#sctn-none-attestation]] and [[#sctn-generating-an-attestation-object]]).
-                                      1. If |authenticator| is not a [=platform authenticator=] then replace the [=authData/attestedCredentialData/aaguid=] in the [=attested credential data=] with 16 zero bytes.
 
                             :   {{AttestationConveyancePreference/indirect}}
                             ::  The client MAY replace the [=authData/attestedCredentialData/aaguid=] and [=attestation statement=] with a more privacy-friendly
@@ -4007,10 +3995,6 @@ should continue. When the {{Window}} object associated with the [=Document=] los
 {{PublicKeyCredential/[CREATE-METHOD]}} and {{PublicKeyCredential/[DISCOVER-METHOD]}} operations
 SHOULD be aborted.
 
-    Issue: The WHATWG HTML WG is discussing whether to provide a hook when a browsing context gains or
-    loses focuses. If a hook is provided, the above paragraph will be updated to include the hook.
-    See [WHATWG HTML WG Issue #2711](https://github.com/whatwg/html/issues/2711) for more details.
-
 
 ## WebAuthn Extensions Inputs and Outputs ## {#sctn-extensions-inputs-outputs}
 
@@ -4560,7 +4544,7 @@ This can make deployment challenging for large environments where multiple count
 [=[WRPS]=] can opt in to allowing [=WebAuthn Clients=] to enable a credential to be created and used across a limited set of related [=origin|origins=].
 Such [=[RPS]=] MUST choose a common [=RP ID=] to use across all ceremonies from related origins.
 
-A JSON document MUST be hosted at the `webauthn` well-known URL [[!RFC8615]] for the [=RP ID=]. The JSON document MUST be returned as follows:
+A JSON document MUST be hosted at the `webauthn` well-known URL [[!RFC8615]] for the [=RP ID=], and MUST be served using HTTPS. The JSON document MUST be returned as follows:
 
     - The content type MUST be `application/json`.
     - The top-level JSON object MUST contain a key named `origins` whose value MUST be an array of one or more strings containing web origins.
@@ -4586,6 +4570,9 @@ For example, for the RP ID `example.com`:
 
 [=WebAuthn Clients=] supporting this feature MUST support at least five [=registrable origin labels=]. Client policy SHOULD define an upper limit to prevent abuse.
 
+Requests to this well-known endpoint by [=WebAuthn Clients=] MUST be made without [=request/credentials mode|credentials=], without a [=request/referrer policy|referrer=],
+and using the `https:` [=scheme=]. When following redirects, [=WebAuthn Clients=] MUST explicitly require all redirects to also use the `https:` [=scheme=].
+
 [=WebAuthn Clients=] supporting this feature SHOULD include {{ClientCapability/relatedOrigins}} in their response to [[#sctn-getClientCapabilities|getClientCapabilities()]].
 
 ### Validating Related Origins ### {#sctn-validating-relation-origin}
@@ -4593,7 +4580,7 @@ For example, for the RP ID `example.com`:
 The <dfn abstract-op>related origins validation procedure</dfn>, given arguments |callerOrigin| and |rpIdRequested|, is as follows:
 
 1. Let |maxLabels| be the maximum number of [=registrable origin labels=] allowed by client policy.
-1. Fetch the `webauthn` well-known URL [[!RFC8615]] for the RP ID |rpIdRequested| (i.e., <code>https://|rpIdRequested|/.well-known/webauthn</code>).
+1. Fetch the `webauthn` well-known URL [[!RFC8615]] for the RP ID |rpIdRequested| (i.e., <code>https://|rpIdRequested|/.well-known/webauthn</code>) without [=request/credentials mode|credentials=], without a [=request/referrer policy|referrer=] and using the `https:` [=scheme=].
     1. If the fetch fails, the response does not have a content type of `application/json`, or does not have a status code (after following redirects) of 200, then throw a "{{SecurityError}}" {{DOMException}}.
     1. If the body of the resource is not a valid JSON object, then throw a "{{SecurityError}}" {{DOMException}}.
     1. If the value of the |origins| property of the JSON object is missing, or is not an array of strings, then throw a "{{SecurityError}}" {{DOMException}}.
@@ -6090,15 +6077,12 @@ a numbered step. If outdented, it (today) is rendered as a bullet in the midst o
 
             :   [$credential record/attestationClientDataJSON$]
             ::  <code>|response|.{{AuthenticatorResponse/clientDataJSON}}</code>.
-
-            :   [$credential record/authenticatorDisplayName$]
-            ::  A [=human-palatable=] description of the [=public key credential source=].
-                This SHOULD be chosen by the user.
-
-                If <code>|clientExtensionResults|.{{AuthenticationExtensionsClientOutputs/credProps}}.{{CredentialPropertiesOutput/authenticatorDisplayName}}</code> is present,
-                then its value MAY be offered as a default for this value.
-                The [=[RP]=] MAY alternatively derive a default value from the authenticator's [=attestation statement=], if any.
         </dl>
+
+        The [=[RP]=] MAY also include any additional [=struct/items=] as necessary.
+        As a non-normative example, the [=[RP]=] might allow the user to set a "nickname" for the credential
+        to help the user remember which [=credential=] is [=bound credential|bound=] to which [=authenticator=]
+        when interacting with account settings.
     </li>
 
 <!-- Note: this next step is actually a top-level step, but bikeshed wanted it indented this much in order to render it as a numbered step. If outdented, it (today) is rendered as a bullet in the midst of a numbered list -->
@@ -6290,11 +6274,6 @@ a numbered step. If outdented, it (today) is rendered as a bullet in the midst o
                 update it to the value of the [=authData/flags/UV=] bit in the [=flags=] in |authData|.
                 This change SHOULD require authorization by an additional [=authentication factor=] equivalent to WebAuthn [=user verification=];
                 if not authorized, skip this step.
-            1. If <code>|credentialRecord|.[$credential record/authenticatorDisplayName$]</code> is used,
-                and <code>|clientExtensionResults|.{{AuthenticationExtensionsClientOutputs/credProps}}.{{CredentialPropertiesOutput/authenticatorDisplayName}}</code>
-                is present and not equal to <code>|credentialRecord|.[$credential record/authenticatorDisplayName$]</code>,
-                then OPTIONALLY offer the user to update <code>|credentialRecord|.[$credential record/authenticatorDisplayName$]</code>
-                to the value of <code>|clientExtensionResults|.{{AuthenticationExtensionsClientOutputs/credProps}}.{{CredentialPropertiesOutput/authenticatorDisplayName}}</code>.
 
         If the [=[RP]=] performs additional security checks beyond these WebAuthn [=authentication ceremony=] steps,
         the above state updates SHOULD be deferred to after those additional checks are completed successfully.
@@ -6581,8 +6560,11 @@ engine.
     setting the `extraData` parameter to the digest of |attToBeSigned| using the hash algorithm corresponding to the "alg" signature algorithm.
     (For the "RS256" algorithm, this would be a SHA-256 digest.)
 
-    Set the |pubArea| field to the public area of the credential public key, the |certInfo| field to the output parameter of the
-    same name, and the |sig| field to the signature obtained from the above procedure.
+    Set the |pubArea| field to the public area of the credential public key (the TPMT_PUBLIC structure), the |certInfo| field (the TPMS_ATTEST structure)
+    to the output parameter of the same name, and the |sig| field to the signature obtained from the above procedure.
+
+    Note: If the |pubArea| is read from the TPM using the TPM2_ReadPublic command, that command returns a TPM2B_PUBLIC structure. TPM2B_PUBLIC
+    is two bytes of length followed by the TPMT_PUBLIC structure. The two bytes of length must be removed prior to putting this into the |pubArea|.
 
 : Verification procedure
 :: Given the [=verification procedure inputs=] |attStmt|, |authenticatorData| and |clientDataHash|, the [=verification procedure=] is
@@ -6596,24 +6578,30 @@ engine.
 
     Concatenate |authenticatorData| and |clientDataHash| to form |attToBeSigned|.
 
+    Verify integrity of |certInfo|
+    - Verify that |x5c| is present.
+    - Verify that |aikCert| meets the requirements in [[#sctn-tpm-cert-requirements]].
+    - If |aikCert| contains an extension with OID `1.3.6.1.4.1.45724.1.1.4` (`id-fido-gen-ce-aaguid`) verify that the value of this
+        extension matches the <code>[=authData/attestedCredentialData/aaguid=]</code> in |authenticatorData|.
+    - Verify the |sig| is a valid signature over |certInfo| using the attestation public key in |aikCert| with the
+        algorithm specified in |alg|.
+
     Validate that |certInfo| is valid:
+    Note: |certInfo| is a TPMS_ATTEST structure.
     - Verify that `magic` is set to `TPM_GENERATED_VALUE`.
     - Verify that `type` is set to `TPM_ST_ATTEST_CERTIFY`.
     - Verify that `extraData` is set to the hash of |attToBeSigned| using the hash algorithm employed in "alg".
     - Verify that `attested` contains a `TPMS_CERTIFY_INFO` structure as specified in [[!TPMv2-Part2]] section 10.12.3,
-        whose `name` field contains a valid Name for |pubArea|,
-        as computed using the procedure specified in [[!TPMv2-Part1]]
-        section 16. Note that the hash algorithm is included within the attested `name` field of the TPMS_CERTIFY_INFO structure.
-    - Verify that |x5c| is present.
-    - Note that the remaining fields in the "Standard Attestation Structure" [[!TPMv2-Part1]]
-        section 31.2, i.e., `qualifiedSigner`, `clockInfo` and `firmwareVersion` are ignored.
-        These fields MAY be used as an input to risk engines.
+        whose `name` field contains a valid Name for |pubArea|, as computed using the procedure specified in [[!TPMv2-Part1]] section 16 using the nameAlg in the |pubArea|.
 
-    - Verify the |sig| is a valid signature over |certInfo| using the attestation public key in |aikCert| with the
-        algorithm specified in |alg|.
-    - Verify that |aikCert| meets the requirements in [[#sctn-tpm-cert-requirements]].
-    - If |aikCert| contains an extension with OID `1.3.6.1.4.1.45724.1.1.4` (`id-fido-gen-ce-aaguid`) verify that the value of this
-        extension matches the <code>[=authData/attestedCredentialData/aaguid=]</code> in |authenticatorData|.
+        Note: The TPM will always return TPMS_CERTIFY_INFO structure with the same nameAlg in the `name` as the nameAlg
+        in |pubArea|.
+
+        Note: The remaining fields in the "Standard Attestation Structure" [[!TPMv2-Part1]]
+        section 31.2, i.e., `qualifiedSigner`, `clockInfo` and `firmwareVersion` are ignored.
+        Depending on the properties of the |aikCert| key used, these fields may be obfuscated.
+        If valid, these MAY be used as an input to risk engines.
+
     - If successful, return implementation-specific values representing [=attestation type=] [=AttCA=] and [=attestation trust
         path=] |x5c|.
 
@@ -6626,6 +6614,11 @@ TPM [=attestation certificate=] MUST have the following fields/extensions:
 - Subject field MUST be set to empty.
 
 - The Subject Alternative Name extension MUST be set as defined in [[!TPMv2-EK-Profile]] section 3.2.9.
+
+        Note: Previous versions of [[!TPMv2-EK-Profile]] allowed the inclusion of an optional attribute,
+        called HardwareModuleName, that contains the TPM serial number in the EK certificate.
+        HardwareModuleName SHOULD NOT be placed in in the [=attestation certificate=]
+        Subject Alternative Name.
 
 - The Extended Key Usage extension MUST contain the OID `2.23.133.8.3`
     ("joint-iso-itu-t(2) internationalorganizations(23) 133 tcg-kp(8) tcg-kp-AIKCertificate(3)").
@@ -7382,13 +7375,16 @@ During a transition from the FIDO U2F JavaScript API, a [=[RP]=] may have a popu
 
 ### Credential Properties Extension (<dfn>credProps</dfn>) ### {#sctn-authenticator-credential-properties-extension}
 
-This [=client extension|client=] [=registration extension=] and [=authentication extension=] facilitates reporting certain [=credential properties=] known by the [=client=] to the requesting [=[WRP]=] upon creation or use of a [=public key credential source=].
+This [=client extension|client=] [=registration extension=] facilitates reporting certain [=credential properties=] known by the [=client=] to the requesting [=[WRP]=] upon creation of a [=public key credential source=] as a result of a [=registration ceremony=].
+
+At this time, one [=credential property=] is defined: the [=client-side discoverable credential property=].
+
 
 : Extension identifier
 :: `credProps`
 
 : Operation applicability
-:: [=registration extension|Registration=] and [=authentication extension|authentication=]
+:: [=registration extension|Registration=]
 
 : Client extension input
 :: The Boolean value [TRUE] to indicate that this extension is requested by the [=[RP]=].
@@ -7399,18 +7395,16 @@ This [=client extension|client=] [=registration extension=] and [=authentication
     </xmp>
 
 : Client extension processing
-::  1. If processed during a [=registration ceremony=]:
-        1. Set {{CredentialPropertiesOutput/rk}} to the value of the |requireResidentKey| parameter that was used in the
-            <a href='#CreateCred-InvokeAuthnrMakeCred'>invocation</a> of the [=authenticatorMakeCredential=]
-            operation.
-    1. Set {{CredentialPropertiesOutput/authenticatorDisplayName}} as described in its definition, using some client-specific procedure.
-        If no suitable value is found, let {{CredentialPropertiesOutput/authenticatorDisplayName}} be undefined.
+::  Set {{CredentialPropertiesOutput/rk}} to the value of the |requireResidentKey| parameter that was used in the
+    <a href='#CreateCred-InvokeAuthnrMakeCred'>invocation</a> of the [=authenticatorMakeCredential=]
+    operation.
 
 : Client extension output
-::  <xmp class="idl">
+:: [=map/Set=] <code>[=credentialCreationData/clientExtensionResults=]["{{AuthenticationExtensionsClientOutputs/credProps}}"]["rk"]</code> to the value of the |requireResidentKey| parameter that was used in the <a href='#CreateCred-InvokeAuthnrMakeCred'>invocation</a> of the [=authenticatorMakeCredential=] operation.
+
+    <xmp class="idl">
     dictionary CredentialPropertiesOutput {
         boolean rk;
-        DOMString authenticatorDisplayName;
     };
 
     partial dictionary AuthenticationExtensionsClientOutputs {
@@ -7420,7 +7414,8 @@ This [=client extension|client=] [=registration extension=] and [=authentication
 
     <div dfn-type="dict-member" dfn-for="CredentialPropertiesOutput">
         :   <dfn>rk</dfn>
-        ::  This OPTIONAL property, known abstractly as the <dfn dfn-type="dfn">resident key credential property</dfn>,
+        ::  This OPTIONAL property, known abstractly as the <dfn dfn-type="dfn">client-side discoverable credential property</dfn>
+            or as the <dfn dfn-type="dfn">resident key credential property</dfn>,
             is a Boolean value indicating whether the {{PublicKeyCredential}} returned as a result of a [=registration ceremony=]
             is a [=client-side discoverable credential=].
             If {{rk}} is [TRUE], the credential is a [=discoverable credential=].
@@ -7428,38 +7423,6 @@ This [=client extension|client=] [=registration extension=] and [=authentication
             If {{rk}} is not present, it is not known whether the credential is a [=discoverable credential=] or a [=server-side credential=].
 
             Note: Some [=authenticators=] create [=discoverable credentials=] even when not requested by the [=client platform=]. Because of this, [=client platforms=] may be forced to omit the {{rk}} property because they lack the assurance to be able to set it to [FALSE]. [=[RPS]=] should assume that, if the `credProps` extension is supported, then [=client platforms=] will endeavour to populate the {{rk}} property. Therefore a missing {{rk}} indicates that the created credential is most likely a [=non-discoverable credential=].
-
-        :   <dfn>authenticatorDisplayName</dfn>
-        ::  This OPTIONAL property is a [=human-palatable=] description of the credential's [=managing authenticator=],
-            chosen by the user.
-
-            The [=client=] MUST allow the user to choose this value.
-            That choice MAY be presented during the [=registration ceremony|registration=] or
-            [=authentication ceremony|authentication=] ceremony or MAY be made available outside
-            the ceremony, for example in client settings. The [=client=] MAY reuse the same value
-            for multiple credentials with the same [=managing authenticator=] across multiple
-            [=[RPS]=].
-
-            The [=client=] MAY query the [=authenticator=], by some unspecified mechanism, for this
-            value. The [=authenticator=] MAY allow the user to configure the response to such a
-            query. The [=authenticator=] vendor MAY provide a default response to such a query.
-            The [=client=] MAY consider a user-configured response chosen by the user,
-            and SHOULD allow the user to modify a vendor-provided default response.
-
-            If the [=[RP]=] includes an <code>[$credential record/authenticatorDisplayName$]</code>
-            [=struct/item=] in its [=credential records=],
-            the [=[RP]=] MAY offer this {{authenticatorDisplayName}} extension output,
-            if present, as a default value for the
-            <code>[$credential record/authenticatorDisplayName$]</code> of the new
-            [=credential record=] it stores after a [=registration ceremony=].
-
-            If the {{authenticatorDisplayName}} extension output from an [=authentication ceremony=]
-            is different from the <code>[$credential record/authenticatorDisplayName$]</code> of the
-            [=credential record=],
-            the [=[RP]=] MAY offer the user to update the
-            <code>[$credential record/authenticatorDisplayName$]</code> of the
-            [=credential record=].
-
     </div>
 
 
@@ -9460,7 +9423,7 @@ for their contributions as our W3C Team Contacts.
   "TPMv2-EK-Profile": {
     "title": "TCG EK Credential Profile for TPM Family 2.0",
     "publisher": "Trusted Computing Group",
-    "href": "https://www.trustedcomputinggroup.org/wp-content/uploads/Credential_Profile_EK_V2.0_R14_published.pdf"
+    "href": "https://trustedcomputinggroup.org/wp-content/uploads/TCG-EK-Credential-Profile-V-2.5-R2_published.pdf"
   },
 
   "FIDOAuthnrSecReqs": {
