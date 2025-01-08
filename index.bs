@@ -55,7 +55,9 @@ Text Macro: RPS Relying Parties
 Text Macro: INFORMATIVE <em>This section is not normative.</em>
 Text Macro: TRUE <code>true</code>
 Text Macro: WAA WebAuthn Authenticator
+Text Macro: WAAS WebAuthn Authenticator
 Text Macro: WAC WebAuthn Client
+Text Macro: WACS WebAuthn Clients
 Text Macro: WRP WebAuthn Relying Party
 Text Macro: WRPS WebAuthn Relying Parties
 Text Macro: CREATE-METHOD-ARGS (origin, options, sameOriginWithAncestors)
@@ -269,6 +271,7 @@ spec: SP800-800-63r3; urlPrefix: https://pages.nist.gov/800-63-3/sp800-63-3.html
 
 spec: webdriver; urlPrefix: https://w3c.github.io/webdriver/
     type: dfn
+        text: Object; url: dfn-object
         text: WebDriver error; url: dfn-error
         text: WebDriver error code; url: dfn-error-code
         text: endpoint node; url: dfn-endpoint-node
@@ -311,7 +314,6 @@ spec:url; type:dfn; text:domain
 spec:url; type:dfn; for:url; text:host
 spec:url; type:dfn; text:valid domain;
 spec:webidl; type:dfn; text:DOMString
-spec:webidl; type:dfn; text:USVString
 spec:webidl; type:interface; text:Promise
 </pre>
 
@@ -3527,6 +3529,7 @@ optionally evidence of [=user consent=] to a specific transaction.
     :   <dfn>pubKeyCredParams</dfn>
     ::  This member lists the key types and signature algorithms the [=[RP]=] supports,
         ordered from most preferred to least preferred.
+        Duplicates are allowed but effectively ignored.
         The [=client=] and [=authenticator=] make a best-effort to create a credential of the most preferred type possible.
         If none of the listed types can be created, the {{CredentialsContainer/create()}} operation fails.
 
@@ -3568,7 +3571,8 @@ optionally evidence of [=user consent=] to a specific transaction.
     :   <dfn>attestationFormats</dfn>
     ::  The [=[RP]=] MAY use this OPTIONAL member to specify a preference regarding the [=attestation=] statement format used by the [=authenticator=].
         Values SHOULD be taken from the IANA "WebAuthn Attestation Statement Format Identifiers" registry [[!IANA-WebAuthn-Registries]] established by [[!RFC8809]].
-        Values are ordered from most preferable to least preferable.
+        Values are ordered from most preferred to least preferred.
+        Duplicates are allowed but effectively ignored.
         This parameter is advisory and the [=authenticator=] MAY use an attestation statement not enumerated in this parameter.
 
         The default value is the empty list, which indicates no preference.
@@ -4029,8 +4033,8 @@ This is a dictionary containing the [=client extension output=] values for zero 
 
 ```
 AuthenticationExtensionsAuthenticatorInputs = {
-  * $$extensionInput .within ( tstr => any )
-}
+  * $$extensionInput
+} .within { * tstr => any }
 ```
 
 The [=CDDL=] type `AuthenticationExtensionsAuthenticatorInputs` defines a [=CBOR=] map
@@ -4044,8 +4048,8 @@ This type is not exposed to the [=[RP]=], but is used by the [=client=] and [=au
 
 ```
 AuthenticationExtensionsAuthenticatorOutputs = {
-  * $$extensionOutput .within ( tstr => any )
-}
+  * $$extensionOutput
+} .within { * tstr => any }
 ```
 
 The [=CDDL=] type `AuthenticationExtensionsAuthenticatorOutputs` defines a [=CBOR=] map
@@ -5755,7 +5759,7 @@ template:
 
 - <strong>Syntax:</strong>
     The syntax of an [=attestation statement=] produced in this format, defined using CDDL [[!RFC8610]] for the extension point
-    `$attStmtFormat` defined in [[#sctn-generating-an-attestation-object]].
+    `$$attStmtType` defined in [[#sctn-generating-an-attestation-object]].
 
 - <dfn>Signing procedure</dfn>:
     The [=signing procedure=] for computing an [=attestation statement=] in this [=attestation statement format|format=] given
@@ -5851,17 +5855,21 @@ the [=authenticator=] MUST:
 
     ```
     attObj = {
-                authData: bytes,
-                $$attStmtType
-             }
+        authData: bytes,
 
-    attStmtTemplate = (
-                          fmt: text,
-                          attStmt: { * tstr => any } ; Map is filled in by each concrete attStmtType
-                      )
+        ; Each choice in $$attStmtType defines the fmt value and attStmt structure
+        $$attStmtType
+    } .within attStmtTemplate
 
-    ; Every attestation statement format must have the above fields
-    attStmtTemplate .within $$attStmtType
+    attStmtTemplate = {
+        authData: bytes,
+        fmt: text,
+        attStmt: (
+          { * tstr => any } ; Map is filled in by each concrete attStmtType
+          //
+          [ * any ]         ; attStmt may also be an array
+        )
+    }
     ```
 
 ### Signature Formats for Packed Attestation, FIDO U2F Attestation, and Assertion Signatures ### {#sctn-signature-attestation-types}
@@ -6027,6 +6035,13 @@ a numbered step. If outdented, it (today) is rendered as a bullet in the midst o
             - Otherwise, use the X.509 certificates returned as the [=attestation trust path=] from the [=verification procedure=]
                 to verify that the attestation public key either correctly chains up to an acceptable root certificate, or is itself an acceptable certificate
                 (i.e., it and the root certificate obtained in [step 22](#reg-ceremony-attestation-trust-anchors) may be the same).
+
+        If the attestation statement is not deemed trustworthy, the [=[RP]=] SHOULD fail the [=registration ceremony=].
+
+        NOTE: However, if permitted by policy, the [=[RP]=] MAY register the [=credential ID=] and credential public key but treat the
+            credential as one with [=self attestation=] (see [[#sctn-attestation-types]]). If doing so, the [=[RP]=] is asserting there
+            is no cryptographic proof that the [=public key credential=] has been generated by a particular [=authenticator=] model.
+            See [[FIDOSecRef]] and [[UAFProtocol]] for a more detailed discussion.
     </li>
 
 1. Verify that the <code>[=credentialId=]</code> is &le; 1023 bytes. Credential IDs larger than this many bytes SHOULD cause the RP to fail this [=registration ceremony=].
@@ -6036,11 +6051,8 @@ a numbered step. If outdented, it (today) is rendered as a bullet in the midst o
     Note: The rationale for [=[RPS]=] rejecting duplicate [=credential IDs=] is as follows:
     [=credential IDs=] contain sufficient entropy that accidental duplication is very unlikely. However, [=attestation types=] other than [=self attestation=] do not include a self-signature to explicitly prove possession of the [=credential private key=] at [=registration=] time. Thus an attacker who has managed to obtain a user's [=credential ID=] and [=credential public key=] for a site (this could be potentially accomplished in various ways), could attempt to register a victim's credential as their own at that site. If the [=[RP]=] accepts this new registration and replaces the victim's existing credential registration, and the [=discoverable credentials|credentials are discoverable=], then the victim could be forced to sign into the attacker's account at their next attempt. Data saved to the site by the victim in that state would then be available to the attacker.
 
-    <li id="reg-ceremony-store-credential-record">
-        If the attestation statement |attStmt| verified successfully and is found to be trustworthy,
-        then create and store a new [=credential record=] in the [=user account=]
-        that was denoted in <code>|pkOptions|.{{PublicKeyCredentialCreationOptions/user}}</code>,
-        with the following contents:
+    <li id="reg-ceremony-create-credential-record">
+        Let |credentialRecord| be a new [=credential record=] with the following contents:
 
         <dl>
             :   [$credential record/type$]
@@ -6106,21 +6118,16 @@ a numbered step. If outdented, it (today) is rendered as a bullet in the midst o
         prepared to handle cases where none or not all of the requested extensions were acted upon.
     </li>
 
-1. If the attestation statement |attStmt| successfully verified but is not trustworthy per [step 23](#reg-ceremony-assess-trust) above,
-    the [=[RP]=] SHOULD fail the [=registration ceremony=].
+1. If all the above steps are successful,
+    store |credentialRecord| in the [=user account=] that was denoted in <code>|pkOptions|.{{PublicKeyCredentialCreationOptions/user}}</code>
+    and continue the [=registration ceremony=] as appropriate.
+    Otherwise, fail the [=registration ceremony=].
 
-    If the [=[RP]=] does not fail the [=registration ceremony=] in this case,
-    then the [=[RP]=] is accepting that there is no cryptographic proof
-    that the [=public key credential=] has been generated by any particular [=authenticator=] model.
-    The [=[RP]=] MAY consider the credential as equivalent to one with [=None|no attestation=] (see [[#sctn-attestation-types]]).
-    See [[FIDOSecRef]] and [[UAFProtocol]] for a more detailed discussion.
-
-Verification of [=attestation objects=] requires that the [=[RP]=] has a trusted method of determining acceptable trust anchors
-in [step 22](#reg-ceremony-attestation-trust-anchors) above.
-Also, if certificates are being used, the [=[RP]=] MUST have access to certificate status information for the
-intermediate CA certificates. The [=[RP]=] MUST also be able to build the attestation certificate chain if the client did not
-provide this chain in the attestation information.
-
+    Verification of [=attestation objects=] requires that the [=[RP]=] has a trusted method of determining acceptable trust anchors
+    in [step 22](#reg-ceremony-attestation-trust-anchors) above.
+    Also, if certificates are being used, the [=[RP]=] MUST have access to certificate status information for the
+    intermediate CA certificates. The [=[RP]=] MUST also be able to build the attestation certificate chain if the client did not
+    provide this chain in the attestation information.
 
 ## Verifying an Authentication Assertion ## {#sctn-verifying-assertion}
 
@@ -6265,20 +6272,6 @@ a numbered step. If outdented, it (today) is rendered as a bullet in the midst o
               </dd>
            </dl>
 
-    <li id='authn-ceremony-update-credential-record'>
-        Update |credentialRecord| with new state values:
-
-            1. Update <code>|credentialRecord|.[$credential record/signCount$]</code> to the value of |authData|.<code>[=authData/signCount=]</code>.
-            1. Update <code>|credentialRecord|.[$credential record/backupState$]</code> to the value of |currentBs|.
-            1. If <code>|credentialRecord|.[$credential record/uvInitialized$]</code> is [FALSE],
-                update it to the value of the [=authData/flags/UV=] bit in the [=flags=] in |authData|.
-                This change SHOULD require authorization by an additional [=authentication factor=] equivalent to WebAuthn [=user verification=];
-                if not authorized, skip this step.
-
-        If the [=[RP]=] performs additional security checks beyond these WebAuthn [=authentication ceremony=] steps,
-        the above state updates SHOULD be deferred to after those additional checks are completed successfully.
-    </li>
-
 <!-- Note: this next step is actually a top-level step, but bikeshed wanted it indented this much in order to render it as a numbered step. If outdented, it (today) is rendered as a bullet in the midst of a numbered list -->
     <li id='authn-ceremony-verify-extension-outputs'>
         Process the [=client extension outputs=] in |clientExtensionResults|
@@ -6300,7 +6293,21 @@ a numbered step. If outdented, it (today) is rendered as a bullet in the midst o
         prepared to handle cases where none or not all of the requested extensions were acted upon.
     </li>
 
-1. If all the above steps are successful, continue with the [=authentication ceremony=] as appropriate. Otherwise, fail the
+    <li id='authn-ceremony-update-credential-record'>
+        Update |credentialRecord| with new state values:
+
+            1. Update <code>|credentialRecord|.[$credential record/signCount$]</code> to the value of |authData|.<code>[=authData/signCount=]</code>.
+            1. Update <code>|credentialRecord|.[$credential record/backupState$]</code> to the value of |currentBs|.
+            1. If <code>|credentialRecord|.[$credential record/uvInitialized$]</code> is [FALSE],
+                update it to the value of the [=authData/flags/UV=] bit in the [=flags=] in |authData|.
+                This change SHOULD require authorization by an additional [=authentication factor=] equivalent to WebAuthn [=user verification=];
+                if not authorized, skip this step.
+
+        If the [=[RP]=] performs additional security checks beyond these WebAuthn [=authentication ceremony=] steps,
+        the above state updates SHOULD be deferred to after those additional checks are completed successfully.
+    </li>
+
+1. If all the above steps are successful, continue the [=authentication ceremony=] as appropriate. Otherwise, fail the
     [=authentication ceremony=].
 
 
@@ -6950,7 +6957,7 @@ The "compound" attestation statement format is used to pass multiple, self-conta
                           attStmt: [2* nonCompoundAttStmt]
                       )
 
-    nonCompoundAttStmt = { $$attStmtType } .within { fmt: text .ne "compound" }
+    nonCompoundAttStmt = { $$attStmtType } .within { fmt: text .ne "compound", * any => any }
     ```
 
 : Signing procedure
@@ -7237,10 +7244,10 @@ but the currently used [=RP ID=] might be "example.com".
 :: [=authentication extension|Authentication=]
 
 : Client extension input
-:: A single USVString specifying a FIDO |AppID|.
+:: A single DOMString specifying a FIDO |AppID|.
     <xmp class="idl">
     partial dictionary AuthenticationExtensionsClientInputs {
-      USVString appid;
+      DOMString appid;
     };
     </xmp>
 
@@ -7300,10 +7307,10 @@ During a transition from the FIDO U2F JavaScript API, a [=[RP]=] may have a popu
 :: [=registration extension|Registration=]
 
 : Client extension input
-:: A single USVString specifying a FIDO |AppID|.
+:: A single DOMString specifying a FIDO |AppID|.
     <xmp class="idl">
     partial dictionary AuthenticationExtensionsClientInputs {
-      USVString appidExclude;
+      DOMString appidExclude;
     };
     </xmp>
 
@@ -7462,7 +7469,7 @@ Note: This extension may be implemented for [=authenticators=] that do not use [
 
     dictionary AuthenticationExtensionsPRFInputs {
         AuthenticationExtensionsPRFValues eval;
-        record<USVString, AuthenticationExtensionsPRFValues> evalByCredential;
+        record<DOMString, AuthenticationExtensionsPRFValues> evalByCredential;
     };
 
     partial dictionary AuthenticationExtensionsClientInputs {
@@ -7533,217 +7540,6 @@ Note: This extension may be implemented for [=authenticators=] that do not use [
             returned by <code>{{PublicKeyCredential}}.{{PublicKeyCredential/toJSON()}}</code>
             will include this {{AuthenticationExtensionsPRFOutputs/results}} output if present.
     </div>
-
-
-#### Test vectors: Web Authentication API #### {#prf-extension-test-vectors-webauthn}
-
-[INFORMATIVE]
-
-The following examples may be used to test [=[WAC]=] implementations of and [=[WRP]=] usage of the [=prf=] extension.
-The examples are not exhaustive.
-
-- The {{AuthenticationExtensionsPRFOutputs/enabled}} output is always present during [=registration ceremonies=],
-    and never present during [=authentication ceremonies=]:
-
-    <xmp class="example" highlight="js">
-    // Example extension inputs:
-    { prf: {} }
-
-    // Example client extension outputs from navigator.credentials.create():
-    { prf: { enabled: true } }
-    { prf: { enabled: false } }
-
-    // Example client extension outputs from navigator.credentials.get():
-    { prf: {} }
-    </xmp>
-
-- The {{AuthenticationExtensionsPRFOutputs/results}} output may be present
-    during [=registration ceremonies=] or [=authentication ceremonies=]
-    if the {{AuthenticationExtensionsPRFInputs/eval}} or {{AuthenticationExtensionsPRFInputs/evalByCredential}} input is present:
-
-    <xmp class="example" highlight="js">
-    // Example extension inputs:
-    { prf: { eval: { first: new Uint8Array([1, 2, 3, 4]) } } }
-
-    // Example client extension outputs from navigator.credentials.create():
-    { prf: { enabled: true } }
-    { prf: { enabled: false } }
-    { prf: { enabled: true, results: { first: ArrayBuffer } } }
-
-    // Example client extension outputs from navigator.credentials.get():
-    { prf: {} }
-    { prf: { results: { first: ArrayBuffer } } }
-    </xmp>
-
-- The <code>{{AuthenticationExtensionsPRFOutputs/results}}.{{AuthenticationExtensionsPRFValues/second}}</code> output
-    is present if and only if the {{AuthenticationExtensionsPRFOutputs/results}} output is present
-    and the <code>{{AuthenticationExtensionsPRFValues/second}}</code> input was present in the chosen PRF inputs:
-
-    <xmp class="example" highlight="js">
-    // Example extension inputs:
-    {
-      prf: {
-        eval: {
-          first: new Uint8Array([1, 2, 3, 4]),
-          second: new Uint8Array([5, 6, 7, 8]),
-        },
-        evalByCredential: {
-          "e02eZ9lPp0UdkF4vGRO4-NxlhWBkL1FCmsmb1tTfRyE": {
-            first: new Uint8Array([9, 10, 11, 12]),
-          }
-        }
-      }
-    }
-
-    // Example client extension outputs from navigator.credentials.get() if credential "e02eZ9lP..." was used:
-    { prf: { results: { first: ArrayBuffer } } }
-
-    // Example client extension outputs from navigator.credentials.get() if a different credential was used:
-    { prf: {} }
-    { prf: { results: { first: ArrayBuffer, second: ArrayBuffer } } }
-    </xmp>
-
-- The {{AuthenticationExtensionsPRFValues/first}} and {{AuthenticationExtensionsPRFValues/second}} outputs
-    may be any {{BufferSource}} type.
-    Equal {{AuthenticationExtensionsPRFValues/first}} and {{AuthenticationExtensionsPRFValues/second}} inputs
-    result in equal {{AuthenticationExtensionsPRFValues/first}} and {{AuthenticationExtensionsPRFValues/second}} outputs:
-
-    <xmp class="example" highlight="js">
-    // Example extension inputs:
-    {
-      prf: {
-        evalByCredential: {
-          "e02eZ9lPp0UdkF4vGRO4-NxlhWBkL1FCmsmb1tTfRyE": {
-            first: new Uint8Array([9, 10, 11, 12]),
-            second: new Uint8Array([9, 10, 11, 12])
-          }
-        }
-      }
-    }
-
-    // Example client extension outputs from navigator.credentials.get():
-    {
-      prf: {
-        results: {
-          first: new Uint8Array([0xc4, 0x17, 0x2e, 0x98, 0x2e, 0x90, 0x97, 0xc3, 0x9a, 0x6c, 0x0c, 0xb7, 0x20, 0xcb, 0x37, 0x5b, 0x92, 0xe3, 0xfc, 0xad, 0x15, 0x4a, 0x63, 0xe4, 0x3a, 0x93, 0xf1, 0x09, 0x6b, 0x1e, 0x19, 0x73]),
-          second: new Uint32Array([0x982e17c4, 0xc397902e, 0xb70c6c9a, 0x5b37cb20, 0xadfce392, 0xe4634a15, 0x09f1933a, 0x73191e6b]),
-        }
-      }
-    }
-    </xmp>
-
-Pseudo-random values used in this section were generated as follows:
-
-- <code>"e02eZ9lPp0UdkF4vGRO4-NxlhWBkL1FCmsmb1tTfRyE" = Base64Url(SHA-256(UTF-8("WebAuthn PRF test vectors") || 0x00))</code>
-- <code>h&apos;c4172e982e9097c39a6c0cb720cb375b92e3fcad154a63e43a93f1096b1e1973' = SHA-256(UTF-8("WebAuthn PRF test vectors") || 0x01)</code>
-
-
-#### Test vectors: CTAP2 `hmac-secret` extension #### {#prf-extension-test-vectors-ctap}
-
-[INFORMATIVE]
-
-The following examples may be used to test [=[WAC]=] implementations
-of how the [=prf=] extension uses the [[FIDO-CTAP]] `hmac-secret` extension.
-The examples are given in CDDL [[RFC8610]] notation.
-The examples are not exhaustive.
-
-- The following shared definitions are used in all subsequent examples:
-
-    <xmp class="example" highlight="cddl">
-    ; Given input parameters:
-    platform_key_agreement_private_key = 0x0971bc7fb1be48270adcd3d9a5fc15d5fb0f335b3071ff36a54c007fa6c76514
-    authenticator_key_agreement_public_key = {
-        1: 2,
-        3: -25,
-        -1: 1,
-        -2: h'a30522c2de402b561965c3cf949a1cab020c6f6ea36fcf7e911ac1a0f1515300',
-        -3: h'9961a929abdb2f42e6566771887d41484d889e735e3248518a53112d2b915f00',
-    }
-    authenticator_cred_random = h'437e065e723a98b2f08f39d8baf7c53ecb3c363c5e5104bdaaf5d5ca2e028154'
-    </xmp>
-
-    The {{AuthenticationExtensionsPRFValues/first}} and {{AuthenticationExtensionsPRFValues/second}} inputs
-    are mapped in the examples as `prf_eval_first` and `prf_eval_second`, respectively.
-    The `prf_results_first` and `prf_results_second` values in the examples
-    are mapped to the
-    <code>{{AuthenticationExtensionsPRFOutputs/results}}.{{AuthenticationExtensionsPRFValues/first}}</code>
-    and <code>{{AuthenticationExtensionsPRFOutputs/results}}.{{AuthenticationExtensionsPRFValues/second}}</code>
-    outputs, respectively.
-
-- Single input case using PIN protocol 2:
-
-    <xmp class="example" highlight="cddl">
-    ; Inputs from Relying Party:
-    prf_eval_first = h'576562417574686e20505246207465737420766563746f727302'
-
-    ; Client computes:
-    shared_secret = h'0c63083de8170101d38bcf8bd72309568ddb4550867e23404b35d85712f7c20d8bc911ee23c06034cbc14290b9669bec07739053c5a416e313ef905c79955876'
-    salt1 = h'527413ebb48293772df30f031c5ac4650c7de14bf9498671ae163447b6a772b3'
-    salt_enc = h'437e065e723a98b2f08f39d8baf7c53ebbb2ed3e746b87576fd81f95def5757cad24be18eaef892e97692e684e07da53'
-
-    ; Authenticator computes:
-    output1 = h'3c33e07d202c3b029cc21f1722767021bf27d595933b3d2b6a1b9d5dddc77fae'
-    output_enc = h'3bfaa48f7952330d63e35ff8cd5bca48d2a12823828915749287256ab146272f9fb437bf65691243c3f504bd7ea6d5e6'
-
-    ; Client decrypts:
-    prf_results_first = h'3c33e07d202c3b029cc21f1722767021bf27d595933b3d2b6a1b9d5dddc77fae'
-    </xmp>
-
-- Two input case using PIN protocol 2:
-
-    <xmp class="example" highlight="cddl">
-    ; Inputs from Relying Party:
-    prf_eval_first = h'576562417574686e20505246207465737420766563746f727302'
-    prf_eval_second = h'576562417574686e20505246207465737420766563746f727303'
-
-    ; Client computes:
-    shared_secret = h'0c63083de8170101d38bcf8bd72309568ddb4550867e23404b35d85712f7c20d8bc911ee23c06034cbc14290b9669bec07739053c5a416e313ef905c79955876'
-    salt1 = h'527413ebb48293772df30f031c5ac4650c7de14bf9498671ae163447b6a772b3'
-    salt2 = h'd68ac03329a10ee5e0ec834492bb9a96a0e547baf563bf78ccbe8789b22e776b'
-    salt_enc = h'23dde5e3462daf36559b85c4ac5f9656aa9bfd81c1dc2bf8533c8b9f3882854786b4f500e25b4e3d81f7fc7c742362294d92926c883b3fae1a3673246464bf730446e1fa4698c432a9092477c5dde5e3'
-
-    ; Authenticator computes:
-    output1 = h'3c33e07d202c3b029cc21f1722767021bf27d595933b3d2b6a1b9d5dddc77fae'
-    output2 = h'a62a8773b19cda90d7ed4ef72a80a804320dbd3997e2f663805ad1fd3293d50b'
-    output_enc = h'90ee52f739043bc17b3488a74306d7801debb5b61f18662c648a25b5b5678ede482cdaff99a537a44f064fcb10ce6e04dfd27619dc96a0daff8507e499296b1eecf0981f7c8518b277a7a3018f5ec6fb'
-
-    ; Client decrypts:
-    prf_results_first = h'3c33e07d202c3b029cc21f1722767021bf27d595933b3d2b6a1b9d5dddc77fae'
-    prf_results_second = h'a62a8773b19cda90d7ed4ef72a80a804320dbd3997e2f663805ad1fd3293d50b'
-    </xmp>
-
-- Single input case using PIN protocol 1:
-
-    <xmp class="example" highlight="cddl">
-    ; Inputs from Relying Party:
-    prf_eval_first = h'576562417574686e20505246207465737420766563746f727302'
-
-    ; Client computes:
-    shared_secret = h'23e5ed7157c25892b77732fb9c8a107e3518800db2af4142f9f4adfacb771d39'
-    salt1 = h'527413ebb48293772df30f031c5ac4650c7de14bf9498671ae163447b6a772b3'
-    salt_enc = h'ab8c878bb05d04700f077ed91845ec9c503c925cb12b327ddbeb4243c397f913'
-
-    ; Authenticator computes:
-    output1 = h'3c33e07d202c3b029cc21f1722767021bf27d595933b3d2b6a1b9d5dddc77fae'
-    output_enc = h'15d4e4f3f04109b492b575c1b38c28585b6719cf8d61304215108d939f37ccfb'
-
-    ; Client decrypts:
-    prf_results_first = h'3c33e07d202c3b029cc21f1722767021bf27d595933b3d2b6a1b9d5dddc77fae'
-    </xmp>
-
-Inputs and pseudo-random values used in this section were generated as follows:
-
-- <code>seed = UTF-8("WebAuthn PRF test vectors")</code>
-- <code>prf_eval_first = seed || 0x02</code>
-- <code>prf_eval_second = seed || 0x03</code>
-- <code>platform_key_agreement_private_key = SHA-256(seed || 0x04)</code>
-- <code>authenticator_key_agreement_public_key = P256-Public-Key(sk)</code>
-    where <code>sk = SHA-256(seed || 0x05)</code>
-- <code>authenticator_cred_random = SHA-256(seed || 0x06)</code>
-- `iv` in single-input `salt_enc` with PIN protocol 2: Truncated <code>SHA-256(seed || 0x07)</code>
-- `iv` in two-input `salt_enc` with PIN protocol 2: Truncated <code>SHA-256(seed || 0x08)</code>
-- `iv` in single-input `output_enc` with PIN protocol 2: Truncated <code>SHA-256(seed || 0x09)</code>
-- `iv` in two-input `output_enc` with PIN protocol 2: Truncated <code>SHA-256(seed || 0x0a)</code>
 
 
 ### Large blob storage extension (<dfn>largeBlob</dfn>) ### {#sctn-large-blob-extension}
@@ -9268,6 +9064,788 @@ The <dfn>recommended range and default for a WebAuthn ceremony timeout</dfn> is 
 
 * Recommended range: 300000 milliseconds to 600000 milliseconds.
 * Recommended default value: 300000 milliseconds (5 minutes).
+
+
+# Test Vectors # {#sctn-test-vectors}
+
+[INFORMATIVE]
+
+This section lists example values that may be used to validate implementations.
+
+Examples are given as pseudocode in pairs of [=registration ceremony|registration=]
+and [=authentication ceremonies=] done with the same [=credential=],
+with byte string literals and comments in CDDL [[RFC8610]] notation.
+The examples are not exhaustive and do not include [=WebAuthn extensions=].
+
+The examples are structured as a flow from inputs to outputs, including some intermediate values.
+In registration examples the [=[RP]=] defines the {{PublicKeyCredentialCreationOptions/challenge}} input,
+the [=client=] generates the {{AuthenticatorResponse/clientDataJSON}} output
+and the [=authenticator=] generates the {{AuthenticatorAttestationResponse/attestationObject}} output.
+In authentication examples the [=[RP]=] defines the {{PublicKeyCredentialRequestOptions/challenge}} input,
+the [=client=] generates the {{AuthenticatorResponse/clientDataJSON}} output
+and the [=authenticator=] generates the
+{{AuthenticatorAssertionResponse/authenticatorData}} and {{AuthenticatorAssertionResponse/signature}} outputs.
+Other cryptographically unrelated inputs and outputs are not included.
+
+[=Authenticator=] implementers may check that they produce similarly structured
+{{AuthenticatorAttestationResponse/attestationObject}},
+{{AuthenticatorAssertionResponse/authenticatorData}} and {{AuthenticatorAssertionResponse/signature}} outputs.
+[=Client=] implementers may check that they produce similarly structured {{AuthenticatorResponse/clientDataJSON}} outputs.
+[=[RP]=] implementers may check that they can successfully validate the registration outputs
+given the same {{PublicKeyCredentialCreationOptions/challenge}} input,
+and that they can successfully validate the authentication outputs
+given the same {{PublicKeyCredentialRequestOptions/challenge}} input
+and the [=credential public key=] and [=credential ID=] from the associated registration example.
+
+All examples use the [=RP ID=] `example.org`, the {{CollectedClientData/origin}} `https://example.org`
+and, where applicable, the {{CollectedClientData/topOrigin}} `https://example.com`.
+Examples include [=None|no attestation=] when not noted otherwise.
+
+All random values are deterministically generated using HKDF-SHA-256 [[RFC5869]]
+from the base input key material denoted in CDDL as `'WebAuthn test vectors'`,
+or equivalently as `h'576562417574686e207465737420766563746f7273'`.
+ECDSA signatures use a deterministic nonce [[RFC6979]].
+The RSA key in the examples is constructed from the two smallest Mersenne primes 2<sup>p</sup> - 1 such that p &ge; 1024.
+
+Note that:
+
+- Although the examples include [=credential private keys=] and [=attestation private keys=] for reproducibility,
+    these would normally not be shared with the [=client=] or [=[RP]=].
+- Although each example uses a different [=/AAGUID=], the [=/AAGUID=] would normally be constant for a given [=authenticator=].
+
+Note: [=Authenticators=] implementing CTAP2 [[FIDO-CTAP]] return [=attestation objects=]
+using different keys than those defined in this specification.
+These examples reflect the attestation object format expected by [=[WRPS]=],
+so [=attestation objects=] emitted from CTAP2 need their keys translated
+in order to be bitwise identical to these examples.
+
+
+## Attestation trust root certificate ## {#sctn-test-vectors-attestation-root-cert}
+
+All examples that include [=attestation=] use the attestation trust root certificate
+given as `attestation_ca_cert` below, encoded in X.509 DER [[RFC5280]]:
+
+<xmp class="example" highlight="cddl">
+attestation_ca_key = h'7809337f05740a96a78eedf9e9280499dcc8f2aa129616049ec1dccfe103eb2a'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'00', info='Attestation CA', L=32)
+attestation_ca_serial_number = h'ed7f905d8bd0b414d1784913170a90b6'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'01', info='Attestation CA', L=16)
+attestation_ca_cert = h'30820207308201ada003020102021100ed7f905d8bd0b414d1784913170a90b6300a06082a8648ce3d0403023062311e301c06035504030c15576562417574686e207465737420766563746f7273310c300a060355040a0c0357334331253023060355040b0c1c41757468656e74696361746f72204174746573746174696f6e204341310b30090603550406130241413020170d3234303130313030303030305a180f33303234303130313030303030305a3062311e301c06035504030c15576562417574686e207465737420766563746f7273310c300a060355040a0c0357334331253023060355040b0c1c41757468656e74696361746f72204174746573746174696f6e204341310b30090603550406130241413059301306072a8648ce3d020106082a8648ce3d030107034200043269300e5ff7b699015f70cf80a8763bf705bc2e2af0c1b39cff718b7c35880ca30f319078d91b03389a006fdfc8a1dcd84edfa07d30aa13474a248a0dab5baaa3423040300f0603551d130101ff040530030101ff300e0603551d0f0101ff040403020106301d0603551d0e0416041445aff715b0dd786741fee996ebc16547a3931b1e300a06082a8648ce3d04030203480030450220483063b6bb08dcc83da33a02c11d2f42203176893554d138c614a36908724cc8022100f5ef2c912d4500b3e2f5b591d0622491e9f220dfd1f9734ec484bb7e90887663'
+</xmp>
+
+
+### ES256 Credential with No Attestation ### {#sctn-test-vectors-none-es256}
+
+[=registration ceremony|Registration=]:
+<xmp class="example" highlight="cddl">
+challenge = h'00c30fb78531c464d2b6771dab8d7b603c01162f2fa486bea70f283ae556e130'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'00', info='none.ES256', L=32)
+
+credential_private_key = h'6e68e7a58484a3264f66b77f5d6dc5bc36a47085b615c9727ab334e8c369c2ee'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'01', info='none.ES256', L=32)
+client_data_gen_flags = h'f9'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'02', info='none.ES256', L=1)
+; extra_client_data is included iff bit 0x01 of client_data_gen_flags is 1
+extra_client_data = h'06441e0e375c4c1ad70620302532c4e5'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'03', info='none.ES256', L=16)
+aaguid = h'8446ccb9ab1db374750b2367ff6f3a1f'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'04', info='none.ES256', L=16)
+credential_id = h'f91f391db4c9b2fde0ea70189cba3fb63f579ba6122b33ad94ff3ec330084be4'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'05', info='none.ES256', L=32)
+; auth_data_UV_BE_BS determines the UV, BE and BS bits of the authenticator data flags, but BS is set only if BE is
+auth_data_UV_BE_BS = h'ba'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'06', info='none.ES256', L=1)
+
+clientDataJSON = h'7b2274797065223a22776562617574686e2e637265617465222c226368616c6c656e6765223a22414d4d507434557878475453746e63647134313759447742466938767049612d7077386f4f755657345441222c226f726967696e223a2268747470733a2f2f6578616d706c652e6f7267222c2263726f73734f726967696e223a66616c73652c22657874726144617461223a22636c69656e74446174614a534f4e206d617920626520657874656e6465642077697468206164646974696f6e616c206669656c647320696e20746865206675747572652c207375636820617320746869733a20426b5165446a646354427258426941774a544c4535513d3d227d'
+attestationObject = h'a363666d74646e6f6e656761747453746d74a068617574684461746158a4bfabc37432958b063360d3ad6461c9c4735ae7f8edd46592a5e0f01452b2e4b559000000008446ccb9ab1db374750b2367ff6f3a1f0020f91f391db4c9b2fde0ea70189cba3fb63f579ba6122b33ad94ff3ec330084be4a5010203262001215820afefa16f97ca9b2d23eb86ccb64098d20db90856062eb249c33a9b672f26df61225820930a56b87a2fca66334b03458abf879717c12cc68ed73290af2e2664796b9220'
+</xmp>
+
+[=authentication ceremony|Authentication=]:
+<xmp class="example" highlight="cddl">
+challenge = h'39c0e7521417ba54d43e8dc95174f423dee9bf3cd804ff6d65c857c9abf4d408'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'07', info='none.ES256', L=32)
+
+client_data_gen_flags = h'4a'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'08', info='none.ES256', L=1)
+; extra_client_data is included iff bit 0x01 of client_data_gen_flags is 1
+; auth_data_UV_BS sets the UV and BS bits of the authenticator data flags, but BS is set only if BE was set in the registration
+auth_data_UV_BS = h'38'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'09', info='none.ES256', L=1)
+
+authenticatorData = h'bfabc37432958b063360d3ad6461c9c4735ae7f8edd46592a5e0f01452b2e4b51900000000'
+clientDataJSON = h'7b2274797065223a22776562617574686e2e676574222c226368616c6c656e6765223a224f63446e55685158756c5455506f334a5558543049393770767a7a59425039745a63685879617630314167222c226f726967696e223a2268747470733a2f2f6578616d706c652e6f7267222c2263726f73734f726967696e223a66616c73657d'
+signature = h'3046022100f50a4e2e4409249c4a853ba361282f09841df4dd4547a13a87780218deffcd380221008480ac0f0b93538174f575bf11a1dd5d78c6e486013f937295ea13653e331e87'
+</xmp>
+
+
+### ES256 Credential with Self Attestation ### {#sctn-test-vectors-packed-self-es256}
+
+[=registration ceremony|Registration=]:
+<xmp class="example" highlight="cddl">
+challenge = h'7869c2b772d4b58eba9378cf8f29e26cf935aa77df0da89fa99c0bdc0a76f7e5'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'00', info='packed-self.ES256', L=32)
+
+credential_private_key = h'b4bbfa5d68e1693b6ef5a19a0e60ef7ee2cbcac81f7fec7006ac3a21e0c5116a'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'01', info='packed-self.ES256', L=32)
+client_data_gen_flags = h'db'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'02', info='packed-self.ES256', L=1)
+; extra_client_data is included iff bit 0x01 of client_data_gen_flags is 1
+extra_client_data = h'53d8535ef284d944643276ffd3160756'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'03', info='packed-self.ES256', L=16)
+aaguid = h'df850e09db6afbdfab51697791506cfc'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'04', info='packed-self.ES256', L=16)
+credential_id = h'455ef34e2043a87db3d4afeb39bbcb6cc32df9347c789a865ecdca129cbef58c'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'05', info='packed-self.ES256', L=32)
+; auth_data_UV_BE_BS determines the UV, BE and BS bits of the authenticator data flags, but BS is set only if BE is
+auth_data_UV_BE_BS = h'fd'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'06', info='packed-self.ES256', L=1)
+
+clientDataJSON = h'7b2274797065223a22776562617574686e2e637265617465222c226368616c6c656e6765223a2265476e4374334c55745936366b336a506a796e6962506b31716e666644616966715a774c33417032392d55222c226f726967696e223a2268747470733a2f2f6578616d706c652e6f7267222c2263726f73734f726967696e223a66616c73652c22657874726144617461223a22636c69656e74446174614a534f4e206d617920626520657874656e6465642077697468206164646974696f6e616c206669656c647320696e20746865206675747572652c207375636820617320746869733a205539685458764b453255526b4d6e625f3078594856673d3d227d'
+attestationObject = h'a363666d74667061636b65646761747453746d74a263616c67266373696758483046022100ae045923ded832b844cae4d5fc864277c0dc114ad713e271af0f0d371bd3ac540221009077a088ed51a673951ad3ba2673d5029bab65b64f4ea67b234321f86fcfac5d68617574684461746158a4bfabc37432958b063360d3ad6461c9c4735ae7f8edd46592a5e0f01452b2e4b55d00000000df850e09db6afbdfab51697791506cfc0020455ef34e2043a87db3d4afeb39bbcb6cc32df9347c789a865ecdca129cbef58ca5010203262001215820eb151c8176b225cc651559fecf07af450fd85802046656b34c18f6cf193843c5225820927b8aa427a2be1b8834d233a2d34f61f13bfd44119c325d5896e183fee484f2'
+</xmp>
+
+[=authentication ceremony|Authentication=]:
+<xmp class="example" highlight="cddl">
+challenge = h'4478a10b1352348dd160c1353b0d469b5db19eb91c27f7dfa6fed39fe26af20b'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'07', info='packed-self.ES256', L=32)
+
+client_data_gen_flags = h'1f'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'08', info='packed-self.ES256', L=1)
+; extra_client_data is included iff bit 0x01 of client_data_gen_flags is 1
+extra_client_data = h'8136f9debcfa121496a265c6ce2982d5'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'09', info='packed-self.ES256', L=16)
+; auth_data_UV_BS sets the UV and BS bits of the authenticator data flags, but BS is set only if BE was set in the registration
+auth_data_UV_BS = h'a1'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'0a', info='packed-self.ES256', L=1)
+
+authenticatorData = h'bfabc37432958b063360d3ad6461c9c4735ae7f8edd46592a5e0f01452b2e4b50900000000'
+clientDataJSON = h'7b2274797065223a22776562617574686e2e676574222c226368616c6c656e6765223a225248696843784e534e493352594d45314f7731476d3132786e726b634a5f6666707637546e2d4a71386773222c226f726967696e223a2268747470733a2f2f6578616d706c652e6f7267222c2263726f73734f726967696e223a66616c73652c22657874726144617461223a22636c69656e74446174614a534f4e206d617920626520657874656e6465642077697468206164646974696f6e616c206669656c647320696e20746865206675747572652c207375636820617320746869733a206754623533727a36456853576f6d58477a696d4331513d3d227d'
+signature = h'3044022076691be76a8618976d9803c4cdc9b97d34a7af37e3bdc894a2bf54f040ffae850220448033a015296ffb09a762efd0d719a55346941e17e91ebf64c60d439d0b9744'
+</xmp>
+
+
+### ES256 Credential with "crossOrigin": true in clientDataJSON ### {#sctn-test-vectors-none-es256-crossOrigin}
+
+[=registration ceremony|Registration=]:
+<xmp class="example" highlight="cddl">
+challenge = h'3be5aacd03537142472340ab5969f240f1d87716e20b6807ac230655fa4b3b49'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'00', info='none.ES256.crossOrigin', L=32)
+
+credential_private_key = h'96c940e769bd9f1237c119f144fa61a4d56af0b3289685ae2bef7fb89620623d'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'01', info='none.ES256.crossOrigin', L=32)
+client_data_gen_flags = h'71'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'02', info='none.ES256.crossOrigin', L=1)
+; extra_client_data is included iff bit 0x01 of client_data_gen_flags is 1
+extra_client_data = h'cd9aae12d0d1f435aaa56e6d0564c5ba'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'03', info='none.ES256.crossOrigin', L=16)
+aaguid = h'883f4f6014f19c09d87aa38123be48d0'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'04', info='none.ES256.crossOrigin', L=16)
+credential_id = h'6e1050c0d2ca2f07c755cb2c66a74c64fa43065c18f938354d9915db2bd5ce57'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'05', info='none.ES256.crossOrigin', L=32)
+; auth_data_UV_BE_BS determines the UV, BE and BS bits of the authenticator data flags, but BS is set only if BE is
+auth_data_UV_BE_BS = h'27'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'06', info='none.ES256.crossOrigin', L=1)
+
+clientDataJSON = h'7b2274797065223a22776562617574686e2e637265617465222c226368616c6c656e6765223a224f2d57717a514e5463554a484930437257576e7951504859647862694332674872434d475666704c4f306b222c226f726967696e223a2268747470733a2f2f6578616d706c652e6f7267222c2263726f73734f726967696e223a747275652c22657874726144617461223a22636c69656e74446174614a534f4e206d617920626520657874656e6465642077697468206164646974696f6e616c206669656c647320696e20746865206675747572652c207375636820617320746869733a207a5a71754574445239445771705735744257544675673d3d227d'
+attestationObject = h'a363666d74646e6f6e656761747453746d74a068617574684461746158a4bfabc37432958b063360d3ad6461c9c4735ae7f8edd46592a5e0f01452b2e4b54500000000883f4f6014f19c09d87aa38123be48d000206e1050c0d2ca2f07c755cb2c66a74c64fa43065c18f938354d9915db2bd5ce57a501020326200121582022200a473f90b11078851550d03b4e44a2279f8c4eca27b3153dedfe03e4e97d225820cbd0be95e746ad6f5a8191be11756e4c0420e72f65b466d39bc56b8b123a9c6e'
+</xmp>
+
+[=authentication ceremony|Authentication=]:
+<xmp class="example" highlight="cddl">
+challenge = h'876aa517ba83fdee65fcffdbca4c84eeae5d54f8041a1fc85c991e5bbb273137'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'07', info='none.ES256.crossOrigin', L=32)
+
+client_data_gen_flags = h'57'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'08', info='none.ES256.crossOrigin', L=1)
+; extra_client_data is included iff bit 0x01 of client_data_gen_flags is 1
+extra_client_data = h'f76a5c4d50f401bcbeab876d9a3e9e7e'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'09', info='none.ES256.crossOrigin', L=16)
+; auth_data_UV_BS sets the UV and BS bits of the authenticator data flags, but BS is set only if BE was set in the registration
+auth_data_UV_BS = h'0c'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'0a', info='none.ES256.crossOrigin', L=1)
+
+authenticatorData = h'bfabc37432958b063360d3ad6461c9c4735ae7f8edd46592a5e0f01452b2e4b50500000000'
+clientDataJSON = h'7b2274797065223a22776562617574686e2e676574222c226368616c6c656e6765223a226832716c463771445f65356c5f505f62796b7945377135645650674547685f49584a6b655737736e4d5463222c226f726967696e223a2268747470733a2f2f6578616d706c652e6f7267222c2263726f73734f726967696e223a747275652c22657874726144617461223a22636c69656e74446174614a534f4e206d617920626520657874656e6465642077697468206164646974696f6e616c206669656c647320696e20746865206675747572652c207375636820617320746869733a2039327063545644304162792d713464746d6a366566673d3d227d'
+signature = h'304402204396b14b216ed47920dc359e46aa0a1d4a912cf9d50f25a58ec236a11db4cf5e02204fdb59ff01656c4b0868e415436a464b0e30e94b02c719b995afaba9c917146b'
+</xmp>
+
+
+### ES256 Credential with "topOrigin" in clientDataJSON ### {#sctn-test-vectors-none-es256-topOrigin}
+
+[=registration ceremony|Registration=]:
+<xmp class="example" highlight="cddl">
+challenge = h'4e1f4c6198699e33c14f192153f49d7e0e8e3577d5ac416c5f3adc92a41f27e5'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'00', info='none.ES256.topOrigin', L=32)
+
+credential_private_key = h'a2d6de40ab974b80d8c1ef78c6d4300097754f7e016afe7f8ea0ad9798b0d420'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'01', info='none.ES256.topOrigin', L=32)
+client_data_gen_flags = h'54'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'02', info='none.ES256.topOrigin', L=1)
+; extra_client_data is included iff bit 0x01 of client_data_gen_flags is 1
+aaguid = h'97586fd09799a76401c200455099ef2a'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'03', info='none.ES256.topOrigin', L=16)
+credential_id = h'b8ad59b996047ab18e2ceb57206c362da57458793481f4a8ebf101c7ca7cc0f1'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'04', info='none.ES256.topOrigin', L=32)
+; auth_data_UV_BE_BS determines the UV, BE and BS bits of the authenticator data flags, but BS is set only if BE is
+auth_data_UV_BE_BS = h'a0'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'05', info='none.ES256.topOrigin', L=1)
+
+clientDataJSON = h'7b2274797065223a22776562617574686e2e637265617465222c226368616c6c656e6765223a225468394d595a68706e6a504254786b68555f53646667364f4e58665672454673587a72636b7151664a2d55222c226f726967696e223a2268747470733a2f2f6578616d706c652e6f7267222c2263726f73734f726967696e223a747275652c22746f704f726967696e223a2268747470733a2f2f6578616d706c652e636f6d227d'
+attestationObject = h'a363666d74646e6f6e656761747453746d74a068617574684461746158a4bfabc37432958b063360d3ad6461c9c4735ae7f8edd46592a5e0f01452b2e4b5410000000097586fd09799a76401c200455099ef2a0020b8ad59b996047ab18e2ceb57206c362da57458793481f4a8ebf101c7ca7cc0f1a5010203262001215820a1c47c1d82da4ebe82cd72207102b380670701993bc35398ae2e5726427fe01d22582086c1080d82987028c7f54ecb1b01185de243b359294a0ed210cd47480f0adc88'
+</xmp>
+
+[=authentication ceremony|Authentication=]:
+<xmp class="example" highlight="cddl">
+challenge = h'd54a5c8ca4b62a8e3bb321e3b2bc73856f85a10150db2939ac195739eb1ea066'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'06', info='none.ES256.topOrigin', L=32)
+
+client_data_gen_flags = h'77'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'07', info='none.ES256.topOrigin', L=1)
+; extra_client_data is included iff bit 0x01 of client_data_gen_flags is 1
+extra_client_data = h'52216824c5514070c0156162e2fc54a5'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'08', info='none.ES256.topOrigin', L=16)
+; auth_data_UV_BS sets the UV and BS bits of the authenticator data flags, but BS is set only if BE was set in the registration
+auth_data_UV_BS = h'9f'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'09', info='none.ES256.topOrigin', L=1)
+
+authenticatorData = h'bfabc37432958b063360d3ad6461c9c4735ae7f8edd46592a5e0f01452b2e4b50500000000'
+clientDataJSON = h'7b2274797065223a22776562617574686e2e676574222c226368616c6c656e6765223a22315570636a4b53324b6f34377379486a7372787a68572d466f51465132796b3572426c584f6573656f4759222c226f726967696e223a2268747470733a2f2f6578616d706c652e6f7267222c2263726f73734f726967696e223a747275652c22746f704f726967696e223a2268747470733a2f2f6578616d706c652e636f6d222c22657874726144617461223a22636c69656e74446174614a534f4e206d617920626520657874656e6465642077697468206164646974696f6e616c206669656c647320696e20746865206675747572652c207375636820617320746869733a205569466f4a4d565251484441465746693476785570513d3d227d'
+signature = h'304402206a19613fa8cfacfc8027272aec5dae3555fea9f983d841581466678d71e6761a02207a9785ba22e48eb18525850357d9dc70795aaad2e6021159c4a4a183146eaa71'
+</xmp>
+
+
+### ES256 Credential with very long credential ID ### {#sctn-test-vectors-none-es256-long-credential-id}
+
+[=registration ceremony|Registration=]:
+<xmp class="example" highlight="cddl">
+challenge = h'1113c7265ccf5e65124282fa1d7819a7a14cb8539aa4cdbec7487e5f35d8ec6c'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'00', info='none.ES256.long-credential-id', L=32)
+
+credential_private_key = h'6fd2149bb5f1597fe549b138794bde61893b2dc32ca316de65f04808dac211dc'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'01', info='none.ES256.long-credential-id', L=32)
+client_data_gen_flags = h'90'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'02', info='none.ES256.long-credential-id', L=1)
+; extra_client_data is included iff bit 0x01 of client_data_gen_flags is 1
+aaguid = h'8f3360c2cd1b0ac14ffe0795c5d2638e'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'03', info='none.ES256.long-credential-id', L=16)
+credential_id = h'3a761a4e1674ad6c4305869435c0eee9c286172c229bb91b48b4ada140c0863417031305cce5b4a27a88d7fe728a5f5a627de771b4b40e77f187980c124f9fe832d7136010436a056cce716680587d23187cf1fc2c62ae86fc3e508ee9617ffc74fbc10488ec16ec5e9096328669a898709b655e549738c666c1ae6281dc3b5f733c251d3eefb76ee70a3805ca91bcc18e49c8dc7f63ebcb486ba8c3d6ab52b88ff72c6a5bb47c32f3ee8683a3ddc8abf60870448ec8a21b5bdcb183c7dead870255575a6df96eb1b6a2a1019780cba9e4887b17ff1164bbbcc10eb0d86ed75984cd3fa3419103024507dfd9ce8f92c56af7914cb0bb50b87ba82a312bb7dcd93028dbdcd6adb266979667158335171e3682d37755701edbf9d872846a291d49e57ef09da1ec637f5052ed2aa7407f7e61827468e94b461844f4c67be5fa9c6055a566f8fdfc29d4bf78a9ff275f552cc68ba543fa3962eea36fd1ea8453764577d021d0a181efc1f6100ab2e4110039e21ee16970bda7432b6134492155afc126295b3a2eccd12c66a68e340969e995e3e8c9c476e395cfc21203414110779474f1c9797406637dbe414f132519d3bf0ce4f01734ef0e1a12c3ad604ff15d766b1624db6a5a7ccbff7bc35c9908df94aba277e0af48f04ff3d16381c47e5a37ed3988a67a3b1ecaa926336b33391fff04128f869991c9fabd905b6fe3ceef5f8b630ec1c5d2636d5b1961ad5ca5004170f6f5e482792aad989b0287fe91e5c479403397152f1fa56aa79b156eb47e6c8ea3eb175c34cfb38ad8e772874639b1023d4d01395c94e55831671cc022aa6fa1e02a02c2e4abc776f6960e51f83b71a8c0f207b6a347573977812c9aa5480b0011aa739bd4b76c18c000cc4757cceccb920f007c40c00e37e5ab21476cd9f6054a8fffb55a108f5c706e2cea2049d81fd321ff47d2a5761b0800955ab1d4f4889f55a84e2601c684f17a4ade7453ea49591d0b59c8d9a765052f62219cf6ef4a5dd9539f0617d6ebbebce7c000455475d18449e25c49ef9a1e3efe18c09082ebe2058d7c347defaa92f0664553b805c7d76bbfce5f330aca220ac90a789380fc479ea0d8793205813cca590a912f699ad52f991a1bc0a503c3ec4b2a696719e3c26591a87127f7305cc7e72f4c8e39355ebb06a5b1042990f38710ee7aa612ee4374bb82e878585a70a96c2a6b47f101a4ff154be4fd76a3167577a5cc54d9167c154c69ac35485e44cc898b719e1be3cc9c0fb5624b8f8a0dae10947a41bf848b6c1bb33d1006ec077d7e286e3f2a7b4843716390119449fe2721e81a5ed2333d331c7120765da58fadae73c19d9a8c4509cf8ac1e9d98b799a5274509069739b5823f3fb496663820033426988eefca53e580e0f9e0dfe0992fc2e53a97e053639f98577058f995bdbd41cefdb'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'04', info='none.ES256.long-credential-id', L=1023)
+; auth_data_UV_BE_BS determines the UV, BE and BS bits of the authenticator data flags, but BS is set only if BE is
+auth_data_UV_BE_BS = h'69'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'05', info='none.ES256.long-credential-id', L=1)
+
+clientDataJSON = h'7b2274797065223a22776562617574686e2e637265617465222c226368616c6c656e6765223a22455250484a6c7a50586d5553516f4c364858675a7036464d75464f61704d322d7830682d587a5859374777222c226f726967696e223a2268747470733a2f2f6578616d706c652e6f7267222c2263726f73734f726967696e223a66616c73657d'
+attestationObject = h'a363666d74646e6f6e656761747453746d74a0686175746844617461590483bfabc37432958b063360d3ad6461c9c4735ae7f8edd46592a5e0f01452b2e4b549000000008f3360c2cd1b0ac14ffe0795c5d2638e03ff3a761a4e1674ad6c4305869435c0eee9c286172c229bb91b48b4ada140c0863417031305cce5b4a27a88d7fe728a5f5a627de771b4b40e77f187980c124f9fe832d7136010436a056cce716680587d23187cf1fc2c62ae86fc3e508ee9617ffc74fbc10488ec16ec5e9096328669a898709b655e549738c666c1ae6281dc3b5f733c251d3eefb76ee70a3805ca91bcc18e49c8dc7f63ebcb486ba8c3d6ab52b88ff72c6a5bb47c32f3ee8683a3ddc8abf60870448ec8a21b5bdcb183c7dead870255575a6df96eb1b6a2a1019780cba9e4887b17ff1164bbbcc10eb0d86ed75984cd3fa3419103024507dfd9ce8f92c56af7914cb0bb50b87ba82a312bb7dcd93028dbdcd6adb266979667158335171e3682d37755701edbf9d872846a291d49e57ef09da1ec637f5052ed2aa7407f7e61827468e94b461844f4c67be5fa9c6055a566f8fdfc29d4bf78a9ff275f552cc68ba543fa3962eea36fd1ea8453764577d021d0a181efc1f6100ab2e4110039e21ee16970bda7432b6134492155afc126295b3a2eccd12c66a68e340969e995e3e8c9c476e395cfc21203414110779474f1c9797406637dbe414f132519d3bf0ce4f01734ef0e1a12c3ad604ff15d766b1624db6a5a7ccbff7bc35c9908df94aba277e0af48f04ff3d16381c47e5a37ed3988a67a3b1ecaa926336b33391fff04128f869991c9fabd905b6fe3ceef5f8b630ec1c5d2636d5b1961ad5ca5004170f6f5e482792aad989b0287fe91e5c479403397152f1fa56aa79b156eb47e6c8ea3eb175c34cfb38ad8e772874639b1023d4d01395c94e55831671cc022aa6fa1e02a02c2e4abc776f6960e51f83b71a8c0f207b6a347573977812c9aa5480b0011aa739bd4b76c18c000cc4757cceccb920f007c40c00e37e5ab21476cd9f6054a8fffb55a108f5c706e2cea2049d81fd321ff47d2a5761b0800955ab1d4f4889f55a84e2601c684f17a4ade7453ea49591d0b59c8d9a765052f62219cf6ef4a5dd9539f0617d6ebbebce7c000455475d18449e25c49ef9a1e3efe18c09082ebe2058d7c347defaa92f0664553b805c7d76bbfce5f330aca220ac90a789380fc479ea0d8793205813cca590a912f699ad52f991a1bc0a503c3ec4b2a696719e3c26591a87127f7305cc7e72f4c8e39355ebb06a5b1042990f38710ee7aa612ee4374bb82e878585a70a96c2a6b47f101a4ff154be4fd76a3167577a5cc54d9167c154c69ac35485e44cc898b719e1be3cc9c0fb5624b8f8a0dae10947a41bf848b6c1bb33d1006ec077d7e286e3f2a7b4843716390119449fe2721e81a5ed2333d331c7120765da58fadae73c19d9a8c4509cf8ac1e9d98b799a5274509069739b5823f3fb496663820033426988eefca53e580e0f9e0dfe0992fc2e53a97e053639f98577058f995bdbd41cefdba50102032620012158203b8176b7504489cc593046d7988abb7905a742de6ac2cdc748a873c663e90cb12258201436d5edc9a75f23999eef9d5950a5c2455514ee1014084720f841a06b828a11'
+</xmp>
+
+[=authentication ceremony|Authentication=]:
+<xmp class="example" highlight="cddl">
+challenge = h'ef1deba56dce48f674a447ccf63b9599258ce87648e5c396f2ef0ca1da460e3b'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'06', info='none.ES256.long-credential-id', L=32)
+
+client_data_gen_flags = h'80'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'07', info='none.ES256.long-credential-id', L=1)
+; extra_client_data is included iff bit 0x01 of client_data_gen_flags is 1
+; auth_data_UV_BS sets the UV and BS bits of the authenticator data flags, but BS is set only if BE was set in the registration
+auth_data_UV_BS = h'e5'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'08', info='none.ES256.long-credential-id', L=1)
+
+authenticatorData = h'bfabc37432958b063360d3ad6461c9c4735ae7f8edd46592a5e0f01452b2e4b50d00000000'
+clientDataJSON = h'7b2274797065223a22776562617574686e2e676574222c226368616c6c656e6765223a22377833727057334f53505a307045664d396a75566d53574d36485a4935634f573875384d6f647047446a73222c226f726967696e223a2268747470733a2f2f6578616d706c652e6f7267222c2263726f73734f726967696e223a66616c73657d'
+signature = h'304502203ecef83fb12a0cae7841055f9f87103a99fd14b424194bbf06c4623d3ee6e3fd022100d2ace346db262b1374a6b70faa51f518a42ddca13a4125ce6f5052a75bac9fb6'
+</xmp>
+
+
+### Packed Attestation with ES256 Credential ### {#sctn-test-vectors-packed-es256}
+
+[=registration ceremony|Registration=]:
+<xmp class="example" highlight="cddl">
+challenge = h'c1184a5fddf8045e13dc47f54b61f5a656b666b59018f16d870e9256e9952012'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'00', info='packed.ES256', L=32)
+
+credential_private_key = h'36ed7bea2357cefa8c4ec7e134f3312d2e6ca3058519d0bcb4c1424272010432'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'01', info='packed.ES256', L=32)
+client_data_gen_flags = h'8d'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'02', info='packed.ES256', L=1)
+; extra_client_data is included iff bit 0x01 of client_data_gen_flags is 1
+extra_client_data = h'f5af1b3588ca0a05ab05753e7c29756a'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'03', info='packed.ES256', L=16)
+aaguid = h'876ca4f52071c3e9b25509ef2cdf7ed6'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'04', info='packed.ES256', L=16)
+credential_id = h'c9a6f5b3462d02873fea0c56862234f99f081728084e511bb7760201a89054a5'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'05', info='packed.ES256', L=32)
+; auth_data_UV_BE_BS determines the UV, BE and BS bits of the authenticator data flags, but BS is set only if BE is
+auth_data_UV_BE_BS = h'4f'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'06', info='packed.ES256', L=1)
+attestation_private_key = h'ec2804b222552b4b277d1f58f8c4343c0b0b0db5474eb55365c89d66a2bc96be'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'07', info='packed.ES256', L=32)
+attestation_cert_serial_number = h'88c220f83c8ef1feafe94deae45faad0'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'08', info='packed.ES256', L=16)
+
+clientDataJSON = h'7b2274797065223a22776562617574686e2e637265617465222c226368616c6c656e6765223a227752684b58393334424634543345663153324831706c61325a725751475046746877365356756d56494249222c226f726967696e223a2268747470733a2f2f6578616d706c652e6f7267222c2263726f73734f726967696e223a66616c73652c22657874726144617461223a22636c69656e74446174614a534f4e206d617920626520657874656e6465642077697468206164646974696f6e616c206669656c647320696e20746865206675747572652c207375636820617320746869733a20396138624e596a4b436757724258552d66436c3161673d3d227d'
+attestationObject = h'a363666d74667061636b65646761747453746d74a363616c67266373696758473045022025fcee945801b94e63d7c029e6f761654cf02e7100d5364a3b90e03daa6276fc022100eabcdf4ce19feb0980e829c3b6137079b18e42f43ce5c3c573b83368794f354c637835638159022530820221308201c8a00302010202110088c220f83c8ef1feafe94deae45faad0300a06082a8648ce3d0403023062311e301c06035504030c15576562417574686e207465737420766563746f7273310c300a060355040a0c0357334331253023060355040b0c1c41757468656e74696361746f72204174746573746174696f6e204341310b30090603550406130241413020170d3234303130313030303030305a180f33303234303130313030303030305a305f311e301c06035504030c15576562417574686e207465737420766563746f7273310c300a060355040a0c0357334331223020060355040b0c1941757468656e74696361746f72204174746573746174696f6e310b30090603550406130241413059301306072a8648ce3d020106082a8648ce3d03010703420004a91ba4389409dd38a428141940ca8feb1ac0d7b4350558104a3777a49322f3798440f378b3398ab2d3bb7bf91322c92eb23556f59ad0a836fec4c7663b0e4dc3a360305e300c0603551d130101ff04023000300e0603551d0f0101ff040403020780301d0603551d0e04160414a589ba72d060842ab11f74fb246bdedab16f9b9b301f0603551d2304183016801445aff715b0dd786741fee996ebc16547a3931b1e300a06082a8648ce3d040302034700304402201726b9d85ecd8a5ed51163722ca3a20886fd9b242a0aa0453d442116075defd502207ef471e530ac87961a88a7f0d0c17b091ffc6b9238d30f79f635b417be5910e768617574684461746158a4bfabc37432958b063360d3ad6461c9c4735ae7f8edd46592a5e0f01452b2e4b54d00000000876ca4f52071c3e9b25509ef2cdf7ed60020c9a6f5b3462d02873fea0c56862234f99f081728084e511bb7760201a89054a5a50102032620012158201cf27f25da591208a4239c2e324f104f585525479a29edeedd830f48e77aeae522582059e4b7da6c0106e206ce390c93ab98a15a5ec3887e57f0cc2bece803b920c423'
+</xmp>
+
+[=authentication ceremony|Authentication=]:
+<xmp class="example" highlight="cddl">
+challenge = h'b1106fa46a57bef1781511c0557dc898a03413d5f0f17d244630c194c7e1adb5'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'09', info='packed.ES256', L=32)
+
+client_data_gen_flags = h'75'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'0a', info='packed.ES256', L=1)
+; extra_client_data is included iff bit 0x01 of client_data_gen_flags is 1
+extra_client_data = h'019330c8cc486c3f3eba0b85369eabf1'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'0b', info='packed.ES256', L=16)
+; auth_data_UV_BS sets the UV and BS bits of the authenticator data flags, but BS is set only if BE was set in the registration
+auth_data_UV_BS = h'46'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'0c', info='packed.ES256', L=1)
+
+authenticatorData = h'bfabc37432958b063360d3ad6461c9c4735ae7f8edd46592a5e0f01452b2e4b50d00000000'
+clientDataJSON = h'7b2274797065223a22776562617574686e2e676574222c226368616c6c656e6765223a2273524276704770587676463446524841565833496d4b4130453958773858306b526a44426c4d6668726255222c226f726967696e223a2268747470733a2f2f6578616d706c652e6f7267222c2263726f73734f726967696e223a66616c73652c22657874726144617461223a22636c69656e74446174614a534f4e206d617920626520657874656e6465642077697468206164646974696f6e616c206669656c647320696e20746865206675747572652c207375636820617320746869733a20415a4d77794d78496244382d756775464e70367238513d3d227d'
+signature = h'30460221009d8d54895393894d37b9fa7bdfbcff05403de3cf0d6443ffb394fa239f101579022100c8871288f19c6c48a3b64c09d39868c12d16ed80ea4c5d8890288975c0272f50'
+</xmp>
+
+
+### Packed Attestation with ES384 Credential ### {#sctn-test-vectors-packed-es384}
+
+[=registration ceremony|Registration=]:
+<xmp class="example" highlight="cddl">
+challenge = h'567b030b3e186bc1d169dd45b79f9e0d86f1fd63474da3eade5bdb8db379a0c3'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'00', info='packed.ES384', L=32)
+
+credential_private_key = h'271e37d309c558c0f35222b37abba7500377d68e179e4c74b0cb558551b2e5276b47b90a317ca8ebbe1a12c93c2d5dd9'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'01', info='packed.ES384', L=48)
+client_data_gen_flags = h'32'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'02', info='packed.ES384', L=1)
+; extra_client_data is included iff bit 0x01 of client_data_gen_flags is 1
+aaguid = h'e950dcda3bdae1d087cda380a897848b'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'03', info='packed.ES384', L=16)
+credential_id = h'953ae2dd9f28b1a1d5802c83e1f65833bb9769a08de82d812bc27c13fc6f06a9'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'04', info='packed.ES384', L=32)
+; auth_data_UV_BE_BS determines the UV, BE and BS bits of the authenticator data flags, but BS is set only if BE is
+auth_data_UV_BE_BS = h'db'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'05', info='packed.ES384', L=1)
+attestation_private_key = h'8d979fbb6e49c4eeb5925a2bca0fcdb023d3fb90bcadce8391da9da4ed2aee9a'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'06', info='packed.ES384', L=32)
+attestation_cert_serial_number = h'3d0a5588bb87ebb1d4cee4a1807c1b7c'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'07', info='packed.ES384', L=16)
+
+clientDataJSON = h'7b2274797065223a22776562617574686e2e637265617465222c226368616c6c656e6765223a22566e7344437a3459613848526164314674352d65445962785f574e4854615071336c76626a624e356f4d4d222c226f726967696e223a2268747470733a2f2f6578616d706c652e6f7267222c2263726f73734f726967696e223a66616c73657d'
+attestationObject = h'a363666d74667061636b65646761747453746d74a363616c67266373696758473045022100c56ecc970b7843833e0f461fde26233f61eb395161d481558c08b9c6ed61675b022029f5e05033705cd0f9b0a07e149468ec308a4f84906409efdceb1da20a7518d6637835638159022530820221308201c7a00302010202103d0a5588bb87ebb1d4cee4a1807c1b7c300a06082a8648ce3d0403023062311e301c06035504030c15576562417574686e207465737420766563746f7273310c300a060355040a0c0357334331253023060355040b0c1c41757468656e74696361746f72204174746573746174696f6e204341310b30090603550406130241413020170d3234303130313030303030305a180f33303234303130313030303030305a305f311e301c06035504030c15576562417574686e207465737420766563746f7273310c300a060355040a0c0357334331223020060355040b0c1941757468656e74696361746f72204174746573746174696f6e310b30090603550406130241413059301306072a8648ce3d020106082a8648ce3d0301070342000417e5cc91d676d370e36aa7de40c25aacb45a3845f13d2932088ece2270b9b431241c219c22d0c256c9438ade00f2c05e62f8ef906b9b997ae9f3c460c2db66f5a360305e300c0603551d130101ff04023000300e0603551d0f0101ff040403020780301d0603551d0e04160414c7c8dd95382a2230e4c0dd3664338fa908169a9c301f0603551d2304183016801445aff715b0dd786741fee996ebc16547a3931b1e300a06082a8648ce3d0403020348003045022054068cc9ae038937b7c468c307edb9c6927ffdeb6a20070c483eb40330f99f10022100cf41953919c3c04693d6b1f42a613753f204e70e85fc6e9b17036170b83596e068617574684461746158c5bfabc37432958b063360d3ad6461c9c4735ae7f8edd46592a5e0f01452b2e4b55900000000e950dcda3bdae1d087cda380a897848b0020953ae2dd9f28b1a1d5802c83e1f65833bb9769a08de82d812bc27c13fc6f06a9a5010203382220022158304866bd8b01da789e9eb806e5eab05ae5a638542296ab057a2f1bbce9b58f8a08b9171390b58a37ac7fffc2c5f45857da2258302a0b024c7f4b72072a1f96bd30a7261aae9571dd39870eb29e55c0941c6b08e89629a1ea1216aa64ce57c2807bf3901a'
+</xmp>
+
+[=authentication ceremony|Authentication=]:
+<xmp class="example" highlight="cddl">
+challenge = h'ff41c3d25dbd8966fb61e28ef5e47041e137ed268520412d76202ba0ad2d1453'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'08', info='packed.ES384', L=32)
+
+client_data_gen_flags = h'0c'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'09', info='packed.ES384', L=1)
+; extra_client_data is included iff bit 0x01 of client_data_gen_flags is 1
+; auth_data_UV_BS sets the UV and BS bits of the authenticator data flags, but BS is set only if BE was set in the registration
+auth_data_UV_BS = h'af'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'0a', info='packed.ES384', L=1)
+
+authenticatorData = h'bfabc37432958b063360d3ad6461c9c4735ae7f8edd46592a5e0f01452b2e4b50d00000000'
+clientDataJSON = h'7b2274797065223a22776562617574686e2e676574222c226368616c6c656e6765223a225f304844306c32396957623759654b4f39655277516545333753614649454574646941726f4b307446464d222c226f726967696e223a2268747470733a2f2f6578616d706c652e6f7267222c2263726f73734f726967696e223a66616c73657d'
+signature = h'3065023100e4efbb46745ed00e67c4d51ab2bacab2af62ffa8b7c5fecec6d7d9bf2582275034a713a3dd731685eee81adfaf6aa63f0230161655353f07e018a3c2539f8de7c8c4cf88d4c32d2be29fe4e76fa096ecc9458bbfe0895d57129ab324130e6f0692db'
+</xmp>
+
+
+### Packed Attestation with ES512 Credential ### {#sctn-test-vectors-packed-es512}
+
+[=registration ceremony|Registration=]:
+<xmp class="example" highlight="cddl">
+challenge = h'4ee220cd92b07e11451cb4c201c5755bd879848e492a9b12d79135c62764dc2fd28ead4808cafe5ad1de8fa9e08d4a8eeafea4dfb333877b02bc503f475d3b0c1394a7683baaf4f2477829f7b8cf750948985558748c073068396fcfdcd3f245bf2038e6bb38d7532768aad13be8c118f727722e7426139041e9caca503884c5'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'00', info='packed.ES512', L=128)
+
+credential_private_key = h'f11120594f6a4944ac3ba59adbbc5b85016895b649f4cc949a610f4b48be47b318850bacb105f747647bba8852b6b8e52a0b3679f1bbbdfe18c99409bcb644fa45'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'01', info='packed.ES512', L=65)
+client_data_gen_flags = h'6d'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'02', info='packed.ES512', L=1)
+; extra_client_data is included iff bit 0x01 of client_data_gen_flags is 1
+extra_client_data = h'a37a958ce2f6b535a6e06c64cc8fd082'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'03', info='packed.ES512', L=16)
+aaguid = h'39d8ce6a3cf61025775083a738e5c254'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'04', info='packed.ES512', L=16)
+credential_id = h'd17d5af7e3f37c56622a67c8462c9e1c6336dfccb8b61d359dc47378dba58ce4'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'05', info='packed.ES512', L=32)
+; auth_data_UV_BE_BS determines the UV, BE and BS bits of the authenticator data flags, but BS is set only if BE is
+auth_data_UV_BE_BS = h'cf'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'06', info='packed.ES512', L=1)
+attestation_private_key = h'ffbc89d5f75994f52dc5e7538ee269402d26995d40c16fb713473e34fca98be4'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'07', info='packed.ES512', L=32)
+attestation_cert_serial_number = h'8a128b7ebe52b993835779e6d9b81355'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'08', info='packed.ES512', L=16)
+
+clientDataJSON = h'7b2274797065223a22776562617574686e2e637265617465222c226368616c6c656e6765223a22547549677a5a4b7766684646484c544341635631573968356849354a4b707353313545317869646b33435f536a713149434d722d577448656a366e676a55714f3676366b33374d7a683373437646415f5231303744424f5570326737717654795233677039376a5064516c496d465659644977484d47673562385f63305f4a46767941343572733431314d6e614b72524f2d6a424750636e636935304a684f5151656e4b796c4134684d55222c226f726967696e223a2268747470733a2f2f6578616d706c652e6f7267222c2263726f73734f726967696e223a66616c73652c22657874726144617461223a22636c69656e74446174614a534f4e206d617920626520657874656e6465642077697468206164646974696f6e616c206669656c647320696e20746865206675747572652c207375636820617320746869733a206f3371566a4f4c327454576d3447786b7a495f5167673d3d227d'
+attestationObject = h'a363666d74667061636b65646761747453746d74a363616c67266373696758483046022100c48fcbd826bbc79680802026688d41ab6da8c3a1d22ab6cecf36c8d7695d22500221008767dfe591277e973078d5692c8c35cf9d579792822e7145c96a0ac4515df5b0637835638159022730820223308201c8a0030201020211008a128b7ebe52b993835779e6d9b81355300a06082a8648ce3d0403023062311e301c06035504030c15576562417574686e207465737420766563746f7273310c300a060355040a0c0357334331253023060355040b0c1c41757468656e74696361746f72204174746573746174696f6e204341310b30090603550406130241413020170d3234303130313030303030305a180f33303234303130313030303030305a305f311e301c06035504030c15576562417574686e207465737420766563746f7273310c300a060355040a0c0357334331223020060355040b0c1941757468656e74696361746f72204174746573746174696f6e310b30090603550406130241413059301306072a8648ce3d020106082a8648ce3d03010703420004940b68885291536e2f7c60c05acfb252e7eebcf4304425dd93ab7b1962f20492bf18dc0f12862599e81fb764ac92151f9a78fcbb35d7a26c8c52949b18133c06a360305e300c0603551d130101ff04023000300e0603551d0f0101ff040403020780301d0603551d0e041604143ffad863abcd3dc5717b8a252189f41af97e7f31301f0603551d2304183016801445aff715b0dd786741fee996ebc16547a3931b1e300a06082a8648ce3d0403020349003046022100832c8b64c4f0188bd32e1bec63e13301cdc03165d3ef840d1f3dabb9a5719f83022100add57a9d5bedec98f29222dfc97ea795d055ee13a02a153d02be9ce00aedeb9168617574684461746158e9bfabc37432958b063360d3ad6461c9c4735ae7f8edd46592a5e0f01452b2e4b54d0000000039d8ce6a3cf61025775083a738e5c2540020d17d5af7e3f37c56622a67c8462c9e1c6336dfccb8b61d359dc47378dba58ce4a5010203382320032158420083240a2c3ad21a3dc0a6daa3d8bc05a46d7cd9825ba010ae2a22686c2d6d663d7d5f678987fb1e767542e63dc197ae915e25f8ee284651af29066910a2cc083f50225842017337df47ab5cce5d716ef8caffa97a3012689b1f326ea6c43a1ba9596c72f71f0122390143552b42be772b4c35ffb961220c743b486a601ea4cb6d5412f5b078d3'
+</xmp>
+
+[=authentication ceremony|Authentication=]:
+<xmp class="example" highlight="cddl">
+challenge = h'08d3190c6dcb3d4f0cb659a0333bf5ea124ddf36a0cd33d5204b0d7a22a8cc26f2e4f169d200285c77b3fb22e0f1c7f49a87d4be2d25e92d797808ddaaa9b5715efd3a6ada9339d3052a687dbc5d2f8c871b0451e0691f57ad138541b7b72e7aa8933729ec1c664bf2e4dedae1616d08ecefa80a2a53b103663ce5a881048829'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'09', info='packed.ES512', L=128)
+
+client_data_gen_flags = h'ac'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'0a', info='packed.ES512', L=1)
+; extra_client_data is included iff bit 0x01 of client_data_gen_flags is 1
+; auth_data_UV_BS sets the UV and BS bits of the authenticator data flags, but BS is set only if BE was set in the registration
+auth_data_UV_BS = h'52'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'0b', info='packed.ES512', L=1)
+
+authenticatorData = h'bfabc37432958b063360d3ad6461c9c4735ae7f8edd46592a5e0f01452b2e4b51900000000'
+clientDataJSON = h'7b2274797065223a22776562617574686e2e676574222c226368616c6c656e6765223a22434e4d5a4447334c5055384d746c6d674d7a763136684a4e337a61677a5450564945734e65694b6f7a436279355046703067416f5848657a2d794c67386366306d6f66557669306c3653313565416a6471716d31635637394f6d72616b7a6e544253706f666278644c3479484777525234476b66563630546855473374793536714a4d334b6577635a6b7679354e376134574674434f7a7671416f71553745445a6a7a6c7149454569436b222c226f726967696e223a2268747470733a2f2f6578616d706c652e6f7267222c2263726f73734f726967696e223a66616c73657d'
+signature = h'3081870242009bda02fe384e77bcb9fb42b07c395b7a53ec9d9616dd0308ab8495c2141c8364c7d16e212a4a4fb8e3987ff6c99eafd64d8484fd28c3fc7968f658a9033d1bb1b802416383e9f3ee20c691b66620299fef36bea2df4d39c92b2ead92f58e7b79ab0d9864d2ebf3b0dcc66ea13234492ccee6e9d421db43c959bcb94c162dc9494136c9f6'
+</xmp>
+
+
+### Packed Attestation with RS256 Credential ### {#sctn-test-vectors-packed-rs256}
+
+[=registration ceremony|Registration=]:
+<xmp class="example" highlight="cddl">
+challenge = h'bea8f0770009bd57f2c0df6fea9f743a27e4b61bbe923c862c7aad7a9fc8e4a6'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'00', info='packed.RS256', L=32)
+
+; The two smallest Mersenne primes 2^p - 1 where p >= 1024
+private_key_p = 2^1279 - 1 = h'7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff'
+private_key_q = 2^2203 - 1 = h'07ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff'
+client_data_gen_flags = h'1c'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'01', info='packed.RS256', L=1)
+; extra_client_data is included iff bit 0x01 of client_data_gen_flags is 1
+aaguid = h'428f8878298b9862a36ad8c7527bfef2'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'02', info='packed.RS256', L=16)
+credential_id = h'992a18acc83f67533600c1138a4b4c4bd236de13629cf025ed17cb00b00b74df'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'03', info='packed.RS256', L=32)
+; auth_data_UV_BE_BS determines the UV, BE and BS bits of the authenticator data flags, but BS is set only if BE is
+auth_data_UV_BE_BS = h'7e'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'04', info='packed.RS256', L=1)
+attestation_private_key = h'08a1322d5aa5b5b40cd67c2cc30b038e7921d7888c84c342d50d79f0c5fc3464'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'05', info='packed.RS256', L=32)
+attestation_cert_serial_number = h'1f6fb7a5ece81b45896b983a995da5f3'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'06', info='packed.RS256', L=16)
+
+clientDataJSON = h'7b2274797065223a22776562617574686e2e637265617465222c226368616c6c656e6765223a2276716a776477414a76566679774e3976367039304f69666b7468752d6b6a79474c48717465705f49354b59222c226f726967696e223a2268747470733a2f2f6578616d706c652e6f7267222c2263726f73734f726967696e223a66616c73657d'
+attestationObject = h'a363666d74667061636b65646761747453746d74a363616c672663736967584730450221008b8c5c6ea8c142c032e0be69e1353d44461c5c9109941cdda951b976eb95b6b302204d52f406c19e254b3ff9589bd18070fb055ac8db12fdd0a6734bea9d7168e900637835638159022630820222308201c7a00302010202101f6fb7a5ece81b45896b983a995da5f3300a06082a8648ce3d0403023062311e301c06035504030c15576562417574686e207465737420766563746f7273310c300a060355040a0c0357334331253023060355040b0c1c41757468656e74696361746f72204174746573746174696f6e204341310b30090603550406130241413020170d3234303130313030303030305a180f33303234303130313030303030305a305f311e301c06035504030c15576562417574686e207465737420766563746f7273310c300a060355040a0c0357334331223020060355040b0c1941757468656e74696361746f72204174746573746174696f6e310b30090603550406130241413059301306072a8648ce3d020106082a8648ce3d03010703420004b7b36b7542a11120b443c794d0c99fdc25a06b76586413d81e086163ef6fe147a557afc34e2861d9057d6d465d4705a0310550bdeeb5f35ee35b9425ab859981a360305e300c0603551d130101ff04023000300e0603551d0f0101ff040403020780301d0603551d0e04160414fb37b647bccfb9e54d989eaaacc1633868703fb3301f0603551d2304183016801445aff715b0dd786741fee996ebc16547a3931b1e300a06082a8648ce3d0403020349003046022100b86bc129d92afca7d9869a39f70f139a305b4073a39eb654d81424bed5757d91022100cf9f7c60cab7c4a7d3e7f0020f281a93d4fd0a9f95121b989f56932a68885fba68617574684461746159021bbfabc37432958b063360d3ad6461c9c4735ae7f8edd46592a5e0f01452b2e4b55d00000000428f8878298b9862a36ad8c7527bfef20020992a18acc83f67533600c1138a4b4c4bd236de13629cf025ed17cb00b00b74dfa4010303390100205901b403fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff7ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff800000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000012143010001'
+</xmp>
+
+[=authentication ceremony|Authentication=]:
+<xmp class="example" highlight="cddl">
+challenge = h'295f59f5fa8fe62c5aca9e27626c78c8da376ae6d8cd2dd29aebad601e1bc4c5'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'07', info='packed.RS256', L=32)
+
+client_data_gen_flags = h'0e'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'08', info='packed.RS256', L=1)
+; extra_client_data is included iff bit 0x01 of client_data_gen_flags is 1
+; auth_data_UV_BS sets the UV and BS bits of the authenticator data flags, but BS is set only if BE was set in the registration
+auth_data_UV_BS = h'ba'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'09', info='packed.RS256', L=1)
+
+authenticatorData = h'bfabc37432958b063360d3ad6461c9c4735ae7f8edd46592a5e0f01452b2e4b51900000000'
+clientDataJSON = h'7b2274797065223a22776562617574686e2e676574222c226368616c6c656e6765223a224b56395a39667150356978617970346e596d7834794e6f33617562597a5333536d75757459423462784d55222c226f726967696e223a2268747470733a2f2f6578616d706c652e6f7267222c2263726f73734f726967696e223a66616c73657d'
+signature = h'01063d52d7c39b4d432fc7063c5d93e582bdcb16889cd71f888d67d880ea730a428498d3bc8e1ee11f2b1ecbe6c292b118c55ffaaddefa8cad0a54dd137c51f1eec673f1bb6c4d1789d6826a222b22d0f585fc901fdc933212e579d199b89d672aa44891333e6a1355536025e82b25590256c3538229b55737083b2f6b9377e49e2472f11952f79fdd0da180b5ffd901b4049a8f081bb40711bef76c62aed943571f2d0575304cb549d68d8892f95086a30f93716aee818f8dc06e96c0d5e0ed4cfa9fd8773d90464b68cf140f7986666ff9c9e3302acd0535d60d769f465e2ab57ef8aabc89fccfef7ba32a64154a8b3d26be2298f470b8cc5377dbe3dfd4b0b45f8f01e63bde6cfc76b62771f9b70aa27cf40152cad93aa5acd784fd4b90f676e2ea828d0bf2400aebbaae4153e5838f537f88b6228346782a93a899be66ec77de45b3efcf311da6321c92e6b0cd11bfe653bf3e98cee8e341f02d67dbb6f9c98d9e8178090cfb5b70fbc6d541599ac794ae2f1d4de1286ec8de8c2daf7b1d15c8438e90d924df5c19045220a4c8438c1b979bbe016cf3d0eeec23c3999d4882cc645b776de930756612cdc6dd398160ff02a6'
+</xmp>
+
+
+### Packed Attestation with Ed25519 Credential ### {#sctn-test-vectors-packed-ed25519}
+
+[=registration ceremony|Registration=]:
+<xmp class="example" highlight="cddl">
+challenge = h'560c73a09ce7a1586d61c1d6e41fef149be523e220fc9f385d38ab23702ebf1b'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'00', info='packed.Ed25519', L=32)
+
+private_key = h'c87fce9e9cd283d272a2418d9683366f83661e458ad4451f0f1c95cb83b0f0a8'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'01', info='packed.Ed25519', L=32)
+client_data_gen_flags = h'41'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'02', info='packed.Ed25519', L=1)
+; extra_client_data is included iff bit 0x01 of client_data_gen_flags is 1
+extra_client_data = h'db7587e24b9187edb77933754331e443'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'03', info='packed.Ed25519', L=16)
+aaguid = h'164009ea09faae7c397bc3e2ad0e7ec0'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'04', info='packed.Ed25519', L=16)
+credential_id = h'c6cffa01b7fda368a7e0b29c1384a719820246bca894dd12914708743af0cecd'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'05', info='packed.Ed25519', L=32)
+; auth_data_UV_BE_BS determines the UV, BE and BS bits of the authenticator data flags, but BS is set only if BE is
+auth_data_UV_BE_BS = h'e8'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'06', info='packed.Ed25519', L=1)
+attestation_private_key = h'673ee7fd94405de523fd84a088ab082d75b7fceef02a301e2bca0a28537cf243'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'07', info='packed.Ed25519', L=32)
+attestation_cert_serial_number = h'6e391f23f57150dc7a12dad18f2b43ad'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'08', info='packed.Ed25519', L=16)
+
+clientDataJSON = h'7b2274797065223a22776562617574686e2e637265617465222c226368616c6c656e6765223a225667787a6f4a7a6e6f5668745963485735425f76464a766c492d49675f4a38345854697249334175767873222c226f726967696e223a2268747470733a2f2f6578616d706c652e6f7267222c2263726f73734f726967696e223a66616c73652c22657874726144617461223a22636c69656e74446174614a534f4e206d617920626520657874656e6465642077697468206164646974696f6e616c206669656c647320696e20746865206675747572652c207375636820617320746869733a2032335748346b7552682d323365544e31517a486b51773d3d227d'
+attestationObject = h'a363666d74667061636b65646761747453746d74a363616c672663736967584730450220730a54d4f76cb1f2b7dd4a5a6eee3374e3c8a60fb3c4daa527c9277e365b64aa0221008b31a04a28cc4148b14c42a916548ee7f430bc7629295b42ee93e5d1aaba8ee6637835638159022530820221308201c7a00302010202106e391f23f57150dc7a12dad18f2b43ad300a06082a8648ce3d0403023062311e301c06035504030c15576562417574686e207465737420766563746f7273310c300a060355040a0c0357334331253023060355040b0c1c41757468656e74696361746f72204174746573746174696f6e204341310b30090603550406130241413020170d3234303130313030303030305a180f33303234303130313030303030305a305f311e301c06035504030c15576562417574686e207465737420766563746f7273310c300a060355040a0c0357334331223020060355040b0c1941757468656e74696361746f72204174746573746174696f6e310b30090603550406130241413059301306072a8648ce3d020106082a8648ce3d03010703420004fb96a581a0b36742a8c45d6ffb5af1ef155524b50339445ec1109874045e0087db77edef91f3dc949927470d84b01627087b72c86b7c9d02e1389cba680ffc36a360305e300c0603551d130101ff04023000300e0603551d0f0101ff040403020780301d0603551d0e04160414ef2ce1a86caba85121130a16e8ce82a75d5a6653301f0603551d2304183016801445aff715b0dd786741fee996ebc16547a3931b1e300a06082a8648ce3d0403020348003045022100ad4fa628cffba5a642a562cbfefe63efecce26d90c80114114d1745383e12f01022028af87ba3b0ff868a34b9458bc6973b27380a328dd87b7436651ffa823280bca6861757468446174615881bfabc37432958b063360d3ad6461c9c4735ae7f8edd46592a5e0f01452b2e4b54900000000164009ea09faae7c397bc3e2ad0e7ec00020c6cffa01b7fda368a7e0b29c1384a719820246bca894dd12914708743af0cecda401010327200621582089f81eba4a1f510cb243ff7fb9e9cf899bf627e49ce1ac3c3eae8adb2a8d7d7b'
+</xmp>
+
+[=authentication ceremony|Authentication=]:
+<xmp class="example" highlight="cddl">
+challenge = h'3790da8b2b72ee8ce19761787ad38cbfaa697eb3ca013a1342988756b98785ab'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'09', info='packed.Ed25519', L=32)
+
+client_data_gen_flags = h'de'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'0a', info='packed.Ed25519', L=1)
+; extra_client_data is included iff bit 0x01 of client_data_gen_flags is 1
+; auth_data_UV_BS sets the UV and BS bits of the authenticator data flags, but BS is set only if BE was set in the registration
+auth_data_UV_BS = h'18'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'0b', info='packed.Ed25519', L=1)
+
+authenticatorData = h'bfabc37432958b063360d3ad6461c9c4735ae7f8edd46592a5e0f01452b2e4b51900000000'
+clientDataJSON = h'7b2274797065223a22776562617574686e2e676574222c226368616c6c656e6765223a224e35446169797479376f7a686c32463465744f4d763670706672504b41546f545170694856726d48686173222c226f726967696e223a2268747470733a2f2f6578616d706c652e6f7267222c2263726f73734f726967696e223a66616c73657d'
+signature = h'4c873571377ac019f257d6bf07249f63ac2487483c51bc511ce0f0e3266c840cb07a09cdc445a2f963d8603a9f0f6cf9ce709d7fc6a96c7c51ea08d33776010c'
+</xmp>
+
+
+### TPM Attestation with ES256 Credential ### {#sctn-test-vectors-tpm-es256}
+
+[=registration ceremony|Registration=]:
+<xmp class="example" highlight="cddl">
+challenge = h'cfc82cdf1ceee876120aa88f0364f0910193460cfb97a317b2fe090694f9a299'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'00', info='tpm.ES256', L=32)
+
+credential_private_key = h'80c60805e564f6d33e7abdff9d32e3db09a6219fe378a268d23107191b18e39f'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'01', info='tpm.ES256', L=32)
+client_data_gen_flags = h'84'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'02', info='tpm.ES256', L=1)
+; extra_client_data is included iff bit 0x01 of client_data_gen_flags is 1
+aaguid = h'4b92a377fc5f6107c4c85c190adbfd99'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'03', info='tpm.ES256', L=16)
+credential_id = h'ec27bec7521c894bbb821105ea3724c90e770cf1fa354157ef18d0f18f78bea9'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'04', info='tpm.ES256', L=32)
+; auth_data_UV_BE_BS determines the UV, BE and BS bits of the authenticator data flags, but BS is set only if BE is
+auth_data_UV_BE_BS = h'af'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'05', info='tpm.ES256', L=1)
+attestation_private_key = h'6210f09e0ce7593e851a880a4bdde2d2192afeac46104abce1a890a5a71cf0c6'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'06', info='tpm.ES256', L=32)
+attestation_cert_serial_number = h'311fc42da0ab10c43a9b1bf3a75e34e2'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'07', info='tpm.ES256', L=16)
+
+clientDataJSON = h'7b2274797065223a22776562617574686e2e637265617465222c226368616c6c656e6765223a227a38677333787a753648595343716950413254776b51475452677a376c364d587376344a427054356f706b222c226f726967696e223a2268747470733a2f2f6578616d706c652e6f7267222c2263726f73734f726967696e223a66616c73657d'
+attestationObject = h'a363666d746374706d6761747453746d74a663616c67266373696758463044022066e5826a652091030fd444e33c3eca2bc6dc548cf3045013addb38aa6457a21002203f3a5c95c9e707d0e555041bcc8698ee4ebc04e26cc8bae459705471789851766376657263322e30637835638159023a30820236308201dca0030201020210311fc42da0ab10c43a9b1bf3a75e34e2300a06082a8648ce3d0403023062311e301c06035504030c15576562417574686e207465737420766563746f7273310c300a060355040a0c0357334331253023060355040b0c1c41757468656e74696361746f72204174746573746174696f6e204341310b30090603550406130241413020170d3234303130313030303030305a180f33303234303130313030303030305a30003059301306072a8648ce3d020106082a8648ce3d03010703420004c54e3f109094f60d7699b7db5d838569ffd1f3e1c9e897cd9eb40063f9402e3e9937e936cf1fcd5eb743ff443c97ab2edcd7c8e0e6cf6cfd413b8ab19fffa769a381d33081d0300c0603551d130101ff04023000300e0603551d0f0101ff040403020780301d0603551d0e041604145f546cb6973d4981e80fcdc7463859f5879680e4301f0603551d2304183016801445aff715b0dd786741fee996ebc16547a3931b1e30100603551d250409300706056781050803305e0603551d110101ff04543052a450304e314c3014060567810502010c0b69643a30303030303030303014060567810502030c0b69643a3030303030303030301e060567810502020c15576562417574686e207465737420766563746f7273300a06082a8648ce3d0403020348003045022063c9a2797b8066f1db34dd609f1ab6695607e7a98e9ff8090a68853c9a9fc949022100a55831a39f5b8a2aa9a68837829cabf43fea2a5cea4859ae851cac78e6ac3e97677075624172656158560023000b0004000000000010001000030010002041202698c9d9753fb4bb3f27cd09fe6b8afdb76438ee2ae54d7c9dade10d864b0020d8735115cdb330a63ea1d6e43d5000f4bd56f99bce83ee1d73301fc270116d076863657274496e666f5869ff544347801700000020277d0e05579dd013215a62273f7f3a3e7e191ead2654a3036d75a5a3ee37a6b0000000000000000011111111222222223300000000000000000022000b9c42d8aad5939331b9af3711af179f17123178098c9a7d0ca89fcd1fc800f3c7000068617574684461746158a4bfabc37432958b063360d3ad6461c9c4735ae7f8edd46592a5e0f01452b2e4b54d000000004b92a377fc5f6107c4c85c190adbfd990020ec27bec7521c894bbb821105ea3724c90e770cf1fa354157ef18d0f18f78bea9a501020326200121582041202698c9d9753fb4bb3f27cd09fe6b8afdb76438ee2ae54d7c9dade10d864b225820d8735115cdb330a63ea1d6e43d5000f4bd56f99bce83ee1d73301fc270116d07'
+</xmp>
+
+[=authentication ceremony|Authentication=]:
+<xmp class="example" highlight="cddl">
+challenge = h'00093b66c21d5b5e89f7a07082118907ea3e502d343b314b8c5a54d62db202fb'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'08', info='tpm.ES256', L=32)
+
+client_data_gen_flags = h'86'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'09', info='tpm.ES256', L=1)
+; extra_client_data is included iff bit 0x01 of client_data_gen_flags is 1
+; auth_data_UV_BS sets the UV and BS bits of the authenticator data flags, but BS is set only if BE was set in the registration
+auth_data_UV_BS = h'87'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'0a', info='tpm.ES256', L=1)
+
+authenticatorData = h'bfabc37432958b063360d3ad6461c9c4735ae7f8edd46592a5e0f01452b2e4b50d00000000'
+clientDataJSON = h'7b2274797065223a22776562617574686e2e676574222c226368616c6c656e6765223a2241416b375a7349645731364a393642776768474a422d6f2d554330304f7a464c6a46705531693279417673222c226f726967696e223a2268747470733a2f2f6578616d706c652e6f7267222c2263726f73734f726967696e223a66616c73657d'
+signature = h'3045022060dc76b1607ec716c6e5eba8d056695ed6bc47b2e3d7a729c34e759e3ab66aa0022100d010a9e8fddcb64c439dfdca628ddb33cf245d567d157d9f66f942601bed9b38'
+</xmp>
+
+
+### Android Key Attestation with ES256 Credential ### {#sctn-test-vectors-android-key-es256}
+
+[=registration ceremony|Registration=]:
+<xmp class="example" highlight="cddl">
+challenge = h'3de1f0b7365dccde3ff0cbf25e26ffa7baff87ef106c80fc865dc402d9960050'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'00', info='android-key.ES256', L=32)
+
+credential_private_key = h'd4328d911acb0ebcc42aad29b29ffb55d5bc31d8af7ca9a16703d56c21abc7b4'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'01', info='android-key.ES256', L=32)
+client_data_gen_flags = h'73'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'02', info='android-key.ES256', L=1)
+; extra_client_data is included iff bit 0x01 of client_data_gen_flags is 1
+extra_client_data = h'555d5c42e476a8b33f6a63dfa07ccbd2'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'03', info='android-key.ES256', L=16)
+aaguid = h'ade9705e1ce7085b899a540d02199bf8'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'04', info='android-key.ES256', L=16)
+credential_id = h'0a4729519788b6ed8a2d772b494e186244d8c798c052960dbc8c10c915176795'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'05', info='android-key.ES256', L=32)
+; auth_data_UV_BE_BS determines the UV, BE and BS bits of the authenticator data flags, but BS is set only if BE is
+auth_data_UV_BE_BS = h'1e'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'06', info='android-key.ES256', L=1)
+attestation_cert_serial_number = h'1ff91f76b63f44812f998b250b0286bf'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'07', info='android-key.ES256', L=16)
+
+clientDataJSON = h'7b2274797065223a22776562617574686e2e637265617465222c226368616c6c656e6765223a2250654877747a5a647a4e345f384d76795869625f7037725f682d385162494438686c334541746d57414641222c226f726967696e223a2268747470733a2f2f6578616d706c652e6f7267222c2263726f73734f726967696e223a66616c73652c22657874726144617461223a22636c69656e74446174614a534f4e206d617920626520657874656e6465642077697468206164646974696f6e616c206669656c647320696e20746865206675747572652c207375636820617320746869733a205656316351755232714c4d5f616d50666f487a4c30673d3d227d'
+attestationObject = h'a363666d746b616e64726f69642d6b65796761747453746d74a363616c672663736967584630440220592bbc3c4c5f6158b52be1e085c92848986d7844245dfc9512e1a7e9ff7a2cd8022015bdd0852d3bd091e1c22da4211f4ccf0fdf4d912599d1c6630b1f310d3166f5637835638159026d3082026930820210a00302010202101ff91f76b63f44812f998b250b0286bf300a06082a8648ce3d0403023062311e301c06035504030c15576562417574686e207465737420766563746f7273310c300a060355040a0c0357334331253023060355040b0c1c41757468656e74696361746f72204174746573746174696f6e204341310b30090603550406130241413020170d3234303130313030303030305a180f33303234303130313030303030305a305f311e301c06035504030c15576562417574686e207465737420766563746f7273310c300a060355040a0c0357334331223020060355040b0c1941757468656e74696361746f72204174746573746174696f6e310b30090603550406130241413059301306072a8648ce3d020106082a8648ce3d0301070342000499169657036d089a2a9821a7d0063d341f1a4613389359636efab5f3cbf1accfdd91c55543176ea99b644406dd1dd63774b6af65ac759e06ff40b1c8ab02df6ba381a83081a5300c0603551d130101ff04023000300e0603551d0f0101ff040403020780301d0603551d0e041604141ac81e50641e8d1339ab9f7eb25f0cd5aac054b0301f0603551d2304183016801445aff715b0dd786741fee996ebc16547a3931b1e3045060a2b06010401d679020111043730350202012c0201000201000201000420b20e943e3a7544b3a438943b6d5655313a47ef1af34e00ff3261aeb9ed155817040030003000300a06082a8648ce3d040302034700304402206f4609c9ffc946c418cef04c64a0d07bcce78f329b99270b822f2a4d1e3b75330220093c8d18328f36ef157f296393bdc7721dd2bd67438ffeaa42f051a044b7457168617574684461746158a4bfabc37432958b063360d3ad6461c9c4735ae7f8edd46592a5e0f01452b2e4b55d00000000ade9705e1ce7085b899a540d02199bf800200a4729519788b6ed8a2d772b494e186244d8c798c052960dbc8c10c915176795a501020326200121582099169657036d089a2a9821a7d0063d341f1a4613389359636efab5f3cbf1accf225820dd91c55543176ea99b644406dd1dd63774b6af65ac759e06ff40b1c8ab02df6b'
+</xmp>
+
+[=authentication ceremony|Authentication=]:
+<xmp class="example" highlight="cddl">
+challenge = h'e4ee05ca9dbced74116540f24ed9adc62aae8507560522844ffa7eea14f7af86'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'08', info='android-key.ES256', L=32)
+
+client_data_gen_flags = h'43'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'09', info='android-key.ES256', L=1)
+; extra_client_data is included iff bit 0x01 of client_data_gen_flags is 1
+extra_client_data = h'ab127107eff182bc3230beb5f1dad29c'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'0a', info='android-key.ES256', L=16)
+; auth_data_UV_BS sets the UV and BS bits of the authenticator data flags, but BS is set only if BE was set in the registration
+auth_data_UV_BS = h'4a'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'0b', info='android-key.ES256', L=1)
+
+authenticatorData = h'bfabc37432958b063360d3ad6461c9c4735ae7f8edd46592a5e0f01452b2e4b50900000000'
+clientDataJSON = h'7b2274797065223a22776562617574686e2e676574222c226368616c6c656e6765223a22354f344679703238375851525a55447954746d74786971756851645742534b45545f702d36685433723459222c226f726967696e223a2268747470733a2f2f6578616d706c652e6f7267222c2263726f73734f726967696e223a66616c73652c22657874726144617461223a22636c69656e74446174614a534f4e206d617920626520657874656e6465642077697468206164646974696f6e616c206669656c647320696e20746865206675747572652c207375636820617320746869733a2071784a78422d5f78677277794d4c3631386472536e413d3d227d'
+signature = h'304502202060107d953b286aa1bf35e3e8c78b383fddab5591b2db17ffb23ed83fe7df20022100a99be0297cb0d9d38aa96f30b760a4e0749dab385acd2a51d0560caae570d225'
+</xmp>
+
+
+### Apple Anonymous Attestation with ES256 Credential ### {#sctn-test-vectors-apple-es256}
+
+[=registration ceremony|Registration=]:
+<xmp class="example" highlight="cddl">
+challenge = h'f7f688213852007775009cf8c096fda89d60b9a9fb5a50dd81dd9898af5a0609'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'00', info='apple.ES256', L=32)
+
+credential_private_key = h'de987bd9d43eeb44728ce0b14df11209dff931fb56b5b1948de4c0da1144ded0'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'01', info='apple.ES256', L=32)
+client_data_gen_flags = h'5f'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'02', info='apple.ES256', L=1)
+; extra_client_data is included iff bit 0x01 of client_data_gen_flags is 1
+extra_client_data = h'4e32cf9e939a5d052b14d71b1f6b5364'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'03', info='apple.ES256', L=16)
+aaguid = h'748210a20076616a733b2114336fc384'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'04', info='apple.ES256', L=16)
+credential_id = h'9c4a5886af9283d9be3e9ec55978dedfdce2e3b365cab193ae850c16238fafb8'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'05', info='apple.ES256', L=32)
+; auth_data_UV_BE_BS determines the UV, BE and BS bits of the authenticator data flags, but BS is set only if BE is
+auth_data_UV_BE_BS = h'2a'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'06', info='apple.ES256', L=1)
+attestation_cert_serial_number = h'394275613d5310b81a29ce90f48b61c1'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'07', info='apple.ES256', L=16)
+
+clientDataJSON = h'7b2274797065223a22776562617574686e2e637265617465222c226368616c6c656e6765223a22395f61494954685341486431414a7a34774a6239714a316775616e37576c4464676432596d4b396142676b222c226f726967696e223a2268747470733a2f2f6578616d706c652e6f7267222c2263726f73734f726967696e223a66616c73652c22657874726144617461223a22636c69656e74446174614a534f4e206d617920626520657874656e6465642077697468206164646974696f6e616c206669656c647320696e20746865206675747572652c207375636820617320746869733a20546a4c506e704f6158515572464e6362483274545a413d3d227d'
+attestationObject = h'a363666d74656170706c656761747453746d74a1637835638159025c30820258308201fea0030201020210394275613d5310b81a29ce90f48b61c1300a06082a8648ce3d0403023062311e301c06035504030c15576562417574686e207465737420766563746f7273310c300a060355040a0c0357334331253023060355040b0c1c41757468656e74696361746f72204174746573746174696f6e204341310b30090603550406130241413020170d3234303130313030303030305a180f33303234303130313030303030305a305f311e301c06035504030c15576562417574686e207465737420766563746f7273310c300a060355040a0c0357334331223020060355040b0c1941757468656e74696361746f72204174746573746174696f6e310b30090603550406130241413059301306072a8648ce3d020106082a8648ce3d030107034200048a3d5b1b4c543a706bf6e4b00afedb3c930b690dd286934fe2911f779cc7761af728e1aa3b0ff66692192daa776b83ddf8e3340d2d9a0eabdfc324eb3e2f136ca38196308193300c0603551d130101ff04023000300e0603551d0f0101ff040403020780301d0603551d0e0416041412f1ce6c0ae39b403bfc9200317bc183a4e4d766301f0603551d2304183016801445aff715b0dd786741fee996ebc16547a3931b1e303306092a864886f76364080204263024a122042097851a1a98b69c0614b26a94b70ec3aa07c061f89dbee23fbee01b6c42d718b0300a06082a8648ce3d040302034800304502207d541a5553f38b93b78b26a9dca58e64a7f8fac15ca206ae3ea32497cda375fb0221009137c6b75e767ec08224b29a7f703db4b745686dcc8a26b66e793688866d064f68617574684461746158a4bfabc37432958b063360d3ad6461c9c4735ae7f8edd46592a5e0f01452b2e4b54900000000748210a20076616a733b2114336fc38400209c4a5886af9283d9be3e9ec55978dedfdce2e3b365cab193ae850c16238fafb8a50102032620012158208a3d5b1b4c543a706bf6e4b00afedb3c930b690dd286934fe2911f779cc7761a225820f728e1aa3b0ff66692192daa776b83ddf8e3340d2d9a0eabdfc324eb3e2f136c'
+</xmp>
+
+[=authentication ceremony|Authentication=]:
+<xmp class="example" highlight="cddl">
+challenge = h'd3eb2964641e26fed023403a72dde093b19c4ba9008c3f9dd83fcfd347a66d05'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'08', info='apple.ES256', L=32)
+
+client_data_gen_flags = h'c2'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'09', info='apple.ES256', L=1)
+; extra_client_data is included iff bit 0x01 of client_data_gen_flags is 1
+; auth_data_UV_BS sets the UV and BS bits of the authenticator data flags, but BS is set only if BE was set in the registration
+auth_data_UV_BS = h'e2'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'0a', info='apple.ES256', L=1)
+
+authenticatorData = h'bfabc37432958b063360d3ad6461c9c4735ae7f8edd46592a5e0f01452b2e4b50900000000'
+clientDataJSON = h'7b2274797065223a22776562617574686e2e676574222c226368616c6c656e6765223a22302d73705a4751654a76375149304136637433676b37476353366b416a442d6432445f503030656d625155222c226f726967696e223a2268747470733a2f2f6578616d706c652e6f7267222c2263726f73734f726967696e223a66616c73657d'
+signature = h'3046022100ee35db795ce28044e1f8231d68b3d79a9882f7415aa35c1b5ac74d24251073c8022100dcc65691650a412d0ceef843710c09827acf26c7845bddac07eec95863e7fc4c'
+</xmp>
+
+
+### FIDO U2F Attestation with ES256 Credential ### {#sctn-test-vectors-fido-u2f-es256}
+
+[=registration ceremony|Registration=]:
+<xmp class="example" highlight="cddl">
+challenge = h'e074372990b9caa507a227dfc67b003780c45325380d1a90c20f81ed7d080c06'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'00', info='fido-u2f.ES256', L=32)
+
+credential_private_key = h'51bd002938fa10b83683ac2a2032d0a7338c7f65a90228cfd1f61b81ec7288d0'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'01', info='fido-u2f.ES256', L=32)
+client_data_gen_flags = h'00'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'02', info='fido-u2f.ES256', L=1)
+; extra_client_data is included iff bit 0x01 of client_data_gen_flags is 1
+aaguid = h'afb3c2efc054df425013d5c88e79c3c1'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'03', info='fido-u2f.ES256', L=16)
+credential_id = h'a4ba6e2d2cfec43648d7d25c5ed5659bc18f2b781538527ebd492de03256bdf4'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'04', info='fido-u2f.ES256', L=32)
+attestation_private_key = h'66fda477a2a99d14c5edd7c1041a297ba5f3375108b1d032b79429f42349ce33'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'05', info='fido-u2f.ES256', L=32)
+attestation_cert_serial_number = h'04f66dc6542ea7719dea416d325a2401'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'06', info='fido-u2f.ES256', L=16)
+
+clientDataJSON = h'7b2274797065223a22776562617574686e2e637265617465222c226368616c6c656e6765223a22344851334b5a4335797155486f696666786e73414e344445557955344452715177672d4237583049444159222c226f726967696e223a2268747470733a2f2f6578616d706c652e6f7267222c2263726f73734f726967696e223a66616c73657d'
+attestationObject = h'a363666d74686669646f2d7532666761747453746d74a26373696758473045022100f41887a20063bb26867cb9751978accea5b81791a68f4f4dd6ea1fb6a5c086c302204e5e00aa3895777e6608f1f375f95450045da3da57a0e4fd451df35a31d2d98a637835638159022530820221308201c7a003020102021004f66dc6542ea7719dea416d325a2401300a06082a8648ce3d0403023062311e301c06035504030c15576562417574686e207465737420766563746f7273310c300a060355040a0c0357334331253023060355040b0c1c41757468656e74696361746f72204174746573746174696f6e204341310b30090603550406130241413020170d3234303130313030303030305a180f33303234303130313030303030305a305f311e301c06035504030c15576562417574686e207465737420766563746f7273310c300a060355040a0c0357334331223020060355040b0c1941757468656e74696361746f72204174746573746174696f6e310b30090603550406130241413059301306072a8648ce3d020106082a8648ce3d0301070342000456fffa7093dede46aefeefb6e520c7ccc78967636e2f92582ba71455f64e93932dff3be4e0d4ef68e3e3b73aa087e26a0a0a30b02dc2aa2309db4c3a2fc936dea360305e300c0603551d130101ff04023000300e0603551d0f0101ff040403020780301d0603551d0e04160414420822eb1908b5cd3911017fbcad4641c05e05a3301f0603551d2304183016801445aff715b0dd786741fee996ebc16547a3931b1e300a06082a8648ce3d040302034800304502200d0b777f0a0b181ad2830275acc3150fd6092430bcd034fd77beb7bdf8c2d546022100d4864edd95daa3927080855df199f1717299b24a5eecefbd017455a9b934d8f668617574684461746158a4bfabc37432958b063360d3ad6461c9c4735ae7f8edd46592a5e0f01452b2e4b54100000000afb3c2efc054df425013d5c88e79c3c10020a4ba6e2d2cfec43648d7d25c5ed5659bc18f2b781538527ebd492de03256bdf4a5010203262001215820b0d62de6b30f86f0bac7a9016951391c2e31849e2e64661cbd2b13cd7d5508ad225820503b0bda2a357a9a4b34475a28e65b660b4898a9e3e9bbf0820d43494297edd0'
+</xmp>
+
+[=authentication ceremony|Authentication=]:
+<xmp class="example" highlight="cddl">
+challenge = h'f90c612981d84f599438de1a500f76926e92cc84bef8e02c6e23553f00485435'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'07', info='fido-u2f.ES256', L=32)
+
+client_data_gen_flags = h'2c'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'08', info='fido-u2f.ES256', L=1)
+; extra_client_data is included iff bit 0x01 of client_data_gen_flags is 1
+; auth_data_UV_BS sets the UV and BS bits of the authenticator data flags, but BS is set only if BE was set in the registration
+auth_data_UV_BS = h'd1'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'09', info='fido-u2f.ES256', L=1)
+
+authenticatorData = h'bfabc37432958b063360d3ad6461c9c4735ae7f8edd46592a5e0f01452b2e4b50100000000'
+clientDataJSON = h'7b2274797065223a22776562617574686e2e676574222c226368616c6c656e6765223a222d5178684b59485954316d554f4e3461554139326b6d36537a49532d2d4f417362694e5650774249564455222c226f726967696e223a2268747470733a2f2f6578616d706c652e6f7267222c2263726f73734f726967696e223a66616c73657d'
+signature = h'304402206172459958fea907b7292b92f555034bfd884895f287a76200c1ba287239137002204727b166147e26a21bbc2921d192ebfed569b79438538e5c128b5e28e6926dd7'
+</xmp>
+
+
+## Test Vectors for [=WebAuthn Extensions=] ## {#test-vectors-extensions}
+
+This section lists example values for [=WebAuthn extensions=].
+
+
+### Pseudo-random function extension (prf) ### {#test-vectors-extensions-prf}
+
+This section lists example values for the pseudo-random function ([=prf=]) extension.
+
+Because the [=prf=] extension integrates with the CTAP2 `hmac-secret` extension [[FIDO-CTAP]],
+the examples are divided into two sections:
+example inputs and outputs for the WebAuthn [=prf=] extension, relevant to [=[WACS]=] and [=[WRPS]=];
+and example mappings between the WebAuthn [=prf=] extension and the CTAP2 `hmac-secret` extension,
+relevant to [=[WACS]=] and [=[WAAS]=].
+
+
+#### Web Authentication API #### {#test-vectors-extensions-prf-webauthn}
+
+The following examples may be used to test [=[WAC]=] implementations of and [=[WRP]=] usage of the [=prf=] extension.
+The examples are not exhaustive.
+
+- The {{AuthenticationExtensionsPRFOutputs/enabled}} output is always present during [=registration ceremonies=],
+    and never present during [=authentication ceremonies=]:
+
+    <xmp class="example" highlight="js">
+    // Example extension inputs:
+    { prf: {} }
+
+    // Example client extension outputs from navigator.credentials.create():
+    { prf: { enabled: true } }
+    { prf: { enabled: false } }
+
+    // Example client extension outputs from navigator.credentials.get():
+    { prf: {} }
+    </xmp>
+
+- The {{AuthenticationExtensionsPRFOutputs/results}} output may be present
+    during [=registration ceremonies=] or [=authentication ceremonies=]
+    if the {{AuthenticationExtensionsPRFInputs/eval}} or {{AuthenticationExtensionsPRFInputs/evalByCredential}} input is present:
+
+    <xmp class="example" highlight="js">
+    // Example extension inputs:
+    { prf: { eval: { first: new Uint8Array([1, 2, 3, 4]) } } }
+
+    // Example client extension outputs from navigator.credentials.create():
+    { prf: { enabled: true } }
+    { prf: { enabled: false } }
+    { prf: { enabled: true, results: { first: ArrayBuffer } } }
+
+    // Example client extension outputs from navigator.credentials.get():
+    { prf: {} }
+    { prf: { results: { first: ArrayBuffer } } }
+    </xmp>
+
+- The <code>{{AuthenticationExtensionsPRFOutputs/results}}.{{AuthenticationExtensionsPRFValues/second}}</code> output
+    is present if and only if the {{AuthenticationExtensionsPRFOutputs/results}} output is present
+    and the <code>{{AuthenticationExtensionsPRFValues/second}}</code> input was present in the chosen PRF inputs:
+
+    <xmp class="example" highlight="js">
+    // Example extension inputs:
+    {
+      prf: {
+        eval: {
+          first: new Uint8Array([1, 2, 3, 4]),
+          second: new Uint8Array([5, 6, 7, 8]),
+        },
+        evalByCredential: {
+          "e02eZ9lPp0UdkF4vGRO4-NxlhWBkL1FCmsmb1tTfRyE": {
+            first: new Uint8Array([9, 10, 11, 12]),
+          }
+        }
+      }
+    }
+
+    // Example client extension outputs from navigator.credentials.get() if credential "e02eZ9lP..." was used:
+    { prf: { results: { first: ArrayBuffer } } }
+
+    // Example client extension outputs from navigator.credentials.get() if a different credential was used:
+    { prf: {} }
+    { prf: { results: { first: ArrayBuffer, second: ArrayBuffer } } }
+    </xmp>
+
+- The {{AuthenticationExtensionsPRFValues/first}} and {{AuthenticationExtensionsPRFValues/second}} outputs
+    may be any {{BufferSource}} type.
+    Equal {{AuthenticationExtensionsPRFValues/first}} and {{AuthenticationExtensionsPRFValues/second}} inputs
+    result in equal {{AuthenticationExtensionsPRFValues/first}} and {{AuthenticationExtensionsPRFValues/second}} outputs:
+
+    <xmp class="example" highlight="js">
+    // Example extension inputs:
+    {
+      prf: {
+        evalByCredential: {
+          "e02eZ9lPp0UdkF4vGRO4-NxlhWBkL1FCmsmb1tTfRyE": {
+            first: new Uint8Array([9, 10, 11, 12]),
+            second: new Uint8Array([9, 10, 11, 12])
+          }
+        }
+      }
+    }
+
+    // Example client extension outputs from navigator.credentials.get():
+    {
+      prf: {
+        results: {
+          first: new Uint8Array([0xc4, 0x17, 0x2e, 0x98, 0x2e, 0x90, 0x97, 0xc3, 0x9a, 0x6c, 0x0c, 0xb7, 0x20, 0xcb, 0x37, 0x5b, 0x92, 0xe3, 0xfc, 0xad, 0x15, 0x4a, 0x63, 0xe4, 0x3a, 0x93, 0xf1, 0x09, 0x6b, 0x1e, 0x19, 0x73]),
+          second: new Uint32Array([0x982e17c4, 0xc397902e, 0xb70c6c9a, 0x5b37cb20, 0xadfce392, 0xe4634a15, 0x09f1933a, 0x73191e6b]),
+        }
+      }
+    }
+    </xmp>
+
+Pseudo-random values used in this section were generated as follows:
+
+- <code>"e02eZ9lPp0UdkF4vGRO4-NxlhWBkL1FCmsmb1tTfRyE" = Base64Url(SHA-256(UTF-8("WebAuthn PRF test vectors") || 0x00))</code>
+- <code>h&apos;c4172e982e9097c39a6c0cb720cb375b92e3fcad154a63e43a93f1096b1e1973' = SHA-256(UTF-8("WebAuthn PRF test vectors") || 0x01)</code>
+
+
+#### CTAP2 `hmac-secret` extension #### {#test-vectors-extensions-prf-ctap}
+
+The following examples may be used to test [=[WAC]=] implementations
+of how the [=prf=] extension uses the [[FIDO-CTAP]] `hmac-secret` extension.
+The examples are given in CDDL [[RFC8610]] notation.
+The examples are not exhaustive.
+
+- The following shared definitions are used in all subsequent examples:
+
+    <xmp class="example" highlight="cddl">
+    ; Given input parameters:
+    platform_key_agreement_private_key = 0x0971bc7fb1be48270adcd3d9a5fc15d5fb0f335b3071ff36a54c007fa6c76514
+    authenticator_key_agreement_public_key = {
+        1: 2,
+        3: -25,
+        -1: 1,
+        -2: h'a30522c2de402b561965c3cf949a1cab020c6f6ea36fcf7e911ac1a0f1515300',
+        -3: h'9961a929abdb2f42e6566771887d41484d889e735e3248518a53112d2b915f00',
+    }
+    authenticator_cred_random = h'437e065e723a98b2f08f39d8baf7c53ecb3c363c5e5104bdaaf5d5ca2e028154'
+    </xmp>
+
+    The {{AuthenticationExtensionsPRFValues/first}} and {{AuthenticationExtensionsPRFValues/second}} inputs
+    are mapped in the examples as `prf_eval_first` and `prf_eval_second`, respectively.
+    The `prf_results_first` and `prf_results_second` values in the examples
+    are mapped to the
+    <code>{{AuthenticationExtensionsPRFOutputs/results}}.{{AuthenticationExtensionsPRFValues/first}}</code>
+    and <code>{{AuthenticationExtensionsPRFOutputs/results}}.{{AuthenticationExtensionsPRFValues/second}}</code>
+    outputs, respectively.
+
+- Single input case using PIN protocol 2:
+
+    <xmp class="example" highlight="cddl">
+    ; Inputs from Relying Party:
+    prf_eval_first = h'576562417574686e20505246207465737420766563746f727302'
+
+    ; Client computes:
+    shared_secret = h'0c63083de8170101d38bcf8bd72309568ddb4550867e23404b35d85712f7c20d8bc911ee23c06034cbc14290b9669bec07739053c5a416e313ef905c79955876'
+    salt1 = h'527413ebb48293772df30f031c5ac4650c7de14bf9498671ae163447b6a772b3'
+    salt_enc = h'437e065e723a98b2f08f39d8baf7c53ebbb2ed3e746b87576fd81f95def5757cad24be18eaef892e97692e684e07da53'
+
+    ; Authenticator computes:
+    output1 = h'3c33e07d202c3b029cc21f1722767021bf27d595933b3d2b6a1b9d5dddc77fae'
+    output_enc = h'3bfaa48f7952330d63e35ff8cd5bca48d2a12823828915749287256ab146272f9fb437bf65691243c3f504bd7ea6d5e6'
+
+    ; Client decrypts:
+    prf_results_first = h'3c33e07d202c3b029cc21f1722767021bf27d595933b3d2b6a1b9d5dddc77fae'
+    </xmp>
+
+- Two input case using PIN protocol 2:
+
+    <xmp class="example" highlight="cddl">
+    ; Inputs from Relying Party:
+    prf_eval_first = h'576562417574686e20505246207465737420766563746f727302'
+    prf_eval_second = h'576562417574686e20505246207465737420766563746f727303'
+
+    ; Client computes:
+    shared_secret = h'0c63083de8170101d38bcf8bd72309568ddb4550867e23404b35d85712f7c20d8bc911ee23c06034cbc14290b9669bec07739053c5a416e313ef905c79955876'
+    salt1 = h'527413ebb48293772df30f031c5ac4650c7de14bf9498671ae163447b6a772b3'
+    salt2 = h'd68ac03329a10ee5e0ec834492bb9a96a0e547baf563bf78ccbe8789b22e776b'
+    salt_enc = h'23dde5e3462daf36559b85c4ac5f9656aa9bfd81c1dc2bf8533c8b9f3882854786b4f500e25b4e3d81f7fc7c742362294d92926c883b3fae1a3673246464bf730446e1fa4698c432a9092477c5dde5e3'
+
+    ; Authenticator computes:
+    output1 = h'3c33e07d202c3b029cc21f1722767021bf27d595933b3d2b6a1b9d5dddc77fae'
+    output2 = h'a62a8773b19cda90d7ed4ef72a80a804320dbd3997e2f663805ad1fd3293d50b'
+    output_enc = h'90ee52f739043bc17b3488a74306d7801debb5b61f18662c648a25b5b5678ede482cdaff99a537a44f064fcb10ce6e04dfd27619dc96a0daff8507e499296b1eecf0981f7c8518b277a7a3018f5ec6fb'
+
+    ; Client decrypts:
+    prf_results_first = h'3c33e07d202c3b029cc21f1722767021bf27d595933b3d2b6a1b9d5dddc77fae'
+    prf_results_second = h'a62a8773b19cda90d7ed4ef72a80a804320dbd3997e2f663805ad1fd3293d50b'
+    </xmp>
+
+- Single input case using PIN protocol 1:
+
+    <xmp class="example" highlight="cddl">
+    ; Inputs from Relying Party:
+    prf_eval_first = h'576562417574686e20505246207465737420766563746f727302'
+
+    ; Client computes:
+    shared_secret = h'23e5ed7157c25892b77732fb9c8a107e3518800db2af4142f9f4adfacb771d39'
+    salt1 = h'527413ebb48293772df30f031c5ac4650c7de14bf9498671ae163447b6a772b3'
+    salt_enc = h'ab8c878bb05d04700f077ed91845ec9c503c925cb12b327ddbeb4243c397f913'
+
+    ; Authenticator computes:
+    output1 = h'3c33e07d202c3b029cc21f1722767021bf27d595933b3d2b6a1b9d5dddc77fae'
+    output_enc = h'15d4e4f3f04109b492b575c1b38c28585b6719cf8d61304215108d939f37ccfb'
+
+    ; Client decrypts:
+    prf_results_first = h'3c33e07d202c3b029cc21f1722767021bf27d595933b3d2b6a1b9d5dddc77fae'
+    </xmp>
+
+Inputs and pseudo-random values used in this section were generated as follows:
+
+- <code>seed = UTF-8("WebAuthn PRF test vectors")</code>
+- <code>prf_eval_first = seed || 0x02</code>
+- <code>prf_eval_second = seed || 0x03</code>
+- <code>platform_key_agreement_private_key = SHA-256(seed || 0x04)</code>
+- <code>authenticator_key_agreement_public_key = P256-Public-Key(sk)</code>
+    where <code>sk = SHA-256(seed || 0x05)</code>
+- <code>authenticator_cred_random = SHA-256(seed || 0x06)</code>
+- `iv` in single-input `salt_enc` with PIN protocol 2: Truncated <code>SHA-256(seed || 0x07)</code>
+- `iv` in two-input `salt_enc` with PIN protocol 2: Truncated <code>SHA-256(seed || 0x08)</code>
+- `iv` in single-input `output_enc` with PIN protocol 2: Truncated <code>SHA-256(seed || 0x09)</code>
+- `iv` in two-input `output_enc` with PIN protocol 2: Truncated <code>SHA-256(seed || 0x0a)</code>
+
+
 
 
 # Acknowledgements # {#sctn-acknowledgements}
