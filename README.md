@@ -4,7 +4,7 @@
 This is the repository for the W3C WebAuthn Working Group, producing the draft **"Web Authentication"** specification.
 
 * [The editor's copy is available at https://w3c.github.io/webauthn/](https://w3c.github.io/webauthn/), or in the [`gh-pages` branch of this repository](https://github.com/w3c/webauthn/blob/gh-pages/index.html).
-  - The current *offically-published working-draft snapshot* [is here: https://www.w3.org/TR/webauthn/](https://www.w3.org/TR/webauthn/).
+  - The current *offically published working-draft snapshot* [is here: https://www.w3.org/TR/webauthn/](https://www.w3.org/TR/webauthn/).
 * [The build history is available from the repo Actions tab](https://github.com/w3c/webauthn/actions)
 * [W3C WebAuthn Blog](https://www.w3.org/blog/webauthn/)
 * [Web platform tests repository](https://github.com/web-platform-tests/wpt/tree/master/webauthn)
@@ -64,11 +64,11 @@ bikeshed spec
 bikeshed echidna --u USERNAME --p PASSWORD --d DECISION_URL
 ```
 
-The command above will create a tarball of the HTML and images, and upload to Echidna, W3C's automated publishing system. The command should return a url, thhrough which you can know whether you successfully publish the draft. Status of the request can also be tracked through the [Mailing List Archive](https://lists.w3.org/Archives/Public/public-tr-notifications/). You can also use W3C API [as described in the Echidna documentation](https://github.com/w3c/echidna/wiki/How-to-use-Echidna). Note that on Windows, this will give an error about failing to delete a temporary file because it is in use by a different process. This error is harmless; it happens after the submission has completed.
+The command above will create a tarball of the HTML and images, and upload to Echidna, W3C's automated publishing system. The command should return a url, through which you can know whether you successfully publish the draft. Status of the request can also be tracked through the [Mailing List Archive](https://lists.w3.org/Archives/Public/public-tr-notifications/). You can also use W3C API [as described in the Echidna documentation](https://github.com/w3c/echidna/wiki/How-to-use-Echidna). Note that on Windows, this will give an error about failing to delete a temporary file because it is in use by a different process. This error is harmless; it happens after the submission has completed.
 
-If the publication through the process is unsuccessful, it's likely because of [Specbreus](https://github.com/w3c/specberus), a spec compliance checker. Echidna automatically runs through Specbreus and will reject the publication if any error is reported by Specbreus. You can run your document through [Pubrules](https://www.w3.org/pubrules/) to understand why your document is rejected. You may modify either the index.bs file or the index.html file to ensure compliance. 
+If the publication through the process is unsuccessful, it's likely because of [Specberus](https://github.com/w3c/specberus), a spec compliance checker. Echidna automatically runs through Specberus and will reject the publication if any error is reported by Specberus. You can run your document through [Pubrules](https://www.w3.org/pubrules/) to understand why your document is rejected. You may modify either the index.bs file or the index.html file to ensure compliance. 
 
-More often than not, you will discover the [Pubrules](https://www.w3.org/pubrules/) errors are due to bugs in either Bikeshed or Specbreus. If so, you will have to modify the compiled index.html file to bypass Echidna and use the [manual process](https://github.com/w3c/echidna/wiki/How-to-use-Echidna) to publish. While you are editing the html file to avoid errors, you should also check to ensure the document still renders correctly.  
+More often than not, you will discover the [Pubrules](https://www.w3.org/pubrules/) errors are due to bugs in either Bikeshed or Specberus. If so, you will have to modify the compiled index.html file to bypass Echidna and use the [manual process](https://github.com/w3c/echidna/wiki/How-to-use-Echidna) to publish. While you are editing the html file to avoid errors, you should also check to ensure the document still renders correctly.  
 
 The [manual process](https://github.com/w3c/echidna/wiki/How-to-use-Echidna) requires you to first create a tar file. To create the tar file, you need to first copy the index.html file and rename the copied file as Overview.html. This is because Echidna doesn't recognize index.html. You can then use the following command to create a tar file: 
 ```
@@ -80,7 +80,7 @@ Then you can run the following command curl to publish to Echidna (use the comma
 curl 'https://labs.w3.org/echidna/api/request' --user '<username>:<password>' -F "tar=@WD.tar" -F "decision=<decisionUrl>"
 ```
 
-Feel free to contact your chair or any W3C staff when you are stucked. Overall info on echidna is here: https://github.com/w3c/echidna/wiki and here https://labs.w3.org/echidna/.
+Feel free to contact your chair or any W3C staff when you are stuck. Overall info on echidna is here: https://github.com/w3c/echidna/wiki and here https://labs.w3.org/echidna/.
 
 # Taking meeting minutes
 
