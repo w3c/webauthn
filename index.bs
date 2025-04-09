@@ -240,6 +240,10 @@ spec: RFC8610; urlPrefix: https://tools.ietf.org/html/rfc8610
     type: dfn
         text: group sockets; url: section-3.9
 
+spec: String-Meta; urlPrefix: https://www.w3.org/TR/2024/NOTE-string-meta-20241017
+    type: dfn
+        text: block direction; url: dfn-block-direction
+        text: resource-wide default; url: dfn-resource-wide-default
 </pre> <!-- class=anchors -->
 
 <!-- L128 spec:webappsec-credential-management-1; type:dictionary; for:/; text:CredentialRequestOptions -->
@@ -1767,6 +1771,9 @@ When this method is invoked, the user agent MUST execute the following algorithm
 
 1. If the length of <code>|pkOptions|.{{PublicKeyCredentialCreationOptions/user}}.{{PublicKeyCredentialUserEntity/id}}</code> is not between 1 and 64 bytes (inclusive) then throw a {{TypeError}}.
 
+1. If <code>|pkOptions|.{{PublicKeyCredentialCreationOptions/user}}.{{PublicKeyCredentialUserEntity/language}}</code> is present
+    and is not a [=well-formed language tag=], throw a "{{SyntaxError}}" {{DOMException}}.
+
 1. Let |callerOrigin| be {{PublicKeyCredential/[CREATE-METHOD]/origin}}. If |callerOrigin| is an [=opaque origin=], throw a "{{NotAllowedError}}" {{DOMException}}.
 
 1. Let |effectiveDomain| be the |callerOrigin|'s [=effective domain=].
@@ -2224,6 +2231,10 @@ The following {{DOMException}} exceptions can be raised:
         the [=client=] does not support [[#sctn-related-origins|related origin requests]]
         or the [$related origins validation procedure$] failed.
 
+    :   {{SyntaxError}}
+    ::  <code>{{PublicKeyCredentialCreationOptions/user}}.{{PublicKeyCredentialUserEntity/language}}</code>
+        was present and was not a [=well-formed language tag=].
+
     :   {{NotAllowedError}}
     ::  A catch-all error covering a wide range of possible reasons,
         including common ones like the user canceling out of the ceremony.
@@ -2476,7 +2487,8 @@ When this method is invoked, the user agent MUST execute the following algorithm
 
                 1. Prompt the user to optionally select a [=DiscoverableCredentialMetadata=] from |silentlyDiscoveredCredentials|.
                     The prompt SHOULD display values from the [=DiscoverableCredentialMetadata/otherUI=] of each [=DiscoverableCredentialMetadata=],
-                    such as {{PublicKeyCredentialEntity/name}} and {{PublicKeyCredentialUserEntity/displayName}}.
+                    such as {{PublicKeyCredentialEntity/name}} and {{PublicKeyCredentialUserEntity/displayName}},
+                    taking into account {{PublicKeyCredentialUserEntity/language}} and {{PublicKeyCredentialUserEntity/direction}} if available.
 
                     Let |credentialMetadata| be the [=DiscoverableCredentialMetadata=] chosen by the user, if any.
 
@@ -2926,6 +2938,8 @@ value and terminate the operation.
         required Base64URLString        id;
         required DOMString              name;
         required DOMString              displayName;
+        DOMString                       language;
+        DOMString                       direction;
     };
 
     dictionary PublicKeyCredentialDescriptorJSON {
@@ -3006,6 +3020,8 @@ value and terminate the operation.
         required Base64URLString               userId;
         required DOMString                     name;
         required DOMString                     displayName;
+        DOMString                              language;
+        DOMString                              direction;
     };
 </xmp>
 
@@ -3212,7 +3228,9 @@ accidentally omits valid [=credential IDs=] from
 #### {{PublicKeyCredential/signalCurrentUserDetails(options)}} #### {#sctn-signalCurrentUserDetails}
 
 The {{PublicKeyCredential/signalCurrentUserDetails(options)|signalCurrentUserDetails}} method signals the user's
-current {{PublicKeyCredentialEntity/name}} and {{PublicKeyCredentialUserEntity/displayName}}.
+current {{PublicKeyCredentialEntity/name}} and {{PublicKeyCredentialUserEntity/displayName}},
+and accompanying {{PublicKeyCredentialUserEntity/language}}
+and {{PublicKeyCredentialUserEntity/direction}} metadata if applicable.
 
 Upon invocation of {{PublicKeyCredential/signalCurrentUserDetails(options)}}, the
 [=client=] executes these steps:
@@ -3220,6 +3238,9 @@ Upon invocation of {{PublicKeyCredential/signalCurrentUserDetails(options)}}, th
 1. If the result of [=base64url encoding | base64url decoding=]
     <code>|options|.{{CurrentUserDetailsOptions/userId}}</code> is an error,
     then return [=a promise rejected with=] a {{TypeError}}.
+1. If <code>|options|.{{CurrentUserDetailsOptions/language}}</code> is present
+    and is not a [=well-formed language tag=],
+    then return [=a promise rejected with=] a "{{SyntaxError}}" {{DOMException}}.
 1. Let |p| be the result of executing the [$Asynchronous RP ID validation
     algorithm$] with
     <code>|options|.{{CurrentUserDetailsOptions/rpId}}</code>.
@@ -3240,8 +3261,10 @@ The <dfn for="signal method/authenticator actions">currentUserDetails</dfn>
     <code>[=credentials map=][|options|.{{CurrentUserDetailsOptions/rpId}}, |userId|]</code>.
 1. If |credential| does not exist, abort these steps.
 1. Update the |credential|'s [=public key credential source/otherUI=] to match
-    <code>|options|.{{CurrentUserDetailsOptions/name}}</code> and
-    <code>|options|.{{CurrentUserDetailsOptions/displayName}}</code>.
+    <code>|options|.{{CurrentUserDetailsOptions/name}}</code>,
+    <code>|options|.{{CurrentUserDetailsOptions/displayName}}</code>,
+    <code>|options|.{{CurrentUserDetailsOptions/language}}</code>
+    and <code>|options|.{{CurrentUserDetailsOptions/direction}}</code>.
 
 <div class="example">
 
@@ -3252,7 +3275,8 @@ PublicKeyCredential.signalCurrentUserDetails({
     rpId: "example.com",
     userId: "aabbcc",  // user handle, base64url.
     name: "New user name",
-    displayName: "New display name"
+    displayName: "New display name",
+    language: "en",
 });
 ```
 
@@ -3556,10 +3580,6 @@ associated with or [=scoped=] to, respectively.
                 [[!RFC8266]] for the Nickname Profile of the PRECIS FreeformClass [[!RFC8264]],
                 when setting {{PublicKeyCredentialEntity/name}}'s value, or displaying the value to the user.
 
-              - This string MAY contain language and direction metadata.
-                [=[RPS]=] SHOULD consider providing this information if setting the member to a value other than the [=RP ID=].
-                See [[#sctn-strings-langdir]] about how this metadata is encoded.
-
               - [=Clients=] SHOULD perform enforcement, as prescribed in Section 2.3 of
                 [[!RFC8266]] for the Nickname Profile of the PRECIS FreeformClass [[!RFC8264]],
                 on {{PublicKeyCredentialEntity/name}}'s value prior to displaying the value to the user or
@@ -3578,8 +3598,6 @@ associated with or [=scoped=] to, respectively.
                 as prescribed in Section 3.4.3 of [[!RFC8265]] for the UsernameCasePreserved Profile of the PRECIS
                 IdentifierClass [[!RFC8264]], when setting {{PublicKeyCredentialEntity/name}}'s value, or displaying the value
                 to the user.
-
-              - This string MAY contain language and direction metadata. [=[RPS]=] SHOULD consider providing this information. See [[#sctn-strings-langdir]] about how this metadata is encoded.
 
               - [=Clients=] SHOULD perform enforcement, as prescribed in Section 3.4.3 of [[!RFC8265]]
                 for the UsernameCasePreserved Profile of the PRECIS IdentifierClass [[!RFC8264]],
@@ -3620,6 +3638,8 @@ credential.
     dictionary PublicKeyCredentialUserEntity : PublicKeyCredentialEntity {
         required BufferSource   id;
         required DOMString      displayName;
+        DOMString               language;
+        DOMString               direction;
     };
 </xmp>
 
@@ -3654,8 +3674,6 @@ credential.
             when setting {{PublicKeyCredentialUserEntity/displayName}}'s value to a non-empty string,
             or displaying a non-empty value to the user.
 
-        - This string MAY contain language and direction metadata. [=[RPS]=] SHOULD consider providing this information. See [[#sctn-strings-langdir]] about how this metadata is encoded.
-
         - [=Clients=] SHOULD perform enforcement, as prescribed in Section 2.3 of
             [[!RFC8266]] for the Nickname Profile of the PRECIS FreeformClass [[!RFC8264]],
             on {{PublicKeyCredentialUserEntity/displayName}}'s value prior to displaying a non-empty value to the user or
@@ -3666,6 +3684,21 @@ credential.
         When storing a {{PublicKeyCredentialUserEntity/displayName}} member's value,
         the value MAY be truncated as described in [[#sctn-strings-truncation]]
         using a size limit greater than or equal to 64 bytes.
+
+    :   <dfn>language</dfn>
+    ::  An OPTIONAL [=resource-wide default=] language field [[!String-Meta]] for the entity.
+
+        The [=Client=] SHOULD verify that the value is a [=well-formed language tag=].
+
+        This member MAY be ignored if the combination of [=client=] and [=authenticator=] cannot suitably process and store it.
+
+    :   <dfn>direction</dfn>
+    ::  An OPTIONAL [=resource-wide default=] [=block direction=] field [[!String-Meta]] for the entity.
+
+        This SHOULD be one of the values `"ltr"`, `"rtl"` or `"auto"`.
+        The [=Client=] MUST ignore unknown values, treating an unknown value as if the [=map/exist|member does not exist=].
+
+        This member MAY be ignored if the combination of [=client=] and [=authenticator=] cannot suitably process and store it.
 </div>
 
 
@@ -5196,6 +5229,8 @@ a numbered step. If outdented, it (today) is rendered as a bullet in the midst o
         <code>|rpEntity|.{{PublicKeyCredentialRpEntity/id}}</code>, <code>|rpEntity|.{{PublicKeyCredentialEntity/name}}</code>,
         <code>|userEntity|.{{PublicKeyCredentialEntity/name}}</code> and
         <code>|userEntity|.{{PublicKeyCredentialUserEntity/displayName}}</code>, if possible.
+        This display SHOULD take into account <code>|userEntity|.{{PublicKeyCredentialUserEntity/language}}</code>
+        and <code>|userEntity|.{{PublicKeyCredentialUserEntity/direction}}</code> if possible.
 
         If |requireUserVerification| is [TRUE], the [=authorization gesture=] MUST include [=user verification=].
 
@@ -5496,20 +5531,17 @@ but MUST NOT be shorter than the longest prefix substring that satisfies the siz
 
 ### Language and Direction Encoding ### {#sctn-strings-langdir}
 
-In order to be correctly displayed in context, the language and base direction of a string [may be required](https://www.w3.org/TR/string-meta/#why-is-this-important). Strings in this API may have to be written to fixed-function [=authenticators=] and then later read back and displayed on a different platform. Thus language and direction metadata is encoded in the string itself to ensure that it is transported atomically.
+In order to be correctly displayed in context, the language and base direction of a string [may be required](https://www.w3.org/TR/string-meta/#why-is-this-important). Strings in this API may have to be written to fixed-function [=authenticators=] and then later read back and displayed on a different platform.
 
-To encode language and direction metadata in a string that is documented as permitting it, suffix its code points with two sequences of code points:
+For compatibility with existing fixed-function [=authenticators=] without support for dedicated language and direction metadata fields,
+Web Authentication Level 2 included provisions for embedding such metadata in the string itself to ensure that it is transported atomically.
+This encoding is now NOT RECOMMENDED; [=clients=] and [=authenticators=] MAY ignore such encoding in new values.
+[=Clients=] and [=authenticators=] MAY detect and process language and direction metadata encoded in existing strings
+as described in [[webauthn-2-20210408#sctn-strings-langdir|Web Authentication Level 2 §6.4.2. Language and Direction Encoding]].
 
-The first encodes a [=language tag=] with the code point U+E0001 followed by the ASCII values of the [=language tag=] each shifted up by U+E0000. For example, the [=language tag=] “en-US” becomes the code points U+E0001, U+E0065, U+E006E, U+E002D, U+E0055, U+E0053.
+Instead, the Level 3 [=Web Authentication API=] provides [=resource-wide default=] fields for encoding language and direction metadata
+which SHOULD be used when supported by the [=client=] and [=authenticator=].
 
-The second consists of a single code point which is either U+200E (“LEFT-TO-RIGHT MARK”), U+200F (“RIGHT-TO-LEFT MARK”), or U+E007F (“CANCEL TAG”). The first two can be used to indicate directionality but SHOULD only be used when neccessary to produce the correct result. (E.g. an RTL string that starts with LTR-strong characters.) The value U+E007F is a direction-agnostic indication of the end of the [=language tag=].
-
-So the string “حبیب الرحمان” could have two different DOMString values, depending on whether the language was encoded or not. (Since the direction is unambiguous a directionality marker is not needed in this example.)
-
-   * Unadorned string: U+062D, U+0628, U+06CC, U+0628, U+0020, U+0627, U+0644, U+0631, U+062D, U+0645, U+0627, U+0646
-   * With language “ar-SA” encoded: U+062D, U+0628, U+06CC, U+0628, U+0020, U+0627, U+0644, U+0631, U+062D, U+0645, U+0627, U+0646, U+E0001, U+E0061, U+E0072, U+E002D, U+E0053, U+E0041, U+E007F
-
-Consumers of strings that may have language and direction encoded should be aware that truncation could truncate a [=language tag=] into a different, but still valid, language. The final directionality marker or CANCEL TAG code point provide an unambigous indication of truncation.
 
 ## Attestation ## {#sctn-attestation}
 
@@ -8021,6 +8053,22 @@ The <dfn>Credential Parameters</dfn> is a JSON [=Object=] passed to the [=remote
                 </td>
                 <td>string</td>
             </tr>
+            <tr>
+                <td>|userLanguage|</td>
+                <td>
+                    The [=resource-wide default=] language tag for the {{PublicKeyCredentialUserEntity|user}} entity associated to the credential.
+                    This property may not be defined.
+                </td>
+                <td>string</td>
+            </tr>
+            <tr>
+                <td>|userDirection|</td>
+                <td>
+                    The [=resource-wide default=] [=block direction=] for the {{PublicKeyCredentialUserEntity|user}} entity associated to the credential.
+                    This property may not be defined.
+                </td>
+                <td>string</td>
+            </tr>
         </tbody>
     </table>
 </figure>
@@ -8065,6 +8113,8 @@ The [=remote end steps=] are:
  1. If |userName| is not defined, set |userName| to the empty string.
  1. Let |userDisplayName| be the |parameters|' |userDisplayName| property.
  1. If |userDisplayName| is not defined, set |userDisplayName| to the empty string.
+ 1. Let |userLanguage| be the |parameters|' |userLanguage| property.
+ 1. Let |userDirection| be the |parameters|' |userDirection| property.
  1. Let |credential| be a new [=Client-side discoverable Public Key Credential Source=] if |isResidentCredential| is [TRUE]
      or a [=Server-side Public Key Credential Source=] otherwise whose items are:
     : [=public key credential source/type=]
@@ -8078,7 +8128,7 @@ The [=remote end steps=] are:
     : [=public key credential source/userHandle=]
     :: |userHandle|
     : [=public key credential source/otherUI=]
-    :: Construct from |userName| and |userDisplayName|.
+    :: Construct from |userName|, |userDisplayName|, |userLanguage| and |userDirection|.
  1. Set the |credential|'s [=backup eligibility=] [=credential property=] to |backupEligibility|.
  1. Set the |credential|'s [=backup state=] [=credential property=] to |backupState|.
  1. Associate a [=signature counter=] |counter| to the |credential| with a starting value equal to the |parameters|'
@@ -9874,6 +9924,11 @@ Deprecations:
     [[#dictionary-pkcredentialentity]]
 - [[#sctn-android-safetynet-attestation]]
 - [=CollectedClientData/tokenBinding=] was changed to \[RESERVED].
+- In-field language and direction metadata no longer recommended:
+      - [[#sctn-strings-langdir]]
+      - <code>{{CredentialCreationOptions/publicKey}}.{{PublicKeyCredentialCreationOptions/rp}}.{{PublicKeyCredentialEntity/name}}</code>
+      - <code>{{CredentialCreationOptions/publicKey}}.{{PublicKeyCredentialCreationOptions/user}}.{{PublicKeyCredentialEntity/name}}</code>
+      - <code>{{CredentialCreationOptions/publicKey}}.{{PublicKeyCredentialCreationOptions/user}}.{{PublicKeyCredentialUserEntity/displayName}}</code>
 
 
 New features:
@@ -9900,6 +9955,8 @@ New features:
     - [[#sctn-automation-set-credential-properties]]
 - [[#sctn-compound-attestation]]
 - [[#prf-extension]]
+- New optional {{PublicKeyCredentialUserEntity}} attributes
+    {{PublicKeyCredentialUserEntity/language}} and {{PublicKeyCredentialUserEntity/direction}}
 
 
 ### Editorial Changes ### {#changes-l3-editorial}
