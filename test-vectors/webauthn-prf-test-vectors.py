@@ -184,9 +184,9 @@ plat_prik_idx=0x04
 authnr_prik_idx=0x05
 cred_random_idx=0x06
 cred_random, plat_prik_raw, authnr_prik_raw = setup_test_vectors(seed, plat_prik_idx, authnr_prik_idx, cred_random_idx)
-iv_salt_idx_single_pp2 = 0x06
+iv_salt_idx_single_pp2 = 0x07
 iv_output_idx_single_pp2 = 0x09
-iv_salt_idx_two_pp2 = 0x07
+iv_salt_idx_two_pp2 = 0x08
 iv_output_idx_two_pp2 = 0x0a
 
 generate_test_vector(
