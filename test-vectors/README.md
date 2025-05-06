@@ -7,7 +7,14 @@ This directory hosts scripts for generating test vectors to include in the Web A
 Usage
 ---
 
-Run the scripts using the [Poetry](https://python-poetry.org/) build tool:
+Use the script `inject-generated-content.sh` to generate and inject the content into `../index.bs`:
+
+```sh
+$ cd test-vectors
+$ ./inject-generated-content.sh
+```
+
+Alternatively, you can run the content generation scripts manually:
 
 ```sh
 $ poetry install
