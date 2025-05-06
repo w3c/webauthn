@@ -1115,4 +1115,4 @@ test_vectors_fido_u2f(
     'fido-u2f.ES256',
 )
 
-print('<!-- END GENERATED CONTENT -->')
+print("<!-- END GENERATED CONTENT: Use test-vectors/webauthn-test-vectors.py -->")

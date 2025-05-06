@@ -232,4 +232,4 @@ print(f"""Inputs and pseudo-random values used in this section were generated as
 - `iv` in two-input `salt_enc` with PIN protocol 2: Truncated <code>SHA-256(seed || 0x{tohex(iv_salt_idx_two_pp2)})</code>
 - `iv` in single-input `output_enc` with PIN protocol 2: Truncated <code>SHA-256(seed || 0x{tohex(iv_output_idx_single_pp2)})</code>
 - `iv` in two-input `output_enc` with PIN protocol 2: Truncated <code>SHA-256(seed || 0x{tohex(iv_output_idx_two_pp2)})</code>
-<!-- END GENERATED CONTENT -->""")
+<!-- END GENERATED CONTENT: Use test-vectors/webauthn-prf-test-vectors.py -->""")
