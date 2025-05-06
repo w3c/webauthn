@@ -1,12 +1,7 @@
-#!/bin/sh
+#!/bin/bash
 
 # Exit on error
 set -e
-
-# Echo commands
-set -x
-
-poetry install
 
 
 inject() {
@@ -25,5 +20,22 @@ inject() {
   mv index.bs.new ../index.bs
 }
 
+if [[ "$1" == "--check" ]]; then
+  if ! git diff --exit-code --stat -- ../index.bs; then
+    echo "Cannot check if test vectors are up to date. Please commit or revert changes to index.bs first."
+    exit 1
+  fi
+fi
+
+poetry install
 inject webauthn-test-vectors.py
 inject webauthn-prf-test-vectors.py
+
+if [[ "$1" == "--check" ]]; then
+  if git diff --exit-code --stat -- ../index.bs; then
+    echo "Generated content is up to date."
+  else
+    echo "Generated content is up not to date. Please run test-vectors/inject-generated-content.sh and commit the results."
+    exit 1
+  fi
+fi

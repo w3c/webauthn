@@ -14,6 +14,12 @@ $ cd test-vectors
 $ ./inject-generated-content.sh
 ```
 
+If run with `--check`, the script will return a nonzero exit code if it results in any changes to `../index.bs`:
+
+```sh
+$ ./inject-generated-content.sh --check
+```
+
 Alternatively, you can run the content generation scripts manually:
 
 ```sh
