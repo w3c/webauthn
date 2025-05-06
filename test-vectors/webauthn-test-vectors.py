@@ -6,7 +6,7 @@ import math
 from cryptography import x509
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import hashes, serialization
-from cryptography.hazmat.primitives.asymmetric import ec, ed25519, padding, rsa
+from cryptography.hazmat.primitives.asymmetric import ec, ed25519, ed448, padding, rsa
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 from cryptography.x509.oid import NameOID
 
@@ -1125,6 +1125,13 @@ test_vectors_packed_eddsa(
     cose.Ed25519,
     ed25519.Ed25519PrivateKey,
     32,
+)
+test_vectors_packed_eddsa(
+    "## Packed Attestation with Ed448 Credential ## {#sctn-test-vectors-packed-ed448}",
+    'packed.Ed448',
+    cose.Ed448,
+    ed448.Ed448PrivateKey,
+    57,
 )
 
 test_vectors_tpm_ecdsa(
