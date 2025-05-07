@@ -430,7 +430,7 @@ def gen_packed_attestation(gen_rand, challenge, credential_id_length, public_key
 
     att_cert, att_key = gen_att_cert(att_ca_cert, att_ca_key, gen_rand)
     att_obj = AttestationObject.create("packed", auth_data, {
-        "alg": -7,
+        "alg": cose.ESP256.ALGORITHM,
         "sig": att_key.sign(auth_data + sha256(client_data), ec.ECDSA(hashes.SHA256(), deterministic_signing=True)),
         "x5c": [att_cert.public_bytes(serialization.Encoding.DER)]
     })
@@ -501,7 +501,7 @@ def gen_tpm_attestation_statement(gen_rand, auth_data: AuthenticatorData, client
     sig = att_key.sign(cert_info, ec.ECDSA(hashes.SHA256(), deterministic_signing=True))
     return {
         "ver": "2.0",
-        "alg": -7,
+        "alg": cose.ESP256.ALGORITHM,
         "x5c": [att_cert.public_bytes(serialization.Encoding.DER)],
         "sig": sig,
         "certInfo": cert_info,
@@ -535,7 +535,7 @@ def gen_android_key_attestation(gen_rand, challenge, credential_id_length, priva
 
     att_cert, att_key = gen_android_key_att_cert(att_ca_cert, att_ca_key, sha256(client_data), private_key, gen_rand)
     att_obj = AttestationObject.create("android-key", auth_data, {
-        "alg": -7,
+        "alg": cose.ESP256.ALGORITHM,
         "sig": att_key.sign(auth_data + sha256(client_data), ec.ECDSA(hashes.SHA256(), deterministic_signing=True)),
         "x5c": [att_cert.public_bytes(serialization.Encoding.DER)]
     })
