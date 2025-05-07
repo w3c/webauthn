@@ -403,7 +403,7 @@ def gen_packed_self_attestation(gen_rand, challenge, credential_id_length, priva
     auth_data = gen_attestation_auth_data(gen_rand, RP_ID_HASH, 0x41, 0, att_cred_data, None)
 
     att_obj = AttestationObject.create("packed", auth_data, {
-        "alg": -7,
+        "alg": public_key.ALGORITHM,
         "sig": private_key.sign(auth_data + sha256(client_data), ec.ECDSA(hashes.SHA256(), deterministic_signing=True)),
     })
 
