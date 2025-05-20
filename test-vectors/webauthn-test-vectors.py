@@ -430,7 +430,7 @@ def gen_packed_attestation(gen_rand, challenge, credential_id_length, public_key
 
     att_cert, att_key = gen_att_cert(att_ca_cert, att_ca_key, gen_rand)
     att_obj = AttestationObject.create("packed", auth_data, {
-        "alg": cose.ESP256.ALGORITHM,
+        "alg": cose.ES256.ALGORITHM,
         "sig": att_key.sign(auth_data + sha256(client_data), ec.ECDSA(hashes.SHA256(), deterministic_signing=True)),
         "x5c": [att_cert.public_bytes(serialization.Encoding.DER)]
     })
@@ -446,7 +446,7 @@ def gen_tpm_attestation_statement(gen_rand, auth_data: AuthenticatorData, client
     tpm_type = base64.b64decode('gBc=')
 
     cose_key_alg = auth_data.credential_data.public_key.ALGORITHM
-    assert cose_key_alg == cose.ESP256.ALGORITHM
+    assert cose_key_alg == cose.ES256.ALGORITHM
     hash_id = bytes.fromhex('000B')
     sign_alg = bytes.fromhex('0023')
     assert hash_id == bytes.fromhex('000B');
@@ -501,7 +501,7 @@ def gen_tpm_attestation_statement(gen_rand, auth_data: AuthenticatorData, client
     sig = att_key.sign(cert_info, ec.ECDSA(hashes.SHA256(), deterministic_signing=True))
     return {
         "ver": "2.0",
-        "alg": cose.ESP256.ALGORITHM,
+        "alg": cose.ES256.ALGORITHM,
         "x5c": [att_cert.public_bytes(serialization.Encoding.DER)],
         "sig": sig,
         "certInfo": cert_info,
@@ -535,7 +535,7 @@ def gen_android_key_attestation(gen_rand, challenge, credential_id_length, priva
 
     att_cert, att_key = gen_android_key_att_cert(att_ca_cert, att_ca_key, sha256(client_data), private_key, gen_rand)
     att_obj = AttestationObject.create("android-key", auth_data, {
-        "alg": cose.ESP256.ALGORITHM,
+        "alg": cose.ES256.ALGORITHM,
         "sig": att_key.sign(auth_data + sha256(client_data), ec.ECDSA(hashes.SHA256(), deterministic_signing=True)),
         "x5c": [att_cert.public_bytes(serialization.Encoding.DER)]
     })
@@ -1002,14 +1002,6 @@ att_ca_cert, att_ca_key = gen_ca_cert()
 print('</xmp>')
 
 test_vectors_none_ecdsa(
-    "## ESP256 Credential with No Attestation ## {#sctn-test-vectors-none-esp256}",
-    'none.ESP256',
-    32,
-    ec.SECP256R1(),
-    cose.ESP256,
-)
-
-test_vectors_none_ecdsa(
     "## ES256 Credential with No Attestation ## {#sctn-test-vectors-none-es256}",
     'none.ES256',
     32,
@@ -1018,58 +1010,51 @@ test_vectors_none_ecdsa(
 )
 
 test_vectors_packed_self_ecdsa(
-    "## ESP256 Credential with Self Attestation ## {#sctn-test-vectors-packed-self-esp256}",
-    'packed-self.ESP256',
+    "## ES256 Credential with Self Attestation ## {#sctn-test-vectors-packed-self-es256}",
+    'packed-self.ES256',
     32,
     ec.SECP256R1(),
-    cose.ESP256,
+    cose.ES256,
 )
 
 # test_vectors_none_ecdsa(
-#     '## ESP256 Credential with subdomain origin ## {#sctn-test-vectors-none-esp256-subdomain-origin}',
-#     'none.ESP256.subdomain-origin',
+#     '## ES256 Credential with subdomain origin ## {#sctn-test-vectors-none-es256-subdomain-origin}',
+#     'none.ES256.subdomain-origin',
 #     32,
 #     ec.SECP256R1(),
-#     cose.ESP256,
+#     cose.ES256,
 #     origin="https://sub.example.org",
 # )
 
 test_vectors_none_ecdsa(
-    '## ESP256 Credential with "crossOrigin": true in clientDataJSON ## {#sctn-test-vectors-none-esp256-crossOrigin}',
-    'none.ESP256.crossOrigin',
+    '## ES256 Credential with "crossOrigin": true in clientDataJSON ## {#sctn-test-vectors-none-es256-crossOrigin}',
+    'none.ES256.crossOrigin',
     32,
     ec.SECP256R1(),
-    cose.ESP256,
+    cose.ES256,
     cross_origin=True,
     add_top_origin=False,
 )
 
 test_vectors_none_ecdsa(
-    '## ESP256 Credential with "topOrigin" in clientDataJSON ## {#sctn-test-vectors-none-esp256-topOrigin}',
+    '## ES256 Credential with "topOrigin" in clientDataJSON ## {#sctn-test-vectors-none-es256-topOrigin}',
     'none.ES256.topOrigin',
     32,
     ec.SECP256R1(),
-    cose.ESP256,
+    cose.ES256,
     cross_origin=True,
     add_top_origin=True,
 )
 
 test_vectors_none_ecdsa(
-    "## ESP256 Credential with very long credential ID ## {#sctn-test-vectors-none-esp256-long-credential-id}",
-    'none.ESP256.long-credential-id',
+    "## ES256 Credential with very long credential ID ## {#sctn-test-vectors-none-es256-long-credential-id}",
+    'none.ES256.long-credential-id',
     32,
     ec.SECP256R1(),
-    cose.ESP256,
+    cose.ES256,
     credential_id_length=1023,
 )
 
-test_vectors_packed_ecdsa(
-    "## Packed Attestation with ESP256 Credential ## {#sctn-test-vectors-packed-esp256}",
-    'packed.ESP256',
-    32,
-    ec.SECP256R1(),
-    cose.ESP256,
-)
 test_vectors_packed_ecdsa(
     "## Packed Attestation with ES256 Credential ## {#sctn-test-vectors-packed-es256}",
     'packed.ES256',
@@ -1085,26 +1070,11 @@ test_vectors_packed_ecdsa(
     cose.ES384,
 )
 test_vectors_packed_ecdsa(
-    "## Packed Attestation with ESP384 Credential ## {#sctn-test-vectors-packed-esp384}",
-    'packed.ESP384',
-    48,
-    ec.SECP384R1(),
-    cose.ESP384,
-)
-test_vectors_packed_ecdsa(
     "## Packed Attestation with ES512 Credential ## {#sctn-test-vectors-packed-es512}",
     'packed.ES512',
     65,
     ec.SECP521R1(),
     cose.ES512,
-    challenge_length=128,
-)
-test_vectors_packed_ecdsa(
-    "## Packed Attestation with ESP512 Credential ## {#sctn-test-vectors-packed-esp512}",
-    'packed.ESP512',
-    65,
-    ec.SECP521R1(),
-    cose.ESP512,
     challenge_length=128,
 )
 test_vectors_packed_rsa(
@@ -1113,16 +1083,9 @@ test_vectors_packed_rsa(
     cose.RS256,
 )
 test_vectors_packed_eddsa(
-    "## Packed Attestation with EdDSA Credential ## {#sctn-test-vectors-packed-eddsa}",
-    'packed.EdDSA',
-    cose.EdDSA,
-    ed25519.Ed25519PrivateKey,
-    32,
-)
-test_vectors_packed_eddsa(
     "## Packed Attestation with Ed25519 Credential ## {#sctn-test-vectors-packed-ed25519}",
     'packed.Ed25519',
-    cose.Ed25519,
+    cose.EdDSA,
     ed25519.Ed25519PrivateKey,
     32,
 )
@@ -1135,27 +1098,27 @@ test_vectors_packed_eddsa(
 )
 
 test_vectors_tpm_ecdsa(
-    "## TPM Attestation with ESP256 Credential ## {#sctn-test-vectors-tpm-esp256}",
-    'tpm.ESP256',
+    "## TPM Attestation with ES256 Credential ## {#sctn-test-vectors-tpm-es256}",
+    'tpm.ES256',
     32,
     ec.SECP256R1(),
-    cose.ESP256,
+    cose.ES256,
 )
 
 test_vectors_android_key_ecdsa(
-    "## Android Key Attestation with ESP256 Credential ## {#sctn-test-vectors-android-key-esp256}",
-    'android-key.ESP256',
+    "## Android Key Attestation with ES256 Credential ## {#sctn-test-vectors-android-key-es256}",
+    'android-key.ES256',
     32,
     ec.SECP256R1(),
-    cose.ESP256,
+    cose.ES256,
 )
 
 test_vectors_apple_ecdsa(
-    "## Apple Anonymous Attestation with ESP256 Credential ## {#sctn-test-vectors-apple-esp256}",
-    'apple.ESP256',
+    "## Apple Anonymous Attestation with ES256 Credential ## {#sctn-test-vectors-apple-es256}",
+    'apple.ES256',
     32,
     ec.SECP256R1(),
-    cose.ESP256,
+    cose.ES256,
 )
 
 test_vectors_fido_u2f(
