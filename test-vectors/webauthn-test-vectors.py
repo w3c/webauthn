@@ -1083,8 +1083,8 @@ test_vectors_packed_rsa(
     cose.RS256,
 )
 test_vectors_packed_eddsa(
-    "## Packed Attestation with Ed25519 Credential ## {#sctn-test-vectors-packed-ed25519}",
-    'packed.Ed25519',
+    "## Packed Attestation with Ed25519 Credential ## {#sctn-test-vectors-packed-eddsa}",
+    'packed.EdDSA',
     cose.EdDSA,
     ed25519.Ed25519PrivateKey,
     32,
