@@ -3485,6 +3485,22 @@ optionally evidence of [=user consent=] to a specific transaction.
 
         Additional signature algorithms can be included as needed.
 
+        The following {{COSEAlgorithmIdentifier}} values are NOT RECOMMENDED
+        in {{PublicKeyCredentialCreationOptions/pubKeyCredParams}}:
+
+        * -9 (ESP256); use ES256 (-7) instead or in addition.
+        * -51 (ESP384); use ES384 (-35) instead or in addition.
+        * -52 (ESP512); use ES512 (-36) instead or in addition.
+        * -19 (Ed25519); use EdDSA (-8) instead or in addition.
+
+        Note: Within WebAuthn, the values -9 (ESP256), -51 (ESP384), -52 (ESP512) and -19 (Ed25519)
+        represent the same thing respectively as -7 (ES256), -35 (ES384), -36 (ES512) and -8 (EdDSA)
+        because of the additional restrictions stated in [[#sctn-alg-identifier]].
+        However, they are not interchangeable in practice
+        since many implementations support the latter identifiers but not the former ones.
+        Therefore the latter identifiers are preferred in {{PublicKeyCredentialCreationOptions/pubKeyCredParams}}
+        for backwards compatibility.
+
     :   <dfn>timeout</dfn>
     ::  This OPTIONAL member specifies a time, in milliseconds, that the [=[RP]=] is willing to wait for the call to complete. This is
         treated as a hint, and MAY be overridden by the [=client=].
@@ -4326,8 +4342,11 @@ Note: The {{AuthenticatorTransport}} enumeration is deliberately not referenced,
 
     The COSE algorithms registry leaves degrees of freedom to be specified by other parameters in a [=COSE key=]. In order to promote interoperability, this specification makes the following additional guarantees of [=credential public keys=]:
         1. Keys with algorithm ES256 (-7) MUST specify P-256 (1) as the [=crv=] parameter and MUST NOT use the compressed point form.
+        1. Keys with algorithm ESP256 (-9) MUST NOT use the compressed point form.
         1. Keys with algorithm ES384 (-35) MUST specify P-384 (2) as the [=crv=] parameter and MUST NOT use the compressed point form.
+        1. Keys with algorithm ESP384 (-51) MUST NOT use the compressed point form.
         1. Keys with algorithm ES512 (-36) MUST specify P-521 (3) as the [=crv=] parameter and MUST NOT use the compressed point form.
+        1. Keys with algorithm ESP512 (-52) MUST NOT use the compressed point form.
         1. Keys with algorithm EdDSA (-8) MUST specify Ed25519 (6) as the [=crv=] parameter. (These always use a compressed form in COSE.)
 
     These restrictions align with the recommendation in [=Section 2.1=] of [[!RFC9053]].
@@ -9456,39 +9475,76 @@ signature = h'01063d52d7c39b4d432fc7063c5d93e582bdcb16889cd71f888d67d880ea730a42
 </xmp>
 
 
-## Packed Attestation with Ed25519 Credential ## {#sctn-test-vectors-packed-ed25519}
+## Packed Attestation with Ed25519 Credential ## {#sctn-test-vectors-packed-eddsa}
 
 [=registration ceremony|Registration=]:
 <xmp class="example" highlight="cddl">
-challenge = h'560c73a09ce7a1586d61c1d6e41fef149be523e220fc9f385d38ab23702ebf1b'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'00', info='packed.Ed25519', L=32)
+challenge = h'a8abf9dabdc6b0df63466b39bda9e8a34a34e185337a59f1c579990676d3b3bd'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'00', info='packed.EdDSA', L=32)
 
-private_key = h'c87fce9e9cd283d272a2418d9683366f83661e458ad4451f0f1c95cb83b0f0a8'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'01', info='packed.Ed25519', L=32)
-client_data_gen_flags = h'41'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'02', info='packed.Ed25519', L=1)
+private_key = h'971f38c0f73aaf0c5a614eb5e26430ae1ea0ed13e4f425d96e9662349340b0b3'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'01', info='packed.EdDSA', L=32)
+client_data_gen_flags = h'bd'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'02', info='packed.EdDSA', L=1)
 ; extra_client_data is included iff bit 0x01 of client_data_gen_flags is 1
-extra_client_data = h'db7587e24b9187edb77933754331e443'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'03', info='packed.Ed25519', L=16)
-aaguid = h'164009ea09faae7c397bc3e2ad0e7ec0'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'04', info='packed.Ed25519', L=16)
-credential_id = h'c6cffa01b7fda368a7e0b29c1384a719820246bca894dd12914708743af0cecd'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'05', info='packed.Ed25519', L=32)
+extra_client_data = h'07f0d3e60ed90fffbd3932d85f922f11'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'03', info='packed.EdDSA', L=16)
+aaguid = h'd5aa33581e8ca478e20fe713f5d32ff2'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'04', info='packed.EdDSA', L=16)
+credential_id = h'ce9f840ed96599580cd140fbc7bb3230633f50f61041aff73308ae71caa8a2bd'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'05', info='packed.EdDSA', L=32)
 ; auth_data_UV_BE_BS determines the UV, BE and BS bits of the authenticator data flags, but BS is set only if BE is
-auth_data_UV_BE_BS = h'e8'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'06', info='packed.Ed25519', L=1)
-attestation_private_key = h'673ee7fd94405de523fd84a088ab082d75b7fceef02a301e2bca0a28537cf243'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'07', info='packed.Ed25519', L=32)
-attestation_cert_serial_number = h'6e391f23f57150dc7a12dad18f2b43ad'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'08', info='packed.Ed25519', L=16)
+auth_data_UV_BE_BS = h'32'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'06', info='packed.EdDSA', L=1)
+attestation_private_key = h'fbe7f950684f23afd045072a8b287ad29528707c662672850ac69733ffe0db85'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'07', info='packed.EdDSA', L=32)
+attestation_cert_serial_number = h'b2cfc9ea33c8643b0e1a760463eaf164'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'08', info='packed.EdDSA', L=16)
 
-clientDataJSON = h'7b2274797065223a22776562617574686e2e637265617465222c226368616c6c656e6765223a225667787a6f4a7a6e6f5668745963485735425f76464a766c492d49675f4a38345854697249334175767873222c226f726967696e223a2268747470733a2f2f6578616d706c652e6f7267222c2263726f73734f726967696e223a66616c73652c22657874726144617461223a22636c69656e74446174614a534f4e206d617920626520657874656e6465642077697468206164646974696f6e616c206669656c647320696e20746865206675747572652c207375636820617320746869733a2032335748346b7552682d323365544e31517a486b51773d3d227d'
-attestationObject = h'a363666d74667061636b65646761747453746d74a363616c672663736967584730450220730a54d4f76cb1f2b7dd4a5a6eee3374e3c8a60fb3c4daa527c9277e365b64aa0221008b31a04a28cc4148b14c42a916548ee7f430bc7629295b42ee93e5d1aaba8ee6637835638159022530820221308201c7a00302010202106e391f23f57150dc7a12dad18f2b43ad300a06082a8648ce3d0403023062311e301c06035504030c15576562417574686e207465737420766563746f7273310c300a060355040a0c0357334331253023060355040b0c1c41757468656e74696361746f72204174746573746174696f6e204341310b30090603550406130241413020170d3234303130313030303030305a180f33303234303130313030303030305a305f311e301c06035504030c15576562417574686e207465737420766563746f7273310c300a060355040a0c0357334331223020060355040b0c1941757468656e74696361746f72204174746573746174696f6e310b30090603550406130241413059301306072a8648ce3d020106082a8648ce3d03010703420004fb96a581a0b36742a8c45d6ffb5af1ef155524b50339445ec1109874045e0087db77edef91f3dc949927470d84b01627087b72c86b7c9d02e1389cba680ffc36a360305e300c0603551d130101ff04023000300e0603551d0f0101ff040403020780301d0603551d0e04160414ef2ce1a86caba85121130a16e8ce82a75d5a6653301f0603551d2304183016801445aff715b0dd786741fee996ebc16547a3931b1e300a06082a8648ce3d0403020348003045022100ad4fa628cffba5a642a562cbfefe63efecce26d90c80114114d1745383e12f01022028af87ba3b0ff868a34b9458bc6973b27380a328dd87b7436651ffa823280bca6861757468446174615881bfabc37432958b063360d3ad6461c9c4735ae7f8edd46592a5e0f01452b2e4b54900000000164009ea09faae7c397bc3e2ad0e7ec00020c6cffa01b7fda368a7e0b29c1384a719820246bca894dd12914708743af0cecda401010327200621582089f81eba4a1f510cb243ff7fb9e9cf899bf627e49ce1ac3c3eae8adb2a8d7d7b'
+clientDataJSON = h'7b2274797065223a22776562617574686e2e637265617465222c226368616c6c656e6765223a22714b763532723347734e396a526d733576616e6f6f306f303459557a656c6e7878586d5a426e6254733730222c226f726967696e223a2268747470733a2f2f6578616d706c652e6f7267222c2263726f73734f726967696e223a66616c73652c22657874726144617461223a22636c69656e74446174614a534f4e206d617920626520657874656e6465642077697468206164646974696f6e616c206669656c647320696e20746865206675747572652c207375636820617320746869733a20425f44543567375a445f2d394f544c595835497645513d3d227d'
+attestationObject = h'a363666d74667061636b65646761747453746d74a363616c67266373696758473045022100adecf9cace851c8bf4adb6b9e9dff8ddfa43092bbe04b5814cdf1c744970a88f02201c1bd55aacdfe2e4442c886132148b80394567018a382ce1fa260adae41e0746637835638159022730820223308201c8a003020102021100b2cfc9ea33c8643b0e1a760463eaf164300a06082a8648ce3d0403023062311e301c06035504030c15576562417574686e207465737420766563746f7273310c300a060355040a0c0357334331253023060355040b0c1c41757468656e74696361746f72204174746573746174696f6e204341310b30090603550406130241413020170d3234303130313030303030305a180f33303234303130313030303030305a305f311e301c06035504030c15576562417574686e207465737420766563746f7273310c300a060355040a0c0357334331223020060355040b0c1941757468656e74696361746f72204174746573746174696f6e310b30090603550406130241413059301306072a8648ce3d020106082a8648ce3d03010703420004dd2b7a564b73b8c0b81c4c62e521925c4d1198ec9f583dbf1eebe364b65cd9c29a9bdf346aaa81fb6b9507e5249a52fdaf8e39e26b0b7dc45992a7e233b70f70a360305e300c0603551d130101ff04023000300e0603551d0f0101ff040403020780301d0603551d0e041604140ae27546bc7eccb1b4b597bd354f0c0b1f1f8f8e301f0603551d2304183016801445aff715b0dd786741fee996ebc16547a3931b1e300a06082a8648ce3d0403020349003046022100a0d434ecb5fc3bfd7da5f41904517ad2836249f561bd834ba7a438a8ab7a4ce8022100fac845bb7a02513b58e9f319654dbe49b0f02b95835bac568c71f8a18cdde9ab6861757468446174615881bfabc37432958b063360d3ad6461c9c4735ae7f8edd46592a5e0f01452b2e4b54100000000d5aa33581e8ca478e20fe713f5d32ff20020ce9f840ed96599580cd140fbc7bb3230633f50f61041aff73308ae71caa8a2bda401010327200621582044e06ddd331c36a8dc667bab52bcae63486c916aa5e339e6acebaa84934bf832'
 </xmp>
 
 [=authentication ceremony|Authentication=]:
 <xmp class="example" highlight="cddl">
-challenge = h'3790da8b2b72ee8ce19761787ad38cbfaa697eb3ca013a1342988756b98785ab'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'09', info='packed.Ed25519', L=32)
+challenge = h'895957e01c633a698348a2d8a31a54b7db27e8c1c43b2080d79ae2190267bfd2'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'09', info='packed.EdDSA', L=32)
 
-client_data_gen_flags = h'de'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'0a', info='packed.Ed25519', L=1)
+client_data_gen_flags = h'8c'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'0a', info='packed.EdDSA', L=1)
 ; extra_client_data is included iff bit 0x01 of client_data_gen_flags is 1
 ; auth_data_UV_BS sets the UV and BS bits of the authenticator data flags, but BS is set only if BE was set in the registration
-auth_data_UV_BS = h'18'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'0b', info='packed.Ed25519', L=1)
+auth_data_UV_BS = h'ab'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'0b', info='packed.EdDSA', L=1)
 
-authenticatorData = h'bfabc37432958b063360d3ad6461c9c4735ae7f8edd46592a5e0f01452b2e4b51900000000'
-clientDataJSON = h'7b2274797065223a22776562617574686e2e676574222c226368616c6c656e6765223a224e35446169797479376f7a686c32463465744f4d763670706672504b41546f545170694856726d48686173222c226f726967696e223a2268747470733a2f2f6578616d706c652e6f7267222c2263726f73734f726967696e223a66616c73657d'
-signature = h'4c873571377ac019f257d6bf07249f63ac2487483c51bc511ce0f0e3266c840cb07a09cdc445a2f963d8603a9f0f6cf9ce709d7fc6a96c7c51ea08d33776010c'
+authenticatorData = h'bfabc37432958b063360d3ad6461c9c4735ae7f8edd46592a5e0f01452b2e4b50100000000'
+clientDataJSON = h'7b2274797065223a22776562617574686e2e676574222c226368616c6c656e6765223a2269566c583442786a4f6d6d44534b4c596f7870557439736e364d48454f7943413135726947514a6e763949222c226f726967696e223a2268747470733a2f2f6578616d706c652e6f7267222c2263726f73734f726967696e223a66616c73657d'
+signature = h'f5c59c7e46c34f6f8cc197101ddf9934fa2595f68eb1913a637e8419eb9ba4cfdfc48f85393bc0d40b011f0d6fecb097d6607525713223a0dc0d453993dae00b'
+</xmp>
+
+
+## Packed Attestation with Ed448 Credential ## {#sctn-test-vectors-packed-ed448}
+
+[=registration ceremony|Registration=]:
+<xmp class="example" highlight="cddl">
+challenge = h'2578d0801b5a005b5451e540121788cb01949e187b91db13f58755403efbf337'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'00', info='packed.Ed448', L=32)
+
+private_key = h'ed479eecf63bd89e3898434798bb3c417bfc8284f6f011958bc0e78edbf6a2a640c0e358b1b1452a1f3782c400dabb4134192dee3031869a45'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'01', info='packed.Ed448', L=57)
+client_data_gen_flags = h'e3'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'02', info='packed.Ed448', L=1)
+; extra_client_data is included iff bit 0x01 of client_data_gen_flags is 1
+extra_client_data = h'050a80de27875521cc4c3316c06da42b'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'03', info='packed.Ed448', L=16)
+aaguid = h'41c913aeda925fe02273322e34c2ae67'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'04', info='packed.Ed448', L=16)
+credential_id = h'224fcde324e6b075ede55098a24b9ddce5f5a7c71d23703efd528a38f8a5f33c'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'05', info='packed.Ed448', L=32)
+; auth_data_UV_BE_BS determines the UV, BE and BS bits of the authenticator data flags, but BS is set only if BE is
+auth_data_UV_BE_BS = h'3b'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'06', info='packed.Ed448', L=1)
+attestation_private_key = h'd90faf5cc3f7853456b09124dd870250347f9c9ff66dba363aecd9194c665715'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'07', info='packed.Ed448', L=32)
+attestation_cert_serial_number = h'cff4228697d6e5ac47480b2390677f05'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'08', info='packed.Ed448', L=16)
+
+clientDataJSON = h'7b2274797065223a22776562617574686e2e637265617465222c226368616c6c656e6765223a224a586a5167427461414674555565564145686549797747556e6868376b6473543959645651443737387a63222c226f726967696e223a2268747470733a2f2f6578616d706c652e6f7267222c2263726f73734f726967696e223a66616c73652c22657874726144617461223a22636c69656e74446174614a534f4e206d617920626520657874656e6465642077697468206164646974696f6e616c206669656c647320696e20746865206675747572652c207375636820617320746869733a2042517141336965485653484d54444d577747326b4b773d3d227d'
+attestationObject = h'a363666d74667061636b65646761747453746d74a363616c672663736967584730450220315c861030a51b01a3294e11acfeb83ffc2155971e9fb4ab566a25ce6a9e22c50221009fdd06e22c8628071913d176c9e52bf5ff4ab253a76a1aef0c831db4dc8791a1637835638159022730820223308201c8a003020102021100cff4228697d6e5ac47480b2390677f05300a06082a8648ce3d0403023062311e301c06035504030c15576562417574686e207465737420766563746f7273310c300a060355040a0c0357334331253023060355040b0c1c41757468656e74696361746f72204174746573746174696f6e204341310b30090603550406130241413020170d3234303130313030303030305a180f33303234303130313030303030305a305f311e301c06035504030c15576562417574686e207465737420766563746f7273310c300a060355040a0c0357334331223020060355040b0c1941757468656e74696361746f72204174746573746174696f6e310b30090603550406130241413059301306072a8648ce3d020106082a8648ce3d03010703420004b85aaf790c824037cfe9fc56ab8d7ce6fbfaff2e3fe7c8d745734c3c6e3c6ce880d505ccdb1e2c3738680e6f49f475e4d8d0b6c29060e6e0d7a6392fb69094cea360305e300c0603551d130101ff04023000300e0603551d0f0101ff040403020780301d0603551d0e04160414fa8f81c2dcc0e194ae5034c7e79dcf6d9d8593e2301f0603551d2304183016801445aff715b0dd786741fee996ebc16547a3931b1e300a06082a8648ce3d0403020349003046022100e761f54215ad92f27c2c14b9eea3e39e8c22429e833ecba5be918987aa72e0e6022100d5a714df479c238586b7d9e6684ea84991087038b0fef6a29b57b66b74df05fd686175746844617461589bbfabc37432958b063360d3ad6461c9c4735ae7f8edd46592a5e0f01452b2e4b5590000000041c913aeda925fe02273322e34c2ae670020224fcde324e6b075ede55098a24b9ddce5f5a7c71d23703efd528a38f8a5f33ca4010103383420072158398051ef4f94670b5abf17da2e9558ba6eba94eb8704363915b4d666de287ad329de9f1f075211aba602dc6e7a5e52b15a8ee1c984a9f8887380'
+</xmp>
+
+[=authentication ceremony|Authentication=]:
+<xmp class="example" highlight="cddl">
+challenge = h'1a942f401d8d8e36fe888c35c22b718217802fc6685bf139c47b311408128693'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'09', info='packed.Ed448', L=32)
+
+client_data_gen_flags = h'2d'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'0a', info='packed.Ed448', L=1)
+; extra_client_data is included iff bit 0x01 of client_data_gen_flags is 1
+extra_client_data = h'5ca1e381b5e009e01760db2eb632316f'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'0b', info='packed.Ed448', L=16)
+; auth_data_UV_BS sets the UV and BS bits of the authenticator data flags, but BS is set only if BE was set in the registration
+auth_data_UV_BS = h'fc'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'0c', info='packed.Ed448', L=1)
+
+authenticatorData = h'bfabc37432958b063360d3ad6461c9c4735ae7f8edd46592a5e0f01452b2e4b51d00000000'
+clientDataJSON = h'7b2274797065223a22776562617574686e2e676574222c226368616c6c656e6765223a22477051765142324e6a6a622d6949773177697478676865414c385a6f575f4535784873784641675368704d222c226f726967696e223a2268747470733a2f2f6578616d706c652e6f7267222c2263726f73734f726967696e223a66616c73652c22657874726144617461223a22636c69656e74446174614a534f4e206d617920626520657874656e6465642077697468206164646974696f6e616c206669656c647320696e20746865206675747572652c207375636820617320746869733a20584b486a6762586743654158594e7375746a497862773d3d227d'
+signature = h'971c13fc11f64857ee2b2754b36430397104fa1f68abe103c57a815047c80916e340c9c031b3e7f0b2dbbb31e4de0234e19c273e3532f2fd8072c97e5361a2fe0a7100ab7ea55881b140253312001251088e18b97462173c5e1bb1c6d93cbddbe580b8f32b36d33410f64d89268cc3303b00'
 </xmp>
 
 

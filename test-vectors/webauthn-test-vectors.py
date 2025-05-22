@@ -6,7 +6,7 @@ import math
 from cryptography import x509
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import hashes, serialization
-from cryptography.hazmat.primitives.asymmetric import ec, ed25519, padding, rsa
+from cryptography.hazmat.primitives.asymmetric import ec, ed25519, ed448, padding, rsa
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 from cryptography.x509.oid import NameOID
 
@@ -403,7 +403,7 @@ def gen_packed_self_attestation(gen_rand, challenge, credential_id_length, priva
     auth_data = gen_attestation_auth_data(gen_rand, RP_ID_HASH, 0x41, 0, att_cred_data, None)
 
     att_obj = AttestationObject.create("packed", auth_data, {
-        "alg": -7,
+        "alg": public_key.ALGORITHM,
         "sig": private_key.sign(auth_data + sha256(client_data), ec.ECDSA(hashes.SHA256(), deterministic_signing=True)),
     })
 
@@ -430,7 +430,7 @@ def gen_packed_attestation(gen_rand, challenge, credential_id_length, public_key
 
     att_cert, att_key = gen_att_cert(att_ca_cert, att_ca_key, gen_rand)
     att_obj = AttestationObject.create("packed", auth_data, {
-        "alg": -7,
+        "alg": cose.ES256.ALGORITHM,
         "sig": att_key.sign(auth_data + sha256(client_data), ec.ECDSA(hashes.SHA256(), deterministic_signing=True)),
         "x5c": [att_cert.public_bytes(serialization.Encoding.DER)]
     })
@@ -501,7 +501,7 @@ def gen_tpm_attestation_statement(gen_rand, auth_data: AuthenticatorData, client
     sig = att_key.sign(cert_info, ec.ECDSA(hashes.SHA256(), deterministic_signing=True))
     return {
         "ver": "2.0",
-        "alg": -7,
+        "alg": cose.ES256.ALGORITHM,
         "x5c": [att_cert.public_bytes(serialization.Encoding.DER)],
         "sig": sig,
         "certInfo": cert_info,
@@ -535,7 +535,7 @@ def gen_android_key_attestation(gen_rand, challenge, credential_id_length, priva
 
     att_cert, att_key = gen_android_key_att_cert(att_ca_cert, att_ca_key, sha256(client_data), private_key, gen_rand)
     att_obj = AttestationObject.create("android-key", auth_data, {
-        "alg": -7,
+        "alg": cose.ES256.ALGORITHM,
         "sig": att_key.sign(auth_data + sha256(client_data), ec.ECDSA(hashes.SHA256(), deterministic_signing=True)),
         "x5c": [att_cert.public_bytes(serialization.Encoding.DER)]
     })
@@ -792,6 +792,8 @@ def test_vectors_packed_eddsa(
         description,
         info,
         cose_class,
+        cryptography_prikey_class,
+        private_key_length,
         credential_id_length=32,
         challenge_length=32,
 ):
@@ -806,7 +808,7 @@ def test_vectors_packed_eddsa(
     challenge = next_prand(gen_rand, "challenge", challenge_length)
     print()
 
-    pri_key = ed25519.Ed25519PrivateKey.from_private_bytes(next_prand(gen_rand, "private_key", 32))
+    pri_key = cryptography_prikey_class.from_private_bytes(next_prand(gen_rand, "private_key", private_key_length))
     public_key = cose_class.from_cryptography_key(pri_key.public_key())
     att_obj, client_data = gen_packed_attestation(gen_rand, challenge, credential_id_length, public_key)
 
@@ -1081,9 +1083,18 @@ test_vectors_packed_rsa(
     cose.RS256,
 )
 test_vectors_packed_eddsa(
-    "## Packed Attestation with Ed25519 Credential ## {#sctn-test-vectors-packed-ed25519}",
-    'packed.Ed25519',
+    "## Packed Attestation with Ed25519 Credential ## {#sctn-test-vectors-packed-eddsa}",
+    'packed.EdDSA',
     cose.EdDSA,
+    ed25519.Ed25519PrivateKey,
+    32,
+)
+test_vectors_packed_eddsa(
+    "## Packed Attestation with Ed448 Credential ## {#sctn-test-vectors-packed-ed448}",
+    'packed.Ed448',
+    cose.Ed448,
+    ed448.Ed448PrivateKey,
+    57,
 )
 
 test_vectors_tpm_ecdsa(
