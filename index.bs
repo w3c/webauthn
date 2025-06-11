@@ -7449,18 +7449,9 @@ to prevent evaluation of the PRFs for arbitrary inputs.
 
 The `hmac-secret` extension provides two PRFs per credential: one which is used for requests where [=user verification=] is performed and another for all other requests. This extension only exposes a single PRF per credential and, when implementing on top of `hmac-secret`, that PRF MUST be the one used for when [=user verification=] is performed. This overrides the {{UserVerificationRequirement}} if neccessary.
 
-This extension MAY be implemented for [=authenticators=] that do not use [[FIDO-CTAP]]
-so long as the behavior of the [=client extension inputs=] and [=client extension outputs=] obeys the following interface:
-
-- Let |salt1| and |salt2| be the variables of the same names in the below client processing steps.
-- Let |CredRandom| be an [=authenticator=]-defined, per-credential secret. |CredRandom| is static for the lifetime of the credential.
-- The <code>{{AuthenticationExtensionsPRFOutputs/results}}.{{AuthenticationExtensionsPRFValues/first}}</code> output is
-      <code>HMAC-SHA-256(K=|CredRandom|, text=|salt1|)</code> [[!RFC2104]].
-- The <code>{{AuthenticationExtensionsPRFOutputs/results}}.{{AuthenticationExtensionsPRFValues/second}}</code> output is
-      <code>HMAC-SHA-256(K=|CredRandom|, text=|salt2|)</code> [[!RFC2104]]
-      when |salt2| is present, and absent otherwise.
-- The <code>{{AuthenticationExtensionsPRFOutputs/enabled}}</code> output
-    is present in [=registration ceremonies=] and absent in [=authentication ceremonies=].
+This extension MAY be implemented for [=authenticators=] that do not use [[FIDO-CTAP]].
+The interface for this between [=client=] and [=authenticator=],
+and the construction of the PRF by the authenticator, is only abstractly specified.
 
 Note: Implementing on top of `hmac-secret` causes [=authenticator extension outputs=] that are not present otherwise.
 These outputs are encrypted and cannot be used by the [=[RP]=],
@@ -7512,12 +7503,25 @@ but also cannot be deleted by the client since the [=authenticator data=] is sig
 : Client extension processing ([=registration extension|registration=])
 ::
        1. If {{AuthenticationExtensionsPRFInputs/evalByCredential}} is present, return a {{DOMException}} whose name is “{{NotSupportedError}}”.
-       1. Set `hmac-secret` to [TRUE] in the authenticator extensions input.
-       1. If {{AuthenticationExtensionsPRFInputs/eval}} is present and a future extension to [[FIDO-CTAP]] permits evaluation of the PRF at creation time, configure `hmac-secret` inputs accordingly:
-           * Let `salt1` be the value of <code>SHA-256(UTF8Encode("WebAuthn PRF") || 0x00 || {{AuthenticationExtensionsPRFInputs/eval}}.{{AuthenticationExtensionsPRFValues/first}})</code>.
-           * If <code>{{AuthenticationExtensionsPRFInputs/eval}}.{{AuthenticationExtensionsPRFValues/second}}</code> is present, let `salt2` be the value of <code>SHA-256(UTF8Encode("WebAuthn PRF") || 0x00 || {{AuthenticationExtensionsPRFInputs/eval}}.{{AuthenticationExtensionsPRFValues/second}})</code>.
-       1. Set {{AuthenticationExtensionsPRFOutputs/enabled}} to the value of `hmac-secret` in the authenticator extensions output. If not present, set {{AuthenticationExtensionsPRFOutputs/enabled}} to [FALSE].
-       1. Set {{AuthenticationExtensionsPRFOutputs/results}} to the decrypted PRF result(s), if any.
+       1. If {{AuthenticationExtensionsPRFInputs/eval}} is present:
+            - Let |salt1| be the value of <code>SHA-256(UTF8Encode("WebAuthn PRF") || 0x00 || {{AuthenticationExtensionsPRFInputs/eval}}.{{AuthenticationExtensionsPRFValues/first}})</code>.
+            - If <code>{{AuthenticationExtensionsPRFInputs/eval}}.{{AuthenticationExtensionsPRFValues/second}}</code> is present,
+                let |salt2| be the value of <code>SHA-256(UTF8Encode("WebAuthn PRF") || 0x00 || {{AuthenticationExtensionsPRFInputs/eval}}.{{AuthenticationExtensionsPRFValues/second}})</code>.
+
+       1. If the authenticator supports the CTAP2 `hmac-secret` extension [[FIDO-CTAP]]:
+          1. Set `hmac-secret` to [TRUE] in the authenticator extensions input.
+          1. If |salt1| is defined and a future extension to [[FIDO-CTAP]] permits evaluation of the PRF at creation time,
+              configure `hmac-secret` inputs accordingly using the values of |salt1| and, if defined, |salt2|.
+          1. Set {{AuthenticationExtensionsPRFOutputs/enabled}} to the value of `hmac-secret` in the authenticator extensions output. If not present, set {{AuthenticationExtensionsPRFOutputs/enabled}} to [FALSE].
+          1. Set {{AuthenticationExtensionsPRFOutputs/results}} to the decrypted PRF result(s), if any.
+
+       1. If the authenticator does not support the CTAP2 `hmac-secret` extension [[FIDO-CTAP]],
+            but does support some other implementation compatible with the abstract authenticator processing defined below:
+          1. Set {{AuthenticationExtensionsPRFOutputs/enabled}} to [TRUE].
+          1. If {{AuthenticationExtensionsPRFInputs/eval}} is present,
+              use some unspecified mechanism to convey {{AuthenticationExtensionsPRFInputs/eval}} to the authenticator as the inputs to evaluate the PRF on.
+          1. Use some unspecified mechanism to receive the PRF outputs from the authenticator.
+              Set <code>{{AuthenticationExtensionsPRFOutputs/results}}</code> to the evaluation results, if any.
 
 : Client extension processing ([=authentication extension|authentication=])
 ::
@@ -7528,13 +7532,47 @@ but also cannot be deleted by the client since the [=authenticator data=] is sig
           1. If {{AuthenticationExtensionsPRFInputs/evalByCredential}} is present and [=map/exists|contains=] an [=map/entry=] whose [=map/key=] is the [=base64url encoding=] of the [=credential ID=] that will be returned, let |ev| be the [=map/value=] of that entry.
           1. If |ev| is null and {{AuthenticationExtensionsPRFInputs/eval}} is present, then let |ev| be the value of {{AuthenticationExtensionsPRFInputs/eval}}.
       1. If |ev| is not null:
-          1. Let `salt1` be the value of <code>SHA-256(UTF8Encode("WebAuthn PRF") || 0x00 || |ev|.{{AuthenticationExtensionsPRFValues/first}})</code>.
-          1. If <code>|ev|.{{AuthenticationExtensionsPRFValues/second}}</code> is present, let `salt2` be the value of <code>SHA-256(UTF8Encode("WebAuthn PRF") || 0x00 || |ev|.{{AuthenticationExtensionsPRFValues/second}})</code>.
-          1. Send an `hmac-secret` extension to the [=authenticator=] using the values of `salt1` and, if set, `salt2` as the parameters of the same name in that process.
-          1. Decrypt the extension result and set {{AuthenticationExtensionsPRFOutputs/results}} to the PRF result(s), if any.
+          1. Let |salt1| be the value of <code>SHA-256(UTF8Encode("WebAuthn PRF") || 0x00 || |ev|.{{AuthenticationExtensionsPRFValues/first}})</code>.
+          1. If <code>|ev|.{{AuthenticationExtensionsPRFValues/second}}</code> is present, let |salt2| be the value of <code>SHA-256(UTF8Encode("WebAuthn PRF") || 0x00 || |ev|.{{AuthenticationExtensionsPRFValues/second}})</code>.
+          1. If the authenticator supports the CTAP2 `hmac-secret` extension [[FIDO-CTAP]]:
+              1. Send an `hmac-secret` extension to the [=authenticator=] using the values of |salt1| and, if set, |salt2| as the parameters of the same name in that process.
+              1. Decrypt the extension result and set {{AuthenticationExtensionsPRFOutputs/results}} to the PRF result(s), if any.
+          1. If the authenticator does not support the CTAP2 `hmac-secret` extension [[FIDO-CTAP]],
+              but does support some other implementation compatible with the abstract authenticator processing defined below:
+              1. Use some unspecified mechanism to convey |salt1| and, if defined, |salt2| to the authenticator as PRF inputs, in that order.
+              1. Use some unspecified mechanism to receive the PRF outputs from the authenticator as an {{AuthenticationExtensionsPRFValues}} value |results|.
+                  Set <code>{{AuthenticationExtensionsPRFOutputs/results}}</code> to |results|.
 
-: Authenticator extension input / processing / output
-:: [=prf|This extension=] uses the [[FIDO-CTAP]] `hmac-secret` extension when communicating with the authenticator. It thus does not specify any direct authenticator interaction for [=[RPS]=].
+: Authenticator extension input / output
+:: [=prf|This extension=] is abstract over the authenticator implementation,
+    using either the [[FIDO-CTAP]] `hmac-secret` extension or an unspecified interface for communication between the client and authenticator.
+    It thus does not specify a CBOR interface for inputs and outputs.
+
+: Authenticator extension processing
+:: [=Authenticators=] that support the [[FIDO-CTAP]] `hmac-secret` extension implement authenticator processing as defined in that extension.
+
+    [=Authenticators=] that do not support the [[FIDO-CTAP]] `hmac-secret` extension
+    MAY instead implement the following abstract procedure:
+
+    1. If the user is not [=user verified|verified=], return some unspecified error and abort these processing steps.
+
+    1. Let |PRF| be the pseudo-random function associated with the current [=credential=],
+        or initialize the association if uninitialized:
+
+        Let |PRF| be a collision resistant pseudo-random function whose outputs are exactly 32 bytes long,
+        selected uniformly at random from a set of at least 2<sup>256</sup> such functions.
+        The selected |PRF| SHOULD NOT be used for other purposes than implementing this extension.
+        Associate |PRF| with the current [=credential=] for the lifetime of the credential.
+
+    1. Use some unspecified mechanism to receive PRF inputs |salt1| and, optionally, |salt2| from the [=client=], in that order.
+        If none are received, let |salt1| and |salt2| be undefined.
+
+    1. If |salt1| is defined:
+        1. Let |results| be an {{AuthenticationExtensionsPRFValues}} structure containing the evaluations of |PRF| at the given inputs:
+            - Set <code>|results|.{{AuthenticationExtensionsPRFValues/first}}</code> to <code>PRF(|salt1|)</code>.
+            - If |salt2| is defined,
+                set <code>|results|.{{AuthenticationExtensionsPRFValues/second}}</code> to <code>PRF(|salt2|)</code>.
+        1. Use some unspecified mechanism to convey |results| to the [=client=] as the PRF outputs.
 
 : Client extension output
 :: <xmp class="idl">
