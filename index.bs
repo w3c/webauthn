@@ -77,7 +77,7 @@ Abstract: This specification defines an API enabling the creation and use of str
  specification also describes the functional model for WebAuthn conformant [=authenticators=], including their signature and
  [=attestation=] functionality.
 Boilerplate: omit conformance, omit feedback-header, omit abstract-header
-Markup Shorthands: css off, markdown on
+Markup Shorthands: css off, markdown on, macros-in-autolinks yes
 Implementation Report: https://www.w3.org/2020/12/webauthn-report.html
 </pre>
 
@@ -247,6 +247,7 @@ spec: RFC8610; urlPrefix: https://tools.ietf.org/html/rfc8610
 <pre class="link-defaults">
 spec:credential-management; type:dfn; text:credentials
 spec:dom; type:dfn; for:/; text:document
+spec:html; type:dfn; text:allowed to use
 spec:html; type:dfn; for:environment settings object; text:global object
 spec:html; type:dfn; for:/; text:same site
 spec:infra; type:dfn; for:/; text:set
@@ -506,9 +507,13 @@ The sample code for generating and registering a new key follows:
         displayName: "Alex Müller",
       },
 
-      // This Relying Party will accept either an ES256 or RS256 credential, but
-      // prefers an ES256 credential.
+      // This Relying Party will accept either an EdDSA, ES256 or RS256 credential, but
+      // prefers an EdDSA credential.
       pubKeyCredParams: [
+        {
+          type: "public-key",
+          alg: -8 // "EdDSA" as registered in the IANA COSE Algorithms registry
+        },
         {
           type: "public-key",
           alg: -7 // "ES256" as registered in the IANA COSE Algorithms registry
@@ -705,7 +710,7 @@ credential registration operation. A similar procedure applies to an authenticat
         .then(function (attestation) {
             // Register the user.
         }).catch(function (error) {
-            if (error == "AbortError") {
+            if (error.name === "AbortError") {
                 // Inform user the credential hasn't been created.
                 // Let the server know a key hasn't been created.
             }
@@ -1699,7 +1704,7 @@ The [=[RP]=] SHOULD first use {{PublicKeyCredential/getClientCapabilities()}}
 to check that the [=client=] supports the {{ClientCapability/conditionalCreate}} capability
 in order to prevent a user-visible error in case this feature is not available.
 The client MUST set BOTH |requireUserPresence| and |requireUserVerification| to |FALSE| when <code>|options|.{{CredentialCreationOptions/mediation}}</code> is set to {{CredentialMediationRequirement/conditional}}
-unless they may explicitly performed during the ceremony.
+unless they may be explicitly performed during the ceremony.
 
 Any {{CredentialsContainer/create()|navigator.credentials.create()}} operation can be aborted by leveraging the {{AbortController}};
 see [[dom#abortcontroller-api-integration]] for detailed instructions.
@@ -2258,7 +2263,7 @@ decline the entire interaction even if a [=public key credential source=] is pre
 [=credential=].
 
 The {{CredentialsContainer/get()|navigator.credentials.get()}} implementation [[!CREDENTIAL-MANAGEMENT-1]] calls
-<code>PublicKeyCredential.{{PublicKeyCredential/[[CollectFromCredentialStore]]()}}</code> to collect any [=credentials=] that
+<code>PublicKeyCredential.{{Credential/[[CollectFromCredentialStore]]()}}</code> to collect any [=credentials=] that
 should be available without [=user mediation=] (roughly, this specification's [=authorization gesture=]), and if it does not find
 exactly one of those, it then calls <code>PublicKeyCredential.{{PublicKeyCredential/[DISCOVER-METHOD]}}</code> to have
 the user select a [=public key credential source=].
@@ -2492,7 +2497,7 @@ When this method is invoked, the user agent MUST execute the following algorithm
 
                     1. Set <code>|publicKeyOptions|.{{PublicKeyCredentialRequestOptions/allowCredentials}}</code> to be a [=list=] containing a
                         single {{PublicKeyCredentialDescriptor}} [=list/item=] whose {{PublicKeyCredentialDescriptor/id}}'s value is set to
-                        |credentialMetadata|'s [=DiscoverableCredentialMetadata/id=]'s value and whose{{PublicKeyCredentialDescriptor/id}}
+                        |credentialMetadata|'s [=DiscoverableCredentialMetadata/id=]'s value and whose {{PublicKeyCredentialDescriptor/type}}
                         value is set to |credentialMetadata|'s [=DiscoverableCredentialMetadata/type=].
 
                     1. Execute the [=issuing a credential request to an authenticator=] algorithm with |authenticator|, |savedCredentialIds|,
@@ -2848,7 +2853,6 @@ This method has no arguments and returns a Boolean value.
     };
 </xmp>
 
-Note: Invoking this method from a [=browsing context=] where the [=Web Authentication API=] is "disabled" according to the [=allowed to use=] algorithm&mdash;i.e., by a [=permissions policy=]&mdash;will result in the promise being rejected with a {{DOMException}} whose name is "{{NotAllowedError}}". See also [[#sctn-permissions-policy]].
 
 </div>
 
@@ -2882,8 +2886,6 @@ The set of [=map/keys=] SHOULD also contain a key for each [extension](#sctn-ext
 
 Note that even if an extension is mapped to [TRUE], the authenticator used for any given operation may not support that extension,
 so [=[RPS]=] MUST NOT assume that the authenticator processing steps for that extension will be performed on that basis.
-
-Note: Invoking this method from a [=browsing context=] where the [=Web Authentication API=] is "disabled" according to the [=allowed to use=] algorithm&mdash;i.e., by a [=permissions policy=]&mdash;will result in the promise being rejected with a {{DOMException}} whose name is "{{NotAllowedError}}". See also [[#sctn-permissions-policy]].
 
 </div>
 
@@ -3259,7 +3261,7 @@ PublicKeyCredential.signalCurrentUserDetails({
     rpId: "example.com",
     userId: "aabbcc",  // user handle, base64url.
     name: "New user name",
-    displayName: "New display name"
+    displayName: "New display name",
 });
 ```
 
@@ -3485,11 +3487,27 @@ optionally evidence of [=user consent=] to a specific transaction.
 
         [=[RPS]=] that wish to support a wide range of [=authenticators=] SHOULD include at least the following {{COSEAlgorithmIdentifier}} values:
 
-        * -8 (Ed25519)
+        * -8 (EdDSA)
         * -7 (ES256)
         * -257 (RS256)
 
         Additional signature algorithms can be included as needed.
+
+        The following {{COSEAlgorithmIdentifier}} values are NOT RECOMMENDED
+        in {{PublicKeyCredentialCreationOptions/pubKeyCredParams}}:
+
+        * -9 (ESP256); use -7 (ES256) instead or in addition.
+        * -51 (ESP384); use -35 (ES384) instead or in addition.
+        * -52 (ESP512); use -36 (ES512) instead or in addition.
+        * -19 (Ed25519); use -8 (EdDSA) instead or in addition.
+
+        Note: Within WebAuthn, the values -9 (ESP256), -51 (ESP384), -52 (ESP512) and -19 (Ed25519)
+        represent the same thing respectively as -7 (ES256), -35 (ES384), -36 (ES512) and -8 (EdDSA)
+        because of the additional restrictions stated in [[#sctn-alg-identifier]].
+        However, they are not interchangeable in practice
+        since many implementations support the latter identifiers but not the former ones.
+        Therefore the latter identifiers are preferred in {{PublicKeyCredentialCreationOptions/pubKeyCredParams}}
+        for backwards compatibility.
 
     :   <dfn>timeout</dfn>
     ::  This OPTIONAL member specifies a time, in milliseconds, that the [=[RP]=] is willing to wait for the call to complete. This is
@@ -3563,10 +3581,6 @@ associated with or [=scoped=] to, respectively.
                 [[!RFC8266]] for the Nickname Profile of the PRECIS FreeformClass [[!RFC8264]],
                 when setting {{PublicKeyCredentialEntity/name}}'s value, or displaying the value to the user.
 
-              - This string MAY contain language and direction metadata.
-                [=[RPS]=] SHOULD consider providing this information if setting the member to a value other than the [=RP ID=].
-                See [[#sctn-strings-langdir]] about how this metadata is encoded.
-
               - [=Clients=] SHOULD perform enforcement, as prescribed in Section 2.3 of
                 [[!RFC8266]] for the Nickname Profile of the PRECIS FreeformClass [[!RFC8264]],
                 on {{PublicKeyCredentialEntity/name}}'s value prior to displaying the value to the user or
@@ -3585,8 +3599,6 @@ associated with or [=scoped=] to, respectively.
                 as prescribed in Section 3.4.3 of [[!RFC8265]] for the UsernameCasePreserved Profile of the PRECIS
                 IdentifierClass [[!RFC8264]], when setting {{PublicKeyCredentialEntity/name}}'s value, or displaying the value
                 to the user.
-
-              - This string MAY contain language and direction metadata. [=[RPS]=] SHOULD consider providing this information. See [[#sctn-strings-langdir]] about how this metadata is encoded.
 
               - [=Clients=] SHOULD perform enforcement, as prescribed in Section 3.4.3 of [[!RFC8265]]
                 for the UsernameCasePreserved Profile of the PRECIS IdentifierClass [[!RFC8264]],
@@ -3660,8 +3672,6 @@ credential.
             [[!RFC8266]] for the Nickname Profile of the PRECIS FreeformClass [[!RFC8264]],
             when setting {{PublicKeyCredentialUserEntity/displayName}}'s value to a non-empty string,
             or displaying a non-empty value to the user.
-
-        - This string MAY contain language and direction metadata. [=[RPS]=] SHOULD consider providing this information. See [[#sctn-strings-langdir]] about how this metadata is encoded.
 
         - [=Clients=] SHOULD perform enforcement, as prescribed in Section 2.3 of
             [[!RFC8266]] for the Nickname Profile of the PRECIS FreeformClass [[!RFC8264]],
@@ -4331,10 +4341,13 @@ Note: The {{AuthenticatorTransport}} enumeration is deliberately not referenced,
     for instance, <code>-7</code> for "ES256" and <code>-257</code> for "RS256".
 
     The COSE algorithms registry leaves degrees of freedom to be specified by other parameters in a [=COSE key=]. In order to promote interoperability, this specification makes the following additional guarantees of [=credential public keys=]:
-        1. Keys with algorithm ES256 (-7) MUST specify P-256 (1) as the [=crv=] parameter and MUST NOT use the compressed point form.
-        1. Keys with algorithm ES384 (-35) MUST specify P-384 (2) as the [=crv=] parameter and MUST NOT use the compressed point form.
-        1. Keys with algorithm ES512 (-36) MUST specify P-521 (3) as the [=crv=] parameter and MUST NOT use the compressed point form.
-        1. Keys with algorithm EdDSA (-8) MUST specify Ed25519 (6) as the [=crv=] parameter. (These always use a compressed form in COSE.)
+        1. Keys with algorithm -7 (ES256) MUST specify 1 (P-256) as the [=crv=] parameter and MUST NOT use the compressed point form.
+        1. Keys with algorithm -9 (ESP256) MUST NOT use the compressed point form.
+        1. Keys with algorithm -35 (ES384) MUST specify 2 (P-384) as the [=crv=] parameter and MUST NOT use the compressed point form.
+        1. Keys with algorithm -51 (ESP384) MUST NOT use the compressed point form.
+        1. Keys with algorithm -36 (ES512) MUST specify 3 (P-521) as the [=crv=] parameter and MUST NOT use the compressed point form.
+        1. Keys with algorithm -52 (ESP512) MUST NOT use the compressed point form.
+        1. Keys with algorithm -8 (EdDSA) MUST specify 6 (Ed25519) as the [=crv=] parameter. (These always use a compressed form in COSE.)
 
     These restrictions align with the recommendation in [=Section 2.1=] of [[!RFC9053]].
 </div>
@@ -5503,20 +5516,16 @@ but MUST NOT be shorter than the longest prefix substring that satisfies the siz
 
 ### Language and Direction Encoding ### {#sctn-strings-langdir}
 
-In order to be correctly displayed in context, the language and base direction of a string [may be required](https://www.w3.org/TR/string-meta/#why-is-this-important). Strings in this API may have to be written to fixed-function [=authenticators=] and then later read back and displayed on a different platform. Thus language and direction metadata is encoded in the string itself to ensure that it is transported atomically.
+In order to be correctly displayed in context, the language and base direction of a string [may be required](https://www.w3.org/TR/string-meta/#why-is-this-important). Strings in this API may have to be written to fixed-function [=authenticators=] and then later read back and displayed on a different platform.
 
-To encode language and direction metadata in a string that is documented as permitting it, suffix its code points with two sequences of code points:
+For compatibility with existing fixed-function [=authenticators=] without support for dedicated language and direction metadata fields,
+Web Authentication Level 2 included provisions for embedding such metadata in the string itself to ensure that it is transported atomically.
+This encoding is NOT RECOMMENDED; [=clients=] and [=authenticators=] MAY ignore such encoding in new values.
+[=Clients=] and [=authenticators=] MAY detect and process language and direction metadata encoded in existing strings
+as described in [[webauthn-2-20210408#sctn-strings-langdir|Web Authentication Level 2 §6.4.2. Language and Direction Encoding]].
 
-The first encodes a [=language tag=] with the code point U+E0001 followed by the ASCII values of the [=language tag=] each shifted up by U+E0000. For example, the [=language tag=] “en-US” becomes the code points U+E0001, U+E0065, U+E006E, U+E002D, U+E0055, U+E0053.
+Instead, a future version of the [=Web Authentication API=] may provide dedicated language and direction metadata fields.
 
-The second consists of a single code point which is either U+200E (“LEFT-TO-RIGHT MARK”), U+200F (“RIGHT-TO-LEFT MARK”), or U+E007F (“CANCEL TAG”). The first two can be used to indicate directionality but SHOULD only be used when neccessary to produce the correct result. (E.g. an RTL string that starts with LTR-strong characters.) The value U+E007F is a direction-agnostic indication of the end of the [=language tag=].
-
-So the string “حبیب الرحمان” could have two different DOMString values, depending on whether the language was encoded or not. (Since the direction is unambiguous a directionality marker is not needed in this example.)
-
-   * Unadorned string: U+062D, U+0628, U+06CC, U+0628, U+0020, U+0627, U+0644, U+0631, U+062D, U+0645, U+0627, U+0646
-   * With language “ar-SA” encoded: U+062D, U+0628, U+06CC, U+0628, U+0020, U+0627, U+0644, U+0631, U+062D, U+0645, U+0627, U+0646, U+E0001, U+E0061, U+E0072, U+E002D, U+E0053, U+E0041, U+E007F
-
-Consumers of strings that may have language and direction encoded should be aware that truncation could truncate a [=language tag=] into a different, but still valid, language. The final directionality marker or CANCEL TAG code point provide an unambigous indication of truncation.
 
 ## Attestation ## {#sctn-attestation}
 
@@ -5831,15 +5840,18 @@ the [=authenticator=] MUST:
     - For COSEAlgorithmIdentifier -7 (ES256),  and other ECDSA-based algorithms, the
         `sig` value MUST be encoded as an ASN.1 DER Ecdsa-Sig-Value, as defined in [[RFC3279]] section 2.2.3.
 
+        <!-- Example generated using https://github.com/w3c/webauthn/blob/96cc62b627f0b17114931e1bbc546f376f372c5d/test-vectors/webauthn-test-vectors.py#L1004-L1010 with seed 'none.ES256.442295' (442295 is the lowest value that generates a 33+30-byte signature, 2524 is the lowest that generates a 33+31-byte signature) -->
         ```
         Example:
-        30 44                                ; SEQUENCE (68 Bytes)
-            02 20                            ; INTEGER (32 Bytes)
-            |  3d 46 28 7b 8c 6e 8c 8c  26 1c 1b 88 f2 73 b0 9a
-            |  32 a6 cf 28 09 fd 6e 30  d5 a7 9f 26 37 00 8f 54
-            02 20                            ; INTEGER (32 Bytes)
-            |  4e 72 23 6e a3 90 a9 a1  7b cf 5f 7a 09 d6 3a b2
-            |  17 6c 92 bb 8e 36 c0 41  98 a2 7b 90 9b 6e 8f 13
+        Note: Encoding lengths vary with INTEGER magnitude and curve size.
+        30 43                                ; SEQUENCE (67 Bytes)
+            02 21                            ; INTEGER (33 Bytes)
+            | 00 89 90 95 04 e1 4f 1e 29 db a8 15 8f a7 c3 87
+            | e8 88 ff be 07 d8 24 bb 21 43 20 55 06 ab 15 9c
+            | 3e
+            02 1e                            ; INTEGER (30 Bytes)
+            | 56 55 4f b5 81 9b 12 84 5e 85 be 2f 78 37 1c f3
+            | cb 95 e3 87 f4 51 cb 36 2b 94 78 d1 83 d2
         ```
 
         Note: As CTAP1/U2F [=authenticators=] are already producing signatures values in this format, CTAP2
@@ -7213,6 +7225,9 @@ but the currently used [=RP ID=] might be "example.com".
     partial dictionary AuthenticationExtensionsClientInputs {
       DOMString appid;
     };
+    partial dictionary AuthenticationExtensionsClientInputsJSON {
+      DOMString appid;
+    };
     </xmp>
 
 : Client extension processing
@@ -7246,6 +7261,9 @@ Instead, in step three, the comparison on the host is relaxed to accept hosts on
     partial dictionary AuthenticationExtensionsClientOutputs {
       boolean appid;
     };
+    partial dictionary AuthenticationExtensionsClientOutputsJSON {
+      boolean appid;
+    };
     </xmp>
 
 : Authenticator extension input
@@ -7274,6 +7292,9 @@ During a transition from the FIDO U2F JavaScript API, a [=[RP]=] may have a popu
 :: A single DOMString specifying a FIDO |AppID|.
     <xmp class="idl">
     partial dictionary AuthenticationExtensionsClientInputs {
+      DOMString appidExclude;
+    };
+    partial dictionary AuthenticationExtensionsClientInputsJSON {
       DOMString appidExclude;
     };
     </xmp>
@@ -7332,6 +7353,9 @@ During a transition from the FIDO U2F JavaScript API, a [=[RP]=] may have a popu
     partial dictionary AuthenticationExtensionsClientOutputs {
       boolean appidExclude;
     };
+    partial dictionary AuthenticationExtensionsClientOutputsJSON {
+      boolean appidExclude;
+    };
     </xmp>
 
 : Authenticator extension input
@@ -7363,6 +7387,9 @@ At this time, one [=credential property=] is defined: the [=client-side discover
     partial dictionary AuthenticationExtensionsClientInputs {
         boolean credProps;
     };
+    partial dictionary AuthenticationExtensionsClientInputsJSON {
+        boolean credProps;
+    };
     </xmp>
 
 : Client extension processing
@@ -7379,6 +7406,9 @@ At this time, one [=credential property=] is defined: the [=client-side discover
     };
 
     partial dictionary AuthenticationExtensionsClientOutputs {
+        CredentialPropertiesOutput credProps;
+    };
+    partial dictionary AuthenticationExtensionsClientOutputsJSON {
         CredentialPropertiesOutput credProps;
     };
     </xmp>
@@ -7412,11 +7442,23 @@ This [=client extension|client=] [=registration extension=] and [=authentication
 
 As a motivating example, PRF outputs could be used as symmetric keys to encrypt user data. Such encrypted data would be inaccessible without the ability to get assertions from the associated [=credential=]. By using the provision below to evaluate the PRF at two inputs in a single [=assertion=] operation, the encryption key could be periodically rotated during [=assertions=] by choosing a fresh, random input and reencrypting under the new output. If the evaluation inputs are unpredictable then even an attacker who could satisfy [=user verification=], and who had time-limited access to the authenticator, could not learn the encryption key without also knowing the correct PRF input.
 
-This extension is implemented on top of the [[FIDO-CTAP]] `hmac-secret` extension. It is a separate [=client extension=] because `hmac-secret` requires that inputs and outputs be encrypted in a manner that only the user agent can perform, and to provide separation between uses by WebAuthn and any uses by the underlying platform. This separation is achieved by hashing the provided PRF inputs with a context string to prevent evaluation of the PRFs for arbitrary inputs.
+This extension is modeled on top of the [[FIDO-CTAP]] `hmac-secret` extension, but can also be implemented by other means.
+It is a separate [=client extension=] because `hmac-secret` requires that inputs and outputs be encrypted
+in a manner that only the user agent can perform,
+and to provide separation between uses by WebAuthn and any uses by the underlying platform.
+This separation is achieved by hashing the provided PRF inputs with a context string
+to prevent evaluation of the PRFs for arbitrary inputs.
 
-The `hmac-secret` extension provides two PRFs per credential: one which is used for requests where [=user verification=] is performed and another for all other requests. This extension only exposes a single PRF per credential and, when implementing on top of `hmac-secret`, that PRF MUST be the one used for when [=user verification=] is performed. This overrides the {{UserVerificationRequirement}} if neccessary.
+The `hmac-secret` extension provides two PRFs per credential: one which is used for requests where [=user verification=] is performed and another for all other requests. This extension only exposes a single PRF per credential and, when implementing on top of `hmac-secret`, that PRF MUST be the one used for when [=user verification=] is performed. This overrides the {{UserVerificationRequirement}} if necessary.
 
-Note: This extension may be implemented for [=authenticators=] that do not use [[FIDO-CTAP]] so long as the behavior observed by a [=[RP]=] is identical.
+This extension MAY be implemented for [=authenticators=] that do not use [[FIDO-CTAP]].
+The interface for this between [=client=] and [=authenticator=],
+and the construction of the PRF by the authenticator, is only abstractly specified.
+
+Note: Implementing on top of `hmac-secret` causes [=authenticator extension outputs=] that are not present otherwise.
+These outputs are encrypted and cannot be used by the [=[RP]=],
+but also cannot be deleted by the client since the [=authenticator data=] is signed.
+
 
 : Extension identifier
 :: `prf`
@@ -7430,14 +7472,25 @@ Note: This extension may be implemented for [=authenticators=] that do not use [
         required BufferSource first;
         BufferSource second;
     };
+    dictionary AuthenticationExtensionsPRFValuesJSON {
+        required Base64URLString first;
+        Base64URLString second;
+    };
 
     dictionary AuthenticationExtensionsPRFInputs {
         AuthenticationExtensionsPRFValues eval;
         record<DOMString, AuthenticationExtensionsPRFValues> evalByCredential;
     };
+    dictionary AuthenticationExtensionsPRFInputsJSON {
+        AuthenticationExtensionsPRFValuesJSON eval;
+        record<DOMString, AuthenticationExtensionsPRFValuesJSON> evalByCredential;
+    };
 
     partial dictionary AuthenticationExtensionsClientInputs {
         AuthenticationExtensionsPRFInputs prf;
+    };
+    partial dictionary AuthenticationExtensionsClientInputsJSON {
+        AuthenticationExtensionsPRFInputsJSON prf;
     };
     </xmp>
 
@@ -7452,12 +7505,25 @@ Note: This extension may be implemented for [=authenticators=] that do not use [
 : Client extension processing ([=registration extension|registration=])
 ::
        1. If {{AuthenticationExtensionsPRFInputs/evalByCredential}} is present, return a {{DOMException}} whose name is “{{NotSupportedError}}”.
-       1. Set `hmac-secret` to [TRUE] in the authenticator extensions input.
-       1. If {{AuthenticationExtensionsPRFInputs/eval}} is present and a future extension to [[FIDO-CTAP]] permits evaluation of the PRF at creation time, configure `hmac-secret` inputs accordingly:
-           * Let `salt1` be the value of <code>SHA-256(UTF8Encode("WebAuthn PRF") || 0x00 || {{AuthenticationExtensionsPRFInputs/eval}}.{{AuthenticationExtensionsPRFValues/first}})</code>.
-           * If <code>{{AuthenticationExtensionsPRFInputs/eval}}.{{AuthenticationExtensionsPRFValues/second}}</code> is present, let `salt2` be the value of <code>SHA-256(UTF8Encode("WebAuthn PRF") || 0x00 || {{AuthenticationExtensionsPRFInputs/eval}}.{{AuthenticationExtensionsPRFValues/second}})</code>.
-       1. Set {{AuthenticationExtensionsPRFOutputs/enabled}} to the value of `hmac-secret` in the authenticator extensions output. If not present, set {{AuthenticationExtensionsPRFOutputs/enabled}} to [FALSE].
-       1. Set {{AuthenticationExtensionsPRFOutputs/results}} to the decrypted PRF result(s), if any.
+       1. If {{AuthenticationExtensionsPRFInputs/eval}} is present:
+            - Let |salt1| be the value of <code>SHA-256(UTF8Encode("WebAuthn PRF") || 0x00 || {{AuthenticationExtensionsPRFInputs/eval}}.{{AuthenticationExtensionsPRFValues/first}})</code>.
+            - If <code>{{AuthenticationExtensionsPRFInputs/eval}}.{{AuthenticationExtensionsPRFValues/second}}</code> is present,
+                let |salt2| be the value of <code>SHA-256(UTF8Encode("WebAuthn PRF") || 0x00 || {{AuthenticationExtensionsPRFInputs/eval}}.{{AuthenticationExtensionsPRFValues/second}})</code>.
+
+       1. If the authenticator supports the CTAP2 `hmac-secret` extension [[FIDO-CTAP]]:
+          1. Set `hmac-secret` to [TRUE] in the authenticator extensions input.
+          1. If |salt1| is defined and a future extension to [[FIDO-CTAP]] permits evaluation of the PRF at creation time,
+              configure `hmac-secret` inputs accordingly using the values of |salt1| and, if defined, |salt2|.
+          1. Set {{AuthenticationExtensionsPRFOutputs/enabled}} to the value of `hmac-secret` in the authenticator extensions output. If not present, set {{AuthenticationExtensionsPRFOutputs/enabled}} to [FALSE].
+          1. Set {{AuthenticationExtensionsPRFOutputs/results}} to the decrypted PRF result(s), if any.
+
+       1. If the authenticator does not support the CTAP2 `hmac-secret` extension [[FIDO-CTAP]],
+            but does support some other implementation compatible with the abstract authenticator processing defined below:
+          1. Set {{AuthenticationExtensionsPRFOutputs/enabled}} to [TRUE].
+          1. If |salt1| is defined, use some unspecified mechanism to convey |salt1| and,
+              if defined, |salt2| to the authenticator as PRF inputs, in that order.
+          1. Use some unspecified mechanism to receive the PRF outputs from the authenticator.
+              Set <code>{{AuthenticationExtensionsPRFOutputs/results}}</code> to the evaluation results, if any.
 
 : Client extension processing ([=authentication extension|authentication=])
 ::
@@ -7468,13 +7534,46 @@ Note: This extension may be implemented for [=authenticators=] that do not use [
           1. If {{AuthenticationExtensionsPRFInputs/evalByCredential}} is present and [=map/exists|contains=] an [=map/entry=] whose [=map/key=] is the [=base64url encoding=] of the [=credential ID=] that will be returned, let |ev| be the [=map/value=] of that entry.
           1. If |ev| is null and {{AuthenticationExtensionsPRFInputs/eval}} is present, then let |ev| be the value of {{AuthenticationExtensionsPRFInputs/eval}}.
       1. If |ev| is not null:
-          1. Let `salt1` be the value of <code>SHA-256(UTF8Encode("WebAuthn PRF") || 0x00 || |ev|.{{AuthenticationExtensionsPRFValues/first}})</code>.
-          1. If <code>|ev|.{{AuthenticationExtensionsPRFValues/second}}</code> is present, let `salt2` be the value of <code>SHA-256(UTF8Encode("WebAuthn PRF") || 0x00 || |ev|.{{AuthenticationExtensionsPRFValues/second}})</code>.
-          1. Send an `hmac-secret` extension to the [=authenticator=] using the values of `salt1` and, if set, `salt2` as the parameters of the same name in that process.
-          1. Decrypt the extension result and set {{AuthenticationExtensionsPRFOutputs/results}} to the PRF result(s), if any.
+          1. Let |salt1| be the value of <code>SHA-256(UTF8Encode("WebAuthn PRF") || 0x00 || |ev|.{{AuthenticationExtensionsPRFValues/first}})</code>.
+          1. If <code>|ev|.{{AuthenticationExtensionsPRFValues/second}}</code> is present, let |salt2| be the value of <code>SHA-256(UTF8Encode("WebAuthn PRF") || 0x00 || |ev|.{{AuthenticationExtensionsPRFValues/second}})</code>.
+          1. If the authenticator supports the CTAP2 `hmac-secret` extension [[FIDO-CTAP]]:
+              1. Send an `hmac-secret` extension to the [=authenticator=] using the values of |salt1| and, if set, |salt2| as the parameters of the same name in that process.
+              1. Decrypt the extension result and set {{AuthenticationExtensionsPRFOutputs/results}} to the PRF result(s), if any.
+          1. If the authenticator does not support the CTAP2 `hmac-secret` extension [[FIDO-CTAP]],
+              but does support some other implementation compatible with the abstract authenticator processing defined below:
+              1. Use some unspecified mechanism to convey |salt1| and, if defined, |salt2| to the authenticator as PRF inputs, in that order.
+              1. Use some unspecified mechanism to receive the PRF outputs from the authenticator as an {{AuthenticationExtensionsPRFValues}} value |results|.
+                  Set <code>{{AuthenticationExtensionsPRFOutputs/results}}</code> to |results|.
 
-: Authenticator extension input / processing / output
-:: [=prf|This extension=] uses the [[FIDO-CTAP]] `hmac-secret` extension when communicating with the authenticator. It thus does not specify any direct authenticator interaction for [=[RPS]=].
+: Authenticator extension input / output
+:: [=prf|This extension=] is abstract over the authenticator implementation,
+    using either the [[FIDO-CTAP]] `hmac-secret` extension or an unspecified interface for communication between the client and authenticator.
+    It thus does not specify a CBOR interface for inputs and outputs.
+
+: Authenticator extension processing
+:: [=Authenticators=] that support the [[FIDO-CTAP]] `hmac-secret` extension implement authenticator processing as defined in that extension.
+
+    [=Authenticators=] that do not support the [[FIDO-CTAP]] `hmac-secret` extension
+    MAY instead implement the following abstract procedure:
+
+    1. Let |PRF| be the pseudo-random function associated with the current [=credential=],
+        or initialize the association if uninitialized:
+
+        Let |PRF| be a pseudo-random function whose outputs are exactly 32 bytes long,
+        selected uniformly at random from a set of at least 2<sup>256</sup> such functions.
+        The choice of |PRF| MUST be independent of the state of [=user verification=].
+        The selected |PRF| SHOULD NOT be used for other purposes than implementing this extension.
+        Associate |PRF| with the current [=credential=] for the lifetime of the credential.
+
+    1. Use some unspecified mechanism to receive PRF inputs |salt1| and, optionally, |salt2| from the [=client=], in that order.
+        If none are received, let |salt1| and |salt2| be undefined.
+
+    1. If |salt1| is defined:
+        1. Let |results| be an {{AuthenticationExtensionsPRFValues}} structure containing the evaluations of |PRF| at the given inputs:
+            - Set <code>|results|.{{AuthenticationExtensionsPRFValues/first}}</code> to <code>PRF(|salt1|)</code>.
+            - If |salt2| is defined,
+                set <code>|results|.{{AuthenticationExtensionsPRFValues/second}}</code> to <code>PRF(|salt2|)</code>.
+        1. Use some unspecified mechanism to convey |results| to the [=client=] as the PRF outputs.
 
 : Client extension output
 :: <xmp class="idl">
@@ -7482,15 +7581,22 @@ Note: This extension may be implemented for [=authenticators=] that do not use [
         boolean enabled;
         AuthenticationExtensionsPRFValues results;
     };
+    dictionary AuthenticationExtensionsPRFOutputsJSON {
+        boolean enabled;
+        AuthenticationExtensionsPRFValuesJSON results;
+    };
 
     partial dictionary AuthenticationExtensionsClientOutputs {
         AuthenticationExtensionsPRFOutputs prf;
+    };
+    partial dictionary AuthenticationExtensionsClientOutputsJSON {
+        AuthenticationExtensionsPRFOutputsJSON prf;
     };
     </xmp>
 
     <div dfn-type="dict-member" dfn-for="AuthenticationExtensionsPRFOutputs">
         :   <dfn>enabled</dfn>
-        ::  [TRUE] if, and only if, the one or two PRFs are available for use with the created credential. This is only reported during [=registration=] and is not present in the case of [=authentication=].
+        ::  [TRUE] if, and only if, the PRF is available for use with the created credential. This is only reported during [=registration=] and is not present in the case of [=authentication=].
 
         :   <dfn>results</dfn>
         ::  The results of evaluating the PRF for the inputs given in {{AuthenticationExtensionsPRFInputs/eval}} or {{AuthenticationExtensionsPRFInputs/evalByCredential}}. Outputs may not be available during [=registration=]; see comments in {{AuthenticationExtensionsPRFInputs/eval}}.
@@ -7535,6 +7641,9 @@ However, [=authenticators=] that do not utilize [[!FIDO-CTAP]] do not necessaril
     partial dictionary AuthenticationExtensionsClientInputs {
         AuthenticationExtensionsLargeBlobInputs largeBlob;
     };
+    partial dictionary AuthenticationExtensionsClientInputsJSON {
+        AuthenticationExtensionsLargeBlobInputsJSON largeBlob;
+    };
 
     enum LargeBlobSupport {
       "required",
@@ -7545,6 +7654,11 @@ However, [=authenticators=] that do not utilize [[!FIDO-CTAP]] do not necessaril
         DOMString support;
         boolean read;
         BufferSource write;
+    };
+    dictionary AuthenticationExtensionsLargeBlobInputsJSON {
+        DOMString support;
+        boolean read;
+        Base64URLString write;
     };
     </xmp>
 
@@ -7600,10 +7714,18 @@ However, [=authenticators=] that do not utilize [[!FIDO-CTAP]] do not necessaril
     partial dictionary AuthenticationExtensionsClientOutputs {
         AuthenticationExtensionsLargeBlobOutputs largeBlob;
     };
+    partial dictionary AuthenticationExtensionsClientOutputsJSON {
+        AuthenticationExtensionsLargeBlobOutputsJSON largeBlob;
+    };
 
     dictionary AuthenticationExtensionsLargeBlobOutputs {
         boolean supported;
         ArrayBuffer blob;
+        boolean written;
+    };
+    dictionary AuthenticationExtensionsLargeBlobOutputsJSON {
+        boolean supported;
+        Base64URLString blob;
         boolean written;
     };
     </xmp>
@@ -9084,6 +9206,7 @@ so [=attestation objects=] emitted from CTAP2 need their keys translated
 in order to be bitwise identical to these examples.
 
 
+<!-- GENERATED CONTENT: Use test-vectors/webauthn-test-vectors.py -->
 ## Attestation trust root certificate ## {#sctn-test-vectors-attestation-root-cert}
 
 All examples that include [=attestation=] use the attestation trust root certificate
@@ -9096,7 +9219,7 @@ attestation_ca_cert = h'30820207308201ada003020102021100ed7f905d8bd0b414d1784913
 </xmp>
 
 
-### ES256 Credential with No Attestation ### {#sctn-test-vectors-none-es256}
+## ES256 Credential with No Attestation ## {#sctn-test-vectors-none-es256}
 
 [=registration ceremony|Registration=]:
 <xmp class="example" highlight="cddl">
@@ -9130,7 +9253,7 @@ signature = h'3046022100f50a4e2e4409249c4a853ba361282f09841df4dd4547a13a87780218
 </xmp>
 
 
-### ES256 Credential with Self Attestation ### {#sctn-test-vectors-packed-self-es256}
+## ES256 Credential with Self Attestation ## {#sctn-test-vectors-packed-self-es256}
 
 [=registration ceremony|Registration=]:
 <xmp class="example" highlight="cddl">
@@ -9165,7 +9288,7 @@ signature = h'3044022076691be76a8618976d9803c4cdc9b97d34a7af37e3bdc894a2bf54f040
 </xmp>
 
 
-### ES256 Credential with "crossOrigin": true in clientDataJSON ### {#sctn-test-vectors-none-es256-crossOrigin}
+## ES256 Credential with "crossOrigin": true in clientDataJSON ## {#sctn-test-vectors-none-es256-crossOrigin}
 
 [=registration ceremony|Registration=]:
 <xmp class="example" highlight="cddl">
@@ -9200,7 +9323,7 @@ signature = h'304402204396b14b216ed47920dc359e46aa0a1d4a912cf9d50f25a58ec236a11d
 </xmp>
 
 
-### ES256 Credential with "topOrigin" in clientDataJSON ### {#sctn-test-vectors-none-es256-topOrigin}
+## ES256 Credential with "topOrigin" in clientDataJSON ## {#sctn-test-vectors-none-es256-topOrigin}
 
 [=registration ceremony|Registration=]:
 <xmp class="example" highlight="cddl">
@@ -9234,7 +9357,7 @@ signature = h'304402206a19613fa8cfacfc8027272aec5dae3555fea9f983d841581466678d71
 </xmp>
 
 
-### ES256 Credential with very long credential ID ### {#sctn-test-vectors-none-es256-long-credential-id}
+## ES256 Credential with very long credential ID ## {#sctn-test-vectors-none-es256-long-credential-id}
 
 [=registration ceremony|Registration=]:
 <xmp class="example" highlight="cddl">
@@ -9267,7 +9390,7 @@ signature = h'304502203ecef83fb12a0cae7841055f9f87103a99fd14b424194bbf06c4623d3e
 </xmp>
 
 
-### Packed Attestation with ES256 Credential ### {#sctn-test-vectors-packed-es256}
+## Packed Attestation with ES256 Credential ## {#sctn-test-vectors-packed-es256}
 
 [=registration ceremony|Registration=]:
 <xmp class="example" highlight="cddl">
@@ -9304,7 +9427,7 @@ signature = h'30460221009d8d54895393894d37b9fa7bdfbcff05403de3cf0d6443ffb394fa23
 </xmp>
 
 
-### Packed Attestation with ES384 Credential ### {#sctn-test-vectors-packed-es384}
+## Packed Attestation with ES384 Credential ## {#sctn-test-vectors-packed-es384}
 
 [=registration ceremony|Registration=]:
 <xmp class="example" highlight="cddl">
@@ -9339,7 +9462,7 @@ signature = h'3065023100e4efbb46745ed00e67c4d51ab2bacab2af62ffa8b7c5fecec6d7d9bf
 </xmp>
 
 
-### Packed Attestation with ES512 Credential ### {#sctn-test-vectors-packed-es512}
+## Packed Attestation with ES512 Credential ## {#sctn-test-vectors-packed-es512}
 
 [=registration ceremony|Registration=]:
 <xmp class="example" highlight="cddl">
@@ -9375,7 +9498,7 @@ signature = h'3081870242009bda02fe384e77bcb9fb42b07c395b7a53ec9d9616dd0308ab8495
 </xmp>
 
 
-### Packed Attestation with RS256 Credential ### {#sctn-test-vectors-packed-rs256}
+## Packed Attestation with RS256 Credential ## {#sctn-test-vectors-packed-rs256}
 
 [=registration ceremony|Registration=]:
 <xmp class="example" highlight="cddl">
@@ -9412,43 +9535,80 @@ signature = h'01063d52d7c39b4d432fc7063c5d93e582bdcb16889cd71f888d67d880ea730a42
 </xmp>
 
 
-### Packed Attestation with Ed25519 Credential ### {#sctn-test-vectors-packed-ed25519}
+## Packed Attestation with Ed25519 Credential ## {#sctn-test-vectors-packed-eddsa}
 
 [=registration ceremony|Registration=]:
 <xmp class="example" highlight="cddl">
-challenge = h'560c73a09ce7a1586d61c1d6e41fef149be523e220fc9f385d38ab23702ebf1b'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'00', info='packed.Ed25519', L=32)
+challenge = h'a8abf9dabdc6b0df63466b39bda9e8a34a34e185337a59f1c579990676d3b3bd'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'00', info='packed.EdDSA', L=32)
 
-private_key = h'c87fce9e9cd283d272a2418d9683366f83661e458ad4451f0f1c95cb83b0f0a8'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'01', info='packed.Ed25519', L=32)
-client_data_gen_flags = h'41'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'02', info='packed.Ed25519', L=1)
+private_key = h'971f38c0f73aaf0c5a614eb5e26430ae1ea0ed13e4f425d96e9662349340b0b3'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'01', info='packed.EdDSA', L=32)
+client_data_gen_flags = h'bd'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'02', info='packed.EdDSA', L=1)
 ; extra_client_data is included iff bit 0x01 of client_data_gen_flags is 1
-extra_client_data = h'db7587e24b9187edb77933754331e443'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'03', info='packed.Ed25519', L=16)
-aaguid = h'164009ea09faae7c397bc3e2ad0e7ec0'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'04', info='packed.Ed25519', L=16)
-credential_id = h'c6cffa01b7fda368a7e0b29c1384a719820246bca894dd12914708743af0cecd'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'05', info='packed.Ed25519', L=32)
+extra_client_data = h'07f0d3e60ed90fffbd3932d85f922f11'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'03', info='packed.EdDSA', L=16)
+aaguid = h'd5aa33581e8ca478e20fe713f5d32ff2'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'04', info='packed.EdDSA', L=16)
+credential_id = h'ce9f840ed96599580cd140fbc7bb3230633f50f61041aff73308ae71caa8a2bd'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'05', info='packed.EdDSA', L=32)
 ; auth_data_UV_BE_BS determines the UV, BE and BS bits of the authenticator data flags, but BS is set only if BE is
-auth_data_UV_BE_BS = h'e8'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'06', info='packed.Ed25519', L=1)
-attestation_private_key = h'673ee7fd94405de523fd84a088ab082d75b7fceef02a301e2bca0a28537cf243'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'07', info='packed.Ed25519', L=32)
-attestation_cert_serial_number = h'6e391f23f57150dc7a12dad18f2b43ad'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'08', info='packed.Ed25519', L=16)
+auth_data_UV_BE_BS = h'32'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'06', info='packed.EdDSA', L=1)
+attestation_private_key = h'fbe7f950684f23afd045072a8b287ad29528707c662672850ac69733ffe0db85'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'07', info='packed.EdDSA', L=32)
+attestation_cert_serial_number = h'b2cfc9ea33c8643b0e1a760463eaf164'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'08', info='packed.EdDSA', L=16)
 
-clientDataJSON = h'7b2274797065223a22776562617574686e2e637265617465222c226368616c6c656e6765223a225667787a6f4a7a6e6f5668745963485735425f76464a766c492d49675f4a38345854697249334175767873222c226f726967696e223a2268747470733a2f2f6578616d706c652e6f7267222c2263726f73734f726967696e223a66616c73652c22657874726144617461223a22636c69656e74446174614a534f4e206d617920626520657874656e6465642077697468206164646974696f6e616c206669656c647320696e20746865206675747572652c207375636820617320746869733a2032335748346b7552682d323365544e31517a486b51773d3d227d'
-attestationObject = h'a363666d74667061636b65646761747453746d74a363616c672663736967584730450220730a54d4f76cb1f2b7dd4a5a6eee3374e3c8a60fb3c4daa527c9277e365b64aa0221008b31a04a28cc4148b14c42a916548ee7f430bc7629295b42ee93e5d1aaba8ee6637835638159022530820221308201c7a00302010202106e391f23f57150dc7a12dad18f2b43ad300a06082a8648ce3d0403023062311e301c06035504030c15576562417574686e207465737420766563746f7273310c300a060355040a0c0357334331253023060355040b0c1c41757468656e74696361746f72204174746573746174696f6e204341310b30090603550406130241413020170d3234303130313030303030305a180f33303234303130313030303030305a305f311e301c06035504030c15576562417574686e207465737420766563746f7273310c300a060355040a0c0357334331223020060355040b0c1941757468656e74696361746f72204174746573746174696f6e310b30090603550406130241413059301306072a8648ce3d020106082a8648ce3d03010703420004fb96a581a0b36742a8c45d6ffb5af1ef155524b50339445ec1109874045e0087db77edef91f3dc949927470d84b01627087b72c86b7c9d02e1389cba680ffc36a360305e300c0603551d130101ff04023000300e0603551d0f0101ff040403020780301d0603551d0e04160414ef2ce1a86caba85121130a16e8ce82a75d5a6653301f0603551d2304183016801445aff715b0dd786741fee996ebc16547a3931b1e300a06082a8648ce3d0403020348003045022100ad4fa628cffba5a642a562cbfefe63efecce26d90c80114114d1745383e12f01022028af87ba3b0ff868a34b9458bc6973b27380a328dd87b7436651ffa823280bca6861757468446174615881bfabc37432958b063360d3ad6461c9c4735ae7f8edd46592a5e0f01452b2e4b54900000000164009ea09faae7c397bc3e2ad0e7ec00020c6cffa01b7fda368a7e0b29c1384a719820246bca894dd12914708743af0cecda401010327200621582089f81eba4a1f510cb243ff7fb9e9cf899bf627e49ce1ac3c3eae8adb2a8d7d7b'
+clientDataJSON = h'7b2274797065223a22776562617574686e2e637265617465222c226368616c6c656e6765223a22714b763532723347734e396a526d733576616e6f6f306f303459557a656c6e7878586d5a426e6254733730222c226f726967696e223a2268747470733a2f2f6578616d706c652e6f7267222c2263726f73734f726967696e223a66616c73652c22657874726144617461223a22636c69656e74446174614a534f4e206d617920626520657874656e6465642077697468206164646974696f6e616c206669656c647320696e20746865206675747572652c207375636820617320746869733a20425f44543567375a445f2d394f544c595835497645513d3d227d'
+attestationObject = h'a363666d74667061636b65646761747453746d74a363616c67266373696758473045022100adecf9cace851c8bf4adb6b9e9dff8ddfa43092bbe04b5814cdf1c744970a88f02201c1bd55aacdfe2e4442c886132148b80394567018a382ce1fa260adae41e0746637835638159022730820223308201c8a003020102021100b2cfc9ea33c8643b0e1a760463eaf164300a06082a8648ce3d0403023062311e301c06035504030c15576562417574686e207465737420766563746f7273310c300a060355040a0c0357334331253023060355040b0c1c41757468656e74696361746f72204174746573746174696f6e204341310b30090603550406130241413020170d3234303130313030303030305a180f33303234303130313030303030305a305f311e301c06035504030c15576562417574686e207465737420766563746f7273310c300a060355040a0c0357334331223020060355040b0c1941757468656e74696361746f72204174746573746174696f6e310b30090603550406130241413059301306072a8648ce3d020106082a8648ce3d03010703420004dd2b7a564b73b8c0b81c4c62e521925c4d1198ec9f583dbf1eebe364b65cd9c29a9bdf346aaa81fb6b9507e5249a52fdaf8e39e26b0b7dc45992a7e233b70f70a360305e300c0603551d130101ff04023000300e0603551d0f0101ff040403020780301d0603551d0e041604140ae27546bc7eccb1b4b597bd354f0c0b1f1f8f8e301f0603551d2304183016801445aff715b0dd786741fee996ebc16547a3931b1e300a06082a8648ce3d0403020349003046022100a0d434ecb5fc3bfd7da5f41904517ad2836249f561bd834ba7a438a8ab7a4ce8022100fac845bb7a02513b58e9f319654dbe49b0f02b95835bac568c71f8a18cdde9ab6861757468446174615881bfabc37432958b063360d3ad6461c9c4735ae7f8edd46592a5e0f01452b2e4b54100000000d5aa33581e8ca478e20fe713f5d32ff20020ce9f840ed96599580cd140fbc7bb3230633f50f61041aff73308ae71caa8a2bda401010327200621582044e06ddd331c36a8dc667bab52bcae63486c916aa5e339e6acebaa84934bf832'
 </xmp>
 
 [=authentication ceremony|Authentication=]:
 <xmp class="example" highlight="cddl">
-challenge = h'3790da8b2b72ee8ce19761787ad38cbfaa697eb3ca013a1342988756b98785ab'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'09', info='packed.Ed25519', L=32)
+challenge = h'895957e01c633a698348a2d8a31a54b7db27e8c1c43b2080d79ae2190267bfd2'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'09', info='packed.EdDSA', L=32)
 
-client_data_gen_flags = h'de'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'0a', info='packed.Ed25519', L=1)
+client_data_gen_flags = h'8c'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'0a', info='packed.EdDSA', L=1)
 ; extra_client_data is included iff bit 0x01 of client_data_gen_flags is 1
 ; auth_data_UV_BS sets the UV and BS bits of the authenticator data flags, but BS is set only if BE was set in the registration
-auth_data_UV_BS = h'18'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'0b', info='packed.Ed25519', L=1)
+auth_data_UV_BS = h'ab'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'0b', info='packed.EdDSA', L=1)
 
-authenticatorData = h'bfabc37432958b063360d3ad6461c9c4735ae7f8edd46592a5e0f01452b2e4b51900000000'
-clientDataJSON = h'7b2274797065223a22776562617574686e2e676574222c226368616c6c656e6765223a224e35446169797479376f7a686c32463465744f4d763670706672504b41546f545170694856726d48686173222c226f726967696e223a2268747470733a2f2f6578616d706c652e6f7267222c2263726f73734f726967696e223a66616c73657d'
-signature = h'4c873571377ac019f257d6bf07249f63ac2487483c51bc511ce0f0e3266c840cb07a09cdc445a2f963d8603a9f0f6cf9ce709d7fc6a96c7c51ea08d33776010c'
+authenticatorData = h'bfabc37432958b063360d3ad6461c9c4735ae7f8edd46592a5e0f01452b2e4b50100000000'
+clientDataJSON = h'7b2274797065223a22776562617574686e2e676574222c226368616c6c656e6765223a2269566c583442786a4f6d6d44534b4c596f7870557439736e364d48454f7943413135726947514a6e763949222c226f726967696e223a2268747470733a2f2f6578616d706c652e6f7267222c2263726f73734f726967696e223a66616c73657d'
+signature = h'f5c59c7e46c34f6f8cc197101ddf9934fa2595f68eb1913a637e8419eb9ba4cfdfc48f85393bc0d40b011f0d6fecb097d6607525713223a0dc0d453993dae00b'
 </xmp>
 
 
-### TPM Attestation with ES256 Credential ### {#sctn-test-vectors-tpm-es256}
+## Packed Attestation with Ed448 Credential ## {#sctn-test-vectors-packed-ed448}
+
+[=registration ceremony|Registration=]:
+<xmp class="example" highlight="cddl">
+challenge = h'2578d0801b5a005b5451e540121788cb01949e187b91db13f58755403efbf337'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'00', info='packed.Ed448', L=32)
+
+private_key = h'ed479eecf63bd89e3898434798bb3c417bfc8284f6f011958bc0e78edbf6a2a640c0e358b1b1452a1f3782c400dabb4134192dee3031869a45'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'01', info='packed.Ed448', L=57)
+client_data_gen_flags = h'e3'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'02', info='packed.Ed448', L=1)
+; extra_client_data is included iff bit 0x01 of client_data_gen_flags is 1
+extra_client_data = h'050a80de27875521cc4c3316c06da42b'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'03', info='packed.Ed448', L=16)
+aaguid = h'41c913aeda925fe02273322e34c2ae67'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'04', info='packed.Ed448', L=16)
+credential_id = h'224fcde324e6b075ede55098a24b9ddce5f5a7c71d23703efd528a38f8a5f33c'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'05', info='packed.Ed448', L=32)
+; auth_data_UV_BE_BS determines the UV, BE and BS bits of the authenticator data flags, but BS is set only if BE is
+auth_data_UV_BE_BS = h'3b'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'06', info='packed.Ed448', L=1)
+attestation_private_key = h'd90faf5cc3f7853456b09124dd870250347f9c9ff66dba363aecd9194c665715'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'07', info='packed.Ed448', L=32)
+attestation_cert_serial_number = h'cff4228697d6e5ac47480b2390677f05'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'08', info='packed.Ed448', L=16)
+
+clientDataJSON = h'7b2274797065223a22776562617574686e2e637265617465222c226368616c6c656e6765223a224a586a5167427461414674555565564145686549797747556e6868376b6473543959645651443737387a63222c226f726967696e223a2268747470733a2f2f6578616d706c652e6f7267222c2263726f73734f726967696e223a66616c73652c22657874726144617461223a22636c69656e74446174614a534f4e206d617920626520657874656e6465642077697468206164646974696f6e616c206669656c647320696e20746865206675747572652c207375636820617320746869733a2042517141336965485653484d54444d577747326b4b773d3d227d'
+attestationObject = h'a363666d74667061636b65646761747453746d74a363616c672663736967584730450220315c861030a51b01a3294e11acfeb83ffc2155971e9fb4ab566a25ce6a9e22c50221009fdd06e22c8628071913d176c9e52bf5ff4ab253a76a1aef0c831db4dc8791a1637835638159022730820223308201c8a003020102021100cff4228697d6e5ac47480b2390677f05300a06082a8648ce3d0403023062311e301c06035504030c15576562417574686e207465737420766563746f7273310c300a060355040a0c0357334331253023060355040b0c1c41757468656e74696361746f72204174746573746174696f6e204341310b30090603550406130241413020170d3234303130313030303030305a180f33303234303130313030303030305a305f311e301c06035504030c15576562417574686e207465737420766563746f7273310c300a060355040a0c0357334331223020060355040b0c1941757468656e74696361746f72204174746573746174696f6e310b30090603550406130241413059301306072a8648ce3d020106082a8648ce3d03010703420004b85aaf790c824037cfe9fc56ab8d7ce6fbfaff2e3fe7c8d745734c3c6e3c6ce880d505ccdb1e2c3738680e6f49f475e4d8d0b6c29060e6e0d7a6392fb69094cea360305e300c0603551d130101ff04023000300e0603551d0f0101ff040403020780301d0603551d0e04160414fa8f81c2dcc0e194ae5034c7e79dcf6d9d8593e2301f0603551d2304183016801445aff715b0dd786741fee996ebc16547a3931b1e300a06082a8648ce3d0403020349003046022100e761f54215ad92f27c2c14b9eea3e39e8c22429e833ecba5be918987aa72e0e6022100d5a714df479c238586b7d9e6684ea84991087038b0fef6a29b57b66b74df05fd686175746844617461589bbfabc37432958b063360d3ad6461c9c4735ae7f8edd46592a5e0f01452b2e4b5590000000041c913aeda925fe02273322e34c2ae670020224fcde324e6b075ede55098a24b9ddce5f5a7c71d23703efd528a38f8a5f33ca4010103383420072158398051ef4f94670b5abf17da2e9558ba6eba94eb8704363915b4d666de287ad329de9f1f075211aba602dc6e7a5e52b15a8ee1c984a9f8887380'
+</xmp>
+
+[=authentication ceremony|Authentication=]:
+<xmp class="example" highlight="cddl">
+challenge = h'1a942f401d8d8e36fe888c35c22b718217802fc6685bf139c47b311408128693'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'09', info='packed.Ed448', L=32)
+
+client_data_gen_flags = h'2d'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'0a', info='packed.Ed448', L=1)
+; extra_client_data is included iff bit 0x01 of client_data_gen_flags is 1
+extra_client_data = h'5ca1e381b5e009e01760db2eb632316f'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'0b', info='packed.Ed448', L=16)
+; auth_data_UV_BS sets the UV and BS bits of the authenticator data flags, but BS is set only if BE was set in the registration
+auth_data_UV_BS = h'fc'   ; Derived by: HKDF-SHA-256(IKM='WebAuthn test vectors', salt=h'0c', info='packed.Ed448', L=1)
+
+authenticatorData = h'bfabc37432958b063360d3ad6461c9c4735ae7f8edd46592a5e0f01452b2e4b51d00000000'
+clientDataJSON = h'7b2274797065223a22776562617574686e2e676574222c226368616c6c656e6765223a22477051765142324e6a6a622d6949773177697478676865414c385a6f575f4535784873784641675368704d222c226f726967696e223a2268747470733a2f2f6578616d706c652e6f7267222c2263726f73734f726967696e223a66616c73652c22657874726144617461223a22636c69656e74446174614a534f4e206d617920626520657874656e6465642077697468206164646974696f6e616c206669656c647320696e20746865206675747572652c207375636820617320746869733a20584b486a6762586743654158594e7375746a497862773d3d227d'
+signature = h'971c13fc11f64857ee2b2754b36430397104fa1f68abe103c57a815047c80916e340c9c031b3e7f0b2dbbb31e4de0234e19c273e3532f2fd8072c97e5361a2fe0a7100ab7ea55881b140253312001251088e18b97462173c5e1bb1c6d93cbddbe580b8f32b36d33410f64d89268cc3303b00'
+</xmp>
+
+
+## TPM Attestation with ES256 Credential ## {#sctn-test-vectors-tpm-es256}
 
 [=registration ceremony|Registration=]:
 <xmp class="example" highlight="cddl">
@@ -9483,7 +9643,7 @@ signature = h'3045022060dc76b1607ec716c6e5eba8d056695ed6bc47b2e3d7a729c34e759e3a
 </xmp>
 
 
-### Android Key Attestation with ES256 Credential ### {#sctn-test-vectors-android-key-es256}
+## Android Key Attestation with ES256 Credential ## {#sctn-test-vectors-android-key-es256}
 
 [=registration ceremony|Registration=]:
 <xmp class="example" highlight="cddl">
@@ -9519,7 +9679,7 @@ signature = h'304502202060107d953b286aa1bf35e3e8c78b383fddab5591b2db17ffb23ed83f
 </xmp>
 
 
-### Apple Anonymous Attestation with ES256 Credential ### {#sctn-test-vectors-apple-es256}
+## Apple Anonymous Attestation with ES256 Credential ## {#sctn-test-vectors-apple-es256}
 
 [=registration ceremony|Registration=]:
 <xmp class="example" highlight="cddl">
@@ -9554,7 +9714,7 @@ signature = h'3046022100ee35db795ce28044e1f8231d68b3d79a9882f7415aa35c1b5ac74d24
 </xmp>
 
 
-### FIDO U2F Attestation with ES256 Credential ### {#sctn-test-vectors-fido-u2f-es256}
+## FIDO U2F Attestation with ES256 Credential ## {#sctn-test-vectors-fido-u2f-es256}
 
 [=registration ceremony|Registration=]:
 <xmp class="example" highlight="cddl">
@@ -9585,6 +9745,7 @@ authenticatorData = h'bfabc37432958b063360d3ad6461c9c4735ae7f8edd46592a5e0f01452
 clientDataJSON = h'7b2274797065223a22776562617574686e2e676574222c226368616c6c656e6765223a222d5178684b59485954316d554f4e3461554139326b6d36537a49532d2d4f417362694e5650774249564455222c226f726967696e223a2268747470733a2f2f6578616d706c652e6f7267222c2263726f73734f726967696e223a66616c73657d'
 signature = h'304402206172459958fea907b7292b92f555034bfd884895f287a76200c1ba287239137002204727b166147e26a21bbc2921d192ebfed569b79438538e5c128b5e28e6926dd7'
 </xmp>
+<!-- END GENERATED CONTENT: Use test-vectors/webauthn-test-vectors.py -->
 
 
 ## Test Vectors for [=WebAuthn Extensions=] ## {#test-vectors-extensions}
@@ -9704,6 +9865,7 @@ Pseudo-random values used in this section were generated as follows:
 - <code>h&apos;c4172e982e9097c39a6c0cb720cb375b92e3fcad154a63e43a93f1096b1e1973' = SHA-256(UTF-8("WebAuthn PRF test vectors") || 0x01)</code>
 
 
+<!-- GENERATED CONTENT: Use test-vectors/webauthn-prf-test-vectors.py -->
 #### CTAP2 `hmac-secret` extension #### {#test-vectors-extensions-prf-ctap}
 
 The following examples may be used to test [=[WAC]=] implementations
@@ -9743,7 +9905,7 @@ The examples are not exhaustive.
     ; Client computes:
     shared_secret = h'0c63083de8170101d38bcf8bd72309568ddb4550867e23404b35d85712f7c20d8bc911ee23c06034cbc14290b9669bec07739053c5a416e313ef905c79955876'
     salt1 = h'527413ebb48293772df30f031c5ac4650c7de14bf9498671ae163447b6a772b3'
-    salt_enc = h'437e065e723a98b2f08f39d8baf7c53ebbb2ed3e746b87576fd81f95def5757cad24be18eaef892e97692e684e07da53'
+    salt_enc = h'23dde5e3462daf36559b85c4ac5f9656aa9bfd81c1dc2bf8533c8b9f3882854786b4f500e25b4e3d81f7fc7c74236229'
 
     ; Authenticator computes:
     output1 = h'3c33e07d202c3b029cc21f1722767021bf27d595933b3d2b6a1b9d5dddc77fae'
@@ -9764,7 +9926,7 @@ The examples are not exhaustive.
     shared_secret = h'0c63083de8170101d38bcf8bd72309568ddb4550867e23404b35d85712f7c20d8bc911ee23c06034cbc14290b9669bec07739053c5a416e313ef905c79955876'
     salt1 = h'527413ebb48293772df30f031c5ac4650c7de14bf9498671ae163447b6a772b3'
     salt2 = h'd68ac03329a10ee5e0ec834492bb9a96a0e547baf563bf78ccbe8789b22e776b'
-    salt_enc = h'23dde5e3462daf36559b85c4ac5f9656aa9bfd81c1dc2bf8533c8b9f3882854786b4f500e25b4e3d81f7fc7c742362294d92926c883b3fae1a3673246464bf730446e1fa4698c432a9092477c5dde5e3'
+    salt_enc = h'd9f4236403e0fe843a8e4e5be764d120904c198ad6e77b089876a3391961f183b0008b4ca66b91cd72aa35b6151ff981f6e5649f3c040e6615ad7dd8ae96ef23b229a5c97c3f0dcd8605eee166ce163a'
 
     ; Authenticator computes:
     output1 = h'3c33e07d202c3b029cc21f1722767021bf27d595933b3d2b6a1b9d5dddc77fae'
@@ -9808,8 +9970,7 @@ Inputs and pseudo-random values used in this section were generated as follows:
 - `iv` in two-input `salt_enc` with PIN protocol 2: Truncated <code>SHA-256(seed || 0x08)</code>
 - `iv` in single-input `output_enc` with PIN protocol 2: Truncated <code>SHA-256(seed || 0x09)</code>
 - `iv` in two-input `output_enc` with PIN protocol 2: Truncated <code>SHA-256(seed || 0x0a)</code>
-
-
+<!-- END GENERATED CONTENT: Use test-vectors/webauthn-prf-test-vectors.py -->
 
 
 # Acknowledgements # {#sctn-acknowledgements}
@@ -9863,6 +10024,33 @@ for their contributions as our W3C Team Contacts.
 
 This section summarizes the significant changes that have been made to this specification over time.
 
+## Changes since Web Authentication Level 3 Working draft 2 [[webauthn-3-20250127]] ## {#changes-since-l3-wd2}
+
+*These changes will be merged into the next section when finalizing Level 3.
+Changes to content that was not yet present in Level 2 are listed with a leading "(\*)" mark
+and will then be deleted from the merged change history.*
+
+Normative changes:
+
+- (*) Added dictionary extensions to {{AuthenticationExtensionsClientInputsJSON}}
+    and {{AuthenticationExtensionsClientOutputsJSON}} in definitions of extensions.
+- Added recommendation against using {{COSEAlgorithmIdentifier}} values -9, -51, -52 and -19
+    in {{PublicKeyCredentialCreationOptions/pubKeyCredParams}}.
+- Added requirement for ESP256 (-9), ESP384 (-51) and ESP512 (-52) public keys to use uncompressed form: [[#sctn-alg-identifier]]
+
+Editorial changes:
+
+- (*) Fixed section heading levels of test vectors subsections: [[webauthn-3-20250127#sctn-test-vectors]]
+- Removed outdated notes about permissions policy in [[webauthn-3-20250127#sctn-isUserVerifyingPlatformAuthenticatorAvailable]]
+    and [[webauthn-3-20250127#sctn-getClientCapabilities]].
+- Added algorithm -8 (EdDSA) to example code in [[webauthn-3-20250127#sctn-sample-registration]].
+- (*) Clarified meaning of `prf` extension output `enabled`: [[webauthn-3-20250127#dom-authenticationextensionsprfoutputs-enabled]]
+- (*) Fixed mistake in how test vectors were generated in [[webauthn-3-20250127#test-vectors-extensions-prf-ctap]].
+- (*) Changed Ed25519 test vectors to be generated from the seed `'packed.EdDSA'` instead of `'packed.Ed25519'`: [[#sctn-test-vectors-packed-eddsa]]
+- (*) Added Ed448 test vectors: [[#sctn-test-vectors-packed-ed448]]
+- Changed DER example in [[#sctn-signature-attestation-types]] to include INTEGER components of differing lengths.
+
+
 ## Changes since Web Authentication Level 2 [[webauthn-2-20210408]] ## {#changes-since-l2}
 
 ### Substantive Changes ### {#changes-l3-substantive}
@@ -9872,7 +10060,7 @@ The following changes were made to the [=Web Authentication API=] and the way it
 Changes:
 
 - Updated timeout guidance: [[#sctn-timeout-recommended-range]]
-- `uvm` extension no longer included; see instead L2 [[webauthn-2-20210408]]
+- `uvm` extension no longer included; see instead L2 [[webauthn-2-20210408]].
 - [=authData/attestedCredentialData/aaguid=] in [=attested credential data=] is no longer zeroed
     when {{PublicKeyCredentialCreationOptions/attestation}} preference is {{AttestationConveyancePreference/none}}: [[#sctn-createCredential]]
 
@@ -9884,6 +10072,11 @@ Deprecations:
     [[#dictionary-pkcredentialentity]]
 - [[#sctn-android-safetynet-attestation]]
 - [=CollectedClientData/tokenBinding=] was changed to \[RESERVED].
+- In-field language and direction metadata are no longer recommended:
+      - [[#sctn-strings-langdir]]
+      - <code>{{CredentialCreationOptions/publicKey}}.{{PublicKeyCredentialCreationOptions/rp}}.{{PublicKeyCredentialEntity/name}}</code>
+      - <code>{{CredentialCreationOptions/publicKey}}.{{PublicKeyCredentialCreationOptions/user}}.{{PublicKeyCredentialEntity/name}}</code>
+      - <code>{{CredentialCreationOptions/publicKey}}.{{PublicKeyCredentialCreationOptions/user}}.{{PublicKeyCredentialUserEntity/displayName}}</code>
 
 
 New features:
@@ -9910,6 +10103,9 @@ New features:
     - [[#sctn-automation-set-credential-properties]]
 - [[#sctn-compound-attestation]]
 - [[#prf-extension]]
+- Registration parameter
+    <code>{{CredentialCreationOptions/publicKey}}.{{PublicKeyCredentialCreationOptions/attestationFormats}}</code>:
+    [[#dictionary-makecredentialoptions]]
 
 
 ### Editorial Changes ### {#changes-l3-editorial}
