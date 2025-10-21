@@ -26,6 +26,10 @@ CERT_NOT_VALID_BEFORE = datetime.datetime.fromisoformat("2024-01-01T00:00:00Z").
 CERT_NOT_VALID_AFTER = datetime.datetime.fromisoformat("3024-01-01T00:00:00Z").astimezone(datetime.timezone.utc)
 
 
+def b64enc(data: bytes) -> str:
+    return base64.urlsafe_b64encode(data).rstrip(b'=').decode('utf-8')
+
+
 def gen_rand_idx(info: str):
     for i in range(256):
         yield RAND_ROOT_SEED, info, bytes([i])
@@ -43,7 +47,7 @@ def next_prand(gen, name: str, length: int, include_base64url: bool = False) -> 
     )
     prnd = hkdf.derive(ikm.encode('utf-8'))
     as_hex = f""" = h'{prnd.hex()}'"""
-    as_base64 = f""" = b64'{base64.urlsafe_b64encode(prnd).decode('utf-8')}'""" if include_base64url else ""
+    as_base64 = f""" = b64'{b64enc(prnd)}'""" if include_base64url else ""
     print(f"""{name}{as_hex}{as_base64}   ; Derived by: HKDF-SHA-256(IKM='{ikm}', salt=h'{salt.hex()}', info='{info}', L={length})""")
     return prnd
 
@@ -361,7 +365,7 @@ def gen_client_data(gen_rand, type, challenge, origin=DEFAULT_ORIGIN, cross_orig
     print("; extra_client_data is included iff bit 0x01 of client_data_gen_flags is 1")
     if (client_data_gen_flags & 0x01) != 0:
         extra_data = next_prand(gen_rand, "extra_client_data", length=16, include_base64url=True)
-        kwargs['extraData'] = f"clientDataJSON may be extended with additional fields in the future, such as this: {base64.urlsafe_b64encode(extra_data).decode('utf-8')}"
+        kwargs['extraData'] = f"clientDataJSON may be extended with additional fields in the future, such as this: {b64enc(extra_data)}"
 
     return CollectedClientData.create(type=type, challenge=challenge, origin=origin, cross_origin=cross_origin, **kwargs)
 
