@@ -362,10 +362,10 @@ def gen_client_data(gen_rand, type, challenge, origin=DEFAULT_ORIGIN, cross_orig
         assert cross_origin
         kwargs['topOrigin'] = "https://example.com"
 
-    print("; extra_client_data is included iff bit 0x01 of client_data_gen_flags is 1")
+    print("; extraData is added to clientDataJSON iff bit 0x01 of client_data_gen_flags is 1")
     if (client_data_gen_flags & 0x01) != 0:
-        extra_data = next_prand(gen_rand, "extra_client_data", length=16, include_base64url=True)
-        kwargs['extraData'] = f"clientDataJSON may be extended with additional fields in the future, such as this: {b64enc(extra_data)}"
+        extraData_random = next_prand(gen_rand, "extraData_random", length=16, include_base64url=True)
+        kwargs['extraData'] = f"clientDataJSON may be extended with additional fields in the future, such as this: {b64enc(extraData_random)}"
 
     return CollectedClientData.create(type=type, challenge=challenge, origin=origin, cross_origin=cross_origin, **kwargs)
 
