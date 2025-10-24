@@ -1913,7 +1913,15 @@ a numbered step. If outdented, it (today) is rendered as a bullet in the midst o
 
             :   If the user exercises a user agent user-interface option to cancel the process,
             ::  [=set/For each=] |authenticator| in |issuedRequests| invoke the [=authenticatorCancel=] operation on |authenticator|
-                and [=set/remove=] |authenticator| from |issuedRequests|. Throw a "{{NotAllowedError}}" {{DOMException}}.
+                and [=set/remove=] |authenticator| from |issuedRequests|.
+
+                If the user agent is informing the user that
+                the last used |authenticator| cannot collect [=user verification=] when
+                <code>|pkOptions|.{{PublicKeyCredentialCreationOptions/authenticatorSelection}}.{{AuthenticatorSelectionCriteria/userVerification}}</code>
+                is set to {{UserVerificationRequirement/required}},
+                throw a "{{UserVerificationError}}" {{DOMException}}.
+
+                Otherwise, throw an "{{OptOutError}}" {{DOMException}}.
 
             :   If <code>|options|.{{CredentialCreationOptions/signal}}</code> is present and [=AbortSignal/aborted=],
             ::  [=set/For each=] |authenticator| in |issuedRequests| invoke the [=authenticatorCancel=]
@@ -2181,7 +2189,9 @@ a numbered step. If outdented, it (today) is rendered as a bullet in the midst o
         </dl>
     </li>
 
-1. Throw a "{{NotAllowedError}}" {{DOMException}}.
+1. Throw a "{{TimeoutError}}" {{DOMException}}. In order to prevent information leak that could identify the
+    user without [=user consent|consent=], this step MUST NOT be executed before |lifetimeTimer| has expired. See
+    [[#sctn-make-credential-privacy]] for details.
 
 During the above process, the user agent SHOULD show some UI to the user to guide them in the process of selecting and
 authorizing an authenticator. When <code>|options|.{{CredentialCreationOptions/mediation}}</code> is set to {{CredentialMediationRequirement/conditional}}, prominent modal UI should <i>not</i> be shown <i>unless</i> credential creation was previously consented to via means determined by the user agent.
@@ -2225,9 +2235,19 @@ The following {{DOMException}} exceptions can be raised:
         the [=client=] does not support [[#sctn-related-origins|related origin requests]]
         or the [$related origins validation procedure$] failed.
 
+    :   {{TimeoutError}}
+    ::  The ceremony was cancelled by the user agent after exceeding the time limit permitted for the ceremony.
+        See [[#sctn-timeout-recommended-range]] for more information.
+
+    :   {{UnknownError}}
+    ::  The [=authenticator=] could not process the supplied options,
+        or encountered an error while creating the new credential.
+    
+    :   {{UserVerificationError}}
+    ::  The user was unable to complete [=user verification=] as required by the [=[RP]=].
+
     :   {{NotAllowedError}}
-    ::  A catch-all error covering a wide range of possible reasons,
-        including common ones like the user canceling out of the ceremony.
+    ::  A catch-all error covering a wide range of possible reasons.
         Some of these causes are documented throughout this spec,
         while others are client-specific.
 
@@ -2450,7 +2470,15 @@ When this method is invoked, the user agent MUST execute the following algorithm
 
         :   If the user exercises a user agent user-interface option to cancel the process,
         ::  [=set/For each=] |authenticator| in |issuedRequests| invoke the [=authenticatorCancel=] operation on |authenticator|
-            and [=set/remove=] |authenticator| from |issuedRequests|. Throw a "{{NotAllowedError}}" {{DOMException}}.
+            and [=set/remove=] |authenticator| from |issuedRequests|.
+            
+            If the user agent is informing the user that
+            the last used |authenticator| cannot collect [=user verification=] when
+            <code>|pkOptions|.{{PublicKeyCredentialCreationOptions/authenticatorSelection}}.{{AuthenticatorSelectionCriteria/userVerification}}</code>
+            is set to {{UserVerificationRequirement/required}},
+            throw a "{{UserVerificationError}}" {{DOMException}}.
+
+            Otherwise, throw an "{{OptOutError}}" {{DOMException}}.
 
         :   If <code>|options|.{{CredentialRequestOptions/signal}}</code> is present and [=AbortSignal/aborted=],
         ::  [=set/For each=] |authenticator| in |issuedRequests| invoke the [=authenticatorCancel=] operation on |authenticator|
@@ -2629,7 +2657,9 @@ When this method is invoked, the user agent MUST execute the following algorithm
             1.  Return |pubKeyCred| and terminate this algorithm.
     </dl>
 
-1. Throw a "{{NotAllowedError}}" {{DOMException}}.
+1. Throw a "{{TimeoutError}}" {{DOMException}}. In order to prevent information leak that could identify the
+    user without [=user consent|consent=], this step MUST NOT be executed before |lifetimeTimer| has expired. See
+    [[#sctn-assertion-privacy]] for details.
 
 </div>
 
@@ -2782,9 +2812,19 @@ The following {{DOMException}} exceptions can be raised:
         the [=client=] does not support [[#sctn-related-origins|related origin requests]]
         or the [$related origins validation procedure$] failed.
 
+    :   {{TimeoutError}}
+    ::  The ceremony was cancelled by the user agent after exceeding the time limit permitted for the ceremony.
+        See [[#sctn-timeout-recommended-range]] for more information.
+
+    :   {{UnknownError}}
+    ::  The [=authenticator=] could not process the supplied options,
+        or encountered an error while generating an [=assertion signature=].
+
+    :   {{UserVerificationError}}
+    ::  The user was unable to complete [=user verification=] as required by the [=[RP]=].
+
     :   {{NotAllowedError}}
-    ::  A catch-all error covering a wide range of possible reasons,
-        including common ones like the user canceling out of the ceremony.
+    ::  A catch-all error covering a wide range of possible reasons.
         Some of these causes are documented throughout this spec,
         while others are client-specific.
 </dl>
@@ -3951,6 +3991,33 @@ should continue. When the {{Window}} object associated with the [=Document=] los
 {{PublicKeyCredential/[CREATE-METHOD]}} and {{PublicKeyCredential/[DISCOVER-METHOD]}} operations
 SHOULD be aborted.
 
+
+## WebAuthn Interfaces ## {#sctn-interfaces}
+
+The subection below defines custom interfaces used throughout WebAuthn.
+
+### Custom WebAuthn Exceptions ### {#iface-custom-webauthn-exceptions}
+
+For descriptions of these exceptions,
+please see [[#sctn-create-request-exceptions]] and [[#sctn-get-request-exceptions]].
+
+<xmp class="idl">
+[Exposed=Window, Serializable]
+interface UserVerificationError : DOMException {
+  constructor(optional DOMString message = "");
+};
+</xmp>
+
+The <code>new UserVerificationError(|message|)</code> constructor steps are:
+
+1. Set [=this=]'s {{DOMException/name}} to `"UserVerificationError"`.
+1. Set [=this=]'s {{DOMException/message}} to `message`.
+
+{{UserVerificationError}} objects are [=serializable objects=].
+
+Their [=serialization steps=], given |value| and |serialized|, are to run the {{DOMException}} [=serialization steps=] given |value| and |serialized|.
+
+Their [=deserialization steps=], given |serialized| and |value|, are to run the {{DOMException}} [=deserialization steps=] given |serialized| and |value|.
 
 ## WebAuthn Extensions Inputs and Outputs ## {#sctn-extensions-inputs-outputs}
 
