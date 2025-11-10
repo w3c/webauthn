@@ -26,13 +26,17 @@ CERT_NOT_VALID_BEFORE = datetime.datetime.fromisoformat("2024-01-01T00:00:00Z").
 CERT_NOT_VALID_AFTER = datetime.datetime.fromisoformat("3024-01-01T00:00:00Z").astimezone(datetime.timezone.utc)
 
 
+def b64enc(data: bytes) -> str:
+    return base64.urlsafe_b64encode(data).rstrip(b'=').decode('utf-8')
+
+
 def gen_rand_idx(info: str):
     for i in range(256):
         yield RAND_ROOT_SEED, info, bytes([i])
     raise ValueError("Index out of range: " + i)
 
 
-def next_prand(gen, name: str, length: int) -> bytes:
+def next_prand(gen, name: str, length: int, include_base64url: bool = False) -> bytes:
     ikm, info, salt = next(gen)
     hkdf = HKDF(
         algorithm=hashes.SHA256(),
@@ -42,7 +46,9 @@ def next_prand(gen, name: str, length: int) -> bytes:
         backend=default_backend(),
     )
     prnd = hkdf.derive(ikm.encode('utf-8'))
-    print(f"""{name} = h'{prnd.hex()}'   ; Derived by: HKDF-SHA-256(IKM='{ikm}', salt=h'{salt.hex()}', info='{info}', L={length})""")
+    as_hex = f""" = h'{prnd.hex()}'"""
+    as_base64 = f""" = b64'{b64enc(prnd)}'""" if include_base64url else ""
+    print(f"""{name}{as_hex}{as_base64}   ; Derived by: HKDF-SHA-256(IKM='{ikm}', salt=h'{salt.hex()}', info='{info}', L={length})""")
     return prnd
 
 
@@ -356,10 +362,10 @@ def gen_client_data(gen_rand, type, challenge, origin=DEFAULT_ORIGIN, cross_orig
         assert cross_origin
         kwargs['topOrigin'] = "https://example.com"
 
-    print("; extra_client_data is included iff bit 0x01 of client_data_gen_flags is 1")
+    print("; extraData is added to clientDataJSON iff bit 0x01 of client_data_gen_flags is 1")
     if (client_data_gen_flags & 0x01) != 0:
-        extra_data = next_prand(gen_rand, "extra_client_data", length=16)
-        kwargs['extraData'] = f"clientDataJSON may be extended with additional fields in the future, such as this: {base64.urlsafe_b64encode(extra_data).decode('utf-8')}"
+        extraData_random = next_prand(gen_rand, "extraData_random", length=16, include_base64url=True)
+        kwargs['extraData'] = f"clientDataJSON may be extended with additional fields in the future, such as this: {b64enc(extraData_random)}"
 
     return CollectedClientData.create(type=type, challenge=challenge, origin=origin, cross_origin=cross_origin, **kwargs)
 
