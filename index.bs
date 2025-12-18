@@ -1921,7 +1921,15 @@ a numbered step. If outdented, it (today) is rendered as a bullet in the midst o
 
             :   If the user exercises a user agent user-interface option to cancel the process,
             ::  [=set/For each=] |authenticator| in |issuedRequests| invoke the [=authenticatorCancel=] operation on |authenticator|
-                and [=set/remove=] |authenticator| from |issuedRequests|. Throw a "{{NotAllowedError}}" {{DOMException}}.
+                and [=set/remove=] |authenticator| from |issuedRequests|.
+
+                If the user agent is informing the user that
+                the last used |authenticator| cannot collect [=user verification=] when
+                <code>|pkOptions|.{{PublicKeyCredentialCreationOptions/authenticatorSelection}}.{{AuthenticatorSelectionCriteria/userVerification}}</code>
+                is set to {{UserVerificationRequirement/required}},
+                throw a "{{ConstraintError}}" {{DOMException}} indicating that [=user verification=] could not be collected.
+
+                Otherwise, throw an "{{OptOutError}}" {{DOMException}}.
 
             :   If <code>|options|.{{CredentialCreationOptions/signal}}</code> is present and [=AbortSignal/aborted=],
             ::  [=set/For each=] |authenticator| in |issuedRequests| invoke the [=authenticatorCancel=]
@@ -2189,7 +2197,9 @@ a numbered step. If outdented, it (today) is rendered as a bullet in the midst o
         </dl>
     </li>
 
-1. Throw a "{{NotAllowedError}}" {{DOMException}}.
+1. Throw a "{{TimeoutError}}" {{DOMException}}. In order to prevent information leak that could identify the
+    user without [=user consent|consent=], this step MUST NOT be executed before |lifetimeTimer| has expired. See
+    [[#sctn-make-credential-privacy]] for details.
 
 During the above process, the user agent SHOULD show some UI to the user to guide them in the process of selecting and
 authorizing an authenticator. When <code>|options|.{{CredentialCreationOptions/mediation}}</code> is set to {{CredentialMediationRequirement/conditional}}, prominent modal UI should <i>not</i> be shown <i>unless</i> credential creation was previously consented to via means determined by the user agent.
@@ -2226,6 +2236,9 @@ The following {{DOMException}} exceptions can be raised:
     ::  No entry in {{PublicKeyCredentialCreationOptions/pubKeyCredParams}} had a {{PublicKeyCredentialDescriptor/type}} property of {{PublicKeyCredentialType/public-key}},
         or the [=authenticator=] did not support any of the signature algorithms specified in {{PublicKeyCredentialCreationOptions/pubKeyCredParams}}.
 
+    :   {{OptOutError}}
+    ::  The user did not consent to completing the ceremony.
+
     :   {{SecurityError}}
     ::  The [=effective domain=] was not a [=valid domain=],
         or <code>{{PublicKeyCredentialCreationOptions/rp}}.{{PublicKeyCredentialRpEntity/id}}</code> was not equal to or a registrable domain suffix of the [=effective domain=].
@@ -2233,9 +2246,12 @@ The following {{DOMException}} exceptions can be raised:
         the [=client=] does not support [[#sctn-related-origins|related origin requests]]
         or the [$related origins validation procedure$] failed.
 
+    :   {{TimeoutError}}
+    ::  The ceremony was cancelled by the user agent after exceeding the time limit permitted for the ceremony.
+        See [[#sctn-timeout-recommended-range]] for more information.
+
     :   {{NotAllowedError}}
-    ::  A catch-all error covering a wide range of possible reasons,
-        including common ones like the user canceling out of the ceremony.
+    ::  A catch-all error covering a wide range of possible reasons.
         Some of these causes are documented throughout this spec,
         while others are client-specific.
 
@@ -2458,7 +2474,15 @@ When this method is invoked, the user agent MUST execute the following algorithm
 
         :   If the user exercises a user agent user-interface option to cancel the process,
         ::  [=set/For each=] |authenticator| in |issuedRequests| invoke the [=authenticatorCancel=] operation on |authenticator|
-            and [=set/remove=] |authenticator| from |issuedRequests|. Throw a "{{NotAllowedError}}" {{DOMException}}.
+            and [=set/remove=] |authenticator| from |issuedRequests|.
+            
+            If the user agent is informing the user that
+            the last used |authenticator| cannot collect [=user verification=] when
+            <code>|pkOptions|.{{PublicKeyCredentialCreationOptions/authenticatorSelection}}.{{AuthenticatorSelectionCriteria/userVerification}}</code>
+            is set to {{UserVerificationRequirement/required}},
+            throw a "{{ConstraintError}}" {{DOMException}} indicating that [=user verification=] could not be collected.
+
+            Otherwise, throw an "{{OptOutError}}" {{DOMException}}.
 
         :   If <code>|options|.{{CredentialRequestOptions/signal}}</code> is present and [=AbortSignal/aborted=],
         ::  [=set/For each=] |authenticator| in |issuedRequests| invoke the [=authenticatorCancel=] operation on |authenticator|
@@ -2510,7 +2534,7 @@ When this method is invoked, the user agent MUST execute the following algorithm
         :   If <code>|options|.{{CredentialRequestOptions/mediation}}</code> is not {{CredentialMediationRequirement/conditional}},
             |issuedRequests| is empty, <code>|pkOptions|.{{PublicKeyCredentialRequestOptions/allowCredentials}}</code> is not empty,
             and no |authenticator| will become available for any [=public key credentials=] therein,
-        ::  Indicate to the user that no eligible credential could be found. When the user acknowledges the dialog, throw a "{{NotAllowedError}}" {{DOMException}}.
+        ::  Indicate to the user that no eligible credential could be found. When the user acknowledges the dialog, throw an "{{OptOutError}}" {{DOMException}}.
 
             Note: One way a [=client platform=] can determine that no |authenticator| will become available is by examining the <code>{{PublicKeyCredentialDescriptor/transports}}</code> members of the present <code>{{PublicKeyCredentialDescriptor}}</code> [=list/items=] of <code>|pkOptions|.{{PublicKeyCredentialRequestOptions/allowCredentials}}</code>, if any. For example, if all <code>{{PublicKeyCredentialDescriptor}}</code> [=list/items=] list only <code>{{AuthenticatorTransport/internal}}</code>, but all [=platform authenticator|platform=] |authenticator|s have been tried, then there is no possibility of satisfying the request. Alternatively, all <code>{{PublicKeyCredentialDescriptor}}</code> [=list/items=] may list <code>{{PublicKeyCredentialDescriptor/transports}}</code> that the [=client platform=] does not support.
 
@@ -2637,7 +2661,9 @@ When this method is invoked, the user agent MUST execute the following algorithm
             1.  Return |pubKeyCred| and terminate this algorithm.
     </dl>
 
-1. Throw a "{{NotAllowedError}}" {{DOMException}}.
+1. Throw a "{{TimeoutError}}" {{DOMException}}. In order to prevent information leak that could identify the
+    user without [=user consent|consent=], this step MUST NOT be executed before |lifetimeTimer| has expired. See
+    [[#sctn-assertion-privacy]] for details.
 
 </div>
 
@@ -2783,6 +2809,12 @@ The following {{DOMException}} exceptions can be raised:
     ::  The ceremony was cancelled by an {{AbortController}}.
         See [[#sctn-abortoperation]] and [[#sctn-sample-aborting]].
 
+    :   {{ConstraintError}}
+    ::  {{AuthenticatorSelectionCriteria/userVerification}} was set to {{UserVerificationRequirement/required}} and no available authenticator could perform [=user verification=].
+    
+    :   {{OptOutError}}
+    ::  The user did not consent to completing the ceremony.
+
     :   {{SecurityError}}
     ::  The [=effective domain=] was not a [=valid domain=],
         or <code>{{PublicKeyCredentialCreationOptions/rp}}.{{PublicKeyCredentialRpEntity/id}}</code> was not equal to or a registrable domain suffix of the [=effective domain=].
@@ -2790,9 +2822,12 @@ The following {{DOMException}} exceptions can be raised:
         the [=client=] does not support [[#sctn-related-origins|related origin requests]]
         or the [$related origins validation procedure$] failed.
 
+    :   {{TimeoutError}}
+    ::  The ceremony was cancelled by the user agent after exceeding the time limit permitted for the ceremony.
+        See [[#sctn-timeout-recommended-range]] for more information.
+
     :   {{NotAllowedError}}
-    ::  A catch-all error covering a wide range of possible reasons,
-        including common ones like the user canceling out of the ceremony.
+    ::  A catch-all error covering a wide range of possible reasons.
         Some of these causes are documented throughout this spec,
         while others are client-specific.
 </dl>
@@ -5184,7 +5219,7 @@ When this operation is invoked, the [=authenticator=] MUST perform the following
             ::  return an error code equivalent to "{{InvalidStateError}}" and terminate the operation.
 
             :   does not consent to create a new credential
-            ::  return an error code equivalent to "{{NotAllowedError}}" and terminate the operation.
+            ::  return an error code equivalent to "{{OptOutError}}" and terminate the operation.
         </dl>
 
         Note: The purpose of this [=authorization gesture=] is not to proceed with creating a credential,
@@ -5217,7 +5252,7 @@ a numbered step. If outdented, it (today) is rendered as a bullet in the midst o
         If |requireUserPresence| is [TRUE], the [=authorization gesture=] MUST include a [=test of user presence=].
 
         If the user does not [=user consent|consent=] or if [=user verification=] fails, return an error code equivalent to
-        "{{NotAllowedError}}" and terminate the operation.
+        "{{OptOutError}}" and terminate the operation.
     </li>
 
 1. Once the [=authorization gesture=] has been completed and [=user consent=] has been obtained, generate a new credential object:
@@ -5332,7 +5367,7 @@ a numbered step. If outdented, it (today) is rendered as a bullet in the midst o
             [=test of user presence=].
 
         If the user does not [=user consent|consent=], return an error code equivalent to
-        "{{NotAllowedError}}" and terminate the operation.
+        "{{OptOutError}}" and terminate the operation.
     </li>
 
 1. Let |processedExtensions| be the result of [=authenticator extension processing=] [=map/for each=] supported [=extension
