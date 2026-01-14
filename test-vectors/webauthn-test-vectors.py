@@ -234,7 +234,15 @@ def gen_android_key_att_cert(ca_cert, ca_key, challenge, cred_private_key, rand_
 
     asn1_encoder = asn1.Encoder()
     asn1_encoder.start()
-    asn1_encoder.write([300, 0, 0, 0, challenge, b'', [], []])
+    with asn1_encoder.construct(asn1.Numbers.Sequence):
+        asn1_encoder.write(300)
+        asn1_encoder.write(0, asn1.Numbers.Enumerated)
+        asn1_encoder.write(0)
+        asn1_encoder.write(0, asn1.Numbers.Enumerated)
+        asn1_encoder.write(challenge)
+        asn1_encoder.write(b'')
+        asn1_encoder.write([])
+        asn1_encoder.write([])
     attestation_ext = asn1_encoder.output()
     att_cert = to_deterministic_cert(
         x509.CertificateBuilder().subject_name(subject)
