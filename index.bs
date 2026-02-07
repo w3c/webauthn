@@ -7166,6 +7166,63 @@ This section and its subsections define an additional set of extensions to be re
 IANA "WebAuthn Extension Identifiers" registry [[!IANA-WebAuthn-Registries]] established by [[!RFC8809]].
 These MAY be implemented by user agents targeting broad interoperability.
 
+## Hybrid Fallback URL Extension (hybridFallback) ## {#sctn-hybrid-fallback-extension}
+
+This extension allows a [=remote device=] (used via a hybrid transport) to offer a fallback experience if no passkeys are available on the device. The relying party (RP) provides a fallback URL, which the remote device may open to continue the authentication or registration process.
+
+: Extension identifier
+:: `hybridFallback`
+
+: Operation applicability
+:: [=registration extension|Registration=] and [=authentication extension|Authentication=]
+
+: Client extension input
+:: A single DOMString specifying a fallback URL. This URL MUST be same-site with the RP ID domain. The URL SHOULD use HTTPS. Custom schemes are currently not permitted.
+        <xmp class="idl">
+        partial dictionary AuthenticationExtensionsClientInputs {
+            DOMString hybridFallback;
+        };
+        partial dictionary AuthenticationExtensionsClientInputsJSON {
+            DOMString hybridFallback;
+        };
+        </xmp>
+
+: Client extension processing
+::
+        1. If the current transport is not a hybrid transport, ignore this extension.
+        2. If the input URL is not same-site with the RP ID, return a "SecurityError" {{DOMException}}.
+        3. If no passkeys are available on the remote device, the client MAY convey the fallback URL to the remote device (via CTAP) for user interaction.
+        4. The client extension output is [TRUE] if the extension was processed and the fallback URL was offered to the remote device, otherwise [FALSE].
+
+: Client extension output
+:: Returns a Boolean indicating whether the fallback URL was offered to the remote device.
+        <xmp class="idl">
+        partial dictionary AuthenticationExtensionsClientOutputs {
+            boolean hybridFallback;
+        };
+        partial dictionary AuthenticationExtensionsClientOutputsJSON {
+            boolean hybridFallback;
+        };
+        </xmp>
+
+: Authenticator extension input
+:: The fallback URL as a CBOR text string, only if the transport is hybrid and the client has determined the extension is valid.
+
+: Authenticator extension processing
+:: If the authenticator (remote device) receives a fallback URL and no passkeys are available, it MAY offer the fallback experience to the user, e.g., by opening the URL in a browser or displaying a QR code.
+
+: Authenticator extension output
+:: None.
+
+: Security and Privacy Considerations
+::
+        - The fallback URL is restricted to same-site with the RP ID to prevent phishing and cross-site attacks.
+        - The extension is only processed for hybrid transports to avoid leaking fallback URLs to local authenticators.
+        - RPs should ensure the fallback URL does not contain sensitive information in query parameters.
+        - The remote device should validate the URL before opening it.
+
+Note: The expected behavior for the remote device (authenticator) is defined by FIDO CTAP and may evolve. This extension is intended to support user-friendly fallback flows when no passkeys are available on a remote device.
+
 ## Client Extensions ## {#sctn-defined-client-extensions}
 
 This section defines extensions that are only [=client extensions=].
