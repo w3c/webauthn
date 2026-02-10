@@ -165,6 +165,7 @@ spec: html; urlPrefix: https://html.spec.whatwg.org/multipage/
             text: origin; url: concept-origin
             text: document.domain; url:dom-document-domain
         urlPrefix: form-control-infrastructure.html
+            text: autofill; url: autofill
             text: autofill detail token; url: autofill-detail-tokens
             text: non-autofill credential type; url: non-autofill-credential-type
 
@@ -173,6 +174,13 @@ spec: url; urlPrefix: https://url.spec.whatwg.org
         text: scheme; url: concept-url-scheme
         text: port; url: concept-url-port
 
+spec: string-meta; urlPrefix: https://www.w3.org/TR/string-meta/
+    type: dictionary
+        text: Localizable; url: Localizable
+    type: attribute
+        text: dir; url: dom-localizable-dir; for: Localizable
+        text: language; url: dom-localizable-language; for: Localizable
+        text: value; url: dom-localizable-value; for: Localizable
 
 spec: TokenBinding; urlPrefix: https://tools.ietf.org/html/rfc8471#
     type: dfn
@@ -1487,6 +1495,7 @@ that are returned to the caller when a new credential is created, or a new asser
         [SameObject] readonly attribute AuthenticatorResponse    response;
         readonly attribute DOMString?                            authenticatorAttachment;
         AuthenticationExtensionsClientOutputs getClientExtensionResults();
+        PublicKeyCredentialUserInfo getUserInfo();
         static Promise<boolean> isConditionalMediationAvailable();
         PublicKeyCredentialJSON toJSON();
     };
@@ -1525,13 +1534,15 @@ that are returned to the caller when a new credential is created, or a new asser
         but later receive updates to support [=cross-platform attachment=] as well.
         </div>
 
-
-
-
     :   {{PublicKeyCredential/getClientExtensionResults()}}
     ::  This operation returns the value of {{PublicKeyCredential/[[clientExtensionsResults]]}}, which is a [=map=] containing
         [=extension identifier=] → [=client extension output=] entries produced by the extension's
         [=client extension processing=].
+
+    :   {{PublicKeyCredential/getUserInfo()}}
+    ::  This operation returns the value of {{PublicKeyCredential/[[userInfo]]}},
+        which is a {{PublicKeyCredentialUserInfo}} dictionary containing [=user information=]
+        requested by the [=[RP]=]. If [=user information=] was not requested, returns `undefined`.
 
     :   {{PublicKeyCredential/isConditionalMediationAvailable()}}
     ::  {{PublicKeyCredential}} overrides this method to indicate availability for {{CredentialMediationRequirement/conditional}}
@@ -1657,6 +1668,10 @@ that are returned to the caller when a new credential is created, or a new asser
     ::  This [=internal slot=] contains the results of processing client extensions requested by the [=[RP]=] upon the
         [=[RP]=]'s invocation of either {{CredentialsContainer/create()|navigator.credentials.create()}} or
         {{CredentialsContainer/get()|navigator.credentials.get()}}.
+
+    :   <dfn>\[[userInfo]]</dfn>
+    ::  This [=internal slot=] contains the [=user information=] requested by the [=[RP]=].
+        If [=user information=] was not requested, contains the value is not present.
 </dl>
 
 {{PublicKeyCredential}}'s [=interface object=] inherits {{Credential}}'s implementation of
@@ -1756,11 +1771,13 @@ When this method is invoked, the user agent MUST execute the following algorithm
 
         1. Throw a "{{NotAllowedError}}" {{DOMException}}.
 
-    1. [=Consume user activation=] of the [=relevant global object=].
-
     1. If the [=origin=] that is creating a credential is different from the [=top-level origin=] of the [=relevant global object=]
         (i.e., is a different origin than the user can see in the address bar),
         the [=client=] SHOULD make this fact clear to the user.
+
+1. If <var ignore>sameOriginWithAncestors</var> is [FALSE]
+    or <code>|options|.{{PublicKeyCredentialCreationOptions/user}}.{{PublicKeyCredentialUserEntity/requestUserInfo}}</code> is present,
+    [=consume user activation=] of the [=relevant global object=].
 
 1. Let |pkOptions| be the value of <code>|options|.{{CredentialCreationOptions/publicKey}}</code>.
 
@@ -1904,6 +1921,24 @@ a numbered step. If outdented, it (today) is rendered as a bullet in the midst o
         It is up to the user agent to decide when it believes an authentication ceremony has
         been completed. That authentication ceremony MAY be performed via other means than the
         [=Web Authentication API=].
+
+1. If <code>|options|.{{PublicKeyCredentialCreationOptions/user}}.{{PublicKeyCredentialUserEntity/requestUserInfo}}</code>
+    is present:
+
+    1. Prompt the user for the requested [=user information=] in such a way that the user selects a single [=user information/identifier type=]
+        and its value, and fills in all requested [=user information/attributes=].
+    1. Let |userInfo| be a {{PublicKeyCredentialUserInfo}} dictionary.
+    1. Set <code>|userInfo|.{{PublicKeyCredentialUserInfo/identifier}}.{{PublicKeyCredentialUserInfoIdentifier/type}}</code>
+        to the [=user information/identifier type=] selected by the user.
+    1. Set <code>|userInfo|.{{PublicKeyCredentialUserInfo/identifier}}.{{PublicKeyCredentialUserInfoIdentifier/value}}</code>
+        to the [=user information/identifier=] filled by the user.
+    1. For every [=user information/attribute type=] |attribute| in <code>|options|.{{PublicKeyCredentialCreationOptions/user}}.{{PublicKeyCredentialUserEntity/requestUserInfo}}.{{PublicKeyCredentialRequestUserInfo/attributes}}</code>
+        that is understood by the user agent:
+        1. Set <code>|userInfo|.{{PublicKeyCredentialUserInfo/attributes}}[|attribute|].{{Localizable/value}}</code>
+            to the [=user information/attribute=] filled by the user.
+        1. Set <code>|userInfo|.{{PublicKeyCredentialUserInfo/attributes}}[|attribute|].{{Localizable/language}}</code>
+            and <code>|userInfo|.{{PublicKeyCredentialUserInfo/attributes}}[|attribute|].{{Localizable/dir}}</code>
+            according to the user agent language settings or other relevant information.
 
 1. Consider the value of {{PublicKeyCredentialCreationOptions/hints}} and craft the user interface accordingly, as the user-agent sees fit.
 
@@ -2178,6 +2213,9 @@ a numbered step. If outdented, it (today) is rendered as a bullet in the midst o
                         :   {{PublicKeyCredential/[[clientExtensionsResults]]}}
                         ::  A new {{ArrayBuffer}}, created using |global|'s [=%ArrayBuffer%=], containing the bytes of
                             <code>|credentialCreationData|.[=credentialCreationData/clientExtensionResults=]</code>.
+
+                        :   {{PublicKeyCredential/[[userInfo]]}}
+                        ::  |userInfo|
 
                     1.  Return |pubKeyCred|.
 
@@ -3638,8 +3676,9 @@ credential.
 
 <xmp class="idl">
     dictionary PublicKeyCredentialUserEntity : PublicKeyCredentialEntity {
-        required BufferSource   id;
-        required DOMString      displayName;
+        required BufferSource              id;
+        required DOMString                 displayName;
+        PublicKeyCredentialRequestUserInfo requestUserInfo;
     };
 </xmp>
 
@@ -3684,8 +3723,11 @@ credential.
         When storing a {{PublicKeyCredentialUserEntity/displayName}} member's value,
         the value MAY be truncated as described in [[#sctn-strings-truncation]]
         using a size limit greater than or equal to 64 bytes.
-</div>
 
+    :   <dfn>requestUserInfo</dfn>
+    ::  An OPTIONAL {{PublicKeyCredentialRequestUserInfo}} dictionary indicating that the [=[RP]=] requests [=user information=]
+        to be returned with the {{PublicKeyCredential}} for the purposes of creating a new [=user account=].
+</div>
 
 ### Authenticator Selection Criteria (dictionary <dfn dictionary>AuthenticatorSelectionCriteria</dfn>) ### {#dictionary-authenticatorSelection}
 
@@ -3848,6 +3890,107 @@ Note: The {{AttestationConveyancePreference}} enumeration is deliberately not re
         If permitted, the user agent SHOULD signal to the authenticator (at [invocation time](#CreateCred-InvokeAuthnrMakeCred)) that enterprise attestation is requested, and convey the resulting [=/AAGUID=] and [=attestation statement=], unaltered, to the [=[RP]=].
 </div>
 
+### Request User Information ### {#dictionary-requestUserInfo}
+
+[=[WRPS]=] may use the {{PublicKeyCredentialRequestUserInfo}} dictionary to request [=user information=]
+to be returned as part of the {{CredentialsContainer/create()}} request.
+
+<dfn>User information</dfn> that may be requested consists of:
+
+<dl dfn-type="dfn" dfn-for="user information">
+    :   <dfn>Identifier</dfn>
+    ::  A single string that can be used to uniquely identify a [=user account=],
+        and whose value will be used as the credential's {{PublicKeyCredentialEntity/name}}
+        and {{PublicKeyCredentialUserEntity/displayName}}.
+
+        Valid <dfn>identifier types</dfn> are:
+        * `"email"`: an email address, such as "alex.mueller@example.com".
+        * `"phone"`: a full telephone number, including country code, such as "+1 617 253 5702".
+    :   <dfn>Attributes</dfn>
+    ::  A set of attributes about a user that are required when creating a [=user account=].
+
+        Valid <dfn>attribute types</dfn> are:
+        * `"name"`: a user's name, such as "Alex Müller".
+</dl>
+
+To request [=user information=], the [=[RP]=] specifies the [=user information/identifier types=]
+and [=user information/attribute types=] it accepts:
+
+<xmp class="idl">
+    dictionary PublicKeyCredentialRequestUserInfo {
+        required sequence<DOMString> identifiers;
+        sequence<DOMString>          attributes = [];
+    };
+</xmp>
+
+<dl dfn-type="attribute" dfn-for="PublicKeyCredentialRequestUserInfo">
+    :   {{PublicKeyCredentialRequestUserInfo/identifiers}}
+    ::  The [=list=] of [=user information/identifier types=] accepted by the [=[RP]=] to create a [=user account=].
+        The [=[RP]=] can request multiple [=user information/identifier=] types
+        to indicate any of them may be accepted. However, only one [=user information/identifier=] is returned.
+        The [=client=] selects the [=user information/identifier=] type to return depending on user preference or other factors.
+        [=[WRPS]=] SHOULD pass the list of [=user information/identifiers=] in order of preference as a hint to [=clients=].
+
+        The credential's {{PublicKeyCredentialEntity/name}} and {{PublicKeyCredentialUserEntity/displayName}}
+        will be overridden by the value of the chosen [=user information/identifier=].
+        [=[WRPS]=] SHOULD pass an empty {{PublicKeyCredentialEntity/name}}
+        and {{PublicKeyCredentialUserEntity/displayName}} when using this option.
+
+    :   {{PublicKeyCredentialRequestUserInfo/attributes}}
+    ::  An OPTIONAL [=list=] of [=user information/attribute types=] required to create a [=user account=].
+</dl>
+
+[=user information/Identifiers=] and [=user information/attributes=] which are not recognized are ignored by the [=client=].
+
+Note: Unlike regular {{CredentialsContainer/create()}} operations, requesting [=user information=]
+[=consumes user activation=].
+
+[=User information=] is returned to the [=[RP]=] in a {{PublicKeyCredentialUserInfo}} dictionary:
+
+<xmp class="idl">
+    dictionary PublicKeyCredentialUserInfo {
+        required PublicKeyCredentialUserInfoIdentifier identifier;
+        required record<DOMString, PublicKeyCredentialUserInfoAttribute> attributes;
+    };
+</xmp>
+
+<dl dfn-type="attribute" dfn-for="PublicKeyCredentialUserInfo">
+    :   {{PublicKeyCredentialUserInfo/identifier}}
+    ::  The [=user information/identifier=] value claimed by the user.
+    :   {{PublicKeyCredentialUserInfo/attributes}}
+    ::  A [=map=] of [=user information/attribute types=] to values claimed by the user.
+        [=map/Keys=] MUST be present in the [=user information/attribute types=] requested by the [=[RP]=].
+</dl>
+
+<xmp class="idl">
+    dictionary PublicKeyCredentialUserInfoIdentifier {
+        required DOMString type;
+        required DOMString value;
+    };
+</xmp>
+
+<dl dfn-type="attribute" dfn-for="PublicKeyCredentialUserInfoIdentifier">
+    :   {{PublicKeyCredentialUserInfoIdentifier/type}}
+    ::  The type of [=user information/identifier=].
+        This MUST be one of the [=user information/identifier types=] requested by the [=[RP]=].
+    :   {{PublicKeyCredentialUserInfoIdentifier/value}}
+    ::  The value of the [=user information/identifier=] claimed by the user.
+</dl>
+
+<xmp class="idl">
+    dictionary PublicKeyCredentialUserInfoAttribute : Localizable {
+    };
+</xmp>
+
+<dl dfn-type="attribute" dfn-for="PublicKeyCredentialUserInfoAttribute">
+    :   {{Localizable/value}}
+    ::  The value of the [=user information/attribute=] claimed by the user
+        for the corresponding {{PublicKeyCredentialUserInfo/attributes}} key.
+</dl>
+
+The [=client=] MAY obtain [=user information=] from sources such as [=autofill=].
+However, the [=client=] MUST allow the user to manually set any [=user information/identifier=]
+and [=user information/attribute=] values.
 
 ## Options for Assertion Generation (dictionary <dfn dictionary>PublicKeyCredentialRequestOptions</dfn>) ## {#dictionary-assertion-options}
 
@@ -8588,9 +8731,16 @@ possible for [=[RPS]=] to trust any further [=attestation statements=] from the 
 
 See also the related security consideration for [=[RPS]=] in [[#sctn-revoked-attestation-certificates]].
 
-<!-- no sec cons for clients enumerated at this time
 ## Security considerations for [=clients=] ## {#sctn-security-considerations-client}
--->
+
+### [=UI redressing=] when requesting [=user information=] {#sctn-seccons-ui-redressing-request-user-info}
+
+When a [=[RP]=] requests [=user information=] as part of a {{CredentialsContainer/create()}} request,
+the user agent may offer prefilled default values for the requested [=user information/identifiers=]
+and [=user information/attributes=], similar to [=autofill=].
+It's important that [=clients=] consider the risk of [=UI redressing=]
+and take appropriate measures to prevent malicious [=[WRPS]=] from obtaining [=user information=]
+without the user's consent.
 
 ## Security considerations for [=[RPS]=] ## {#sctn-security-considerations-rp}
 
