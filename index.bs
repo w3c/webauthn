@@ -7881,6 +7881,22 @@ Each stored [=virtual authenticator=] has the following properties:
     This value MUST be reflected by the [=BS=] [=authenticator data=] [=flag=] when performing an [=authenticatorMakeCredential=]
     operation with this [=virtual authenticator=].
 
+[=Virtual Authenticator=] behavior MUST reflect the following to emulate the most common [=[WAA]=] behaviors:
+
+- When a [=Virtual Authenticator|Virtual Authenticator's=] |defaultBackupEligibility| property is [TRUE],
+    the [=signature counter=] of a new [=Public Key Credential Source=]
+    managed by the [=Virtual Authenticator=] MUST be initialized to `0`.
+    The value of |authData|.<code>[=authData/signCount=]</code> in the response returned
+    from the [=authenticatorMakeCredential=] operation for the [=Public Key Credential Source=]
+    MUST be `0`.
+- When a [=Virtual Authenticator|Virtual Authenticator's=] |defaultBackupEligibility| property is [TRUE],
+    the [=signature counter=] of an existing [=Public Key Credential Source=]
+    managed by the [=Virtual Authenticator=] MUST NOT increment
+    during [=authenticatorGetAssertion=] operations.
+    The value of |authData|.<code>[=authData/signCount=]</code> in responses returned
+    from the [=authenticatorGetAssertion=] operation for the existing [=Public Key Credential Source=]
+    MUST be `0`.
+
 ## <dfn>Add Virtual Authenticator</dfn> ## {#sctn-automation-add-virtual-authenticator}
 
 The [=Add Virtual Authenticator=] WebDriver [=extension command=] creates a software [=Virtual Authenticator=]. It is
@@ -8101,7 +8117,12 @@ The <dfn>Credential Parameters</dfn> is a JSON [=Object=] passed to the [=remote
             </tr>
             <tr>
                 <td>|signCount|</td>
-                <td>The initial value for a [=signature counter=] associated to the [=public key credential source=].</td>
+                <td>
+                    The initial value for a [=signature counter=] associated
+                    to the [=public key credential source=].
+                    This property should be a 32-bit unsigned integer value
+                    in the range `0` to `4294967295`, inclusive.
+                </td>
                 <td>number</td>
             </tr>
             <tr>
@@ -8208,8 +8229,17 @@ The [=remote end steps=] are:
     :: Construct from |userName| and |userDisplayName|.
  1. Set the |credential|'s [=backup eligibility=] [=credential property=] to |backupEligibility|.
  1. Set the |credential|'s [=backup state=] [=credential property=] to |backupState|.
- 1. Associate a [=signature counter=] |counter| to the |credential| with a starting value equal to the |parameters|'
-     |signCount| or `0` if |signCount| is `null`.
+ 1. Let |signCount| be the |parameters|' |signCount| property.
+ 1. If |signCount| is `null`, set |signCount| to the value of `0`.
+ 1. If |backupEligibility| is [TRUE]:
+    1. If |signCount| is defined and equal to `0`, associate a [=signature counter=] |counter|
+        to the |credential| with a starting value equal to `0`.
+    1. Otherwise, return a [=WebDriver error=] with [=WebDriver error code=] [=invalid argument=].
+ 1. Otherwise:
+    1. If |signCount| is defined and set to a 32-bit unsigned integer value
+        in the range `0` to `4294967295`, inclusive, associate a [=signature counter=] |counter|
+        to the |credential| with a starting value equal to |signCount|.
+    1. Otherwise, return a [=WebDriver error=] with [=WebDriver error code=] [=invalid argument=].
  1. If |largeBlob| is not `null`, set the [=large, per-credential blob=] associated to the |credential| to |largeBlob|.
  1. Store the |credential| and |counter| in the database of the |authenticator|.
  1. Return <a spec="webdriver2">success</a>.
@@ -8343,7 +8373,7 @@ The [=remote end steps=] are:
 
 ## <dfn>Set Credential Properties</dfn> ## {#sctn-automation-set-credential-properties}
 
-The [=Set Credential Properties=] [=extension command=] allows setting the |backupEligibility| and |backupState| [=credential properties=] of
+The [=Set Credential Properties=] [=extension command=] allows setting several [=credential properties=] of
 a [=Virtual Authenticator=]'s [=public key credential source=]. It is defined as follows:
 
 <figure id="table-setFlags" class="table">
@@ -8386,6 +8416,14 @@ It contains the following |key| and |value| pairs:
                 <td>The [=backup state=] [=credential property=].</td>
                 <td>boolean</td>
             </tr>
+            <tr>
+                <td>|signCount|</td>
+                <td>
+                    The [=signature counter=] [=credential property=].
+                    This property should be a 32-bit unsigned integer value in the range `0` to `4294967295`, inclusive.
+                </td>
+                <td>number</td>
+            </tr>
         </tbody>
     </table>
 </figure>
@@ -8408,6 +8446,14 @@ The [=remote end steps=] are:
 
  1. Let |backupState| be the |parameters|' |backupState| property.
  1. If |backupState| is defined, set the [=backup state=] [=credential property=] of |credential| to the value of |backupState|.
+ 1. Let |signCount| be the |parameters|' |signCount| property.
+ 1. If the [=backup eligibility=] [=credential property=] of |credential| is [TRUE]:
+     1. If |signCount| is defined and equal to `0`, set the [=signature counter=] [=credential property=] of |credential| to `0`.
+     1. Otherwise, return a [=WebDriver error=] with [=WebDriver error code=] [=invalid argument=].
+ 1. Otherwise:
+     1. If |signCount| is defined and set to a 32-bit unsigned integer value in the range `0` to `4294967295`, inclusive,
+        set the [=signature counter=] [=credential property=] of |credential| to the value of |signCount|.
+     1. Otherwise, return a [=WebDriver error=] with [=WebDriver error code=] [=invalid argument=].
  1. Return <a spec="webdriver2">success</a>.
 
 # IANA Considerations # {#sctn-IANA}
