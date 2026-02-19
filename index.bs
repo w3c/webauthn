@@ -2274,10 +2274,10 @@ Since this specification requires an [=authorization gesture=] to create any [=a
 {{PublicKeyCredential}}'s implementation of {{PublicKeyCredential/[DISCOVER-METHOD]}} is specified in the next section.
 
 In general, the user agent SHOULD show some UI to the user to guide them in selecting and authorizing an authenticator with which
-to complete the operation. By setting <code>|options|.{{CredentialRequestOptions/mediation}}</code> to {{CredentialMediationRequirement/conditional}}, [=[RPS]=] can indicate that a prominent modal UI should <i>not</i> be shown <i>unless</i> credentials are discovered.
+to complete the operation. By setting <code>|options|.{{CredentialRequestOptions/mediation}}</code> to {{CredentialMediationRequirement/conditional}} or <code>|options|.{{CredentialRequestOptions/uiMode}}</code> to {{CredentialUiMode/immediate}}, [=[RPS]=] can indicate that a prominent modal UI should <i>not</i> be shown <i>unless</i> credentials are discovered.
 The [=[RP]=] SHOULD first use {{PublicKeyCredential/isConditionalMediationAvailable()}}
 or {{PublicKeyCredential/getClientCapabilities()}}
-to check that the [=client=] supports the {{ClientCapability/conditionalGet}} capability
+to check that the [=client=] supports the {{ClientCapability/conditionalGet}} capability, or {{PublicKeyCredential/getClientCapabilities()}} to check that the [=client=] supports the {{ClientCapability/immediateGet}} capability,
 in order to prevent a user-visible error in case this feature is not available.
 
 Any
@@ -2350,6 +2350,16 @@ When this method is invoked, the user agent MUST execute the following algorithm
             for guidance on deciding a reasonable range and default for <code>|pkOptions|.{{PublicKeyCredentialRequestOptions/timeout}}</code>.
 
             The user agent SHOULD take cognitive guidelines into considerations regarding timeout for users with special needs.
+
+    1. If <code>|options|.{{CredentialRequestOptions/uiMode}}</code> is present with the value
+        {{CredentialUiMode/immediate}}:
+
+        1. If <code>|pkOptions|.{{PublicKeyCredentialRequestOptions/allowCredentials}}</code> is not [=list/empty=] throw a "{{NotAllowedError}}" {{DOMException}}.
+
+        1. If the [=relevant global object=], as determined by the calling {{CredentialsContainer/get()}} implementation, does not have
+         [=transient activation=], throw a "{{NotAllowedError}}" {{DOMException}}.
+
+        1. [=Consume user activation=] of the [=relevant global object=].
 
 1. Let |callerOrigin| be {{PublicKeyCredential/[DISCOVER-METHOD]/origin}}. If |callerOrigin| is
     an [=opaque origin=], throw a "{{NotAllowedError}}" {{DOMException}}.
@@ -2443,6 +2453,13 @@ When this method is invoked, the user agent MUST execute the following algorithm
 
 1. Let |silentlyDiscoveredCredentials| be a new [=map=] whose [=map/entry|entries=] are of the form: [=DiscoverableCredentialMetadata=] → [=authenticator=].
 
+1. If <code>|options|.{{CredentialRequestOptions/uiMode}}</code> is present with the value {{CredentialUiMode/immediate}},
+    set a timer |immediateModeTimer| with a client-specified duration.
+
+    Note: A very short time threshold is appropriate. The [=relying party=] is expecting to learn if no credentials are available and
+        provide alternatives for user sign-in, and an authenticator taking excessively long to provide a credential list would degrade the user experience.
+        Authenticators that do not provide [=DiscoverableCredentialMetadata=] in that time will be omitted from |silentlyDiscoveredCredentials|.
+
 1. Consider the value of {{PublicKeyCredentialRequestOptions/hints}} and craft the user interface accordingly, as the user-agent sees fit.
 
 1. Start |lifetimeTimer|.
@@ -2460,7 +2477,7 @@ When this method is invoked, the user agent MUST execute the following algorithm
         ::  [=set/For each=] |authenticator| in |issuedRequests| invoke the [=authenticatorCancel=] operation on |authenticator|
             and [=set/remove=] |authenticator| from |issuedRequests|. Throw a "{{NotAllowedError}}" {{DOMException}}.
 
-        :   If <code>|options|.{{CredentialRequestOptions/signal}}</code> is present and [=AbortSignal/aborted=],
+        :   If <code>|options|.{{CredentialRequestOptions/signal}}</code> is present and [=AbortSignal/aborted=], and <code>|options|.{{CredentialRequestOptions/mediation}}</code> is not {{CredentialMediationRequirement/immediate}},
         ::  [=set/For each=] |authenticator| in |issuedRequests| invoke the [=authenticatorCancel=] operation on |authenticator|
             and [=set/remove=] |authenticator| from |issuedRequests|. Then
             throw the <code>|options|.{{CredentialRequestOptions/signal}}</code>'s [=AbortSignal/abort reason=].
@@ -2507,7 +2524,42 @@ When this method is invoked, the user agent MUST execute the following algorithm
 
                     1. [=set/Append=] |authenticator| to |issuedRequests|.
 
-        :   If <code>|options|.{{CredentialRequestOptions/mediation}}</code> is not {{CredentialMediationRequirement/conditional}},
+        :   If <code>|options|.{{CredentialRequestOptions/uiMode}}</code> is present with value {{CredentialUiMode/immediate}} and
+                either |immediateModeTimer| is expired or all plugged in authenticators have had their credentials enumerated,
+
+            1. If |silentlyDiscoveredCredentials| is [=list/empty=] or the user is in a private browsing mode,
+
+                1. Throw a "{{NotAllowedError}}" {{DOMException}}.
+
+                Note: See (the privacy section)[#sctn-assertion-privacy-immediate-mode] for more information on private browsing mode behavior.
+
+            1. Prompt the user to optionally select a [=DiscoverableCredentialMetadata=] from |silentlyDiscoveredCredentials|.
+                The prompt SHOULD display values from the [=DiscoverableCredentialMetadata/otherUI=] of each [=DiscoverableCredentialMetadata=],
+                such as {{PublicKeyCredentialEntity/name}} and {{PublicKeyCredentialUserEntity/displayName}}.
+
+                Let |credentialMetadata| be the [=DiscoverableCredentialMetadata=] chosen by the user, if any.
+
+            1. If the user does not select a |credentialMetadata|,
+
+                1. Throw a "{{NotAllowedError}}" {{DOMException}}.
+
+            1. Let |publicKeyOptions| be a temporary copy of |pkOptions|.
+
+            1. Let |authenticator| be the value of |silentlyDiscoveredCredentials|[|credentialMetadata|].
+
+            1. Set <code>|publicKeyOptions|.{{PublicKeyCredentialRequestOptions/allowCredentials}}</code> to be a [=list=] containing a
+                single {{PublicKeyCredentialDescriptor}} [=list/item=] whose {{PublicKeyCredentialDescriptor/id}}'s value is set to
+                |credentialMetadata|'s [=DiscoverableCredentialMetadata/id=]'s value and whose {{PublicKeyCredentialDescriptor/type}}
+                value is set to |credentialMetadata|'s [=DiscoverableCredentialMetadata/type=].
+
+            1. Execute the [=issuing a credential request to an authenticator=] algorithm with |authenticator|, |savedCredentialIds|,
+                |publicKeyOptions|, |rpId|, |clientDataHash|, and |authenticatorExtensions|.
+
+                If this returns [FALSE], throw a "{{NotAllowedError}}" {{DOMException}}.
+
+            1. [=set/Append=] |authenticator| to |issuedRequests|.
+
+        :   If <code>|options|.{{CredentialRequestOptions/mediation}}</code> is not {{CredentialMediationRequirement/conditional}} or <code>|options|.{{CredentialRequestOptions/uiMode}}</code> is not {{CredentialUiMode/immediate}},
             |issuedRequests| is empty, <code>|pkOptions|.{{PublicKeyCredentialRequestOptions/allowCredentials}}</code> is not empty,
             and no |authenticator| will become available for any [=public key credentials=] therein,
         ::  Indicate to the user that no eligible credential could be found. When the user acknowledges the dialog, throw a "{{NotAllowedError}}" {{DOMException}}.
@@ -2517,7 +2569,8 @@ When this method is invoked, the user agent MUST execute the following algorithm
         :   If an |authenticator| becomes available on this [=client device=],
         ::  Note:  This includes the case where an |authenticator| was available upon |lifetimeTimer| initiation.
 
-            1. If <code>|options|.{{CredentialRequestOptions/mediation}}</code> is {{CredentialMediationRequirement/conditional}}
+            1. If <code>|options|.{{CredentialRequestOptions/mediation}}</code> is {{CredentialMediationRequirement/conditional}} or 
+                <code>|options|.{{CredentialRequestOptions/uiMode}}</code> is present with value {{CredentialUiMode/immediate}}
                 and the |authenticator| supports the [=silentCredentialDiscovery=] operation:
 
                 1. Let |collectedDiscoveredCredentialMetadata| be the result of invoking the [=silentCredentialDiscovery=] operation on |authenticator| with |rpId| as parameter.
@@ -4386,6 +4439,7 @@ Note: The {{UserVerificationRequirement}} enumeration is deliberately not refere
         "conditionalCreate",
         "conditionalGet",
         "hybridTransport",
+        "immediateGet",
         "passkeyPlatformAuthenticator",
         "userVerifyingPlatformAuthenticator",
         "relatedOrigins",
@@ -4417,6 +4471,11 @@ Note: The {{ClientCapability}} enumeration is deliberately not referenced, see [
 
     :   <dfn>hybridTransport</dfn>
     ::  The [=WebAuthn Client=] supports usage of the {{AuthenticatorTransport/hybrid}} transport.
+
+    :   <dfn>immediateGet</dfn>
+    ::  The [=WebAuthn Client=] is capable of {{CredentialUiMode/immediate}} mode for [=authentication ceremonies=].
+
+        See [[#sctn-getAssertion]] for more details.
 
     :   <dfn>passkeyPlatformAuthenticator</dfn>
     ::  The [=WebAuthn Client=] supports usage of a [=passkey platform authenticator=], locally and/or via {{AuthenticatorTransport/hybrid}} transport.
@@ -9018,6 +9077,28 @@ available to the user.
 This concern may be addressed by displaying controls allowing the user to cancel an [=authentication ceremony=] at any time,
 regardless of whether any named [=credentials=] are available.
 
+#### Immediate UI Mode ### {#sctn-assertion-privacy-immediate-mode}
+
+The availability of a [=public key credential|credential=] in response to a request with an empty
+{{PublicKeyCredentialRequestOptions/allowCredentials}} is less sensitive than the availability of a named [=public key credential|credential=]
+because that information is not identifying. However, the small amount of information revealed could accumulate and add to user
+fingerprinting risk across many calls with varied [=Relying Party Identifier|RP IDs=]. Requests using {{CredentialUiMode/immediate}}
+UI mode leak this information in some situations because there is a difference in timing between when the method is invoked and the promise
+resolves:
+- If it resolves in a short time, then it might mean that the user has no immediately available credentials for the given [=[RP]=]. There
+are other reasons why it might reject the promise quickly, but not having a credential is likely the most common.
+- If it does not resolve in a short time, then it suggests that UI was shown to the user, indicating the presence of a usable credential for the
+given Relying Party, even if the user does not choose to authenticate with that credential.
+
+The user activation requirement protects against sending multiple requests with different Relying Party IDs, which might increase the risk
+of user fingerprinting. User agents should consider other mitigations, such as rate limiting requests with {{CredentialMediationRequirement/immediate}}
+mediation from a given page.
+
+Since Immediate UI mode will not show UI in private browsing modes, it is important that failures be handled in a way that does not reveal
+the presence of a private browsing mode to the Relying Party. A request invoked from a private browsing mode should not be distinguishable
+from a request that did not find any available credentials. Therefore:
+- The user agent should perform credential enumeration and any other tasks that require time before rejecting the promise.
+- Any other reasons to reject the promise should not be affected by the presence of private browing mode.
 
 ### Privacy Between Operating System Accounts ### {#sctn-os-account-privacy}
 
