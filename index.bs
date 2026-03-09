@@ -7740,13 +7740,18 @@ However, [=authenticators=] that do not utilize [[!FIDO-CTAP]] do not necessaril
 : Authenticator extension processing
 :: [=largeblob|This extension=] directs the user-agent to cause the large blob to be stored on, or retrieved from, the authenticator. It thus does not specify any direct authenticator interaction for [=[RPS]=].
 
-### Fallback URL extension (<dfn>fallbackUrl</dfn>) ### {#sctn-fallback-url-extension}
-This [=client extension|client=] [=authentication extension=] allows a [=[RP]=] to include a URL to fallback to for authentication in case a valid credential is not found on the [=authenticator=].
+
+## Authenticator Extensions ## {#sctn-defined-authenticator-extensions}
+
+This section defines extensions that are both [=client extensions=] and [=authenticator extensions=].
+
+### Cross Device Fallback URL extension (<dfn>crossDeviceFallbackUrl</dfn>) ### {#sctn-cross-device-fallback-url-extension}
+This [=client extension|client=] [=authentication extension=] allows a [=[RP]=] to include a URL to fallback to for authentication in case a valid credential is not found on the local [=authenticator=].
 
 Note: This extension is restricted to {{AuthenticatorTransport/hybrid}}
 
 : Extension identifier
-:: `fallbackUrl`
+:: `crossDeviceFallbackUrl`
 
 : Operation applicability
 :: [=authentication extension|authentication=]
@@ -7755,46 +7760,61 @@ Note: This extension is restricted to {{AuthenticatorTransport/hybrid}}
 :: A single DOMString specifying a fallback URL.
     <xmp class="idl">
     partial dictionary AuthenticationExtensionsClientInputs {
-      DOMString fallbackUrl;
+      DOMString crossDeviceFallbackUrl;
     };
     partial dictionary AuthenticationExtensionsClientInputsJSON {
-      DOMString fallbackUrl;
+      DOMString crossDeviceFallbackUrl;
     };
     </xmp>
 
 : Client extension processing
-:: When [[##sctn-getAssertion|sending an assertion request over {{AuthenticatorTransport/hybrid}}]]:
-        1. If the [=authenticator=] does not find a credential:
-            1. Run the [$related origins validation procedure$] with arguments |[=RP ID=]| and |[=fallbackUrl=]|. 
-                1. If the result is [FALSE], throw a "{{SecurityError}}" {{DOMException}}.
-                1. Otherwise Deploy [=fallbackUrl=] on the [=authenticator=] device
-        1. Otherwise ignore the [=fallbackUrl=] and continue with normal processing.
+:: When [[##sctn-getAssertion|receives an assertion request]]:
+        1. The [=client platform=] strips out the [=crossDeviceFallbackUrl=], and then passes the request to enabled credential managers.
+        1. If a [=credential=] is found:
+            1. Continue with normal processing.
+        1. Otherwise:
+            1. Run the [$related origins validation procedure$] with arguments |[=RP ID=]| and |[=crossDeviceFallbackUrl=]|. 
+                1. If the result is [FALSE]:
+                    1. Throw a "{{SecurityError}}" {{DOMException}}.
+                1. Otherwise:
+                    1. [=client platform=] crafts an [=authentication=] request including [=crossDeviceFallbackUrl=] for the [=authenticator=] device.
 
 : Client extension output
 :: Returns the value [TRUE] to indicate to the [=[RP]=] that the extension was acted upon.
     <xmp class="idl">
     partial dictionary AuthenticationExtensionsClientOutputs {
-      boolean fallbackUrl;
+      boolean crossDeviceFallbackUrl;
     };
     partial dictionary AuthenticationExtensionsClientOutputsJSON {
-      boolean fallbackUrl;
+      boolean crossDeviceFallbackUrl;
     };
     </xmp>
 
 : Authenticator extension input
-:: None.
+:: A single DOMString specifying a fallback URL.
+    <xmp class="idl">
+    partial dictionary AuthenticationExtensionsAuthenticatorInputs {
+      DOMString crossDeviceFallbackUrl;
+    };
+    </xmp>
 
 : Authenticator extension processing
-:: None.
+:: When [[##sctn-getAssertion|sending an assertion request over {{AuthenticatorTransport/hybrid}}]]:
+        1. The remote [=client platform=] strips out the [=crossDeviceFallbackUrl=], and then passes the request to enable credential managers.
+        1. If the remote [=authenticator=] finds a credential that can satisfy the request:
+            1. Ignore the [=crossDeviceFallbackUrl=] extension and continue with normal processing.
+        1. Otherwise:
+            1. Deploy [=crossDeviceFallbackUrl=] on the remote [=authenticator=] device
+            1. Include [=authenticator extension output=] in the response
 
 : Authenticator extension output
-:: None.
+:: Returns the value [TRUE] to indicate to the [=client=] that the extension was acted upon.
+    <xmp class="idl">
+    partial dictionary AuthenticationExtensionsAuthenticatorOutputs {
+      boolean crossDeviceFallbackUrl;
+    };
+    </xmp>
 
-## Authenticator Extensions ## {#sctn-defined-authenticator-extensions}
-
-This section defines extensions that are both [=client extensions=] and [=authenticator extensions=].
-
-This section is currently empty.
 
 
 # User Agent Automation # {#sctn-automation}
