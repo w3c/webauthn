@@ -1064,6 +1064,7 @@ BCP 14 [[!RFC2119]] [[!RFC8174]] when, and only when, they appear in all capital
 : <dfn>Credential Manager Trust Group Key</dfn>
 : <dfn>Credential Manager Trust Group Private Key</dfn>
 : <dfn>Credential Manager Trust Group Public Key</dfn>
+: <dfn>Credential Manager Trust Group Key Pair</dfn>
 :: A [=Credential Manager Trust Group Key=], is a [=authenticator=]- / [=credential manager=]-, [=[RP]=]-, and [=user credential=]-specific
     public key pair created upon a [=[RP]=]'s request via the [=cmtgKey=] [=WebAuthn extension=].
 
@@ -7929,10 +7930,7 @@ using these variables established therein: |credential|, |clientExtensionResults
 1. Let |signature| be |cmtgOutput|.{{AuthenticationExtensionsCmtgKeyOutputs/signature}}.
 
 1. Let |cmtgKey| be |cmtgOutput|.{{AuthenticationExtensionsCmtgKeyOutputs/cmtgKey}}.
-    Verify that |cmtgKey| is a valid [=COSE_Key=] object.
-
-    Note: The members of |cmtgOutput| are referenced exclusively in the below steps
-    and are not to be confused with other fields with the same names in other portions of the top-level [=attestation object=].
+    Verify that |cmtgKey| is a valid COSE_Key object.
 
 1. Verify that the algorithm used for |signature| matches the COSE algorithm identifier of the [=credentialPublicKey=]
     within the [=attestedCredentialData=] of |authData|.
@@ -7955,6 +7953,8 @@ then the below verification steps are performed in the context of <a href=#authn
 using these variables established therein: |credential|, |clientExtensionResults|, |authData|, and |hash|. 
 [=[RP]=] policy may specify whether a response without a `cmtgKey` is acceptable.
 
+1. Let |credentialRecord| be the [=credential record=] for the [=credential=].
+
 1. Let |extensionOutput| be the value of the cmtgKey member of |clientExtensionResults|.
 
 1. Verify that |extensionOutput| is valid CBOR conforming to the syntax defined above.
@@ -7963,49 +7963,36 @@ using these variables established therein: |credential|, |clientExtensionResults
 1. Let |signature| be |cmtgOutput|.{{AuthenticationExtensionsCmtgKeyOutputs/signature}}.
 
 1. Let |cmtgKey| be |cmtgOutput|.{{AuthenticationExtensionsCmtgKeyOutputs/cmtgKey}}.
-    Verify that |cmtgKey| is a valid [=COSE_Key=] object.
+    Verify that |cmtgKey| is a valid COSE_Key object.
 
-    Note: The latter |attObjForCmtgKey| fields are referenced exclusively in the below steps 
-    and are not to be confused with other fields with the same names in other portions of [=authenticator data=].
-
-1. Verify that the algorithm used for |signature| matches the algorithm of the public key previously stored for the credential
-    identified by the [=credentialId=].
+1. Verify that the algorithm used for |signature| matches the algorithm of the public key
+    previously stored for the |credentialRecord|.
 
 1. Verify that |signature| is a valid signature over the [=assertion signature=] [input](#fig-signature)
     (i.e. `authData` and `hash`) by the [=Credential Manager Trust Group public key=] |cmtgKey|.
     (The signature algorithm is the same as for the [=user credential=].)
 
-1. If the [=[RP]=]'s [=user account=] mapped to the <code>|credential|.{{Credential/id}}</code> in play (i.e., for the user being authenticated)
-    holds a `cmtgKey` value corresponding to the extracted |attObjForCmtgKey| fields,
-    then perform binary equality checks between the corresponding stored value and the extracted field value.
-    The [=[RP]=] MAY have more than one `cmtgKey` value mapped to the [=user account=] and <code>|credential|.{{Credential/id}}</code> pair
-    and each value MUST be checked.
+1. If |credentialRecord|.[$credential record/cmtgKeyRecords$] contains an entry |e|
+    where |e|.[=CMTG Key Record/publicKey=] matches |cmtgKey|:
 
-    If the above set of binary equality checks resulted in:
+    The [=authenticator=]/[=credential manager=] is part of a previously seen trust group.
 
-    <dl class="switch">
-        : more than one match
-        :: Some form of error has occurred.
-            Terminate these verification steps.
+    1. Update |e|.[=CMTG Key Record/lastUsed=] to the current time.
 
-        : exactly one match
-        :: The [=authenticator=]/[=credential manager=] is part of a previously seen trust group:
+    1. Terminate these verification steps.
 
-            Terminate these verification steps.
+1. Otherwise:
 
-        : zero matches
-        :: This is possibly a new [=Credential Manager Trust Group Key=], signifying a new trust group:
+    This is possibly a new [=Credential Manager Trust Group Key=], signifying a new trust group.
 
-            Store the extracted |cmtgKey| value indexed to the <code>|credential|.{{Credential/id}}</code> in the [=user account=].
-            Terminate these verification steps.
+    1. Optionally, perform additional policy checks.
+    
+    1. Let |newEntry| be a new [=CMTG Key Record=] where its [=CMTG Key Record/publicKey=] is |cmtgKey|
+        and its [=CMTG Key Record/lastUsed=] is the current time.
 
-    </dl>
+    1. Append |newEntry| to |credentialRecord|.[$credential record/cmtgKeyRecords$].
 
-1. Otherwise, the [=[RP]=] does not have |attObjForCmtgKey| fields presently mapped to this [=user account=]
-    and <code>|credential|.{{Credential/id}}</code> pair:
-
-    1. Store the extracted |cmtgKey| value indexed to the <code>|credential|.{{Credential/id}}</code> in the [=user account=].
-        Terminate these verification steps.
+    1. Terminate these verification steps.
 
 See also [[#sctn-cmtg-key-extension-usage]].
 
