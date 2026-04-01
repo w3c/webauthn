@@ -22,4 +22,3 @@ More concretely, this adds the following methods:
 This returns an instance of PublicKeyCredentialCreationOptions parsed from PublicKeyCredentialCreationOptionsJSON.
  *  [PublicKeyCredential.parseRequestOptionsFromJSON()](https://w3c.github.io/webauthn/#sctn-parseRequestOptionsFromJSON)  (static method): This returns an instance of PublicKeyCredentialRequestOptions parsed from PublicKeyCredentialRequestOptionsJSON.
  *  [PublicKeyCredential.toJSON()](https://w3c.github.io/webauthn/#dom-publickeycredential-tojson) (instance method): This adds the [toJSON() regular operation](https://webidl.spec.whatwg.org/#idl-tojson-operation) to the PublicKeyCredential interface type. Depending on which operation created the PublicKeyCredential instance, toJSON() it returns either a RegistrationResponseJSON or an AuthenticationResponseJSON.
- *  
