@@ -1,4 +1,4 @@
-# Explainer: WebAuthn Signal API explainer
+# Explainer: WebAuthn Signal API
 
 _(note: renamed from "Report API" to avoid confusion with the [Reporting API](https://developer.mozilla.org/en-US/docs/Web/API/Reporting_API))_
 
