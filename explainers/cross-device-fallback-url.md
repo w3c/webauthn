@@ -23,8 +23,8 @@ This failure introduces friction into the passkey sign-in experience and reduces
 When a user scans a QR code or selects a linked device, but has no passkey on that phone or tablet, the flow typically fails with a generic “passkey not found” message, leaving the user frustrated, without a clear recovery path
 
 <div align="center">
-  <img src="images/no_passkeys_found_android.png" 
-       alt="A no passkey found screen shown post scanning QR code" 
+  <img src="assets/no_passkeys_found_android.png"
+       alt="A no passkey found screen shown post scanning QR code"
        width="40%">
 </div>
 
