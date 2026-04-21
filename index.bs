@@ -7790,6 +7790,59 @@ the selected [=authenticator=]/[=credential manager=] (`cm1`) generates a new [=
 The extension output includes the public key and a signature generated using the 
 [=Credential Manager Trust Group private key=] (`cmtgKey1`).
 
+<div class="example">
+
+Here's what a WebAuthn registration ceremony with the `cmtgKey` extension
+might look like on the client side:
+
+```javascript
+async function createPasskey() {
+  // 1. Fetch JSON options from your server. 
+  // The server should return a JSON structure where buffers are Base64URL encoded strings.
+  const response = await fetch('/auth/register/options');
+  const optionsJSON = await response.json();
+
+  // 2. Add the CMTG extension request to the JSON object before parsing
+  // Note: This is illustrative. This would likely come from the server in the options response in a real implementation.
+  optionsJSON.extensions = {
+    ...optionsJSON.extensions,
+    cmtgKey: true
+  };
+
+  // 3. Convert the JSON into an object
+  const publicKeyCredentialCreationOptions =
+    PublicKeyCredential.parseCreationOptionsFromJSON(optionsJSON);
+
+  try {
+    // 4. Trigger the passkey creation
+    const credential = await navigator.credentials.create({
+      publicKey: publicKeyCredentialCreationOptions
+    });
+
+    // 5. Serialize the entire credential (including extension results)
+    const credentialJSON = credential.toJSON();
+
+    // 6. Send the serialized object directly to the backend
+    const verificationResponse = await fetch('/auth/register/verify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(credentialJSON)
+    });
+
+    // The backend should verify both the passkey and the CMTG Key and update the credential record.
+    // If verification is successful, it should return a success response.
+
+    if (verificationResponse.ok) {
+      establishSession();
+      console.log("Passkey and CMTG Key registered successfully!");
+    }
+  } catch (err) {
+    console.error("Registration failed:", err);
+  }
+}
+```
+</div>
+
 A subsequent {{CredentialsContainer/get()|get()}} operation (with the `cmtgKey` extension) on `dev1`
 using the same credential and the same authenticator/credential manager (`cm1`), 
 will include a signature from the same [=Credential Manager Trust Group private key=], `cmtgKey1`.
@@ -7805,6 +7858,64 @@ is returned to the [=[RP]=], signaling the start of a separate trust group.
 
 If `dev1` and `dev3` or `dev2` and `dev3` are later determined to have non-remote relationships,
 `cm1` may elect to use `cmtgKey1` for all three devices, signaling that they are now in the same trust group.
+
+<div class="example">
+
+Here's what a WebAuthn authentication ceremony with the `cmtgKey` extension
+might look like on the client side:
+
+```javascript
+async function getPasskey() {
+  // 1. Fetch authentication options from your server.
+  // The server returns a JSON object with a challenge and allowed credentials.
+  const response = await fetch('/auth/login/options');
+  const optionsJSON = await response.json();
+
+  // 2. Add the CMTG extension request to the JSON object before parsing
+  // Note: This is illustrative. This would likely come from the server in the options response in a real implementation.
+  optionsJSON.extensions = {
+    ...optionsJSON.extensions,
+    cmtgKey: true
+  };
+
+  // 3. Convert the JSON into an object
+  const publicKeyCredentialRequestOptions =
+    PublicKeyCredential.parseRequestOptionsFromJSON(optionsJSON);
+
+  try {
+    // 4. Trigger the passkey login
+    const assertion = await navigator.credentials.get({
+      publicKey: publicKeyCredentialRequestOptions
+    });
+
+    // 5. Serialize the assertion (including CMTG extension results)
+    const assertionJSON = assertion.toJSON();
+
+    // 6. Send the serialized assertion to the backend
+    const verificationResponse = await fetch('/auth/login/verify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(assertionJSON)
+    });
+
+    // The backend should verify both the passkey and the CMTG Key.
+    // If verification is successful, it should return a success response.
+
+    if (verificationResponse.ok) {
+      // If the CMTG Key matches an expected entry from the credential record,
+      // the passkey was from a previously trusted credential manager.
+      establishSession();
+      // If the CMTG Key was not returned, was not the expected entry,
+      // or has not been seen before, optionally
+      // run additional risk analysis and policy checks.
+      console.log("Authenticated! Trust Group verified via CMTG.");
+    }
+  } catch (err) {
+    console.error("Authentication failed:", err);
+  }
+}
+```
+</div>
 
 #### Updating the RP's Credential Record #### {#sctn-cmtg-key-credential-record}
 
