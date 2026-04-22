@@ -6,7 +6,7 @@ Adem Derinel <<derinel@google.com>>
 
 Ken Buchanan <<kenrb@chromium.org>>
 
-Last updated: 18-03-2026
+Last updated: 02-04-2026
 
 _A recent edit removed `immediate` as a `mediation` value, and added a new field called `uiMode`._
 
@@ -80,10 +80,7 @@ There are numerous situations where a user can be interacting with a site and re
 
 ## API
 
-We propose adding a new field to [CredentialRequestOptions](https://www.w3.org/TR/credential-management-1/#dictdef-credentialrequestoptions) called `uiMode`. `uiMode` initially has two values:
-
-* `active`, which is the default and provide the current UI behavior given the specified `mediation` value, and
-* `immediate`, which provides the UI behavior described below.
+We propose adding a new field to [CredentialRequestOptions](https://www.w3.org/TR/credential-management-1/#dictdef-credentialrequestoptions) called `uiMode`. `uiMode` initially has one value, `immediate`, which provides the UI behavior described below.
 
 > Note: Previous revisions of this explainer suggested that `immediate` could be a new value for the `[CredentialMediationRequirement](https://www.w3.org/TR/credential-management-1/#enumdef-credentialmediationrequirement)` enumeration, which would match how `conditional` is used. However, we have some concerns that this might limit flexibility as different UI options are added and also as more credential types become possible to be displayed together. The original intent of `mediation` was to specify whether or not the browser should show sign-in UI to the user. Adding `uiMode` to `CredentialRequestOptions` provides a way to specify what UI should be shown, in the cases where it is shown.
 
@@ -203,7 +200,11 @@ We propose the following measures to mitigate the potential for abuse of that re
 
 ### **User gesture requirement**
 
-To mitigate silent probing of credential availability and fingerprinting, we will require a user gesture before this API call can be made. The user gesture could be [any transient user activation](https://developer.mozilla.org/en-US/docs/Web/API/UserActivation). In particular this requirement makes it difficult for a site to do many calls with varying RP IDs.
+To mitigate silent probing of credential availability and fingerprinting, we will require a user gesture before this API call can be made. The user gesture could be [any transient user activation](https://developer.mozilla.org/en-US/docs/Web/API/UserActivation). In particular this requirement makes it difficult for a site to do many calls with varying RP IDs. Calling this API does not consume the user gesture so that the gesture will still be available if the site wants to perform another operation that requires one.
+
+### **Rate limiting**
+
+User agents should limit the number of times this API can be called on a page in a given amount of time.
 
 ### **Incognito and private sessions**
 

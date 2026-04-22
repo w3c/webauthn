@@ -22,7 +22,7 @@ A typical use case would be a paywalled news article that the user arrived at vi
 
 For a user with no eligible credentials for the site, no UI would be shown. In this case, the request promise will not resolve, so that the site doesn’t gain any information about whether the user has credentials.
 
-![Bubble in top-right of browser window showing a WebAuthn credential](images/ambient_ui_concept.png)
+![Bubble in top-right of browser window showing a WebAuthn credential](assets/ambient_ui_concept.png)
 
 ## API
 
