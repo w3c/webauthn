@@ -172,7 +172,11 @@ spec: url; urlPrefix: https://url.spec.whatwg.org
     type: dfn
         text: scheme; url: concept-url-scheme
         text: port; url: concept-url-port
+        text: request; concept-request
 
+spec: webappsec-csp; urlPrefix: https://url.spec.whatwg.org
+    type: dfn
+        text: url policy violation; url: does-request-violate-policy
 
 spec: TokenBinding; urlPrefix: https://tools.ietf.org/html/rfc8471#
     type: dfn
@@ -2812,6 +2816,45 @@ The following [=simple exceptions=] can be raised:
 
     :   {{TypeError}}
     ::  The <code>|options|</code> argument was not a valid <code>[[#sctn-credentialrequestoptions-extension|CredentialRequestOptions]]</code> value.
+
+</dl>
+
+The following custom {{DOMException}} can be raised:
+
+<xmp class="idl">
+    [Exposed=Window, Serializable]
+    interface CrossDeviceFallbackError : DOMException {
+        constructor(optional DOMString message = "", CrossDeviceFallbackErrorOptions options);
+
+        readonly attribute boolean deployed;
+    };
+
+    dictionary CrossDeviceFallbackErrorOptions {
+        required boolean deployed;
+    };
+
+</xmp>
+
+The <code>new CrossDeviceFallbackError(|message|)</code> constructor steps are:
+
+1. Set [=this=]'s {{DOMException/name}} to `"CrossDeviceFallbackError"`.
+
+1. Set [=this=]'s {{DOMException/message}} to message.
+
+1. If options["deployed"] is present, set [=this=]'s {{CrossDeviceFallbackError/deployed}} to options["deployed"].
+
+
+{{CrossDeviceFallbackError}} objects are [=serializable objects=].
+
+Their [=serialization steps=], given |value| and |serialized|, are to run the {{DOMException}} [=serialization steps=] given |value| and |serialized|.
+
+Their [=deserialization steps=], given |serialized| and |value|, are to run the {{DOMException}} [=deserialization steps=] given |serialized| and |value|.
+
+
+<dl>
+
+    :   {{CrossDeviceFallbackError}}
+    ::  The error is returned when a valid credential is not found and <code>[[#sctn-cross-device-fallback-url-extension]]</code> was processed.
 
 </dl>
 
@@ -7906,7 +7949,74 @@ This permission MUST be configured per-origin and MUST NOT offer the capability 
 
 This section defines extensions that are both [=client extensions=] and [=authenticator extensions=].
 
-This section is currently empty.
+### Cross Device Fallback URL extension (<dfn>crossDeviceFallbackUrl</dfn>) ### {#sctn-cross-device-fallback-url-extension}
+This [=client extension|client=] [=authentication extension=] allows a [=[RP]=] to include a URL to fallback to for authentication in case a valid credential is not found on a [=roaming authenticator=] via {{AuthenticatorTransport/hybrid}}.
+
+Note: This extension is restricted to {{AuthenticatorTransport/hybrid}}.
+
+: Extension identifier
+:: `crossDeviceFallbackUrl`
+
+: Operation applicability
+:: [=authentication extension|authentication=]
+
+: Client extension input
+:: A single DOMString specifying a fallback URL.
+    <xmp class="idl">
+    partial dictionary AuthenticationExtensionsClientInputs {
+      DOMString crossDeviceFallbackUrl;
+    };
+    partial dictionary AuthenticationExtensionsClientInputsJSON {
+      DOMString crossDeviceFallbackUrl;
+    };
+    </xmp>
+
+: Client extension processing
+:: When [[##sctn-getAssertion|receives an assertion request]]:
+        1. The [=client platform=] strips out the [=crossDeviceFallbackUrl=], and then passes the request to credential manager.
+        1. If a [=credential=] is found on the [=roaming authenticator=]:
+            1. Continue with normal processing.
+        1. Otherwise:
+            1. [=client platform=] crafts a fake [=request=] to fetch the [=crossDeviceFallbackUrl=] and executes the [=url policy violation=] procedure.
+                1. If the response does not violate then [=client platform=] crafts an [=authentication=] request including [=crossDeviceFallbackUrl=] for the [=authenticator=] device, and continues processing.
+                1. Otherwise, Continue with normal processing ignoring [=crossDeviceFallbackUrl=].
+
+: Client extension output
+:: Returns the value [TRUE] to indicate to the [=[RP]=] that the extension was acted upon.
+    <xmp class="idl">
+    partial dictionary AuthenticationExtensionsClientOutputs {
+      boolean crossDeviceFallbackUrl;
+    };
+    partial dictionary AuthenticationExtensionsClientOutputsJSON {
+      boolean crossDeviceFallbackUrl;
+    };
+    </xmp>
+
+: Authenticator extension input
+:: A single DOMString specifying a fallback URL.
+    <xmp class="idl">
+    partial dictionary AuthenticationExtensionsAuthenticatorInputs {
+      DOMString crossDeviceFallbackUrl;
+    };
+    </xmp>
+
+: Authenticator extension processing
+:: When [[##sctn-getAssertion|sending an assertion request over {{AuthenticatorTransport/hybrid}}]]:
+        1. The remote [=client platform=] strips out the [=crossDeviceFallbackUrl=], and then passes the request to enable credential managers.
+        1. If the [=authenticator=] finds a credential that can satisfy the request:
+            1. Ignore the [=crossDeviceFallbackUrl=] extension and continue with normal processing.
+        1. Otherwise:
+            1. Deploy [=crossDeviceFallbackUrl=] on the [=authenticator=] device
+            1. Include [=authenticator extension output=] in the response
+
+: Authenticator extension output
+:: Returns the value [TRUE] to indicate to the [=client=] that the extension was acted upon.
+    <xmp class="idl">
+    partial dictionary AuthenticationExtensionsAuthenticatorOutputs {
+      boolean crossDeviceFallbackUrl;
+    };
+    </xmp>
+
 
 
 # User Agent Automation # {#sctn-automation}
