@@ -222,8 +222,22 @@ def gen_tpm_att_cert(ca_cert, ca_key, rand_generator):
 
     return att_cert, att_cert_key
 
+def write_authorization_list(asn1_encoder):
+    with asn1_encoder.construct(asn1.Numbers.Sequence):
+        # purpose   [1] EXPLICIT SET OF INTEGER OPTIONAL
+        with asn1_encoder.construct(1, asn1.Classes.Context):
+            with asn1_encoder.construct(asn1.Numbers.Set):
+                asn1_encoder.write(2) # 2 = KM_PURPOSE_SIGN
 
-def gen_android_key_att_cert(ca_cert, ca_key, challenge, cred_private_key, rand_generator):
+        # origin    [702] EXPLICIT INTEGER OPTIONAL
+        with asn1_encoder.construct(702, asn1.Classes.Context):
+            asn1_encoder.write(0) # 0 = KM_ORIGIN_GENERATED
+
+def write_empty_authorization_list(asn1_encoder):
+    with asn1_encoder.construct(asn1.Numbers.Sequence):
+        pass
+
+def gen_android_key_att_cert(ca_cert, ca_key, challenge, cred_private_key, rand_generator, enforcement):
     att_cert_key = cred_private_key
     subject = x509.Name([
         x509.NameAttribute(NameOID.COMMON_NAME, "WebAuthn test vectors"),
@@ -241,8 +255,16 @@ def gen_android_key_att_cert(ca_cert, ca_key, challenge, cred_private_key, rand_
         asn1_encoder.write(0, asn1.Numbers.Enumerated)
         asn1_encoder.write(challenge)
         asn1_encoder.write(b'')
-        asn1_encoder.write([])
-        asn1_encoder.write([])
+
+        if(enforcement == "software"):
+            write_authorization_list(asn1_encoder)
+            write_empty_authorization_list(asn1_encoder)
+        elif(enforcement == "hardware"):
+            write_empty_authorization_list(asn1_encoder)
+            write_authorization_list(asn1_encoder)
+        else:
+            raise ValueError("Invalid enforcement type")
+
     attestation_ext = asn1_encoder.output()
     att_cert = to_deterministic_cert(
         x509.CertificateBuilder().subject_name(subject)
@@ -539,7 +561,7 @@ def gen_tpm_attestation(gen_rand, challenge, credential_id_length, public_key, o
     return att_obj, client_data
 
 
-def gen_android_key_attestation(gen_rand, challenge, credential_id_length, private_key, public_key, origin=DEFAULT_ORIGIN):
+def gen_android_key_attestation(gen_rand, challenge, credential_id_length, private_key, public_key, enforcement, origin=DEFAULT_ORIGIN):
     client_data = gen_client_data(gen_rand, "webauthn.create", challenge, origin=origin)
 
     aaguid = next_prand(gen_rand, "aaguid", 16)
@@ -547,7 +569,7 @@ def gen_android_key_attestation(gen_rand, challenge, credential_id_length, priva
     att_cred_data = AttestedCredentialData.create(aaguid, credential_id, public_key)
     auth_data = gen_attestation_auth_data(gen_rand, RP_ID_HASH, 0x41, 0, att_cred_data, None)
 
-    att_cert, att_key = gen_android_key_att_cert(att_ca_cert, att_ca_key, sha256(client_data), private_key, gen_rand)
+    att_cert, att_key = gen_android_key_att_cert(att_ca_cert, att_ca_key, sha256(client_data), private_key, gen_rand, enforcement)
     att_obj = AttestationObject.create("android-key", auth_data, {
         "alg": cose.ES256.ALGORITHM,
         "sig": att_key.sign(auth_data + sha256(client_data), ec.ECDSA(hashes.SHA256(), deterministic_signing=True)),
@@ -930,6 +952,7 @@ def test_vectors_android_key_ecdsa(
         cose_class,
         credential_id_length=32,
         challenge_length=32,
+        enforcement="hardware"
 ):
     print()
     print()
@@ -944,7 +967,7 @@ def test_vectors_android_key_ecdsa(
 
     pri_key = ec.derive_private_key(int.from_bytes(next_prand(gen_rand, "credential_private_key", private_key_length), 'big'), crv)
     public_key = cose_class.from_cryptography_key(pri_key.public_key())
-    att_obj, client_data = gen_android_key_attestation(gen_rand, challenge, credential_id_length, pri_key, public_key)
+    att_obj, client_data = gen_android_key_attestation(gen_rand, challenge, credential_id_length, pri_key, public_key, enforcement)
 
     print('</xmp>')
     print()
@@ -1125,6 +1148,15 @@ test_vectors_android_key_ecdsa(
     32,
     ec.SECP256R1(),
     cose.ES256,
+)
+
+test_vectors_android_key_ecdsa(
+    "## Android Key Attestation with ES256 Credential (Software Enforced) ## {#sctn-test-vectors-android-key-es256-softwareEnforced}",
+    'android-key.ES256.softwareEnforced',
+    32,
+    ec.SECP256R1(),
+    cose.ES256,
+    enforcement="software"
 )
 
 test_vectors_apple_ecdsa(
