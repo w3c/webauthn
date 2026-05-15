@@ -34,10 +34,12 @@ See the full instructions at https://tabatkins.github.io/bikeshed/#installing.
 You will need to have the Python 3.7 or later installed. Once you do have Python 3.7 or later installed, to install Bikeshed itself, run the following:
 
 ```
-pip3 install bikeshed && bikeshed update
+pip3 install bikeshed==5.4.2 && bikeshed update
 ```
 
 When that is completed, Bikeshed should be installed, and the `bikeshed` command should work in your shell.
+
+Note: WebAuthn L3 is incompatible with Bikeshed versions greater than 5.4.2.
 
 # Continuous Integration & Branches
 
