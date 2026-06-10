@@ -13,24 +13,26 @@ Akshay Kumar \<[akshayku@microsoft.com](mailto:akshayku@microsoft.com)\>
   - [Contents](#contents)
   - [Summary](#summary)
   - [Background and motivation](#background-and-motivation)
-    - [Why migration is hard today](#why-migration-is-hard-today)
   - [Design goals](#design-goals)
   - [Proposal](#proposal)
     - [1. Multiple credentials per `(rpId, user.id)`](#1-multiple-credentials-per-rpid-userid)
     - [2. The `acceptedAlgs` request option and the `algPolicy` extension on `get()`](#2-the-acceptedalgs-request-option-and-the-algpolicy-extension-on-get)
       - [Behavior at `get()` time](#behavior-at-get-time)
+      - [CTAP mapping](#ctap-mapping)
     - [3. RP-side handling](#3-rp-side-handling)
       - [Operational guidance for RPs](#operational-guidance-for-rps)
-      - [Recommended configuration for RPs](#recommended-configuration-for-rps)
-        - [Two valid RP strategies: composite vs. explicit fallback](#two-valid-rp-strategies-composite-vs-explicit-fallback)
-      - [Orphan credentials and convergence](#orphan-credentials-and-convergence)
-      - [Emergency downgrade depends on server-confirmed fallback coverage](#emergency-downgrade-depends-on-server-confirmed-fallback-coverage)
+      - [PRF and `hmac-secret` on silently-minted credentials](#prf-and-hmac-secret-on-silently-minted-credentials)
     - [4. Selection and pruning on the authenticator / OS](#4-selection-and-pruning-on-the-authenticator--os)
     - [5. Authenticator capability and fallback](#5-authenticator-capability-and-fallback)
-  - [Worked example A: forward migration (ECDSA → ML-DSA)](#worked-example-a-forward-migration-ecdsa--ml-dsa)
-  - [Worked example B: emergency downgrade](#worked-example-b-emergency-downgrade)
-  - [Worked example C: intra-algorithm upgrade (ML-DSA-65 → ML-DSA-87)](#worked-example-c-intra-algorithm-upgrade-ml-dsa-65--ml-dsa-87)
-  - [Worked example D: a new PQC family arrives (multi-family evaluation and migration)](#worked-example-d-a-new-pqc-family-arrives-multi-family-evaluation-and-migration)
+  - [Recommended configuration for RPs](#recommended-configuration-for-rps)
+    - [Strategy 1 — Explicit fallback (pure PQC + classical)](#strategy-1--explicit-fallback-pure-pqc--classical)
+    - [Strategy 2 — Composite / hybrid (single credential)](#strategy-2--composite--hybrid-single-credential)
+      - [Strategy 2 - Homogeneous Fleet Configuration](#strategy-2---homogeneous-fleet-configuration)
+      - [Strategy 2 - Heterogeneous Fleet Configuration](#strategy-2---heterogeneous-fleet-configuration)
+  - [Worked examples](#worked-examples)
+    - [Worked example A: forward migration (ECDSA → ML-DSA)](#worked-example-a-forward-migration-ecdsa--ml-dsa)
+    - [Worked example B: emergency downgrade](#worked-example-b-emergency-downgrade)
+    - [Worked example C: a new PQC family arrives (multi-family evaluation and migration)](#worked-example-c-a-new-pqc-family-arrives-multi-family-evaluation-and-migration)
   - [Security considerations](#security-considerations)
   - [Privacy considerations](#privacy-considerations)
   - [Interaction with other features](#interaction-with-other-features)
@@ -54,11 +56,11 @@ The proposal has three coupled pieces:
    provided each credential uses a *different* COSE algorithm.
 2. **A new top-level `acceptedAlgs` member on
    `PublicKeyCredentialRequestOptions`** — a flat, preference-ordered
-   list of COSE algorithms the RP will validate **right now**. Used
-   both to filter the discoverable-credential candidate set at
-   `get()` time and to choose among multiple credentials for the same
-   account. This is the symmetric counterpart at `get()` of
-   `pubKeyCredParams` at `create()` and lives at the same layer.
+   list of COSE algorithms that governs which credentials are valid
+   **right now** for authentication.
+   * It is used to filter the discoverable-credential candidate set at
+   `get()` time and also to choose among multiple credentials for the same
+   account.
 3. **A new `algPolicy` client extension on `navigator.credentials.get()`**
    that adds the silent-mint provisioning channel:
    * **`createAlgs`** — a list of **algorithm groups**, where each group
@@ -73,8 +75,8 @@ The proposal has three coupled pieces:
      a firmware update that adds a stronger algorithm re-opens the
      group and the authenticator self-upgrades on the next sign-in —
      no RP-side change required.
-   * **Selection and convergence outputs.** The extension never deletes
-     credentials. Old credentials no longer in `acceptedAlgs` are
+   * **Selection and convergence outputs.** This extension itself never
+     deletes credentials. Old credentials no longer in `acceptedAlgs` are
      filtered out of the candidate set and sit dormant on the
      authenticator, available as cold fallback if the RP later widens
      its policy. The extension's output also includes the full list of
@@ -86,14 +88,6 @@ The proposal has three coupled pieces:
      and orphan sweep are both handled by the existing
      [Signal API](signal-api.md), which the RP calls post-ceremony by
      credential ID.
-
-The split is deliberate. `acceptedAlgs` is a plain platform-side
-candidate-set filter that does not require the relaxed credential
-model of piece 1 and that an RP may want to ship on its own — e.g. to
-phase out an algorithm at sign-in without ever invoking silent mints.
-It belongs alongside `pubKeyCredParams`, not inside an extension. The
-`algPolicy` extension is then exactly what its name says: the
-authenticator-side provisioning machinery that depends on piece 1.
 
 The two knobs answer different questions and move independently:
 - `acceptedAlgs` governs which credentials are valid *right now* for authentication.
@@ -107,43 +101,13 @@ mint every variant.
 strongest entry it supports in each group, and re-converges automatically
 if a firmware update later widens its algorithm support.
 
-The decoupling lets the RP pre-provision fallback credentials *before* they are needed. 
-
-Example Scenarios:
-
-* **Forward migration.**
-  * RP ships
-    * `acceptedAlgs: [ML-DSA-87, ML-DSA-65, ML-DSA-44, ES256, RS256]`
-    * `createAlgs: [[ML-DSA-87, ML-DSA-65, ML-DSA-44], [ES256, RS256]]`
-      * Over a few sign-ins, every PQC-capable authenticator quietly acquires
-  the strongest ML-DSA variant it supports alongside the existing ES256/RS256
-  one.
-      * Eventually the RP cuts over by narrowing `acceptedAlgs` to
-  PQC-only and dropping the legacy group from `createAlgs`. Each user
-  who acquired a PQC credential signs in with it; the legacy ES256/RS256
-  credential is filtered out and sits dormant on the authenticator. If
-  the RP wants to free that storage, it issues a Signal API
-  `signalAllAcceptedCredentials` snapshot per user listing only their
-  PQC credential ID — reliable on synced / platform credential
-  providers, best-effort on roaming. Either way no user is locked out:
-  the worst case is a dormant ES256 credential lingering on a security
-  key, which is harmless because the RP won't validate it.
-* **Emergency downgrade.**
-  * If a flaw is later announced in ML-DSA, the RP ships
-    * `acceptedAlgs: [ES256, RS256]`
-      * Every user with a **server-registered** ES256/RS256 fallback signs in
-  seamlessly — no re-enrollment ceremony, no lockout window. Users
-  without one (e.g. PQC-only accounts created after Phase 2) go through
-  a one-time recovery flow; the RP can size and notify this population
-  ahead of cutover by querying its own database (see §3 "Emergency
-  downgrade depends on server-confirmed fallback coverage").
+The decoupling lets the RP pre-provision fallback credentials *before* they are needed.
 
 ## Background and motivation
 
 Passkeys have become a load-bearing authentication primitive for a growing
 number of Relying Parties (RPs), and the cryptographic ground under them
-is about to move. NIST has standardized ML-DSA (FIPS 204) and SLH-DSA
-(FIPS 205); CNSA 2.0, BSI, ANSSI, and similar guidance set concrete
+is about to move. Various organization around the world has set concrete
 deadlines for retiring classical signature algorithms in regulated
 deployments well before cryptographically relevant quantum computers are
 expected to arrive. Every RP that has deployed ECDSA / RSA / EdDSA
@@ -180,15 +144,14 @@ of bad choices. Concretely:
   of the fleet.
 
 * **There is no capability discovery.** WebAuthn gives the RP no way
-  to ask, ahead of time, which algorithms a given authenticator can
-  generate. `pubKeyCredParams` is a one-shot negotiation evaluated
+  to ask, ahead of time, which authenticator user will select and what
+  algorithms a given authenticator can generate.
+  `pubKeyCredParams` is a one-shot negotiation evaluated
   inside a single `create()` ceremony; the RP learns what the
   authenticator could do only by attempting a registration and
   inspecting the resulting credential's `alg`. This makes it
-  impossible to plan a rollout, size the PQC-capable population,
-  pre-provision fallbacks selectively, or even tell, after the fact,
-  which of an RP's users are PQC-protected without instrumenting and
-  aggregating every sign-in.
+  very hard to plan a rollout, size the PQC-capable population,
+  pre-provision fallbacks selectively etc.
 
 * **Algorithm policy is a registration-time decision, not an
   authentication-time one.** Today the RP expresses its algorithm
@@ -219,35 +182,17 @@ Post-quantum migration is the immediate forcing function, but the same
 shortcomings will recur at every future algorithm transition.
 Cryptographic agility is a recurring operational need, not a one-time
 event, and the mechanism designed for "classical ⇒ PQC" must equally
-serve "ML-DSA-65 ⇒ ML-DSA-87," "PQC ⇒ next-PQC," and the emergency
-downgrade direction. The proposal in the rest of this document gives
-RPs the three pieces they are missing — multiple credentials per
-account on a single authenticator, an authentication-time algorithm
-policy, and an opportunistic provisioning channel that converges the
+serve "ML-DSA-65 ⇒ ML-DSA-87", "MLDSA ⇒ next-PQC" and the emergency
+downgrade "PQC ⇒ classical" direction.
+
+The proposal in the rest of this document gives
+RPs the three pieces they are missing
+  * Multiple credentials per account on a single authenticator
+  * An authentication-time algorithm policy
+  * Opportunistic provisioning channel that converges the
 fleet over time — so that migration becomes a configuration change the
 RP rolls out at its own pace, with no re-enrollment ceremony and no
 lockout window.
-
-### Why migration is hard today
-
-The structural limitations summarized above — single credential per
-`(rpId, user.id)`, no capability discovery, registration-time-only
-policy, and no pre-provisioned algorithm fallback — combine to leave an
-RP migrating from ECDSA to a PQC algorithm with only two unattractive
-options:
-
-* **Re-enroll every user explicitly.** Drive every user through a
-  `navigator.credentials.create()` ceremony. This is disruptive, requires
-  every user to be re-authenticated by some other means first, and is
-  effectively impossible to complete for the long tail of inactive users
-  without locking them out.
-* **Flip the switch.** Issue PQC credentials on next login via a
-  `create()` call. But because the new credential overwrites the old one on
-  the authenticator, any failure (RP backend error, lost device before the
-  new public key is registered, user cancels, authenticator that does not
-  yet support the new algorithm) risks account lockout. The RP must
-  effectively retain the ability to fall back to ECDSA per-user, which is
-  exactly the migration state it is trying to leave.
 
 ## Design goals
 
@@ -255,7 +200,7 @@ options:
   during ordinary `get()` flows.
 * **No window of lockout.** The legacy credential remains usable until the
   new credential is verifiably accepted by the RP backend.
-* **Authenticator-driven minimal change.** Authenticators that cannot
+* **No authenticator left behind.** Authenticators that cannot
   generate PQC keys still keep working (they simply continue to assert with
   their existing credential as long as the RP accepts it).
 * **Algorithm-agnostic.** The mechanism must be reusable for any future
@@ -298,8 +243,10 @@ things they actually do:
 * **`algPolicy`** is a new client extension that carries the silent-mint
   provisioning machinery: `createAlgs` (which credentials the account
   should hold), `createExtensions` (extension inputs applied to silently
-  minted credentials), and the outputs `createdCredentials` and
-  `existingCredentials`. Everything in this extension depends on §1.
+  minted credentials), and the output `createdCredentials`. The
+  orphan-sweep list (`existingCredentials`) is **not** a client output;
+  it is delivered only in the signed `authData` (see §2 steps 6–7). This
+  extension depends on §1.
 
 The two inputs are independent: `acceptedAlgs` governs *runtime*
 behavior (which credentials are valid right now), and `createAlgs`
@@ -320,12 +267,6 @@ partial dictionary PublicKeyCredentialRequestOptions {
   // both to filter the discoverable-credential candidate set and to
   // choose among multiple credentials for the same (rpId, user.id).
   //
-  // Symmetric counterpart of `pubKeyCredParams` on
-  // `PublicKeyCredentialCreationOptions`. Clients that do not
-  // recognize this member ignore it; the assertion then proceeds
-  // unfiltered and the RP's server-side `alg` check catches anything
-  // outside policy.
-  //
   sequence<COSEAlgorithmIdentifier> acceptedAlgs;
 };
 
@@ -345,7 +286,7 @@ dictionary AuthenticationExtensionsAlgPolicyInputs {
   //
   // For each group, the authenticator first identifies the BEST entry it
   // supports — the earliest entry in the group whose algorithm this
-  // authenticator can mint. Call that algorithm B.
+  // authenticator can mint. Let's call that algorithm B.
   //
   // A group is SATISFIED iff an existing credential under
   // (rpId, user.id) uses algorithm B. If no entry in the group is
@@ -363,27 +304,27 @@ dictionary AuthenticationExtensionsAlgPolicyInputs {
   //
   // At most THREE groups may be listed. The client rejects a get() whose
   // createAlgs has more than three groups with a TypeError. Each group an
-  // authenticator satisfies consumes one persistent credential slot, and
-  // roaming security keys hold only ~25-50 slots; three groups covers
-  // every legitimate configuration (1: PQC; 2: PQC + classical fallback;
-  // 3: a transient new-family / current-PQC / classical migration peak).
+  // authenticator satisfies consumes one persistent credential slot.
   // The length of each group is unbounded — a group of any length mints
   // exactly one credential, so the cap is on the OUTER list only.
   //
   required sequence<sequence<COSEAlgorithmIdentifier>> createAlgs;
 
   //
-  // Extension inputs applied to every credential silently minted in
-  // step 5 of §2 "Behavior at `get()` time". Same dictionary shape as
+  // Extension inputs applied to every credential silently created in this
+  // ceremony. It has the same dictionary input as
   // the `extensions` member on `PublicKeyCredentialCreationOptions`,
   // and processed by the authenticator identically to how `create()`
   // would process them.
   //
-  // This lets the RP enable create-time per-credential state
-  // (e.g. PRF secret, largeBlob storage, credBlob) on silently-minted
-  // credentials — such state cannot be added retroactively. Without
-  // it, a silent mint produces a credential that authenticates but
-  // lacks any extension-bound capability the RP relies on.
+  // This lets the RP evaluate extensions (for example PRF) on silently-minted
+  // credentials. Without it, a silent mint produces a credential that
+  // authenticates but lacks any extension-bound capability the RP relies on.
+  //
+  // NOTE on PRF: a silently-minted credential gets its own independent PRF
+  // secret, so its PRF output differs from the asserting credential's. To
+  // obtain that output in THIS ceremony (so the RP can re-wrap PRF-derived
+  // data), the mint must evaluate PRF at makeCredential time.
   //
   AuthenticationExtensionsClientInputs createExtensions;
 };
@@ -398,24 +339,24 @@ dictionary AuthenticationExtensionsAlgPolicyOutputs {
   // per `createAlgs` group the authenticator chose to satisfy. Order is
   // not guaranteed; the RP must inspect each entry's algorithm.
   //
+  // On roaming authenticators these attestation objects are conveyed as
+  // the UNSIGNED output of the algPolicy authenticator extension (the
+  // `unsignedExtensionOutputs` field of the authenticatorGetAssertion
+  // response), and authenticated by the signed {id, pkHash, alg}
+  // bindings carried in authData.extensions. The public-key bytes travel
+  // exactly once; the signed pkHash commits to them.
+  //
   sequence<AuthenticatorAttestationResponseJSON> createdCredentials;
-
-  //
-  // The full set of credential IDs the authenticator currently holds
-  // for (rpId, user.id), including the one used for this assertion and
-  // any entry just added in `createdCredentials`.
-  //
-  // Lets the RP detect ORPHAN credentials — credentials that exist on
-  // the authenticator but never made it into the RP's database (e.g.
-  // because a prior `createdCredentials` upload failed). The RP
-  // compares this list against its own registration records; for each
-  // ID it does not recognize, it issues `signalUnknownCredential` so
-  // the provider deletes the orphan. The next ceremony will re-mint
-  // the corresponding group, giving the upload another chance.
-  //
-  sequence<Base64URLString> existingCredentials;
 };
 ```
+
+There is **no** `existingCredentials` member on this
+client-output dictionary. The existing credentials list lives **only** in the
+signed `authData.extensions.algPolicy` map as one source of truth. By
+contrast, `createdCredentials` *is* a client extension output.
+This is because of the fact that authenticatorMakeCredential output contains unsignedExtensions like PRF and that should not be signed over by the
+authenticating credential. Newly created credentials are authenticated
+indirectly by the signed `pkHash` bindings.
 
 #### Behavior at `get()` time
 
@@ -439,8 +380,19 @@ extension):
    selection, not user choice: from the user's point of view the multiple
    credentials are a single "account" — the algorithm is an implementation
    detail.
-4. The assertion proceeds normally. User verification is gathered once and
-   reused for both the assertion and any silent creations in step 5.
+4. **Gather authorization once.** The authenticator collects user
+   presence and (if required) user verification a single time. This one
+   gesture authorizes *both* the assertion and any silent creations in
+   step 5; no second prompt is shown. Note that this step only collects
+   the user gesture — it does **not** yet produce the assertion
+   signature. The signature is computed last (after steps 5–7), because
+   it covers `authData`, and `authData` must already carry the binding
+   entries (step 6) and `existingCredentials` (step 7), both of which
+   depend on the mint in step 5 having already happened. The effective
+   order within the ceremony is therefore: collect authorization (step
+   4) → mint (step 5) → assemble `authData` with bindings +
+   `existingCredentials` (steps 6–7) → sign `authData` and return the
+   assertion.
 5. **Silent in-ceremony creation.** If `createAlgs` is present, the
    client first validates it: a `createAlgs` with **more than three
    groups** is rejected with a `TypeError` before the ceremony proceeds
@@ -502,10 +454,15 @@ extension):
 
    ```cddl
    algPolicy = {
-     1: [* binding-entry],   ; "bindings" — one entry per credential
+     1: [* bstr],            ; "existingCredentials" — the full set of
+                             ; credential IDs the authenticator holds
+                             ; for (rpId, user.id); see step 7. Always
+                             ; present (at minimum the asserting
+                             ; credential's ID).
+     2: [* binding-entry],   ; "bindings" — one entry per credential
                              ; minted in step 5; empty when none were
-                             ; minted, in which case the extension
-                             ; output MAY be omitted entirely.
+                             ; minted, in which case this key MAY be
+                             ; omitted.
    }
 
    binding-entry = {
@@ -523,10 +480,16 @@ extension):
    }
    ```
 
-   Integer map keys are used for on-the-wire compactness. Both the
-   top-level map and each `binding-entry` are **extensible**: future
-   revisions of this extension MAY define additional integer keys for
-   new fields, and verifiers **MUST** ignore unknown keys to preserve
+   Both `bindings` and `existingCredentials` ride in the **signed**
+   `authData.extensions`: the binding entries authenticate each minted
+   public key, and `existingCredentials` is authenticated because it
+   drives `signalUnknownCredential` (a *deletion*) on the RP side — a
+   list an attacker could tamper with to suppress orphan detection or
+   provoke spurious sweeps if it were unsigned. Integer map keys are
+   used for on-the-wire compactness. Both the top-level map and each
+   `binding-entry` are **extensible**: future revisions of this
+   extension MAY define additional integer keys for new fields, and
+   verifiers **MUST** ignore unknown keys to preserve
    forward-compatibility.
 
    The RP **MUST** verify, before persisting any entry in
@@ -538,16 +501,65 @@ extension):
    binding **MUST** be discarded. See §3 "RP-side handling" for the
    complete flow, and "Asserter-binding of silently-minted credentials"
    in Security considerations for the threat model this closes.
-7. **Emit `existingCredentials`.** The authenticator populates
-   `algPolicy.existingCredentials` with the credential IDs it
+
+   **How the public key reaches the RP (roaming authenticators).** The
+   binding entry above is only a *commitment* — `pkHash` is a digest, not
+   the key. The minted credential's actual public key must still travel
+   from the authenticator to the client, and on a roaming security key
+   that means it must be carried in the `authenticatorGetAssertion`
+   response over CTAP. It is carried as the **unsigned** output of the
+   `algPolicy` authenticator extension — i.e. in the
+   `unsignedExtensionOutputs` field of the assertion response (CTAP map
+   key `0x08`), *not* in the signed `authData` — as a list of
+   `attestationObject`s (`fmt: "none"`, `authData` with attested
+   credential data, empty `attStmt`), one per credential minted in step 5.
+   The client surfaces them as the `AuthenticatorAttestationResponse`-shaped
+   entries in `algPolicy.createdCredentials`. `algPolicy` therefore has
+   **two** authenticator-extension outputs working as a pair: a small
+   **signed** output (the `{id, pkHash, alg}` bindings in
+   `authData.extensions`, integrity-protected by the assertion signature)
+   and a larger **unsigned** output (the attestation objects in
+   `unsignedExtensionOutputs`, carrying the public-key bytes). The RP
+   recomputes SHA-256 over each conveyed COSE public key and matches it
+   against the signed `pkHash`, so the unsigned payload inherits the
+   signed commitment's integrity without itself being signed.
+
+   This split is deliberate and is the minimum-size design. The public
+   key is **irreducible**: there is no way for the RP to learn a freshly
+   minted public key without those bytes transiting the assertion
+   response — for ML-DSA that is ~1.3 KB (-44) to ~2.6 KB (-87) per
+   credential. The split avoids paying that cost *twice*: signing the
+   key into `authData` would duplicate every public-key byte under the
+   signature (and re-impose a canonical-encoding burden on the RP),
+   whereas a 32-byte `pkHash` authenticates the same payload at fixed
+   cost. Fixing attestation at `"none"` keeps `attStmt` empty, so the
+   only large object on the wire is the public key itself. A constrained
+   authenticator that cannot afford multiple groups simply mints fewer groups
+   (it **MUST NOT** fail the assertion), and the remaining groups
+   are filled on later sign-ins.
+
+   Beyond size, the split also respects what the minted output *is*: by
+   CTAP's own model it is an **unsigned** `makeCredential` result
+   (`fmt: "none"`, empty `attStmt`), produced by a `makeCredential`
+   nested inside the `getAssertion`. It also has unsigned extension output
+   like PRF. Embedding it in the assertion's signed `authData` would mean
+   copying an unsigned-by-design artifact into the signed region.
+   The two-channel split keeps it in its natural unsigned home and
+   lets it inherit integrity from the signed `pkHash` instead.
+
+7. **Emit `existingCredentials`.** In the **same signed `algPolicy`
+   map in `authData.extensions`** (key `1`, alongside the `bindings` of
+   step 6 at key `2`), the authenticator publishes the credential IDs it
    currently holds for `(rpId, user.id)`, including the credential
    used for the assertion and any credential just added in step 5.
-   The RP uses this list to detect and sweep ORPHAN credentials —
-   credentials that exist on the authenticator but that the RP does
-   not have registered (typically because a prior `createdCredentials`
-   upload failed). See "Orphan credentials and convergence" in §3 for
-   the full RP-side handling. Authenticators that do not support the
-   relaxed credential model (§1) MUST still emit
+   It is carried in the signed `authData` — not in
+   `unsignedExtensionOutputs` — precisely because the RP acts on it
+   destructively (see below). The RP uses this list to detect and sweep
+   ORPHAN credentials — credentials that exist on the authenticator but
+   that the RP does not have registered (typically because a prior
+   `createdCredentials` upload failed). See "Orphan credentials and
+   convergence" in §3 for the full RP-side handling. Authenticators that
+   do not support the relaxed credential model (§1) MUST still emit
    `existingCredentials`, containing the single credential ID used
    for the assertion.
 
@@ -593,11 +605,10 @@ every legitimate configuration:
 * **One group** — a single PQC credential (or a self-fallback composite).
   The common steady state.
 * **Two groups** — PQC plus a classical fallback. The canonical
-  crypto-agility / emergency-downgrade configuration the whole proposal
-  is built around.
+  crypto-agility / emergency-downgrade configuration.
 * **Three groups** — a transient migration peak: a newly-standardized PQC
   family, the current PQC family, and the classical fallback held in
-  parallel while the RP evaluates the new family (see Worked Example D).
+  parallel while the RP evaluates the new family (see Worked Example C).
   Once the RP commits, it migrates away from one family and drops back to
   two.
 
@@ -644,11 +655,77 @@ that across several independent buckets at once:
 * *Classical fallback (a second group):* `[ES256, RS256]` — ECC
   preferred, RSA accepted from authenticators that don't support ECC.
 
+This also accommodates a genuine **difference of opinion across RPs**
+about how PQC-plus-classical hedging should be expressed. There are two
+defensible philosophies, and organizations legitimately disagree on
+which is better:
+
+* **One composite credential.** Treat a composite ML-DSA+classical
+  algorithm (e.g. `ML-DSA-65-ECDSA-P384-SHA512`) as a *single*
+  algorithm and mint *one* credential whose signature carries both legs.
+  RPs who prefer a single credential per account — simpler database
+  model, one registration record, hedging handled inside the
+  algorithm — favor this. However this only works when every authenticator
+  support composite credentials.
+* **Two separate credentials.** Mint a *pure* ML-DSA credential and a
+  *separate* classical credential, hedging at the credential layer
+  rather than inside one algorithm. RPs who want each leg
+  independently registrable, revocable, and observable — or who do not
+  want to depend on a composite algorithm being standardized and widely
+  supported — favor this.
+
+The group model is deliberately **neutral** between the two. An RP that
+prefers the separate-credentials philosophy expresses it as two groups
+(`[[ML-DSA...], [ES256, RS256]]`) and gets two independent credentials.
+An RP that prefers the composite philosophy simply lists the composite
+algorithm — in a single group, even alongside a pure-PQC fallback for
+authenticators that lack composite support
+(`[[ML-DSA-65-ECDSA-P384-SHA512, ML-DSA-65]]`) — and gets one credential.
+Nothing in this proposal forces either choice: groups *add* the
+separate-credentials option for the RPs who want it without taking the
+composite option away from the RPs who prefer that.
+
 Groups make "one (best) credential per group" the explicit, structural
 contract, and let each RP choose how many buckets it wants — one group
 for a single-credential strategy, several for explicit fallback and
-multi-family evaluation (see "Two valid RP strategies" in §3 and Worked
-Example D).
+multi-family evaluation (see "Recommended configuration for RPs"
+and Worked Example C).
+
+#### CTAP mapping
+
+The two WebAuthn-layer inputs map onto `authenticatorGetAssertion`
+along the **same layering** they have in the API — core credential
+selection stays at the top level, and only the silent-mint machinery
+lives in the extension:
+
+* **`acceptedAlgs` → a top-level `authenticatorGetAssertion`
+  parameter**, *not* an `algPolicy` extension field. It governs which
+  discoverable credentials are eligible and their signing-preference
+  order — authenticator-core selection behavior that must work for a
+  plain assertion with no minting at all. Burying it in the extension
+  would wrongly make algorithm filtering conditional on the silent-mint
+  feature being present. (This is the CTAP edit noted in Open Question
+  2.)
+* **`algPolicy` extension carries only `createAlgs` and
+  `createExtensions`** — the inputs that exist solely to drive
+  in-ceremony minting.
+* **PRF salts nest inside `createExtensions`.** Because the client
+  performs the PRF → `hmac-secret` translation, by the CTAP layer the
+  `prf` member of `createExtensions` has become **`hmac-secret-mc`**
+  (CTAP 2.2) carried *inside* `algPolicy.createExtensions`, where it
+  binds to the mint. It **MUST NOT** be hoisted to the top-level
+  extensions map: the top-level `hmac-secret` slot evaluates against the
+  **asserting** credential, so the two PRF evaluations are kept
+  unambiguous — top-level `hmac-secret` → old credential,
+  `algPolicy.createExtensions["hmac-secret-mc"]` → minted credential.
+
+Symmetrically on the response: the asserting credential's outputs
+(including its `hmac-secret` PRF output) sit in the signed
+`authData.extensions`, while each minted credential's attestation object
+— and the minted credential's own `hmac-secret` PRF output nested in
+*its* `authData.extensions` — travels in `unsignedExtensionOutputs`
+under `algPolicy`, authenticated by the signed `pkHash` binding (see §2
+steps 6–7).
 
 ### 3. RP-side handling
 
@@ -668,8 +745,12 @@ const assertion = await navigator.credentials.get({
     // -87), and ECC, and RSA — in that preference order at assertion
     // time. Symmetric counterpart of `pubKeyCredParams` on create().
     acceptedAlgs: [
-      alg["ML-DSA-87"], alg["ML-DSA-65"], alg["ML-DSA-44"],
-      alg["ES256"],     alg["RS256"],
+      alg["ML-DSA-87"],
+      alg["ML-DSA-65"],
+      alg["ML-DSA-44"],
+      alg["ES384"],
+      alg["ES256"],
+      alg["RS256"],
     ],
     extensions: {
       algPolicy: {
@@ -677,15 +758,23 @@ const assertion = await navigator.credentials.get({
         // classical fallback. Each group is ordered strongest-first; the
         // authenticator reaches for the best entry it supports.
         createAlgs: [
-          [alg["ML-DSA-87"], alg["ML-DSA-65"], alg["ML-DSA-44"]],
-          [alg["ES256"],     alg["RS256"]],
+          [
+            alg["ML-DSA-87"],
+            alg["ML-DSA-65"],
+            alg["ML-DSA-44"]
+          ],
+          [
+            alg["ES384"],
+            alg["ES256"],
+            alg["RS256"]
+          ],
         ],
         // Extension inputs applied to every silently-minted credential.
         // Same shape as `extensions` on create(). Use this to enable
         // any create-time per-credential state the RP needs on the new
         // credentials (PRF, largeBlob, credBlob, ...).
         createExtensions: {
-          // e.g. prf: {}, largeBlob: { support: "preferred" }, ...
+          // e.g. prf: {} ...
         },
       },
     },
@@ -712,8 +801,15 @@ for (const created of ext?.createdCredentials ?? []) {
 // from a prior `createdCredentials` upload that failed. Asking the
 // provider to delete it re-opens the corresponding `createAlgs` group
 // for a fresh mint on the next ceremony.
+//
+// The ID list MUST be read from the SIGNED authData, never from
+// getClientExtensionResults(): the RP acts on it destructively
+// (signalUnknownCredential = deletion), so it must come from a signed
+// source. `existingCredentialsFromAuthData` parses key 1 of the
+// `algPolicy` map in `assertion.response.authenticatorData`.
+const existingIds = rp.existingCredentialsFromAuthData(assertion);
 const knownIds = new Set(await rp.getCredentialIds(account));
-for (const id of ext?.existingCredentials ?? []) {
+for (const id of existingIds) {
   if (id === assertion.id) continue;       // never sweep the credential we just used
   if (knownIds.has(id)) continue;          // RP already has this one
   await PublicKeyCredential.signalUnknownCredential({
@@ -742,10 +838,61 @@ The RP-side state machine for a typical forward migration is:
     server-registered fallback coverage that makes emergency
     downgrade safe (see "Emergency downgrade depends on
     server-confirmed fallback coverage" below).
-* **Phase 2 — PQC only.** RP ships an atomic configuration change:
-  drops the legacy group from `createAlgs` (now
-  `createAlgs: [[PQC variants...]]` only) and drops the legacy
-  algorithms from `acceptedAlgs` (now `acceptedAlgs: [PQC]`). Users
+* **Phase 2 — dual-accept, PQC-only provisioning.** The RP has
+  concluded that the PQC algorithm is stable and no longer wants to
+  manufacture *new* classical fallbacks, but it **cannot** yet drop
+  classical from `acceptedAlgs` because a residual population of
+  users/authenticators still has no PQC credential. So it keeps
+  acceptance wide but narrows provisioning to PQC only:
+  `acceptedAlgs: [PQC, legacy]` (unchanged from Phase 1) while
+  `createAlgs: [[PQC variants...]]` (the legacy group is dropped). The
+  effect on each population:
+  - **PQC-capable authenticators** that still assert with a legacy
+    credential get a PQC credential silently minted in-ceremony (the
+    PQC group is unsatisfied), exactly as in Phase 1 — the conversion
+    happens with no user friction.
+  - **Authenticators that cannot silently mint PQC** (they do not
+    support the relaxed credential model of §1, or support no algorithm
+    in the PQC group) produce a legacy assertion with an empty
+    `createdCredentials`. Because the RP wants these users converted,
+    it should detect "asserted with a legacy credential **and** no PQC
+    credential was minted or already on file" and **guide the user
+    through an explicit `navigator.credentials.create()` for a PQC
+    credential** (possibly on a different or upgraded authenticator).
+    This is the one phase where the RP actively nudges, rather than
+    relying solely on silent backfill. The "no PQC credential on file"
+    test **MUST** be evaluated against the RP's own database, not just
+    this ceremony's `createdCredentials` — otherwise a user whose PQC
+    credential lives on a *different* authenticator is prompted on every
+    legacy device they own. The RP should also suppress the prompt to at
+    most once per device/session (e.g. a per-user, per-authenticator
+    "already nudged" marker), so a user who declines or defers is not
+    nagged on every sign-in.
+  - **New users registering PQC-only via `create()`** no longer receive
+    a classical fallback (the legacy group is gone) — which is
+    deliberate: the RP has decided new accounts do not need one.
+  Phase 2 is the bridge that *drains* the classical population down to
+  zero PQC-less accounts before the RP is willing to stop accepting
+  classical at all. The RP stays in Phase 2 until its database shows the
+  PQC-less population has fallen below whatever threshold it considers
+  safe for the Phase 3 cutover.
+
+  Note the tradeoff Phase 2 accepts: by dropping the legacy group from
+  `createAlgs`, the RP stops manufacturing the **server-registered
+  classical fallbacks** that make emergency downgrade safe (see
+  "Emergency downgrade depends on server-confirmed fallback coverage"
+  below). Existing fallbacks are retained, but new accounts created in
+  Phase 2 will not have one. This is deliberate — it is the point at
+  which the RP judges PQC trustworthy enough that fresh downgrade
+  insurance is no longer worth the extra credential slot — but the RP
+  should enter Phase 2 consciously, knowing classical-fallback coverage
+  for new users stops growing from here.
+* **Phase 3 — PQC only.** RP ships the final cutover. Coming from
+  Phase 2, `createAlgs` is already PQC-only, so the only change is
+  dropping the legacy algorithms from `acceptedAlgs` (now
+  `acceptedAlgs: [PQC]`). (An RP that skipped Phase 2 makes both edits
+  at once — drop the legacy group from `createAlgs` *and* the legacy
+  algorithms from `acceptedAlgs`.) Users
   asserting with a legacy credential get filtered out at step 1; the
   platform's discoverable-credential picker will not offer the legacy
   credential. The dormant legacy credential lingers on the authenticator
@@ -791,7 +938,7 @@ rules captures the operational discipline:
    deletes credentials. Old credentials filtered out by `acceptedAlgs`
    sit dormant on the authenticator; they will never be selected at
    assertion time because the RP won't validate them. If you want to
-   reclaim that storage — e.g. after a Phase 2 PQC-only cutover — use
+   reclaim that storage — e.g. after a Phase 3 PQC-only cutover — use
    the [Signal API](signal-api.md). `signalAllAcceptedCredentials`
    (snapshot, per user) is the right shape for cutover cleanup;
    `signalUnknownCredential` (per credential ID) is the right shape
@@ -802,251 +949,68 @@ rules captures the operational discipline:
    a failed cleanup signal is a hygiene miss, not a lockout. Doing
    nothing at all is also fine: dormant credentials are inert.
 5. **Reconcile state on every ceremony.** Sweep orphans surfaced by
-   `existingCredentials` (issue `signalUnknownCredential` for any ID
-   not in your database), and measure server-side fallback coverage
-   before invoking emergency downgrade. See "Orphan credentials and
-   convergence" and "Emergency downgrade depends on server-confirmed
-   fallback coverage" below.
+   the signed `existingCredentials` list in `authData` (issue
+   `signalUnknownCredential` for any ID not in your database), and
+   measure server-side fallback coverage before invoking emergency
+   downgrade. See "Orphan credentials and convergence" and "Emergency
+   downgrade depends on server-confirmed fallback coverage" below.
 
-#### Recommended configuration for RPs
+#### PRF and `hmac-secret` on silently-minted credentials
 
-For the migration scenario this explainer is designed for —
-classical algorithms in production today, PQC algorithms arriving —
-the following **dual-credential standing-state** configuration is
-the recommended default. Every PQC-capable authenticator ends up
-holding both a PQC credential (preferred at assertion time) and a
-classical fallback credential (server-registered, so emergency
-downgrade actually works) for every account.
+If the RP relies on the [PRF extension](prf-extension.md) — e.g. to
+derive an end-to-end-encryption key from the credential — silent mint
+needs care, because **PRF output is per credential**. Each credential
+has its own authenticator-held PRF secret (on security keys, the
+`hmac-secret` `CredRandom` values, generated at credential creation and
+never exported). The same PRF input therefore yields a **different**
+output under the silently-minted credential than under the credential
+the user just asserted with. Migration is *not* transparent for
+PRF-derived secrets: data wrapped under the old credential's PRF output
+cannot be unwrapped with the new credential's output.
 
-```js
-// On navigator.credentials.create() for new registrations:
-pubKeyCredParams: [
-  { type: "public-key", alg: alg["ML-DSA-87"] },
-  { type: "public-key", alg: alg["ML-DSA-65"] },
-  { type: "public-key", alg: alg["ML-DSA-44"] },
-  { type: "public-key", alg: alg["ES256"]    },
-  { type: "public-key", alg: alg["RS256"]    },
-]
+This is the reason `createExtensions` exists and the reason its PRF
+input must be evaluated **at mint time**: the mint is the one moment the
+RP can obtain the new credential's PRF output in the same ceremony where
+the user is still proving control of the old credential, so it can
+re-wrap old → new without a second round trip.
 
-// On navigator.credentials.get() for sign-in:
-//   top-level (mirrors pubKeyCredParams above):
-acceptedAlgs: [
-  alg["ML-DSA-87"], alg["ML-DSA-65"], alg["ML-DSA-44"],
-  alg["ES256"],     alg["RS256"],
-]
-//   inside extensions.algPolicy:
-algPolicy: {
-  createAlgs: [
-    [alg["ML-DSA-87"], alg["ML-DSA-65"], alg["ML-DSA-44"]],
-    [alg["ES256"],     alg["RS256"]],
-  ],
-}
-```
+The mechanics differ by transport, matching how PRF maps onto each:
 
-This is the Phase 1 standing state. In steady state:
+* **Roaming security keys (USB/NFC/BLE).** Classic `hmac-secret`
+  evaluates **only at assertion**; at `makeCredential` it merely
+  provisions the secret and returns no output. A silent mint is a
+  `makeCredential` nested inside a `getAssertion`, so getting the new
+  credential's PRF output in-ceremony requires **`hmac-secret-mc`**
+  (CTAP 2.2), which accepts `hmac-secret` salts at `makeCredential` and
+  returns the evaluated output in the MC response. The PRF inputs are
+  hashed to salts, encrypted under the **same** PIN/UV-protocol shared
+  secret already established for the assertion (one key agreement,
+  reused), evaluated against the new credential's freshly-generated
+  `CredRandom`, and returned encrypted under that shared secret.
+* **Hybrid (caBLE) and platform authenticators.** The transport already
+  provides confidentiality, so PRF evaluations are conveyed directly
+  rather than as encrypted `hmac-secret` salts. Platform authenticators
+  already evaluate PRF at `create()` time, so the new credential's PRF
+  output is returned inline with the mint. This is the
+  straightforward path.
 
-| User category                                          | Credentials held    | Has classical fallback? |
-|--------------------------------------------------------|---------------------|-------------------------|
-| Existing classical user, PQC-capable authenticator     | PQC + classical     | yes                     |
-| Existing classical user, non-PQC authenticator         | classical only      | yes                     |
-| New user, PQC-capable authenticator                    | PQC + classical     | yes                     |
-| New user, non-PQC authenticator                        | classical only      | yes                     |
+Because the mint reuses the assertion's single UV gesture (§2 step 4),
+the new credential's PRF output is drawn from the same UV regime
+(`CredRandomWithUV` when UV was performed, otherwise the without-UV
+secret) as the assertion's own PRF output — the RP is not accidentally
+comparing a with-UV value against a without-UV one.
 
-("PQC-capable authenticator" means the authenticator supports at
-least one entry in the PQC group.) Every user has a
-server-registered classical credential to fall back on under
-emergency downgrade.
+**Graceful degradation.** If a roaming authenticator supports
+`hmac-secret` but **not** `hmac-secret-mc`, the mint still produces a
+PRF-capable credential, but the extension output reports
+`prf: { enabled: true }` with **no `results`**. The RP cannot obtain the
+new credential's PRF output until a subsequent assertion against that
+credential. The RP **MUST NOT** block the migration on synchronously
+obtaining the PRF output; it should treat the output as deferred,
+exactly as it treats `createdCredentials` coverage as opportunistic,
+and complete any PRF re-wrap on the first ceremony that does surface the
+output.
 
-The cost is modest:
-
-- Two credentials per account on the authenticator: negligible for
-  synced / platform credential providers; bounded but real on
-  roaming security keys with small (~25–50 slot) storage.
-- One extra public key per account on the server.
-- Operational dependency on the orphan-convergence loop, which
-  RPs running `algPolicy` should be operating regardless.
-
-The benefit is uncapped: insurance against any future event that
-forces a change to `acceptedAlgs` — algorithm break, widely-deployed
-library CVE, OS bug, compliance update — without driving the user
-population through re-enrollment.
-
-##### Two valid RP strategies: composite vs. explicit fallback
-
-The group model deliberately supports two different crypto strategies,
-because different RPs want different things and the API should not
-force a choice between them. Both are expressed as `createAlgs`
-configurations that differ only in the number of groups:
-
-* **Explicit fallback (pure PQC + classical) — two groups.** A pure-PQC
-  credential preferred at assertion time and a *separate* classical
-  credential held as a server-registered emergency-downgrade target.
-  This is the recommended default above:
-
-  ```js
-  createAlgs:   [[ML-DSA-87, ML-DSA-65, ML-DSA-44], [ES256, RS256]]
-  acceptedAlgs: [ML-DSA-87, ML-DSA-65, ML-DSA-44, ES256, RS256]
-  ```
-
-  If either leg is later broken, the other is already pre-provisioned
-  and server-registered, so the downgrade is a configuration change
-  rather than a recovery event.
-
-* **Composite / hybrid (single credential) — one group.** If/when
-  **composite signature algorithms** are standardized and widely
-  supported — a single COSE algorithm identifier representing both a
-  PQC and a classical signature in one credential, e.g. a hypothetical
-  `ML-DSA-65+ES256` composite — an RP that prefers this model uses a
-  single group listing the composite variants:
-
-  ```js
-  createAlgs:   [[Composite-87, Composite-65]]
-  acceptedAlgs: [Composite-87, Composite-65]
-  ```
-
-  Here the fallback question collapses: a single composite credential
-  is its own emergency-downgrade target, because a break in one leg
-  still leaves the other leg of the same credential intact. No second
-  group is needed.
-
-  On a **heterogeneous fleet** where some authenticators cannot mint a
-  composite, list the composite and the pure-PQC variant *in the same
-  group*, strongest-first: `[[Composite-65, ML-DSA-65]]`. The
-  best-supported rule then mints the composite where it can and a pure
-  ML-DSA credential everywhere else — one PQC credential per
-  authenticator, never both — and an authenticator that later gains
-  composite support self-upgrades automatically. An RP that also wants
-  the pure-ML-DSA subset to carry an explicit classical fallback adds a
-  second classical group (see open question 3 for the one residual
-  redundancy this introduces).
-
-Both strategies use the same primitive; the only difference is how many
-groups the RP writes. A flat "mint one" list could express only the
-composite strategy — it structurally cannot pre-provision the explicit
-fallback (see "Why groups, not a flat list?" in §2), which is the core
-reason the proposal uses groups. The choice is not even permanent: an
-RP on composites for ML-DSA can move to pure-PQC-plus-explicit-fallback
-for a future family that has no standardized composite, simply by
-reshaping `createAlgs` — without re-enrolling anyone (see Worked
-Example D).
-
-#### Orphan credentials and convergence
-
-A silent mint in step 5 of §2 produces an
-`AuthenticatorAttestationResponse` that the RP must persist via its
-registration endpoint. That call can fail: network error, server
-outage, user closes the tab before the upload completes. When this
-happens, the credential exists on the authenticator but the RP
-doesn't know about it — an **orphan**.
-
-Without remediation, the orphan sits indefinitely:
-
-- The group is satisfied from the authenticator's view, so no re-mint
-  happens on subsequent ceremonies.
-- The authenticator may prefer the orphan at assertion time if
-  `acceptedAlgs` puts its algorithm first, producing assertions the
-  RP cannot validate.
-
-`existingCredentials` exists to close this loop. On every ceremony
-the authenticator publishes the full credential-ID set it holds for
-`(rpId, user.id)`. The RP compares against its own database:
-
-1. Persist any `createdCredentials` from this ceremony (the normal
-   registration path).
-2. For each ID in `existingCredentials` that is **not** the asserting
-   credential and **not** already registered for this user, issue
-   `signalUnknownCredential` to ask the provider to remove it.
-
-After a `signalUnknownCredential` is delivered and processed, the
-orphan is gone from the authenticator. The next ceremony sees the
-group unsatisfied again, mints a fresh credential, and gives the RP
-another chance to persist it. Convergence takes ~1–2 ceremonies
-from the orphan first appearing, with no RP-side bookkeeping beyond
-"credential IDs I have on file for this user."
-
-Two discipline rules:
-
-- **Never `signalUnknownCredential` the credential just used.** The
-  asserting credential is by definition known to the RP (the
-  assertion it just produced was validated against the RP's
-  registered public key). The RP MUST skip the asserting credential's
-  ID when iterating `existingCredentials`.
-- **When the orphan *is* the asserting credential.** If the
-  authenticator selected an orphan to assert with — most often in a
-  discoverable flow where `acceptedAlgs` puts the orphan's algorithm
-  first — the assertion arrives with an unknown credential ID and the
-  RP rejects it. The RP should still inspect `existingCredentials`,
-  `signalUnknownCredential` the orphan, and then either (a) prompt
-  the user to retry (on retry the orphan is gone and either another
-  credential succeeds or the user is routed to recovery) or (b)
-  surface the recovery flow directly if `existingCredentials` shows
-  no other credential the RP recognizes for this user.
-
-Delivery of `signalUnknownCredential` is reliable on synced and
-platform credential providers and best-effort on roaming
-authenticators. If delivery fails, the orphan persists for another
-ceremony; the RP will surface it again and re-issue the signal. The
-loop is idempotent.
-
-#### Emergency downgrade depends on server-confirmed fallback coverage
-
-The fallback credential that makes emergency downgrade work is the
-**server-registered** fallback, not the authenticator-local one. When
-the RP ships `acceptedAlgs: [classical]`, every assertion must
-validate against a public key the RP holds in its database. A
-classical credential that exists on Alice's authenticator but never
-reached the RP's server is useless to her in this moment — the RP
-cannot validate an assertion against a key it does not have.
-
-This means **emergency downgrade safety is a function of the RP's
-server-side coverage, not the authenticator population's local
-ability**. The RP measures coverage by counting users with at least
-one registered credential in the target fallback algorithm class.
-
-Several distinct populations look identical from this measurement:
-
-- Users on authenticators that never supported the fallback algorithm.
-- Users who never signed in during Phase 1, so no silent mint ever
-  occurred.
-- Users whose silent mint succeeded on the authenticator but whose
-  upload failed (orphans, until the convergence loop above sweeps
-  them).
-- Users created via `create()` with PQC-only `pubKeyCredParams` who
-  haven't yet returned for a sign-in.
-
-All four are equivalently "uncovered" and equivalently at risk if
-emergency downgrade lands while they're in this state. The
-orphan-convergence loop shrinks the third bucket toward zero over
-time, making the coverage number a truer reflection of the
-genuinely uncovered population.
-
-Before invoking emergency downgrade, the RP SHOULD:
-
-1. **Measure.** Query the server: how many users lack a registered
-   credential in the fallback algorithm class? What fraction of the
-   active population is that?
-2. **Decide based on urgency × coverage.**
-   * High urgency (e.g. a practical attack published) + high
-     coverage (e.g. >99%): ship the downgrade now; the uncovered
-     tail goes through recovery.
-   * High urgency + low coverage (e.g. <90%): ship the downgrade
-     anyway, but accept that a meaningful fraction of users will
-     hit recovery; staff up support.
-   * Low urgency (e.g. a theoretical weakness, time to plan): delay
-     the downgrade; run an extended Phase-1.5 with widened
-     `createAlgs` to maximize coverage; re-measure before cutting
-     over.
-3. **Notify the uncovered population out of band before the cutover.**
-   Email + magic-link re-enrollment is the canonical pattern.
-4. **Stage by user segment if useful.** Nothing in the extension
-   requires the same `acceptedAlgs` for every user; an RP MAY ship
-   `acceptedAlgs: [classical]` to confirmed-covered users and a
-   wider list to uncovered users to give them more runway.
-
-Users who hit the post-cutover "no credential" UI are then exactly
-the residual genuine uncovered population, and the RP's frontend
-should detect them via session cookie / email recognition and walk
-them through `create()` with an algorithm now in `acceptedAlgs`.
 
 ### 4. Selection and pruning on the authenticator / OS
 
@@ -1127,7 +1091,219 @@ overhead.
   useful on its own; a client that supports both delivers the full
   migration loop.
 
-## Worked example A: forward migration (ECDSA → ML-DSA)
+## Recommended configuration for RPs
+
+Before writing any configuration, an RP should pick a **crypto
+strategy**. The group model deliberately supports two, because
+different RPs want different things and the API should not force a
+choice between them. Both are expressed as `createAlgs` configurations
+that differ only in the number of groups, and the choice is a matter of
+RP preference rather than capability:
+
+* **Explicit fallback (pure PQC + classical) — two groups.** Hedge at
+  the *credential* layer: hold a pure-PQC credential plus a separate
+  classical credential.
+* **Composite / hybrid (single credential) — one group.** Hedge inside
+  the *algorithm*: hold one credential whose signature carries both a
+  PQC and a classical leg.
+
+The two strategies, each with its recommended configuration, follow.
+
+### Strategy 1 — Explicit fallback (pure PQC + classical)
+
+For the migration scenario this explainer is designed for —
+classical algorithms in production today, PQC algorithms arriving —
+this **dual-credential standing-state** configuration is the
+recommended default for RPs who hedge at the credential layer. Every
+PQC-capable authenticator ends up holding both a PQC credential
+(preferred at assertion time) and a classical fallback credential
+(server-registered, so emergency downgrade actually works) for every
+account.
+
+```js
+// On navigator.credentials.create() for new registrations:
+pubKeyCredParams: [
+  { type: "public-key", alg: alg["ML-DSA-87"] },
+  { type: "public-key", alg: alg["ML-DSA-65"] },
+  { type: "public-key", alg: alg["ML-DSA-44"] },
+  { type: "public-key", alg: alg["ES384"] },
+  { type: "public-key", alg: alg["ES256"] },
+  { type: "public-key", alg: alg["RS256"] }
+]
+
+// On navigator.credentials.get() for sign-in:
+//   top-level (mirrors pubKeyCredParams above):
+acceptedAlgs: [
+  alg["ML-DSA-87"],
+  alg["ML-DSA-65"],
+  alg["ML-DSA-44"],
+  alg["ES384"],
+  alg["ES256"],
+  alg["RS256"]
+]
+//   inside extensions.algPolicy:
+algPolicy: {
+  createAlgs: [
+    [
+      alg["ML-DSA-87"],
+      alg["ML-DSA-65"],
+      alg["ML-DSA-44"]
+    ],
+    [
+      alg["ES384"],
+      alg["ES256"],
+      alg["RS256"]
+    ]
+  ]
+}
+```
+
+
+"PQC-capable authenticator" means the authenticator supports at
+least one entry in the PQC group. Every user has a
+server-registered classical credential to fall back on under
+emergency downgrade. If either leg is later broken, the other is
+already pre-provisioned and server-registered, so the downgrade is a
+configuration change rather than a recovery event.
+
+The cost is modest:
+
+- Two credentials per account on the authenticator: negligible for
+  synced / platform credential providers; bounded but real on
+  roaming security keys with small (~25–50 slot) storage.
+- One extra public key per account on the server.
+
+
+### Strategy 2 — Composite / hybrid (single credential)
+
+If/when **composite signature algorithms** are standardized and widely
+supported — a single COSE algorithm identifier representing both a
+PQC and a classical signature in one credential, e.g.
+`ML-DSA-65-ECDSA-P256-SHA512` — an RP that prefers to hedge inside the
+algorithm uses a single group listing the composite variants. This
+explainer uses the following composite names for concreteness; note
+that none of them has an officially assigned COSE algorithm identifier
+yet, so the numeric code points are still to be determined:
+
+* `ML-DSA-87-ECDSA-P384-SHA512`
+* `ML-DSA-65-ECDSA-P384-SHA512`
+* `ML-DSA-65-ECDSA-P256-SHA512`
+* `ML-DSA-44-ECDSA-P256-SHA256`
+
+NOTE: COSE public key format and signature format also needs to be defined
+for above algorithms. COSE public key present in authData is a single
+CBOR map with individual fields and not a concatenation of individual
+COSE public keys for the algorithms involved. How these will be defined
+is unknown at this point. Similarly signature fields in WebAuthn/CTAP
+is a binary blob and not a concatenation of individual algorithms signature.
+Hence these details are unknown at this point and needs to be figured
+out before platforms can commit to these algorithms implementation and
+RP can commit to this configuration.
+
+Another point to consider here is whether the authenticator fleet is
+homogeneous or not for the RP.
+
+#### Strategy 2 - Homogeneous Fleet Configuration
+
+The possible recommended configuration for this strategy for a homogeneous is a single group:
+
+```js
+// On navigator.credentials.create() for new registrations:
+pubKeyCredParams: [
+  { type: "public-key", alg: alg["ML-DSA-87-ECDSA-P384-SHA512"] },
+  { type: "public-key", alg: alg["ML-DSA-65-ECDSA-P384-SHA512"] },
+  { type: "public-key", alg: alg["ML-DSA-65-ECDSA-P256-SHA512"] },
+  { type: "public-key", alg: alg["ML-DSA-44-ECDSA-P256-SHA256"] }
+]
+
+// On navigator.credentials.get() for sign-in:
+//   top-level (mirrors pubKeyCredParams above):
+acceptedAlgs: [
+  alg["ML-DSA-87-ECDSA-P384-SHA512"],
+  alg["ML-DSA-65-ECDSA-P384-SHA512"],
+  alg["ML-DSA-65-ECDSA-P256-SHA512"],
+  alg["ML-DSA-44-ECDSA-P256-SHA256"]
+]
+//   inside extensions.algPolicy:
+algPolicy: {
+  createAlgs: [
+    [
+      alg["ML-DSA-87-ECDSA-P384-SHA512"],
+      alg["ML-DSA-65-ECDSA-P384-SHA512"],
+      alg["ML-DSA-65-ECDSA-P256-SHA512"],
+      alg["ML-DSA-44-ECDSA-P256-SHA256"]
+    ]
+  ],
+}
+```
+
+Here the fallback question collapses: a single composite credential
+is its own emergency-downgrade target, because a break in one leg
+still leaves the other leg of the same credential intact. No second
+group is needed.
+
+#### Strategy 2 - Heterogeneous Fleet Configuration
+
+On a **heterogeneous fleet** where some authenticators cannot mint a
+composite, and RP also want to support classical authenticators
+above homogeneous configuration doesn't work.
+To solve that, RP have to list the pure-PQC variant and classical algorithms
+as a fallback similar to strategy 1. However, in this configuration,
+for authenticators who support composite algorithm, RP will get a composite
+algorithm.
+
+```js
+// On navigator.credentials.create() for new registrations:
+pubKeyCredParams: [
+  { type: "public-key", alg: alg["ML-DSA-87-ECDSA-P384-SHA512"] },
+  { type: "public-key", alg: alg["ML-DSA-65-ECDSA-P384-SHA512"] },
+  { type: "public-key", alg: alg["ML-DSA-65-ECDSA-P256-SHA512"] },
+  { type: "public-key", alg: alg["ML-DSA-44-ECDSA-P256-SHA256"] },
+  { type: "public-key", alg: alg["ML-DSA-87"] },
+  { type: "public-key", alg: alg["ML-DSA-65"] },
+  { type: "public-key", alg: alg["ML-DSA-44"] },
+  { type: "public-key", alg: alg["ES384"] },
+  { type: "public-key", alg: alg["ES256"] },
+  { type: "public-key", alg: alg["RS256"] }
+]
+
+// On navigator.credentials.get() for sign-in:
+acceptedAlgs: [
+  alg["ML-DSA-87-ECDSA-P384-SHA512"],
+  alg["ML-DSA-65-ECDSA-P384-SHA512"],
+  alg["ML-DSA-65-ECDSA-P256-SHA512"],
+  alg["ML-DSA-44-ECDSA-P256-SHA256"],
+  alg["ML-DSA-87"],
+  alg["ML-DSA-65"],
+  alg["ML-DSA-44"],
+  alg["ES384"],
+  alg["ES256"],
+  alg["RS256"]
+]
+//   inside extensions.algPolicy:
+algPolicy: {
+  createAlgs: [
+    [
+      alg["ML-DSA-87-ECDSA-P384-SHA512"],
+      alg["ML-DSA-65-ECDSA-P384-SHA512"],
+      alg["ML-DSA-65-ECDSA-P256-SHA512"],
+      alg["ML-DSA-44-ECDSA-P256-SHA256"],
+      alg["ML-DSA-87"],
+      alg["ML-DSA-65"],
+      alg["ML-DSA-44"]
+    ],
+    [
+      alg["ES384"],
+      alg["ES256"],
+      alg["RS256"]
+    ],
+  ],
+}
+```
+
+## Worked examples
+
+### Worked example A: forward migration (ECDSA → ML-DSA)
 
 1. **Today.** Alice has an ES256 passkey for `example.com` on her phone.
    `example.com` calls `get()` with no extension; the ES256 credential is
@@ -1163,7 +1339,7 @@ overhead.
    no -87 credential exists, so the group becomes unsatisfied. The
    authenticator silently mints an ML-DSA-87 credential. `example.com`
    registers it. No RP-side change was needed.
-6. **Phase 2 cutover.** `example.com` ships
+6. **Phase 3 cutover.** `example.com` ships
    * `acceptedAlgs: [ML-DSA-87, ML-DSA-65, ML-DSA-44]`
    * `createAlgs: [[ML-DSA-87, ML-DSA-65, ML-DSA-44]]` (legacy group dropped)
 
@@ -1184,25 +1360,31 @@ overhead.
 7. **Sign-in on a non-PQC-capable security key.** During Phase 1 no
    entry in the PQC group is supported, so the group is unsatisfiable and
    skipped; `createdCredentials` contains nothing new (the ECC/RSA group
-   was already satisfied by the existing credential). During Phase 2 it
+   was already satisfied by the existing credential). During Phase 3 it
    has no algorithm in `acceptedAlgs` it can satisfy, and `example.com`
    must surface a "please enroll a new authenticator" flow for that user
    through some other channel.
 
-## Worked example B: emergency downgrade
+### Worked example B: emergency downgrade
 
 This example assumes `example.com` ran the Phase 1 policy from Example A
 for long enough that most users have a **server-registered** ES256
-credential alongside their ML-DSA-65 credential, and that it did **not**
-prune the ES256 credentials during Phase 2. The size of the population
-without a server-registered ES256 is something `example.com` can
-measure ahead of any cutover (see "Emergency downgrade depends on
-server-confirmed fallback coverage" in §3).
+credential alongside their ML-DSA-65 credential.
 
 1. **Tuesday morning.** A practical attack against ML-DSA-65 is published.
 2. **Tuesday afternoon.** `example.com` ships a configuration change:
-   * `acceptedAlgs: [ES256, RS256]`
-   * `createAlgs: [[ES256, RS256]]`
+  ```js
+  acceptedAlgs: [
+    alg["ES256"],
+    alg["RS256"]
+  ]
+  createAlgs: [
+    [
+      alg["ES256"],
+      alg["RS256"]
+    ]
+  ]
+  ```
 
    The ML-DSA group is dropped from `createAlgs` entirely (the RP no longer
    wants new ML-DSA credentials), and ML-DSA is no longer accepted at
@@ -1214,107 +1396,9 @@ server-confirmed fallback coverage" in §3).
    so no new credential is minted. `example.com` follows up with
    `signalUnknownCredential` naming the ML-DSA-65 credential ID, and
    Alice's phone (at its discretion) drops the now-revoked credential.
-4. **Bob signs in (no ES256 credential registered server-side).** His
-   ML-DSA-65 credential is filtered out by `acceptedAlgs`. He sees the
-   standard "no credential" UI, then a re-enrollment prompt that
-   `example.com`'s frontend triggers based on session cookie / email
-   recognition. He re-authenticates via a non-WebAuthn factor and
-   establishes a fresh ES256 credential via `create()`.
 
-   Crucially, **`example.com` knew Bob was at risk before Tuesday**:
-   its database showed no ES256 credential registered for him,
-   putting him in the "uncovered" bucket. A well-run RP measures this
-   coverage number ahead of any emergency downgrade and either (a)
-   routes uncovered users to recovery proactively (email + magic
-   link), (b) keeps `acceptedAlgs` permissive for those users for a
-   while longer to give them runway to acquire a fallback, or (c)
-   accepts the support load if the uncovered population is small
-   enough. Bob's experience is the **expected path** for the
-   uncovered tail, not an edge case — it exists for every user whose
-   fallback was not pre-provisioned on the server side, and shrinking
-   that population is exactly why the RP was carrying the ECC/RSA
-   group in `createAlgs` (and exactly why routine use of the
-   `existingCredentials` orphan-sweep loop matters — it converts
-   hidden orphans into either confirmed registrations or genuine
-   uncovered users, keeping the coverage measurement honest).
-5. **Wednesday onwards.** `example.com` may layer a forward migration on
-   top of the downgrade — e.g. once a replacement PQC algorithm is
-   standardized, ship
-   `acceptedAlgs: [ML-DSA-87, ES256, RS256]`,
-   `createAlgs: [[ML-DSA-87], [ES256, RS256]]`. The same primitive handles
-   both directions of motion.
 
-## Worked example C: intra-algorithm upgrade (ML-DSA-65 → ML-DSA-87)
-
-This example picks up after Example A has stabilized: most accounts have
-an ML-DSA-65 credential and an ES256 fallback. The RP now wants the PQC
-population to migrate to ML-DSA-87 as authenticators gain support for it.
-
-Under the best-supported satisfaction rule the **provisioning** side of
-this migration is **not an RP operation**. Assuming the RP followed the
-operational guidance — listing algorithms strongest-first inside each
-group — the mint of ML-DSA-87 happens automatically as authenticators
-upgrade themselves. Cleanup of the now-dormant predecessor credential
-is optional and handled by the Signal API on a best-effort basis.
-
-* **Steady state (from Example A).**
-  * `acceptedAlgs: [ML-DSA-87, ML-DSA-65, ML-DSA-44, ES256, RS256]`
-  * `createAlgs: [[ML-DSA-87, ML-DSA-65, ML-DSA-44], [ES256, RS256]]`
-
-  Each PQC-capable authenticator holds the strongest ML-DSA variant it
-  supports, plus the best classical fallback. -65 and -44 remain in
-  the PQC group as valid mint targets for authenticators that cannot
-  support -87.
-
-* **Alice's phone, originally supporting only ML-DSA-65.** Her account
-  holds an ML-DSA-65 credential. Best-supported in the PQC group = -65,
-  satisfied. No mint on each sign-in.
-
-* **Tuesday: Alice's phone receives a firmware update adding ML-DSA-87
-  support.** The RP did nothing.
-
-* **Wednesday: Alice signs in.** The authenticator re-evaluates the group.
-  Best-supported is now ML-DSA-87. No credential for -87 exists, so the
-  group is unsatisfied. The authenticator silently mints an ML-DSA-87
-  credential and returns it in `createdCredentials`. `example.com`
-  registers the new public key against Alice's account.
-
-* **Thursday onwards: Alice signs in.** Both -87 and -65 credentials
-  exist. At assertion time, -87 is selected (earliest in `acceptedAlgs`).
-  Best-supported in the group is -87, which now exists, so the group is
-  satisfied. No further minting.
-
-* **Bob's security key, which never gains ML-DSA-87 support.** His
-  best-supported in the group is permanently ML-DSA-65. His -65
-  credential satisfies the group forever. The authenticator never
-  attempts to mint -87. No thrashing.
-
-* **Alice's now-redundant ML-DSA-65 (optional cleanup).** Alice's -65
-  credential is dormant: it is never selected for assertion
-  (`acceptedAlgs` prefers -87, which she now has). It costs only
-  authenticator storage, not security. Once `example.com`'s server has
-  confirmed Alice's new -87 credential, it MAY issue
-  `signalUnknownCredential` naming Alice's -65 credential ID, or push
-  `signalAllAcceptedCredentials` listing only her -87 + ES256.
-  Alice's phone (a synced credential provider) honors the signal
-  reliably; on a roaming security key the signal would be best-effort.
-  **Bob's authenticator is unaffected**: the RP targets cleanup by
-  credential ID, and Bob's -65 is still his strongest available PQC
-  credential.
-
-  Doing nothing is also fine. A dormant -65 lingering on Alice's
-  authenticator is harmless storage overhead — it cannot be used to
-  authenticate because the RP would refuse the assertion at
-  `acceptedAlgs` filtering. The Signal API's best-effort delivery on
-  roaming transports is tolerable precisely because cleanup is hygiene,
-  not security.
-
-The entire intra-group migration takes zero changes to `createAlgs` or
-`acceptedAlgs` (Alice's -87 mint is fully automatic), and at most one
-Signal API call per authenticator-that-actually-upgraded for the
-optional cleanup.
-
-## Worked example D: a new PQC family arrives (multi-family evaluation and migration)
+### Worked example C: a new PQC family arrives (multi-family evaluation and migration)
 
 This example shows two things the group model makes possible that a
 flat "mint one" list cannot: holding **three algorithm families at
@@ -1331,8 +1415,33 @@ before committing.
   ships a three-group policy:
 
   ```js
-  acceptedAlgs: [NewPQC-A, NewPQC-B, ML-DSA-87, ML-DSA-65, ES256, RS256]
-  createAlgs:   [[NewPQC-A, NewPQC-B], [ML-DSA-87, ML-DSA-65, ML-DSA-44], [ES256, RS256]]
+  acceptedAlgs: [
+    alg["NewPQC-A"],
+    alg["NewPQC-B"],
+    alg["ML-DSA-87"],
+    alg["ML-DSA-65"],
+    alg["ML-DSA-44"],
+    alg["ES384"],
+    alg["ES256"],
+    alg["RS256"]
+  ]
+  createAlgs: [
+    [
+      alg["NewPQC-A"],
+      alg["NewPQC-B"]
+    ],
+    [
+      alg["ML-DSA-87"],
+      alg["ML-DSA-65"],
+      alg["ML-DSA-44"]
+    ],
+    [
+      alg["ES384"],
+      alg["ES256"],
+      alg["RS256"]
+    ]
+  ]
+
   ```
 
   Over a few sign-ins, every authenticator converges to **one
@@ -1353,6 +1462,28 @@ before committing.
 * **Commit and migrate away from ML-DSA.** Once `example.com` decides
   NewPQC wins, it drops the ML-DSA group from `createAlgs` and removes
   ML-DSA from `acceptedAlgs`:
+
+  ```js
+  acceptedAlgs: [
+    alg["NewPQC-A"],
+    alg["NewPQC-B"],
+    alg["ES384"],
+    alg["ES256"],
+    alg["RS256"]
+  ]
+  createAlgs: [
+    [
+      alg["NewPQC-A"],
+      alg["NewPQC-B"]
+    ],
+    [
+      alg["ES384"],
+      alg["ES256"],
+      alg["RS256"]
+    ]
+  ]
+
+  ```
 
   ```js
   acceptedAlgs: [NewPQC-A, NewPQC-B, ES256, RS256]
@@ -1482,7 +1613,7 @@ before retiring the current one.
   the **sole mechanism** for retiring credentials under this
   extension. `algPolicy` itself never deletes credentials; old ones
   filtered out by `acceptedAlgs` sit dormant on the authenticator.
-  When an RP wants to reclaim that storage — after a Phase 2 cutover,
+  When an RP wants to reclaim that storage — after a Phase 3 cutover,
   after an intra-group upgrade, or to revoke a specific compromised
   credential — it uses one of:
   - **`signalAllAcceptedCredentials`** (snapshot, per user): the
@@ -1542,16 +1673,20 @@ before retiring the current one.
    is the symmetric counterpart of `pubKeyCredParams` at `create()`
    and is a plain candidate-set filter independent of the silent-mint
    machinery. The alternative is to keep it inside the `algPolicy`
-   extension. The top-level placement implies a CTAP edit to thread
-   the field through `authenticatorGetAssertion` (so on-authenticator
-   credential selection respects it), and the heavier process weight
-   of a top-level option versus an extension registry entry. The
-   current proposal takes the top-level position.
+   extension. The top-level placement implies a CTAP edit to add
+   `acceptedAlgs` as a **top-level `authenticatorGetAssertion`
+   parameter** (so on-authenticator credential selection respects it
+   even for a plain assertion with no minting), rather than as an
+   `algPolicy` extension member — mirroring the WebAuthn-layer layering,
+   where only `createAlgs`/`createExtensions` live in the extension (see
+   "CTAP mapping" in §2). The trade-off is the heavier process weight of
+   a top-level option versus an extension registry entry. The current
+   proposal takes the top-level position.
 3. **Conditional classical fallback on a heterogeneous fleet (a narrow
    residual).** The group model already handles "composite preferred,
    pure-PQC otherwise" cleanly by listing both in a *single* group,
-   strongest-first: `[[Composite-65, ML-DSA-65], [ES256, RS256]]`. On a
-   composite-capable authenticator group 1 mints the composite; on a
+   strongest-first: `[[ML-DSA-65-ECDSA-P384-SHA512, ML-DSA-65], [ES256, RS256]]`.
+   On a composite-capable authenticator group 1 mints the composite; on a
    composite-incapable (but ML-DSA-capable) authenticator group 1 mints
    pure ML-DSA — one PQC credential either way, no redundant PQC
    credential, and an authenticator that later gains composite support
@@ -1573,8 +1708,8 @@ before retiring the current one.
    Whether this matters depends on the RP:
    * **Uniformly composite-capable fleet, or content with pure-PQC-only
      on non-composite devices** → use a single group
-     `[[Composite-65, ML-DSA-65]]`, no classical group, zero redundancy,
-     no gap.
+     `[[ML-DSA-65-ECDSA-P384-SHA512, ML-DSA-65]]`, no classical group,
+     zero redundancy, no gap.
    * **Heterogeneous fleet, and the RP wants the non-composite subset to
      carry a classical fallback** → add `[ES256, RS256]`, accepting one
      redundant classical credential per composite-capable authenticator
