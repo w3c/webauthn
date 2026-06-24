@@ -50,6 +50,6 @@ const cred = await navigator.credentials.get({
 
 ## Other Credential Types
 
-Ambient behaves the same as [Federated Credential Management passive mode]([https://www.w3.org/TR/fedcm/](https://w3c-fedid.github.io/FedCM/#dom-identitycredentialrequestoptionsmode-passive). Browsers that support both can offer them in integrated UI.
+Ambient behaves the same as [Federated Credential Management passive mode](https://w3c-fedid.github.io/FedCM/#dom-identitycredentialrequestoptionsmode-passive). Browsers that support both can offer them in integrated UI.
 
 Requests for other credential types, such as [PasswordCredential](https://www.w3.org/TR/credential-management-1/#passwordcredential) can similarly be integrated into UI .
