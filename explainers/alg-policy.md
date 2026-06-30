@@ -4,7 +4,7 @@
 
 Akshay Kumar \<[akshayku@microsoft.com](mailto:akshayku@microsoft.com)\>
 
-*Last updated: 2026-06-09*
+*Last updated: 2026-06-30*
 
 ## Contents
 
@@ -18,12 +18,10 @@ Akshay Kumar \<[akshayku@microsoft.com](mailto:akshayku@microsoft.com)\>
     - [1. Multiple credentials per `(rpId, user.id)`](#1-multiple-credentials-per-rpid-userid)
     - [2. The `acceptedAlgs` request option and the `algPolicy` extension on `get()`](#2-the-acceptedalgs-request-option-and-the-algpolicy-extension-on-get)
       - [Behavior at `get()` time](#behavior-at-get-time)
-      - [CTAP mapping](#ctap-mapping)
     - [3. RP-side handling](#3-rp-side-handling)
       - [Operational guidance for RPs](#operational-guidance-for-rps)
       - [PRF and `hmac-secret` on silently-minted credentials](#prf-and-hmac-secret-on-silently-minted-credentials)
     - [4. Selection and pruning on the authenticator / OS](#4-selection-and-pruning-on-the-authenticator--os)
-    - [5. Authenticator capability and fallback](#5-authenticator-capability-and-fallback)
   - [Recommended configuration for RPs](#recommended-configuration-for-rps)
     - [Strategy 1 — Explicit fallback (pure PQC + classical)](#strategy-1--explicit-fallback-pure-pqc--classical)
     - [Strategy 2 — Composite / hybrid (single credential)](#strategy-2--composite--hybrid-single-credential)
@@ -83,11 +81,12 @@ The proposal has three coupled pieces:
      credential IDs the authenticator holds for the account, so the RP
      can detect **orphan** credentials (credentials on the authenticator
      that the RP never received — e.g. from a failed
-     `createdCredentials` upload) and sweep them by issuing
-     `signalUnknownCredential`. Hygiene cleanup of dormant credentials
-     and orphan sweep are both handled by the existing
-     [Signal API](signal-api.md), which the RP calls post-ceremony by
-     credential ID.
+     `createdCredentials` upload) and sweep them through two channels: the
+     gesture-free `signalUnknownCredential` (Signal API) where the provider
+     can be reached out of band (platform/synced credentials), or the
+     in-band `algPolicy.deleteCredentials` input on an anchor-targeted
+     `get()` — which works on **any** authenticator and is the only channel
+     that reaches a roaming security key (see §2/§3).
 
 The two knobs answer different questions and move independently:
 - `acceptedAlgs` governs which credentials are valid *right now* for authentication.
@@ -308,6 +307,14 @@ dictionary AuthenticationExtensionsAlgPolicyInputs {
   // The length of each group is unbounded — a group of any length mints
   // exactly one credential, so the cap is on the OUTER list only.
   //
+  // The empty array (zero groups) is VALID and mints nothing: it is the
+  // enumerate-only / sweep-only mode, where the RP wants the signed
+  // existingCredentials (and any deletedCredentials) snapshot without
+  // provisioning a new credential. Valid range is 0..3 groups inclusive;
+  // only MORE than three groups is a TypeError. The member is `required`
+  // so that presence of the algPolicy extension always carries an explicit
+  // (possibly empty) group list rather than an undefined one.
+  //
   required sequence<sequence<COSEAlgorithmIdentifier>> createAlgs;
 
   //
@@ -327,6 +334,48 @@ dictionary AuthenticationExtensionsAlgPolicyInputs {
   // data), the mint must evaluate PRF at makeCredential time.
   //
   AuthenticationExtensionsClientInputs createExtensions;
+
+  //
+  // A list of credential IDs the RP asks the SELECTED authenticator to
+  // DELETE during this ceremony. This is an in-band deletion channel that
+  // works on ANY authenticator kind. It is the only RP-authorized
+  // deletion path that reaches a roaming security key — `signalUnknown-
+  // Credential` (Signal API) has no CTAP transport, so orphaned mints on a
+  // roaming key would otherwise accumulate forever — and on platform /
+  // synced authenticators it is an alternative to the Signal API (see
+  // "Pruning" in §4 for when to prefer which).
+  //
+  // It is meant to be used with a single-credential `allowCredentials`
+  // anchor (a credential ID the RP DOES recognize from a previous
+  // `existingCredentials` list). Because allowList scoping resolves the
+  // ceremony to exactly the one authenticator holding that anchor, the
+  // delete request is delivered to the precise device that holds the
+  // orphans — something a bare `get()` cannot target, since credential
+  // routing at the JS layer is chosen by the platform/user, not the RP.
+  //
+  // The authenticator MUST delete a listed credential ID ONLY when it
+  // resides on THIS authenticator AND is bound to the SAME
+  // (rpIdHash, user.id) as the credential being asserted in this ceremony
+  // (the anchor). IDs that do not exist, or that belong to a different RP
+  // or a different user.id, are silently ignored — they are never deleted
+  // and never cause the assertion to fail. Deletion is authorized by the
+  // ceremony's user verification plus the anchor assertion (proof the RP
+  // controls a co-resident credential for this account); see Security
+  // considerations.
+  //
+  // The trade-off versus the Signal API is purely user friction: the
+  // Signal API is gesture-free but reaches only platform/synced
+  // credentials, whereas this channel costs a full `get()` ceremony — near
+  // zero when folded into a login the user is performing anyway (the
+  // orphan-recovery retry), but an extra prompt if used purely for
+  // background hygiene on a platform authenticator.
+  //
+  // Processed BEFORE `createAlgs` minting in this same ceremony, so a
+  // group whose only credential was just deleted is re-opened and can be
+  // re-minted in one gesture. The set of IDs actually deleted is reported
+  // back in the SIGNED `deletedCredentials` output.
+  //
+  sequence<BufferSource> deleteCredentials;
 };
 
 partial dictionary AuthenticationExtensionsClientOutputs {
@@ -342,30 +391,45 @@ dictionary AuthenticationExtensionsAlgPolicyOutputs {
   // On roaming authenticators these attestation objects are conveyed as
   // the UNSIGNED output of the algPolicy authenticator extension (the
   // `unsignedExtensionOutputs` field of the authenticatorGetAssertion
-  // response), and authenticated by the signed {id, pkHash, alg}
-  // bindings carried in authData.extensions. The public-key bytes travel
-  // exactly once; the signed pkHash commits to them.
+  // response), and authenticated by the signed `mintHashes` set carried in
+  // authData.extensions — one `credHash = SHA-256(credIdLen || credId ||
+  // COSE_Key)` per mint, committing to each mint's id + public key + alg.
+  // The public-key bytes travel exactly once; the signed credHash commits
+  // to them.
   //
   sequence<AuthenticatorAttestationResponseJSON> createdCredentials;
 };
 ```
 
-There is **no** `existingCredentials` member on this
-client-output dictionary. The existing credentials list lives **only** in the
-signed `authData.extensions.algPolicy` map as one source of truth. By
-contrast, `createdCredentials` *is* a client extension output.
-This is because of the fact that authenticatorMakeCredential output contains unsignedExtensions like PRF and that should not be signed over by the
-authenticating credential. Newly created credentials are authenticated
-indirectly by the signed `pkHash` bindings.
+Neither `existingCredentials` nor `deletedCredentials` is a member of
+this client-output dictionary. Both lists live **only** in the signed
+`authData.extensions.algPolicy` map (keys `1` and `3`) as a single source
+of truth, because the RP acts on them to mutate persistent local state
+(orphan sweep, clearing pending-delete) and therefore **must** read them
+from a signed source it has to parse anyway — there is no value in
+mirroring them as unsigned client outputs, and a mirror would invite an RP
+to trust the unsigned copy. By contrast, `createdCredentials` *is* a
+client extension output: `authenticatorMakeCredential` output contains
+unsigned extensions like PRF that must not be signed over by the
+asserting credential, so the minted attestation objects travel in the
+unsigned channel and are authenticated indirectly by the signed
+`mintHashes` set.
 
 #### Behavior at `get()` time
 
 When `acceptedAlgs` is present (with or without the `algPolicy`
 extension):
 
-1. The platform performs the usual credential discovery for `rpId`. The
-   candidate set is filtered to credentials whose `alg` appears in the
-   top-level `acceptedAlgs`.
+1. **Establish user verification first, then discover.** User verification
+   is performed *before* the applicable-credential set is computed. This
+   ordering is required for correctness, not just consent: credentials
+   created with credProtect `userVerificationRequired` (level 3) are
+   **invisible to a no-UV enumeration**, so determining applicability
+   before UV would silently drop them from selection and from the
+   `acceptedAlgs` filter. With UV established, the platform / authenticator
+   performs the usual credential discovery for `rpId` (now including
+   level-3 credentials) and filters the candidate set to credentials whose
+   `alg` appears in the top-level `acceptedAlgs`.
    * If `allowCredentials` is also present, it is intersected as today; the
      `acceptedAlgs` filter is additive.
    * If `acceptedAlgs` is absent, no algorithm filter is applied and the
@@ -374,30 +438,66 @@ extension):
 2. If the candidate set is empty the platform behaves as today (no
    credentials available → `NotAllowedError` after the normal UI timeout /
    cancel).
-3. The platform / authenticator selects a credential for assertion. When
+
+   **A get-time mint cannot rescue a user whose only credential is no
+   longer accepted.** Because `acceptedAlgs` filters the candidate set
+   *before* any silent creation runs (step 5 happens only after a
+   credential has been selected and authorized in steps 3–4), an RP that
+   removes a user's *only* registered algorithm from `acceptedAlgs`
+   produces an empty candidate set, so no assertion occurs and the mint
+   never executes. Such a user cannot self-heal through `algPolicy` and
+   must re-enroll via `navigator.credentials.create()`. This is the
+   intended consequence of `acceptedAlgs` being a hard filter — the
+   silent-mint backfill upgrades an account the user can *still*
+   authenticate, it does not resurrect one that has been filtered to
+   nothing. RPs performing an algorithm cutover **MUST** therefore keep
+   the outgoing algorithm in `acceptedAlgs` until the replacement is known
+   to be provisioned for that user (see "Recommended configuration" and
+   the worked examples).
+3. The platform / authenticator selects a credential for assertion, over
+   the post-UV candidate set (so level-3 credentials are eligible). When
    multiple credentials are available for the same `(rpId, user.id)`, the
-   one whose `alg` is **earliest in `acceptedAlgs`** is preferred. This is
+   authenticator **collapses the account to a single representative** — the
+   one whose `alg` is **earliest in `acceptedAlgs`** — and returns only
+   that one (it MUST NOT surface same-account algorithm variants as
+   separate enumeration results; see §4 and "CTAP mapping" in §2). This is
    selection, not user choice: from the user's point of view the multiple
    credentials are a single "account" — the algorithm is an implementation
-   detail.
-4. **Gather authorization once.** The authenticator collects user
-   presence and (if required) user verification a single time. This one
-   gesture authorizes *both* the assertion and any silent creations in
-   step 5; no second prompt is shown. Note that this step only collects
-   the user gesture — it does **not** yet produce the assertion
-   signature. The signature is computed last (after steps 5–7), because
-   it covers `authData`, and `authData` must already carry the binding
-   entries (step 6) and `existingCredentials` (step 7), both of which
-   depend on the mint in step 5 having already happened. The effective
-   order within the ceremony is therefore: collect authorization (step
-   4) → mint (step 5) → assemble `authData` with bindings +
-   `existingCredentials` (steps 6–7) → sign `authData` and return the
-   assertion.
-5. **Silent in-ceremony creation.** If `createAlgs` is present, the
+   detail. The selected credential's algorithm is reported back in the
+   response's top-level `alg` field.
+4. **One gesture authorizes the whole ceremony; the signature is computed
+   last.** The user verification established in step 1, together with a
+   single user-presence gesture, authorizes *both* the assertion and any
+   silent sweep/creation in step 5 — no second prompt is shown, and the
+   internal mint does **not** collect an additional user-presence gesture.
+   This step does **not** yet produce the assertion signature: the
+   signature is computed last (after steps 5–7), because it covers
+   `authData`, and `authData` must already carry the binding entries
+   (step 6) and `existingCredentials` (step 7), both of which depend on the
+   mint in step 5 having already happened. The effective order within the
+   ceremony is therefore: establish UV + presence (steps 1, 4) → process
+   `deleteCredentials` sweep (step 5) → mint (step 5) → assemble `authData`
+   with bindings + `existingCredentials` + `deletedCredentials`
+   (steps 6–7) → sign `authData` and return the assertion. The sweep
+   precedes minting so that a `createAlgs` group whose only credential was
+   just deleted is re-opened and re-minted in the same gesture.
+
+5. **Silent in-ceremony sweep and creation.** *Sweep first:* if the
+   request carries `algPolicy.deleteCredentials`, the authenticator
+   deletes each listed credential ID that (a) resides on **this**
+   authenticator and (b) is bound to the **same `(rpIdHash, user.id)`**
+   as the credential being asserted (the anchor). IDs that are absent,
+   or scoped to a different RP or a different `user.id`, are silently
+   ignored — never deleted, never a failure. The IDs actually deleted are
+   emitted in the signed `deletedCredentials` set (step 7, key `3`).
+   Deletion is committed **independently of** the mint below: a later
+   mint failure MUST NOT roll back a delete. *Then create:* if `createAlgs` is present, the
    client first validates it: a `createAlgs` with **more than three
    groups** is rejected with a `TypeError` before the ceremony proceeds
-   (see *How many groups?* in §2). Otherwise the authenticator iterates
-   the groups in order. For each group `g`:
+   (see *How many groups?* in §2). An **empty** `createAlgs` (zero groups)
+   is valid and mints nothing — the enumerate-only / sweep-only case — and
+   the authenticator proceeds directly to steps 6–7. Otherwise the
+   authenticator iterates the groups in order. For each group `g`:
    * Let `B` be the **earliest entry in `g` that this authenticator
      supports**. If no entry in `g` is supported, the group is
      **unsatisfiable** and is skipped (not a failure).
@@ -408,9 +508,14 @@ extension):
      (weaker entries that the authenticator also supports) do **not**
      satisfy the group. They remain valid for assertion under
      `acceptedAlgs` but do not block a stronger mint.
+     * Group satisfaction is evaluated against the credential set
+       **remaining after the sweep above**, so a credential deleted in
+       this same ceremony does not satisfy (and therefore does not
+       suppress the re-mint of) its group.
    * Otherwise, the group is **unsatisfied**. The authenticator MAY mint a
-     fresh credential using algorithm `B` for the same
-     `(rpId, user.id, user.name, user.displayName)`, including its
+     fresh **discoverable** credential using algorithm `B` for the same
+     `(rpId, user.id, user.name, user.displayName)` — copying the user
+     entity stored with the asserting credential — including its
      `AuthenticatorAttestationResponse`-shaped output in
      `algPolicy.createdCredentials`. At most one credential is minted
      per group per ceremony. Any `createExtensions` inputs are applied
@@ -421,6 +526,13 @@ extension):
    * No additional user gesture or UV prompt is required: the user has
      already authorized this ceremony, and the new credentials are bound
      to the same account they just proved control of.
+   * **Mints persist eagerly.** A minted credential is written to
+     persistent storage as it is created, before the assertion response
+     is sent. CTAP provides no response acknowledgement, so if the
+     response is lost in transit after a mint has persisted, that mint
+     becomes an **orphan** on the authenticator — recovered by the
+     mechanism in decision D / §3. Eager persistence is unavoidable and
+     orphan recovery is its safety net.
    * Newly minted credentials do **not** replace the asserted credential or
      any other existing credential on the authenticator. All are retained.
    * The authenticator **MAY** leave any subset of unsatisfied groups
@@ -428,10 +540,11 @@ extension):
      (storage, keygen latency, transport MTU, battery). It **SHOULD**
      prefer filling groups that appear earlier in `createAlgs` when filling
      only a subset. It **MUST NOT** fail the assertion because it could
-     not fill a group, and it **MUST NOT** evict an existing credential
-     (under this `(rpId, user.id)` or any other) to make room for a
-     silent create — storage pressure results in fewer fills, never in
-     evictions.
+     not fill a group (a keygen or storage failure for one group simply
+     leaves it unfilled, to be retried on a later ceremony), and it
+     **MUST NOT** evict an existing credential (under this
+     `(rpId, user.id)` or any other) to make room for a silent create —
+     storage pressure results in fewer fills, never in evictions.
    * The RP **MUST** treat `createdCredentials` as opportunistic. Any
      group not filled in this response may be filled on a subsequent
      ceremony; the RP must not depend on full coverage from a single
@@ -440,71 +553,71 @@ extension):
      (§1), it behaves as if every group were over-budget: it performs
      the assertion normally and returns an empty (or absent)
      `createdCredentials`.
-6. **Emit asserter-binding entries in `authData`.** For each entry the
+6. **Emit asserter-binding hashes in `authData`.** For each entry the
    authenticator added to `algPolicy.createdCredentials` in step 5, it
-   **MUST** emit a corresponding *binding entry* in the `algPolicy`
+   **MUST** emit a corresponding *credHash* in the `algPolicy`
    authenticator-extension output carried inside `authData.extensions`.
-   Because the assertion signature covers `authData`, these binding
-   entries are cryptographically authenticated by the asserted
-   credential: any party that mutates `createdCredentials` between the
-   authenticator and the RP cannot also forge a matching binding entry
-   without the asserting credential's private key.
+   Because the assertion signature covers `authData`, this signed set of
+   hashes is cryptographically authenticated by the asserted credential:
+   any party that mutates `createdCredentials` between the authenticator
+   and the RP cannot also forge a matching credHash without the asserting
+   credential's private key.
 
    The output is a CBOR map under the extension identifier `"algPolicy"`:
 
    ```cddl
    algPolicy = {
-     1: [* bstr],            ; "existingCredentials" — the full set of
-                             ; credential IDs the authenticator holds
-                             ; for (rpId, user.id); see step 7. Always
-                             ; present (at minimum the asserting
-                             ; credential's ID).
-     2: [* binding-entry],   ; "bindings" — one entry per credential
-                             ; minted in step 5; empty when none were
-                             ; minted, in which case this key MAY be
-                             ; omitted.
-   }
-
-   binding-entry = {
-     1: bstr,    ; "id"     — credential ID of the minted credential,
-                 ;            verbatim, matching the `id` member of
-                 ;            its `AuthenticatorAttestationResponseJSON`
-                 ;            entry in `algPolicy.createdCredentials`.
-     2: bstr,    ; "pkHash" — SHA-256 over the canonical CBOR encoding
-                 ;            of the minted credential's COSE_Key
-                 ;            public key (as it appears in the attested
-                 ;            credential data of that entry's
-                 ;            `authenticatorData`).
-     3: int,     ; "alg"    — COSEAlgorithmIdentifier of the minted
-                 ;            credential.
+     1: [* bstr],   ; "existingCredentials" — the full set of credential
+                    ; IDs the authenticator holds for (rpId, user.id); see
+                    ; step 7. Always present (at minimum the asserting
+                    ; credential's ID).
+     2: [* bstr],   ; "mintHashes" — one credHash per credential minted in
+                    ; step 5; a signed SET whose membership authenticates
+                    ; each mint. Omitted when nothing was minted.
+     3: [* bstr],   ; "deletedCredentials" — the credential IDs actually
+                    ; deleted in step 5 in response to the request's
+                    ; `deleteCredentials` input (full raw IDs). Signed so
+                    ; the RP can trust the sweep completed. Omitted when
+                    ; nothing was deleted.
    }
    ```
 
-   Both `bindings` and `existingCredentials` ride in the **signed**
-   `authData.extensions`: the binding entries authenticate each minted
-   public key, and `existingCredentials` is authenticated because it
-   drives `signalUnknownCredential` (a *deletion*) on the RP side — a
-   list an attacker could tamper with to suppress orphan detection or
-   provoke spurious sweeps if it were unsigned. Integer map keys are
-   used for on-the-wire compactness. Both the top-level map and each
-   `binding-entry` are **extensible**: future revisions of this
-   extension MAY define additional integer keys for new fields, and
-   verifiers **MUST** ignore unknown keys to preserve
-   forward-compatibility.
+   where each `credHash` is:
+
+   ```
+   credHash = SHA-256( credIdLen || credId || COSE_Key )
+   ```
+
+   — i.e. SHA-256 over the minted credential's **attested credential data
+   with the leading 16-byte AAGUID removed**, exactly as those bytes
+   appear in that entry's `authenticatorData`. The `credIdLen` (the 2-byte
+   big-endian length already present right after the AAGUID) acts as the
+   delimiter between `credId` and `COSE_Key`, so the preimage parses
+   unambiguously and the concatenation is not malleable.
+
+   `mintHashes`, `existingCredentials`, and `deletedCredentials` all ride
+   in the **signed** `authData.extensions`: the hashes authenticate each
+   minted credential's id + public key + alg; `existingCredentials` is
+   authenticated because the RP acts on it destructively (it drives orphan
+   deletion — `signalUnknownCredential` for platform/synced credentials,
+   or the in-band `deleteCredentials` request for roaming keys), so an
+   attacker could otherwise tamper with it to suppress orphan detection or
+   provoke spurious sweeps; and `deletedCredentials` is signed so the RP
+   can trust that a requested sweep actually completed before clearing its
+   pending-delete state. Integer map keys are used for on-the-wire
+   compactness. The top-level map is **extensible**: future revisions MAY
+   define additional integer keys, and verifiers **MUST** ignore unknown
+   keys to preserve forward-compatibility.
 
    The RP **MUST** verify, before persisting any entry in
-   `createdCredentials`, that there is a binding entry in
-   `authData.extensions.algPolicy.bindings` whose `id` matches the
-   entry's credential ID, whose `pkHash` matches SHA-256 of the
-   canonical CBOR encoding of the entry's COSE public key, and whose
-   `alg` matches the entry's algorithm. Entries without a matching
-   binding **MUST** be discarded. See §3 "RP-side handling" for the
-   complete flow, and "Asserter-binding of silently-minted credentials"
-   in Security considerations for the threat model this closes.
+   `createdCredentials`, that SHA-256 of that entry's `credIdLen || credId
+   || COSE_Key` (its attested credential data minus the AAGUID) is a
+   member of `authData.extensions.algPolicy.mintHashes`. Entries whose
+   credHash is not in the signed set **MUST** be discarded.
 
    **How the public key reaches the RP (roaming authenticators).** The
-   binding entry above is only a *commitment* — `pkHash` is a digest, not
-   the key. The minted credential's actual public key must still travel
+   `credHash` above is only a *commitment* — a digest, not the key. The
+   minted credential's actual public key must still travel
    from the authenticator to the client, and on a roaming security key
    that means it must be carried in the `authenticatorGetAssertion`
    response over CTAP. It is carried as the **unsigned** output of the
@@ -516,13 +629,14 @@ extension):
    The client surfaces them as the `AuthenticatorAttestationResponse`-shaped
    entries in `algPolicy.createdCredentials`. `algPolicy` therefore has
    **two** authenticator-extension outputs working as a pair: a small
-   **signed** output (the `{id, pkHash, alg}` bindings in
-   `authData.extensions`, integrity-protected by the assertion signature)
-   and a larger **unsigned** output (the attestation objects in
+   **signed** output (the `mintHashes` set in `authData.extensions`,
+   integrity-protected by the assertion signature) and a larger
+   **unsigned** output (the attestation objects in
    `unsignedExtensionOutputs`, carrying the public-key bytes). The RP
-   recomputes SHA-256 over each conveyed COSE public key and matches it
-   against the signed `pkHash`, so the unsigned payload inherits the
-   signed commitment's integrity without itself being signed.
+   recomputes the credHash over each conveyed mint's `credIdLen || credId
+   || COSE_Key` and checks membership in the signed `mintHashes` set, so
+   the unsigned payload inherits the signed commitment's integrity without
+   itself being signed.
 
    This split is deliberate and is the minimum-size design. The public
    key is **irreducible**: there is no way for the RP to learn a freshly
@@ -531,12 +645,8 @@ extension):
    credential. The split avoids paying that cost *twice*: signing the
    key into `authData` would duplicate every public-key byte under the
    signature (and re-impose a canonical-encoding burden on the RP),
-   whereas a 32-byte `pkHash` authenticates the same payload at fixed
-   cost. Fixing attestation at `"none"` keeps `attStmt` empty, so the
-   only large object on the wire is the public key itself. A constrained
-   authenticator that cannot afford multiple groups simply mints fewer groups
-   (it **MUST NOT** fail the assertion), and the remaining groups
-   are filled on later sign-ins.
+   whereas a 32-byte `credHash` authenticates the same payload at fixed
+   cost.
 
    Beyond size, the split also respects what the minted output *is*: by
    CTAP's own model it is an **unsigned** `makeCredential` result
@@ -544,11 +654,9 @@ extension):
    nested inside the `getAssertion`. It also has unsigned extension output
    like PRF. Embedding it in the assertion's signed `authData` would mean
    copying an unsigned-by-design artifact into the signed region.
-   The two-channel split keeps it in its natural unsigned home and
-   lets it inherit integrity from the signed `pkHash` instead.
 
 7. **Emit `existingCredentials`.** In the **same signed `algPolicy`
-   map in `authData.extensions`** (key `1`, alongside the `bindings` of
+   map in `authData.extensions`** (key `1`, alongside the `mintHashes` of
    step 6 at key `2`), the authenticator publishes the credential IDs it
    currently holds for `(rpId, user.id)`, including the credential
    used for the assertion and any credential just added in step 5.
@@ -562,6 +670,75 @@ extension):
    do not support the relaxed credential model (§1) MUST still emit
    `existingCredentials`, containing the single credential ID used
    for the assertion.
+
+   The enumeration semantics are pinned down as follows:
+
+   * **Per-authenticator, not a global account view.** The list contains
+     only the IDs *this* authenticator holds. When a user's credentials
+     for the account are spread across more than one authenticator, each
+     one reports only its own; the RP reconciles **per authenticator** and
+     never assumes a single device sees the whole account. The co-location
+     property the anchor recovery relies on (§3 / decision D) is therefore
+     a **per-device** guarantee: the orphan and a recognizable sibling sit
+     on the *same* device because that device minted both.
+   * **Same `(rpId, user.id)` only.** It MUST never include a credential of
+     another `user.id` or another RP — identical scope to the
+     `deleteCredentials` gate — both for privacy and so set-difference
+     against the RP's per-account records is meaningful.
+   * **Unordered set.** Order carries no meaning; the RP performs only
+     membership / difference operations (orphan = list ∖ known, anchor
+     candidate = list ∩ known), exactly as for `mintHashes`.
+   * **Post-sweep, post-mint snapshot.** It reflects the account's true
+     on-device state *after* this ceremony's mutations: it includes any
+     credential minted in step 5 and excludes any credential deleted in
+     step 5. A just-deleted ID is therefore already absent.
+   * **Bounded and small.** An account holds at most a handful of
+     credentials (≤ 3 mint groups plus a few legacy entries), so even with
+     large key-handle credential IDs the signed list stays modest — it does
+     not meaningfully inflate the signed `authData`.
+   * **UV-gated completeness (credProtect L3).** The list reflects the
+     credentials visible **under the ceremony's current user-verification
+     state**. A credential created with credProtect
+     `userVerificationRequired` (level 3) is invisible without UV, so an
+     authenticator **MUST NOT** list an L3 credential when user
+     verification was not performed in this ceremony. Under the normal
+     algorithm-policy ceremony UV is established first (step 1), so the
+     list is complete; a ceremony deliberately run without UV
+     (`userVerification: "discouraged"`, no token) may yield an
+     **incomplete** list. Incompleteness is always *safe*: a missed orphan
+     simply resurfaces on a later UV ceremony, and a missed anchor
+     candidate only delays recovery — neither causes a wrongful deletion.
+     Orphan management is thus *complete* only under UV.
+   * **Non-discoverable asserting credential → single-element list.** A
+     pure server-side (non-resident) asserting credential carries no stored
+     `user.id` by which the authenticator could enumerate the account, so
+     it cannot produce a same-account list. In that case
+     `existingCredentials` contains **only the asserting credential's own
+     ID**. (The relaxed/minting model is inherently about discoverable
+     credentials, so this degenerate case is expected and harmless.) When
+     the asserting credential is discoverable (or otherwise carries a
+     recoverable user handle), the authenticator enumerates the full
+     account as above.
+
+   In the **same signed map** (key `3`), the authenticator also emits
+   `deletedCredentials`: the credential IDs it actually deleted in step 5
+   in response to the request's `deleteCredentials` input (omitted when
+   nothing was deleted). The reported set reflects only IDs that existed
+   on this authenticator under the same `(rpIdHash, user.id)` as the
+   anchor; the RP uses the signed list to confirm the sweep and clear its
+   pending-delete state. Because `existingCredentials` is published
+   *after* the sweep, a just-deleted ID will already be absent from it.
+
+   These outputs (`existingCredentials`, and `deletedCredentials` when
+   `deleteCredentials` was sent) are emitted **whenever the `algPolicy`
+   extension is present — even when `createAlgs` is the empty array**
+   (zero groups), which mints nothing. An empty `createAlgs` is thus a
+   valid **enumerate-only** (or, with `deleteCredentials`, **sweep-only,
+   no re-mint**) ceremony: one real assertion and signature, no minting,
+   but a full signed account snapshot. This differs from the metadata-only
+   enumeration command discussed in Open Questions, which avoids producing
+   an assertion signature at all; here a normal assertion is still
+   produced.
 
 The satisfaction rule is intentionally **best-supported**, not
 **any-in-group**. The difference matters when an authenticator's algorithm
@@ -594,14 +771,22 @@ convergence guarantee is per-group, not per-ceremony.
 number of groups* an RP may list in `createAlgs`: **at most 3**. This is
 a structural limit, not a tuning knob, and the client **MUST** reject a
 `get()` whose `createAlgs` has more than three groups with a `TypeError`.
+The lower bound is **zero**: an empty `createAlgs` array is valid and
+means "mint nothing this ceremony" — used for the enumerate-only /
+sweep-only mode (§2 step 7), where the RP wants the signed
+`existingCredentials` (and possibly `deletedCredentials`) snapshot without
+provisioning any new credential. So the valid range is 0–3 groups
+inclusive; only **more than three** is a `TypeError`.
 The cap exists because every group an authenticator can satisfy becomes a
 *persistent credential slot* consumed on that authenticator for this
 account, and roaming security keys hold only ~25–50 slots total. An RP
 that lists five or six groups would silently multiply its per-account
 storage footprint on exactly the most constrained devices — the failure
-mode this proposal is trying to avoid. Three groups is the ceiling of
-every legitimate configuration:
+mode this proposal is trying to avoid. The legitimate configurations span
+zero to three groups:
 
+* **Zero groups** — enumerate-only or sweep-only: no minting, just the
+  signed account snapshot (and any requested `deleteCredentials`).
 * **One group** — a single PQC credential (or a self-fallback composite).
   The common steady state.
 * **Two groups** — PQC plus a classical fallback. The canonical
@@ -691,42 +876,6 @@ for a single-credential strategy, several for explicit fallback and
 multi-family evaluation (see "Recommended configuration for RPs"
 and Worked Example C).
 
-#### CTAP mapping
-
-The two WebAuthn-layer inputs map onto `authenticatorGetAssertion`
-along the **same layering** they have in the API — core credential
-selection stays at the top level, and only the silent-mint machinery
-lives in the extension:
-
-* **`acceptedAlgs` → a top-level `authenticatorGetAssertion`
-  parameter**, *not* an `algPolicy` extension field. It governs which
-  discoverable credentials are eligible and their signing-preference
-  order — authenticator-core selection behavior that must work for a
-  plain assertion with no minting at all. Burying it in the extension
-  would wrongly make algorithm filtering conditional on the silent-mint
-  feature being present. (This is the CTAP edit noted in Open Question
-  2.)
-* **`algPolicy` extension carries only `createAlgs` and
-  `createExtensions`** — the inputs that exist solely to drive
-  in-ceremony minting.
-* **PRF salts nest inside `createExtensions`.** Because the client
-  performs the PRF → `hmac-secret` translation, by the CTAP layer the
-  `prf` member of `createExtensions` has become **`hmac-secret-mc`**
-  (CTAP 2.2) carried *inside* `algPolicy.createExtensions`, where it
-  binds to the mint. It **MUST NOT** be hoisted to the top-level
-  extensions map: the top-level `hmac-secret` slot evaluates against the
-  **asserting** credential, so the two PRF evaluations are kept
-  unambiguous — top-level `hmac-secret` → old credential,
-  `algPolicy.createExtensions["hmac-secret-mc"]` → minted credential.
-
-Symmetrically on the response: the asserting credential's outputs
-(including its `hmac-secret` PRF output) sit in the signed
-`authData.extensions`, while each minted credential's attestation object
-— and the minted credential's own `hmac-secret` PRF output nested in
-*its* `authData.extensions` — travels in `unsignedExtensionOutputs`
-under `algPolicy`, authenticated by the signed `pkHash` binding (see §2
-steps 6–7).
-
 ### 3. RP-side handling
 
 Throughout the code samples below, algorithms are referred to by their
@@ -787,35 +936,93 @@ const ext = assertion.getClientExtensionResults().algPolicy;
 // ceremony, after verifying the asserter-binding for each one (see §2
 // step 6). `registerAdditionalCredential` parses the `algPolicy`
 // authenticator-extension output carried in
-// `assertion.response.authenticatorData`, locates the binding entry
-// whose `id` matches `created.id`, and refuses to persist `created`
-// unless the binding's `pkHash` matches SHA-256 of the canonical CBOR
-// encoding of the new credential's COSE public key and the binding's
-// `alg` matches its algorithm. Existing credentials are left untouched.
+// `assertion.response.authenticatorData`, computes credHash =
+// SHA-256(credIdLen || credId || COSE_Key) over `created`'s attested
+// credential data (minus the AAGUID), and refuses to persist `created`
+// unless that credHash is a member of the signed `mintHashes` set. The
+// new credential's algorithm comes from its COSE_Key and its
+// backup-eligibility from the asserting authData flags; all other minted
+// attributes (extension outputs, backup-state) are treated as provisional
+// until the new credential's first own assertion. Existing credentials
+// are left untouched.
 for (const created of ext?.createdCredentials ?? []) {
   await rp.registerAdditionalCredential(account, assertion, created);
 }
 
 // Orphan sweep: any credential ID the authenticator holds for this
 // account but that the RP does not recognize is an orphan — typically
-// from a prior `createdCredentials` upload that failed. Asking the
-// provider to delete it re-opens the corresponding `createAlgs` group
-// for a fresh mint on the next ceremony.
+// from a prior `createdCredentials` upload that failed. Deleting it
+// re-opens the corresponding `createAlgs` group for a fresh mint.
 //
 // The ID list MUST be read from the SIGNED authData, never from
-// getClientExtensionResults(): the RP acts on it destructively
-// (signalUnknownCredential = deletion), so it must come from a signed
-// source. `existingCredentialsFromAuthData` parses key 1 of the
-// `algPolicy` map in `assertion.response.authenticatorData`.
+// getClientExtensionResults(): the RP acts on it destructively, so it
+// must come from a signed source. `existingCredentialsFromAuthData`
+// parses key 1 of the `algPolicy` map in
+// `assertion.response.authenticatorData`.
 const existingIds = rp.existingCredentialsFromAuthData(assertion);
 const knownIds = new Set(await rp.getCredentialIds(account));
-for (const id of existingIds) {
-  if (id === assertion.id) continue;       // never sweep the credential we just used
-  if (knownIds.has(id)) continue;          // RP already has this one
-  await PublicKeyCredential.signalUnknownCredential({
-    rpId: "example.com",
-    credentialId: id,
-  });
+const orphanIds = existingIds.filter(
+  (id) => id !== assertion.id && !knownIds.has(id));
+
+// Two cleanup channels. The choice is NOT "platform vs roaming" — the
+// in-band delete works on every authenticator kind — but a question of
+// COST: how much user friction the cleanup imposes.
+//
+// (a) Signal API (`signalUnknownCredential`) — GESTURE-FREE, but only
+//     reaches authenticators the provider can address out of band
+//     (platform / synced credentials). Best for STANDALONE hygiene where
+//     the user is not otherwise authenticating.
+//
+// (b) In-band `algPolicy.deleteCredentials` — works on ANY authenticator
+//     (including roaming security keys, which the Signal API cannot
+//     reach), but costs a full `get()` ceremony (UP + UV). It is cheap
+//     when folded into a login the user is performing ANYWAY — which is
+//     exactly the orphan-recovery case below, where the unrecognized
+//     assertion already forces a retry. The RP anchors the retry to a
+//     credential it DOES recognize (allowList scoping re-targets that
+//     exact device), passes the orphans in `deleteCredentials`, and the
+//     one ceremony re-authenticates + deletes + re-mints. The signed
+//     `deletedCredentials` (key 3) confirms the sweep.
+//
+// Rule of thumb: prefer (a) when the provider supports it AND no ceremony
+// is already in flight; use (b) whenever the authenticator is unreachable
+// by Signal OR you are already running a recovery `get()` and can attach
+// the delete for free — regardless of authenticator kind.
+if (orphanIds.length > 0) {
+  const anchorId = existingIds.find((id) => knownIds.has(id));  // a recognized co-resident
+  const ceremonyInFlight = anchorId !== undefined;              // can we fold delete into a re-auth?
+
+  if (rp.signalApiReaches(account) && !ceremonyInFlight) {
+    // (a) Gesture-free background cleanup.
+    for (const id of orphanIds) {
+      await PublicKeyCredential.signalUnknownCredential({
+        rpId: "example.com",
+        credentialId: id,
+      });
+    }
+  } else if (ceremonyInFlight) {
+    // (b) Fold the delete into an anchored recovery ceremony.
+    const recovery = await navigator.credentials.get({
+      publicKey: {
+        challenge,
+        rpId: "example.com",
+        allowCredentials: [{ type: "public-key", id: anchorId }],  // re-targets THIS device
+        userVerification: "required",
+        extensions: {
+          algPolicy: {
+            deleteCredentials: orphanIds,   // pruned on this authenticator only
+            createAlgs,                     // re-mint the reopened groups
+          },
+        },
+      },
+    });
+    // Verify `recovery` with anchorId's known public key, then read the
+    // signed `deletedCredentials` (key 3) to clear pending-delete state
+    // and persist any fresh `createdCredentials` as in the block above.
+  }
+  // else: no Signal reach and no recognized anchor — leave the orphan;
+  // it is inert (filtered out by `acceptedAlgs`) and resurfaces next time.
+}
 }
 ```
 
@@ -954,6 +1161,23 @@ rules captures the operational discipline:
    measure server-side fallback coverage before invoking emergency
    downgrade. See "Orphan credentials and convergence" and "Emergency
    downgrade depends on server-confirmed fallback coverage" below.
+6. **Order `allowCredentials` to match `acceptedAlgs` preference
+   (strongest algorithm first), when you use an allowList.** This is the
+   bridge for **clients that do not yet implement `acceptedAlgs`**. Such a
+   client cannot select by algorithm; on a roaming security key it probes
+   the allowList entries in list order and uses the first one the
+   authenticator holds. If the RP lists the most-preferred-algorithm
+   credential first, that first-present credential *is* the preferred one,
+   so an un-updated client still picks correctly (and falls through to the
+   next-best present credential when the top choice is not on that
+   authenticator). Clients that *do* implement `acceptedAlgs` are unharmed
+   — they select by `acceptedAlgs` regardless of list order, and a
+   preferred-first list merely lets their probe stop sooner. The guidance
+   therefore costs nothing and helps both populations. Two caveats: it
+   only helps clients that honor allowList **probe order** (not all do),
+   and a `credProtect` "userVerificationRequired" credential is invisible
+   to a no-UV silent probe, so its discovery still depends on the client's
+   user-verification/token path as today.
 
 #### PRF and `hmac-secret` on silently-minted credentials
 
@@ -1019,12 +1243,31 @@ the same `(rpId, user.id)`:
 
 * The user-visible representation in account choosers is a single account.
   The algorithm of the underlying credential is not surfaced.
-* For an assertion with `acceptedAlgs`, the credential with the
-  earliest matching algorithm is used automatically.
+* The authenticator **MUST** return at most **one credential per
+  `(rpId, user.id)`** across `getAssertion` / `getNextAssertion` — it
+  collapses each account to a single representative credential before
+  enumeration. `numberOfCredentials` counts accounts, not credentials.
+  This keeps the multi-credential model invisible at assertion time and
+  is required for backward compatibility with platforms that treat each
+  enumeration result as a separate account (see "CTAP mapping" in §2).
+* For an assertion with `acceptedAlgs`, the per-account representative is
+  the credential with the earliest matching algorithm.
 * For an assertion without `acceptedAlgs`, the authenticator picks one
-  credential. Implementations SHOULD prefer the most recently created /
-  most recently used credential so that an RP that has not yet adopted
-  `acceptedAlgs` still gets the strongest available credential.
+  credential per account. Implementations SHOULD prefer the most recently
+  created / most recently used credential so that an RP that has not yet
+  adopted `acceptedAlgs` still gets the strongest available credential.
+  (An RP using the relaxed multi-credential model SHOULD always send
+  `acceptedAlgs`, so that selection is deterministic and RP-controlled
+  rather than heuristic.)
+* The `authenticatorGetAssertion` response reports the selected
+  credential's algorithm in its top-level `alg` field, so the platform /
+  RP can verify the choice against `acceptedAlgs` and, on a credential
+  the RP cannot recognize (an orphan), drive recovery: read the signed
+  `existingCredentials` to find a recognized **anchor**, then re-run
+  `get()` with `allowCredentials = [anchor]` and
+  `algPolicy.deleteCredentials = [orphan…]` to re-authenticate, prune the
+  orphan on that exact authenticator, and re-mint — one gesture (see
+  "CTAP mapping" in §2 and "Orphan credentials and convergence" in §3).
 
 **Pruning.** The `algPolicy` extension never deletes credentials. Under
 group-semantics `createAlgs` a non-preferred credential is *standing
@@ -1050,46 +1293,30 @@ produced by it). The pruning rules below pin this down:
   provider to remove a specific credential. Pruning under Signal API
   authorization remains at provider discretion (the provider MAY hide
   rather than delete, MAY require user confirmation, etc.), as
-  documented in the Signal API explainer.
+  documented in the Signal API explainer. The Signal API reaches
+  platform and synced credentials but has **no CTAP transport to a roaming
+  security key**.
+* An authenticator / OS **MAY** also prune a credential when the RP
+  authorizes it **in-band** via the `algPolicy.deleteCredentials` input on
+  a `get()` (§2): an RP-named, anchor-targeted, same-`(rpId, user.id)`
+  delete carried out under the ceremony's user verification. This channel
+  works on **any** authenticator kind. It is the *only* RP-authorized
+  deletion path for roaming keys, and on platform/synced authenticators it
+  is an alternative to the Signal API — preferred when a recovery ceremony
+  is already in flight (so the delete rides an existing gesture), while the
+  gesture-free Signal API is preferred for standalone hygiene. Either way
+  deletion is RP-authorized, never authenticator-autonomous.
 
 The net effect: the RP, not the authenticator, decides when a credential
 is retired. Authenticators only ever *add* to the credential set
-autonomously; they only *remove* when the RP signals it post-ceremony.
-Because the `algPolicy` extension itself never removes credentials, no
-combination of `acceptedAlgs` and `createAlgs` can strand a user — the
-worst case is a dormant credential lingering on a roaming authenticator
-that never received a Signal API cleanup, which is harmless storage
-overhead.
-
-### 5. Authenticator capability and fallback
-
-* Authenticators that **do not** support the relaxed `(rpId, user.id, alg)`
-  model treat the silent-create step as if every group were over-budget:
-  they perform the assertion normally and return an empty (or absent)
-  `createdCredentials`. The RP-side migration simply proceeds more slowly for
-  users on those authenticators (or not at all).
-* Authenticators that **do** support the relaxed model but cannot afford
-  to fill every unsatisfied group in one ceremony fill any subset
-  (preferring earlier groups) and let subsequent ceremonies cover the
-  rest. The RP must not assume single-ceremony coverage.
-* Authenticators that **do not** support any algorithm in `acceptedAlgs` are
-  not surfaced as candidates and the user is shown the standard "no
-  credential available" UI.
-* Authenticators that support no algorithm in a given unsatisfied group
-  simply leave that group unfilled. The group stays unsatisfied indefinitely
-  on that authenticator, which is the correct outcome: the RP's standing
-  policy is unsatisfiable on that hardware.
-* Clients that do not understand the top-level `acceptedAlgs` member
-  ignore it (per the standard IDL rules for unknown dictionary
-  members); the candidate set is not filtered by algorithm and the
-  RP's server-side `alg` check catches anything outside policy.
-  Clients that do not understand the `algPolicy` extension drop it
-  (per the standard WebAuthn extension processing rules) and the
-  assertion proceeds as a normal assertion. The two features degrade
-  independently: a client that supports `acceptedAlgs` but not
-  `algPolicy` still delivers the candidate-set filter, which is
-  useful on its own; a client that supports both delivers the full
-  migration loop.
+autonomously; they only *remove* when the RP authorizes it — via the
+gesture-free Signal API (platform/synced credentials) or the in-band
+`algPolicy.deleteCredentials` ceremony (any authenticator kind, and the
+sole channel for roaming keys). Because the `algPolicy` extension never
+removes credentials *autonomously*, no combination of `acceptedAlgs` and
+`createAlgs` can strand a user — the worst case is a dormant credential
+lingering on an authenticator until the next RP-authorized cleanup, which
+is harmless storage overhead.
 
 ## Recommended configuration for RPs
 
@@ -1536,6 +1763,72 @@ before retiring the current one.
   fewer silent creates, never as the disappearance of an unrelated
   credential. This is what makes group-shaped `createAlgs` safe for
   authenticators serving many RPs.
+* **In-band deletion (`deleteCredentials`) is narrowly authorized and
+  cannot delete a credential the RP did not point at.** Deleting a
+  credential on a roaming key is destructive, yet a `getAssertion` carries
+  a `ga`-permission token, not the `cm` (credential-management) permission
+  that the platform's settings UI uses to enumerate and remove arbitrary
+  credentials. The authorization here is deliberately *narrower* than
+  `cm`: a listed ID is deleted **only** when it (a) resides on the
+  selected authenticator and (b) is bound to the **same
+  `(rpIdHash, user.id)` as the anchor credential asserted in the same
+  ceremony**, under that ceremony's user verification. The anchor
+  assertion is proof the caller controls a co-resident credential for that
+  exact account; combined with same-`(rpId, user.id)` scoping and UV, this
+  is sufficient to prune *that account's own* orphaned siblings without
+  granting general credential-management power. IDs that are absent, or
+  scoped to another RP or another `user.id`, are silently ignored.
+* **The orphan-identification list may be unverified, but it cannot cause
+  wrongful deletion.** In the worst orphan case the *asserting* credential
+  is itself the orphan, so its `existingCredentials` list rides under a
+  signature the RP cannot verify (it has no public key for that
+  credential). The RP nonetheless reads that list to pick a recognized
+  *anchor*. A forged or tampered list cannot escalate, because: (a) the RP
+  only ever places **un**recognized IDs in `deleteCredentials`, never an
+  ID it recognizes, so a good credential is never targeted; (b) the
+  authenticator deletes only IDs that actually exist under the
+  anchor's `(rpIdHash, user.id)`, so injected fake IDs are no-ops; and
+  (c) the recovery ceremony is independently authenticated by the anchor
+  credential's *verifiable* signature. The worst outcome of tampering is a
+  no-op or an incomplete sweep (the orphan simply resurfaces and is swept
+  next time) — never the loss of a credential the RP still relies on.
+* **Deletion is decoupled from minting and is monotonic.** A delete
+  commits even if the same ceremony's re-mint upload later fails; the
+  resulting fresh orphan is cleaned on a subsequent cycle. Every cycle
+  makes progress (one orphan removed), so the loop is self-healing and
+  cannot livelock on a partially-failed migration.
+* **In-band deletion is the safer destructive channel; its user-gesture
+  requirement is a security property, not just UX friction.** Both the
+  Signal API and `navigator.credentials.get()` are reachable only by
+  script in an origin already authorized for the `rpId` (same WebAuthn
+  origin rule), so the realistic threat actor for either is in-origin
+  script — XSS, a compromised supply-chain script, or a malicious
+  extension content-script. The decisive difference is what that actor can
+  do with **no user interaction**. The Signal API is gesture-free by
+  design: `signalAllAcceptedCredentials({rpId, userId,
+  allAcceptedCredentialIds})` needs only the (typically non-secret)
+  `userId`, and an attacker supplying an empty or minimal list can drive a
+  provider to **silently prune the account's credentials — up to full
+  account lockout** — with the spec's mitigations (rate-limiting,
+  confirmation, hide-not-delete) all left to provider discretion. The
+  in-band `deleteCredentials` path cannot be exercised silently at all: it
+  requires a completed `get()` with user presence + user verification and
+  a valid **anchor assertion** (proof of possession of a credential the RP
+  recognizes). More importantly, because deletion is scoped to same-`(rpId,
+  user.id)` credentials *other than the asserted anchor*, and the anchor
+  is by construction a surviving working credential, **in-band deletion is
+  structurally incapable of removing the credential in use and therefore
+  cannot cause account lockout** — a primitive `signalAllAcceptedCredentials([])`
+  does expose. The residual in-band risk is narrower: in-origin script may
+  induce the user to complete a normal-looking login whose request also
+  carries a hidden `deleteCredentials`, deleting *sibling* credentials of
+  that one account on that one device (and only after a prior assertion
+  revealed their IDs via `existingCredentials`, making it a multi-gesture
+  attack). The blast radius never extends beyond the asserted account on
+  the selected authenticator, never reaches another RP or `user.id`, and
+  never removes the anchor. The consent-transparency gap this leaves —
+  that the gesture authorizes a "login" while also carrying a destructive
+  op — is a platform-UI concern and is out of scope for this document.
 * **Algorithm downgrade by a hostile RP.** A compromised RP that ships
   `acceptedAlgs: [legacy]` could nudge clients away from a stronger
   algorithm. This is no worse than today: the RP already controls
@@ -1544,30 +1837,32 @@ before retiring the current one.
   accept.
 * **Asserter-binding of silently-minted credentials.** For every entry
   the authenticator places in `createdCredentials`, it also places a
-  matching binding entry — `{id, pkHash, alg}` — in
-  `authData.extensions.algPolicy.bindings` (§2 step 6). The assertion
-  signature covers `authData`, so these bindings are cryptographically
+  matching `credHash` in the signed `mintHashes` set in
+  `authData.extensions.algPolicy` (§2 step 6), where
+  `credHash = SHA-256(credIdLen ‖ credId ‖ COSE_Key)` — the mint's
+  attested credential data with the AAGUID removed. The assertion
+  signature covers `authData`, so these hashes are cryptographically
   authenticated by the asserting credential — a credential the RP
   already trusts in this ceremony. Any party that can mutate
   `createdCredentials` in transit (a compromised browser extension, a
   compromised platform component, an unauthenticated
   authenticator-to-host transport, a malicious script between the JS
   context and the RP) therefore cannot substitute attacker-controlled
-  public keys into the upload without also forging a matching binding,
-  which it cannot do without the asserting credential's private key.
-  The RP **MUST** discard any entry in `createdCredentials` for which no
-  matching authenticated binding exists. The binding's strength is
-  exactly the strength of the asserting credential's signature at the
-  moment of minting; it does not protect against a future cryptanalytic
-  break of the asserting algorithm (which would already grant an
-  attacker the equivalent power via a fresh `create()` on the same
-  account), and it is not a substitute for attestation — it does not
-  authenticate the authenticator's make or model. What it does provide
-  is **same-asserter provenance**: proof that the minted credentials
-  came from the same authenticator that holds the credential the RP
-  just authenticated against. That is the guarantee the silent-mint use
-  case actually needs, and it is what makes shipping `attestation:
-  "none"` for the mints (next bullet) safe.
+  public keys (or swap the credential ID or algorithm) into the upload
+  without also forging a matching `credHash`, which it cannot do without
+  the asserting credential's private key. The RP **MUST** discard any
+  entry in `createdCredentials` whose `credHash` is not a member of the
+  signed set. The binding's strength is exactly the strength of the
+  asserting credential's signature at the moment of minting; it does not
+  protect against a future cryptanalytic break of the asserting algorithm
+  (which would already grant an attacker the equivalent power via a fresh
+  `create()` on the same account), and it is not a substitute for
+  attestation — it does not authenticate the authenticator's make or
+  model. What it does provide is **same-asserter provenance**: proof that
+  the minted credentials came from the same authenticator that holds the
+  credential the RP just authenticated against. That is the guarantee the
+  silent-mint use case actually needs, and it is what makes shipping
+  `attestation: "none"` for the mints (next bullet) safe.
 * **Attestation conveyance is fixed at `"none"`.** Any entry returned in
   `createdCredentials` carries the same `AuthenticatorAttestationResponse`
   shape as `navigator.credentials.create()` would have produced, but the
@@ -1609,13 +1904,18 @@ before retiring the current one.
 
 ## Interaction with other features
 
-* **Signal API** ([signal-api.md](signal-api.md)). The Signal API is
-  the **sole mechanism** for retiring credentials under this
-  extension. `algPolicy` itself never deletes credentials; old ones
-  filtered out by `acceptedAlgs` sit dormant on the authenticator.
-  When an RP wants to reclaim that storage — after a Phase 3 cutover,
-  after an intra-group upgrade, or to revoke a specific compromised
-  credential — it uses one of:
+* **Signal API** ([signal-api.md](signal-api.md)). The Signal API is the
+  **gesture-free** mechanism for retiring credentials under this
+  extension, and the preferred one for standalone hygiene on providers it
+  can reach (platform / synced credentials). `algPolicy` never deletes
+  credentials *autonomously*, but it does offer a second, RP-authorized
+  deletion channel — the in-band `deleteCredentials` input (§2/§3) — for
+  roaming security keys the Signal API cannot reach, or when a recovery
+  ceremony is already in flight (see "Pruning" in §4 for which to prefer).
+  Old credentials filtered out by `acceptedAlgs` sit dormant until
+  retired by either channel. When an RP wants to reclaim that storage via
+  the Signal API — after a Phase 3 cutover, after an intra-group upgrade,
+  or to revoke a specific compromised credential — it uses one of:
   - **`signalAllAcceptedCredentials`** (snapshot, per user): the
     natural fit for cutover cleanup. The RP sends the full set of
     credential IDs it considers valid for the user; the provider
@@ -1632,13 +1932,14 @@ before retiring the current one.
     does not support -87).
 
   Signal API delivery is reliable on synced and platform credential
-  providers and best-effort on roaming authenticators. This is
-  acceptable here because dormant credentials are inert (the RP
-  filters them out at `acceptedAlgs`) and orphan-sweep failures are
-  idempotent (the orphan resurfaces in the next ceremony's
-  `existingCredentials` and the RP signals again). `algPolicy` itself
-  never deletes credentials; any deletion runs through the Signal
-  API, with the usual user/provider discretion.
+  providers and **does not reach roaming authenticators at all** (no CTAP
+  transport) — which is exactly why the in-band `deleteCredentials`
+  channel exists for those. This division is acceptable because dormant
+  credentials are inert (the RP filters them out at `acceptedAlgs`) and
+  orphan-sweep failures are idempotent (the orphan resurfaces in the next
+  ceremony's `existingCredentials` and the RP signals or re-deletes
+  again). Either way deletion is RP-authorized, never
+  authenticator-autonomous, with the usual user/provider discretion.
 * **Conditional create** ([conditional-create.md](conditional-create.md)).
   Conditional create lets an RP bootstrap a *first* passkey during a
   mediated password sign-in. `algPolicy` lets an RP add a *next*
@@ -1652,7 +1953,15 @@ before retiring the current one.
   legitimately depend on only one — e.g. ship `acceptedAlgs` to phase
   out an algorithm at sign-in without ever invoking silent mints — so
   detecting them independently lets the RP pick the right deployment
-  phase.
+  phase. These two WebAuthn-client capabilities correspond one-to-one with
+  the authenticator-side CTAP `authenticatorGetInfo` signals (see "CTAP
+  mapping" in §2): the `"acceptedAlgs"` client capability is backed by the
+  authenticator's **`algSelection`** option (filter + `alg` response +
+  per-account collapse), and the `"algPolicy"` client capability by the
+  authenticator's **`algPolicy`** extension. As on the CTAP side,
+  `algPolicy` presupposes `algSelection`: a client reports the
+  `"algPolicy"` capability only when it can reach an authenticator
+  advertising both.
 * **`pubKeyCredParams` on `create()`** is unchanged. The new top-level
   `acceptedAlgs` on `get()` is its symmetric counterpart, not a
   replacement. RPs that prefer an explicit re-enrollment flow can
