@@ -15,6 +15,8 @@ To materially contribute to this specification, you must meet the requirements o
 
 # Building the Draft
 
+(see the next section if you use `mise`)
+
 The following are required before continuing:
 
 - Python 3.13
@@ -47,6 +49,26 @@ Running the following command from the root of this repo will let you view the r
 ```
 uv run -m http.server -b 127.0.0.1
 ```
+
+## Using mise
+
+If you use [mise](https://mise.jdx.dev/), run the following commands to set up your local development environment to work on these specifications:
+
+`mise run setup`
+
+`mise run update`
+
+Formatted HTML for the draft can then be built with the following command:
+
+`mise run build`
+
+You can use the `watch` functionality to automatically regenerate the rendered document as you make changes locally:
+
+`mise run watch`
+
+Running the following command from the root of this repo will let you view the rendered document at http://127.0.0.1:8000:
+
+`mise run serve`
 
 # Continuous Integration & Branches
 
