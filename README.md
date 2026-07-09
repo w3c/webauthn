@@ -38,16 +38,10 @@ Formatted HTML for the draft can then be built with the following command:
 uv run -m bikeshed spec
 ```
 
-You can use the `watch` functionality to automatically regenerate the rendered document as you make changes locally:
+You can use the `serve` functionality to automatically regenerate the rendered document as you make changes locally, and view the rendered document at http://localhost:8000:
 
 ```
-uv run -m bikeshed watch
-```
-
-Running the following command from the root of this repo will let you view the rendered document at http://127.0.0.1:8000:
-
-```
-uv run -m http.server -b 127.0.0.1
+uv run -m bikeshed serve
 ```
 
 ## Using mise
