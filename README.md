@@ -22,7 +22,7 @@ The following are required before continuing:
 Run the following commands to set up your local development environment to work on these specifications:
 
 ```
-mise update
+mise setup
 ```
 
 Formatted HTML for the draft can then be built with the following command:
