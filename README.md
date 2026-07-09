@@ -15,54 +15,27 @@ To materially contribute to this specification, you must meet the requirements o
 
 # Building the Draft
 
-(see the next section if you use `mise`)
-
 The following are required before continuing:
 
-- Python 3.13
-- [uv](https://docs.astral.sh/uv/getting-started/installation/)
+- [mise](https://mise.jdx.dev/getting-started.html#installing-mise-cli)
 
 Run the following commands to set up your local development environment to work on these specifications:
 
 ```
-uv sync
-```
-
-```
-uv run -m bikeshed update
+mise update
 ```
 
 Formatted HTML for the draft can then be built with the following command:
 
 ```
-uv run -m bikeshed spec
+mise build
 ```
 
-You can use the `serve` functionality to automatically regenerate the rendered document as you make changes locally, and view the rendered document at http://localhost:8000:
+You can use the following command to automatically regenerate the rendered document as you make changes locally, and view the rendered document at http://localhost:8000:
 
 ```
-uv run -m bikeshed serve
+mise serve
 ```
-
-## Using mise
-
-If you use [mise](https://mise.jdx.dev/), run the following commands to set up your local development environment to work on these specifications:
-
-`mise run setup`
-
-`mise run update`
-
-Formatted HTML for the draft can then be built with the following command:
-
-`mise run build`
-
-You can use the `watch` functionality to automatically regenerate the rendered document as you make changes locally:
-
-`mise run watch`
-
-Running the following command from the root of this repo will let you view the rendered document at http://127.0.0.1:8000:
-
-`mise run serve`
 
 # Continuous Integration & Branches
 
