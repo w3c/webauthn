@@ -8174,22 +8174,28 @@ A <dfn>CMTG Key Record</dfn> is a [=struct=] with the following [=struct/items=]
 :: A CBOR byte string containing a signature generated with the Credential Manager Trust Group Key's private key.
 
 : Authenticator extension processing
-:: For both [=authenticatorMakeCredential=] and [=authenticatorGetAssertion=] operations:
-    1. Create or select the [=public key credential source=] as usual (see [[#sctn-op-make-cred]],
-        or [[#sctn-op-get-assertion]] as appropriate).
+:: The <dfn abstract-op>locate the existing Credential Manager Trust Group Key</dfn> operation
+    returns the [=Credential Manager Trust Group Key=] associated with the current
+    [=public key credential source=], or `null` if none exists.
 
-    1. If the [=public key credential source=] is not [=backup eligible=],
-        terminate these processing steps as this extension only applies to [=multi-device credentials=].
+    The <dfn abstract-op>create a Credential Manager Trust Group Key</dfn> operation
+    takes a public key algorithm identifier, generates a new
+    [=Credential Manager Trust Group Key=] for the current
+    [=public key credential source=], and returns the generated key.
 
-    1. If a [=Credential Manager Trust Group Key=] does not already exist for this ([=public key credential source/id|Credential ID=],
-        [=public key credential source/rpId|RP ID=], [=public key credential source/userHandle|User Handle=]) tuple in the [=authenticator=]/[=credential manager=],
-        create it using the same public key algorithm as that used by the [=user credential=]'s [=credential key pair=],
-        otherwise locate the existing [=Credential Manager Trust Group Key=].
+    For both [=authenticatorMakeCredential=] and [=authenticatorGetAssertion=] operations:
+        1. Create or select the [=public key credential source=] as usual (see [[#sctn-op-make-cred]],
+            or [[#sctn-op-get-assertion]] as appropriate).
 
-    1. Let |cmtgPublicKey| be the newly created or existing [=Credential Manager Trust Group Key=],
-        in COSE_Key format [=credentialPublicKey|in the same fashion as for the user credential's credentialPublicKey=].
+        1. If the [=public key credential source=] is not [=backup eligible=],
+            terminate these processing steps as this extension only applies to [=multi-device credentials=].
 
-    1. Let |cmtgPrivateKey| be the newly created or existing [=Credential Manager Trust Group private key=].
+        1. Let |cmtgKey| be the result of attempting to [$locate the existing Credential Manager Trust Group Key$].
+        1. If |cmtgKey| is null:
+            1. Let |cmtgKey| be the result of [$create a Credential Manager Trust Group Key|creating a Credential Manager Trust Group Key$] using the same public key algorithm as that used by the [=user credential=]'s [=credential key pair=].
+        1. Let |cmtgPublicKey| be |cmtgKey|'s public key,
+            in COSE_Key format [=credentialPublicKey|in the same fashion as for the user credential's credentialPublicKey=].
+        1. Let |cmtgPrivateKey| be |cmtgKey|'s private key.
 
     1. If this algorithm is being run as part of [=authenticatorMakeCredential=]:
 
@@ -8373,6 +8379,12 @@ Additionally, [=extension capabilities=] are defined for every [=authenticator e
                 <td>boolean</td>
                 <td>Indicates whether the [=endpoint node=] WebAuthn WebDriver implementation supports the `credBlob` extension defined in [[FIDO-CTAP]].</td>
             </tr>
+            <tr>
+                <td>Credential Manager Trust Group Key Extension Support</td>
+                <td>`"webauthn:extension:cmtgKey"`</td>
+                <td>boolean</td>
+                <td>Indicates whether the [=endpoint node=] WebAuthn WebDriver implementation supports the [=cmtgKey=] extension.</td>
+            </tr>
         </tbody>
     </table>
 </figure>
@@ -8431,6 +8443,33 @@ Each stored [=virtual authenticator=] has the following properties:
 :: Determines the default state of the [=backup state=] [=credential property=] for any newly created [=Public Key Credential Source=].
     This value MUST be reflected by the [=BS=] [=authenticator data=] [=flag=] when performing an [=authenticatorMakeCredential=]
     operation with this [=virtual authenticator=].
+
+### Credential Manager Trust Group Extension Processing ### {#sctn-automation-cmtg-processing}
+
+When a [=virtual authenticator=] supports the [=cmtgKey=] extension, it implements the [=authenticator extension processing=] steps for the [=cmtgKey=] extension as follows:
+
+To implement the step to [$locate the existing Credential Manager Trust Group Key$]:
+1. Let |credential| be the [=public key credential source=] being used.
+1. Let |generate| be the stored |generateCmtgKeyOnNextOperation| associated with |credential|.
+1. If |generate| is [TRUE], return null.
+1. Let |index| be the stored |activeCmtgKeyIndex| associated with |credential|.
+1. If |index| is null, return null.
+1. Let |cmtgKeys| be the stored |cmtgKeys| list associated with |credential|.
+1. If |cmtgKeys| is not defined or is empty, return null.
+1. If |index| is less than zero or greater than or equal to |cmtgKeys|'s size, set |index| to 0.
+1. Let |cmtgPrivateKey| be the key at |cmtgKeys|[|index|].
+1. Return the [=Credential Manager Trust Group Key=] derived from |cmtgPrivateKey|.
+
+To implement the step to [$create a Credential Manager Trust Group Key$]:
+1. Let |credential| be the [=public key credential source=] being used.
+1. Generate a new key pair using the same public key algorithm as that used by |credential|'s [=public key credential source/privateKey=].
+1. Let |cmtgPrivateKey| be the private key of the generated key pair.
+1. If the stored |cmtgKeys| list associated with |credential| is not defined, set it to an empty list.
+1. Let |cmtgKeys| be the stored |cmtgKeys| list associated with |credential|.
+1. Append |cmtgPrivateKey| to |cmtgKeys|.
+1. Set the stored |activeCmtgKeyIndex| associated with |credential| to |cmtgKeys|'s size - 1.
+1. Set the stored |generateCmtgKeyOnNextOperation| associated with |credential| to [FALSE].
+1. Return the generated key pair.
 
 ## <dfn>Add Virtual Authenticator</dfn> ## {#sctn-automation-add-virtual-authenticator}
 
@@ -8699,6 +8738,32 @@ The <dfn>Credential Parameters</dfn> is a JSON [=Object=] passed to the [=remote
                 </td>
                 <td>string</td>
             </tr>
+            <tr>
+                <td>|cmtgKeys|</td>
+                <td>
+                    A list of [=Credential Manager Trust Group Private Keys=],
+                    each formatted as an asymmetric key package per [[RFC5958]] and encoded using [=Base64url Encoding=].
+                    This property may not be defined.
+                </td>
+                <td>array of strings</td>
+            </tr>
+            <tr>
+                <td>|activeCmtgKeyIndex|</td>
+                <td>
+                    The 0-based index of the active key in |cmtgKeys| that the authenticator will use.
+                    If this property is not defined, it is treated as 0 if |cmtgKeys| is not empty.
+                </td>
+                <td>integer</td>
+            </tr>
+            <tr>
+                <td>|generateCmtgKeyOnNextOperation|</td>
+                <td>
+                    If set to [TRUE], the authenticator will generate a new CMTG key on the next operation that requests it,
+                    even if one is already active. This value is reset to [FALSE] after the key is generated.
+                    If this property is not defined, it is treated as [FALSE].
+                </td>
+                <td>boolean</td>
+            </tr>
         </tbody>
     </table>
 </figure>
@@ -8735,6 +8800,28 @@ The [=remote end steps=] are:
      1. If |largeBlob| is failure, return a [=WebDriver error=] with [=WebDriver error code=] [=invalid argument=].
  1. Otherwise:
      1. Let |largeBlob| be `null`.
+ 1. If the |authenticator| supports the [=cmtgKey=] extension:
+     1. Let |cmtgKeys| be an empty list.
+     1. If the |parameters|' |cmtgKeys| property is defined:
+         1. If |parameters|' |cmtgKeys| is not an array, return a [=WebDriver error=] with [=WebDriver error code=] [=invalid argument=].
+         1. For each |keyStr| in |parameters|' |cmtgKeys|:
+             1. Let |key| be the result of decoding [=Base64url Encoding=] on |keyStr|.
+             1. If |key| is failure, return a [=WebDriver error=] with [=WebDriver error code=] [=invalid argument=].
+             1. If |key| is not a validly-encoded asymmetric key package containing a single private key
+                 per [[RFC5958]] using the same public key algorithm as |privateKey|, return a
+                 [=WebDriver error=] with [=WebDriver error code=] [=invalid argument=].
+             1. Append |key| to |cmtgKeys|.
+     1. If the |parameters|' |activeCmtgKeyIndex| property is defined:
+         1. Let |activeCmtgKeyIndex| be the |parameters|' |activeCmtgKeyIndex| property.
+         1. If |activeCmtgKeyIndex| is not an integer, return a [=WebDriver error=] with [=WebDriver error code=] [=invalid argument=].
+         1. If |activeCmtgKeyIndex| < 0 or |activeCmtgKeyIndex| >= |cmtgKeys|'s size, return a [=WebDriver error=] with [=WebDriver error code=] [=invalid argument=].
+     1. Otherwise:
+         1. Let |activeCmtgKeyIndex| be 0.
+     1. If the |parameters|' |generateCmtgKeyOnNextOperation| property is defined:
+         1. Let |generateCmtgKeyOnNextOperation| be the |parameters|' |generateCmtgKeyOnNextOperation| property.
+         1. If |generateCmtgKeyOnNextOperation| is not a boolean, return a [=WebDriver error=] with [=WebDriver error code=] [=invalid argument=].
+     1. Otherwise:
+         1. Let |generateCmtgKeyOnNextOperation| be [FALSE].
  1. Let |backupEligibility| be the |parameters|' |backupEligibility| property.
  1. If |backupEligibility| is not defined, set |backupEligibility| to the value of the |authenticator|'s |defaultBackupEligibility|.
  1. Let |backupState| be the |parameters|' |backupState| property.
@@ -8763,6 +8850,7 @@ The [=remote end steps=] are:
      |signCount| or `0` if |signCount| is `null`.
  1. If |largeBlob| is not `null`, set the [=large, per-credential blob=] associated to the |credential| to |largeBlob|.
  1. Store the |credential| and |counter| in the database of the |authenticator|.
+ 1. If the |authenticator| supports the [=cmtgKey=] extension, store |cmtgKeys|, |activeCmtgKeyIndex|, and |generateCmtgKeyOnNextOperation| associated with the |credential| in the database of the |authenticator|.
  1. Return <a spec="webdriver2">success</a>.
 
 ## <dfn>Get Credentials</dfn> ## {#sctn-automation-get-credentials}
@@ -8965,6 +9053,21 @@ It contains the following |key| and |value| pairs:
                 <td>The [=backup state=] [=credential property=].</td>
                 <td>boolean</td>
             </tr>
+            <tr>
+                <td>|activeCmtgKeyIndex|</td>
+                <td>
+                    The 0-based index of the active key in the stored |cmtgKeys| that the authenticator will use.
+                </td>
+                <td>integer</td>
+            </tr>
+            <tr>
+                <td>|generateCmtgKeyOnNextOperation|</td>
+                <td>
+                    If set to [TRUE], the authenticator will generate a new CMTG key on the next operation that requests it,
+                    even if one is already active. This value is reset to [FALSE] after the key is generated.
+                </td>
+                <td>boolean</td>
+            </tr>
         </tbody>
     </table>
 </figure>
@@ -8987,6 +9090,17 @@ The [=remote end steps=] are:
 
  1. Let |backupState| be the |parameters|' |backupState| property.
  1. If |backupState| is defined, set the [=backup state=] [=credential property=] of |credential| to the value of |backupState|.
+ 1. If the |authenticator|'s |extensions| array contains `"cmtgKey"`:
+     1. Let |activeCmtgKeyIndex| be the |parameters|' |activeCmtgKeyIndex| property.
+     1. If |activeCmtgKeyIndex| is defined:
+         1. If |activeCmtgKeyIndex| is not an integer, return a [=WebDriver error=] with [=WebDriver error code=] [=invalid argument=].
+         1. Let |cmtgKeys| be the stored |cmtgKeys| associated with |credential|.
+         1. If |activeCmtgKeyIndex| < 0 or |activeCmtgKeyIndex| >= |cmtgKeys|'s size, return a [=WebDriver error=] with [=WebDriver error code=] [=invalid argument=].
+         1. Set the stored |activeCmtgKeyIndex| associated with |credential| in the database to |activeCmtgKeyIndex|.
+     1. Let |generateCmtgKeyOnNextOperation| be the |parameters|' |generateCmtgKeyOnNextOperation| property.
+     1. If |generateCmtgKeyOnNextOperation| is defined:
+         1. If |generateCmtgKeyOnNextOperation| is not a boolean, return a [=WebDriver error=] with [=WebDriver error code=] [=invalid argument=].
+         1. Set the stored |generateCmtgKeyOnNextOperation| associated with |credential| in the database to |generateCmtgKeyOnNextOperation|.
  1. Return <a spec="webdriver2">success</a>.
 
 # IANA Considerations # {#sctn-IANA}
