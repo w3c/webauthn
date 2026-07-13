@@ -2717,7 +2717,7 @@ The steps for [=issuing a credential request to an authenticator=] are as follow
             </dl>
 
     1. Let |acceptedAlgs| be
-       <code>|pkOptions|.{{PublicKeyCredentialRequestOptions/acceptedAlgs}}</code>.
+        <code>|pkOptions|.{{PublicKeyCredentialRequestOptions/acceptedAlgs}}</code>.
 
     1. <span id="allowCredentialDescriptorListCreation"></span>
         If <code>|pkOptions|.{{PublicKeyCredentialRequestOptions/allowCredentials}}</code>
@@ -7988,6 +7988,13 @@ pair, [=signature counter=], and [=backup state|backup eligibility and state=].
     credHash = SHA-256( credIdLen || credId || COSE_Key )
     </pre>
 
+    The bytes hashed are exactly the portion of the created [=credential=]'s [=attested credential
+    data=] that follows the leading [=authData/attestedCredentialData/aaguid|AAGUID=].
+    That is, credIdLen is the credential's [=authData/attestedCredentialData/credentialIdLength=]
+    (the 2-byte, 16-bit unsigned big-endian length L),
+    credId is its [=authData/attestedCredentialData/credentialId=] (L bytes), and
+    COSE_Key is its [=authData/attestedCredentialData/credentialPublicKey=].
+
     `existingCredentials` are emitted whenever [=algPolicy|this extension=] is present, including
     when `createAlgs` is the empty array.
     `existingCredentials` is a per-authenticator, unordered set scoped to the same ([=RP ID=],[=user
@@ -7995,8 +8002,12 @@ pair, [=signature counter=], and [=backup state|backup eligibility and state=].
 
     The unsigned part conveys the [=credentials=] created in this ceremony.
     It is a CBOR array of [=authenticatorMakeCredential=] responses as per [[FIDO-CTAP]] spec.
-    [=Client=] converts each created credentials CBOR output to
-    AuthenticatorAttestationResponseJSON entries.
+    For each created [=credential=], the [=client=] assembles a {{PublicKeyCredential}} exactly as it
+    would for a {{CredentialsContainer/create()}} of that credential — including its
+    [=attestation object=] and the [=client extension outputs=].
+    When the output is serialized via <code>{{PublicKeyCredential}}.{{PublicKeyCredential/toJSON()}}</code>,
+    each entry is represented as a {{RegistrationResponseJSON}} in the corresponding
+    `createdCredentials` member of {{AuthenticationExtensionsAlgPolicyOutputsJSON}}.
 
 : Client extension output
 :: <xmp class="idl">
@@ -8004,11 +8015,14 @@ pair, [=signature counter=], and [=backup state|backup eligibility and state=].
         AuthenticationExtensionsAlgPolicyOutputs algPolicy;
     };
     partial dictionary AuthenticationExtensionsClientOutputsJSON {
-        AuthenticationExtensionsAlgPolicyOutputs algPolicy;
+        AuthenticationExtensionsAlgPolicyOutputsJSON algPolicy;
     };
 
     dictionary AuthenticationExtensionsAlgPolicyOutputs {
-        sequence<AuthenticatorAttestationResponseJSON> createdCredentials;
+        sequence<PublicKeyCredential> createdCredentials;
+    };
+    dictionary AuthenticationExtensionsAlgPolicyOutputsJSON {
+        sequence<RegistrationResponseJSON> createdCredentials;
     };
     </xmp>
 
@@ -8017,6 +8031,12 @@ pair, [=signature counter=], and [=backup state|backup eligibility and state=].
         ::  Zero or more new [=credentials=] created during this ceremony, one entry per
             {{AuthenticationExtensionsAlgPolicyInputs/createAlgs}} group the [=authenticator=] chose
             to satisfy.
+
+            Each entry is a full registration response for the created [=credential=], as a
+            {{PublicKeyCredential}} (or a {{RegistrationResponseJSON}} in the JSON serialization),
+            carrying both the credential's [=attestation object=] and the [=client extension
+            outputs=] resulting from any {{AuthenticationExtensionsAlgPolicyInputs/createExtensions}}
+            inputs.
 
             The [=[RP]=] MUST treat this list as opportunistic: a group not filled in this response
             MAY be filled on a later ceremony.
