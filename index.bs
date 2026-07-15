@@ -7843,6 +7843,42 @@ Note: This extension is restricted to {{AuthenticatorTransport/hybrid}}.
                 1. The [=authenticator=] returns an error code indicating that a fallback URL is processed to the [=client platform=] and terminates the operation.
             1. If the user does not [=user consent|consent=], return an error code equivalent to "{{NotAllowedError}}" and terminate the operation.
 
+#### Security Properties #### {#sctn-cross-device-fallback-url-security-properties}
+
+The following are some of the security properties of the {{AuthenticationExtensionsClientInputs/crossDeviceFallbackUrl}}:
+
+* The `crossDeviceFallbackUrl` does not provide the same level of security and phishing resistance as [=passkeys=], and is not a replacement for [=passkey=] authentication. Additional mitigation systems (e.g., a "risk engine") are required to resist phishing attacks made possible by this extension.
+
+* The `crossDeviceFallbackUrl` only comes into picture if [=passkey=]-based authentication is not possible.
+
+* The `crossDeviceFallbackUrl` is an improvement over typical custom QR-code-based out-of-band cross-device authorization flows because of identified ways to resist phishing attacks while using it (as opposed to password-only flows that have fewer techniques to mitigate phishing.)
+
+#### Risk Scenarios #### {#sctn-cross-device-fallback-url-risk-scenarios}
+
+Using `crossDeviceFallbackUrl` introduces security trade-offs compared to the primary WebAuthn assertion flow. This is because the `crossDeviceFallbackUrl` redirects the user to alternate authentication mechanisms (which typically rely on passwords, one-time codes, or out-of-band links) which lacks the strong phishing resistance of [=passkeys=]. Attackers may attempt to exfiltrate or intercept the `crossDeviceFallbackUrl` either from the client or the authenticator device. Although `crossDeviceFallbackUrl` does not contain any user specific information, it is linked to a session on [=[RP]=] backend. Hence can be used to trick users into authorizing authentication sessions on the attacker's behalf.
+
+* *Client URL Exfiltration*: An assertion request can be extracted using JavaScript breakpoints on the client device (e.g., when showing a QR code) and can be forwarded to a victim to sign in. The victim, when signing in using the fallback URL on their device, may unknowingly authorize the authentication session on the attacker's device.
+
+* *Authenticator URL Exfiltration*: An attacker can extract the fallback URL on the authenticator device and pass it to a victim to sign in. The victim, when signing in using the fallback URL on their device, may unknowingly authorize the authentication session on the attacker's device.
+
+
+#### Risk Mitigation #### {#sctn-cross-device-fallback-url-risk-mitigation}
+
+[=Relying Parties=] are strongly recommended to implement the following mitigations to protect against these exfiltration risks:
+
+* **Primary Exception Requirement**: The fallback URL needs to be primed before usage by returning a {{WebAuthnCrossDeviceFallbackException}} to the [=[RP]=]. Only after receiving this exception should the [=[RP]=] start polling for the fallback URL's authentication results. It MUST be disregarded otherwise.
+
+* **Cross Device Fallback URL Expiration**: Invalidate the fallback URL's single-use authorization code (or session code) a short time after it is generated (e.g., a few seconds). Because it takes time for an attacker to forward the URL and trick a victim into visiting it, the [=[RP]=] would observe a significant time delay between generating the fallback URL and the victim visiting it.
+
+* **Risk Engine Analysis**: The [=[RP]=] detecting a {{WebAuthnCrossDeviceFallbackException}} indicates that the fallback flow has been triggered, initiating the polling process. However, because signals can be captured whenever the `crossDeviceFallbackUrl` is visited, a risk engine can analyze these signals to detect anomalies. If anomalous signals are detected, the [=[RP]=] can choose to invalidate the `crossDeviceFallbackUrl` flow for the session.
+    * Potential signals to block invalid use of the fallback URL include:
+        * IP address
+        * Geolocation
+        * Time elapsed between when the {{WebAuthnCrossDeviceFallbackException}} was received and when the `crossDeviceFallbackUrl` was visited
+        * Proximate Wi-Fi networks
+        * Number of visits to the specific `crossDeviceFallbackUrl`. Ideally it should be just one visit for most cases.
+
+* **Single-Use Invalidation**: Alternatively, security-conscious [=Relying Parties=] can invalidate the fallback URL single-use code immediately after its first invocation. This increases user friction, as any interruption or page reload would require the user to re-trigger the hybrid connection ceremony to generate a new `crossDeviceFallbackUrl`.
 
 
 
