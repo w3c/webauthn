@@ -916,6 +916,11 @@ BCP 14 [[!RFC2119]] [[!RFC8174]] when, and only when, they appear in all capital
     then each compartment is considered a separate [=authenticator=]
     with a single user with no access to other users' [=credentials=].
 
+:<dfn>Multiple Credentials Per User Account</dfn>
+:: A [WAA] which supports storing multiple credentials corresponding to different
+    {{COSEAlgorithmIdentifier}} for same the [=user account=].
+    These credentials has the same [=public key credential source/rpId=] and [=user handle=].
+
 : <dfn>Authorization Gesture</dfn>
 :: An [=authorization gesture=] is a physical interaction performed by a user with an authenticator as part of a [=ceremony=],
     such as [=registration=] or [=authentication=]. By making such an [=authorization gesture=], a user [=user consent|provides
@@ -2711,6 +2716,9 @@ The steps for [=issuing a credential request to an authenticator=] are as follow
 
             </dl>
 
+    1. Let |acceptedAlgs| be
+        <code>|pkOptions|.{{PublicKeyCredentialRequestOptions/acceptedAlgs}}</code>.
+
     1. <span id="allowCredentialDescriptorListCreation"></span>
         If <code>|pkOptions|.{{PublicKeyCredentialRequestOptions/allowCredentials}}</code>
         <dl class="switch">
@@ -2747,21 +2755,21 @@ The steps for [=issuing a credential request to an authenticator=] are as follow
 
                             Then, using |transport|, invoke the [=authenticatorGetAssertion=] operation on
                             |authenticator|, with |rpId|, |clientDataHash|, |allowCredentialDescriptorList|,
-                            |userVerification|,
-                            and |authenticatorExtensions| as parameters.
+                            |userVerification|, |authenticatorExtensions|,
+                            and |acceptedAlgs| as parameters.
 
                         :   [=list/is empty=]
                         ::  Using local configuration knowledge of the appropriate transport to use with |authenticator|,
                             invoke the [=authenticatorGetAssertion=] operation on |authenticator| with |rpId|,
                             |clientDataHash|, |allowCredentialDescriptorList|, |userVerification|,
-                            and |authenticatorExtensions| as parameters.
+                            |authenticatorExtensions|, and |acceptedAlgs| as parameters.
                     </dl>
 
             :   [=list/is empty=]
             ::  Using local configuration knowledge of the appropriate transport to use with |authenticator|, invoke the
                 [=authenticatorGetAssertion=] operation on |authenticator| with |rpId|, |clientDataHash|,
-                |userVerification|,
-                and |authenticatorExtensions| as parameters.
+                |userVerification|, |authenticatorExtensions|,
+                and |acceptedAlgs| as parameters.
 
                 Note: In this case, the [=[RP]=] did not supply a list of acceptable credential descriptors. Thus, the
                     authenticator is being asked to exercise any credential it may possess that is [=scoped=] to
@@ -2990,6 +2998,7 @@ value and terminate the operation.
         sequence<PublicKeyCredentialDescriptorJSON>             allowCredentials = [];
         DOMString                                               userVerification = "preferred";
         sequence<DOMString>                                     hints = [];
+        sequence<COSEAlgorithmIdentifier>                       acceptedAlgs = [];
         AuthenticationExtensionsClientInputsJSON                extensions;
     };
 </xmp>
@@ -3868,6 +3877,7 @@ an assertion. Its {{PublicKeyCredentialRequestOptions/challenge}} member MUST be
         sequence<PublicKeyCredentialDescriptor> allowCredentials = [];
         DOMString                            userVerification = "preferred";
         sequence<DOMString>                  hints = [];
+        sequence<COSEAlgorithmIdentifier>    acceptedAlgs = [];
         AuthenticationExtensionsClientInputs extensions;
     };
 </xmp>
@@ -3931,6 +3941,21 @@ an assertion. Its {{PublicKeyCredentialRequestOptions/challenge}} member MUST be
 
     :   <dfn>hints</dfn>
     ::  This OPTIONAL member contains zero or more elements from {{PublicKeyCredentialHint}} to guide the user agent in interacting with the user. Note that the elements have type `DOMString` despite being taken from that enumeration. See [[#sct-domstring-backwards-compatibility]].
+
+    :   <dfn>acceptedAlgs</dfn>
+    ::  This OPTIONAL member lists the {{COSEAlgorithmIdentifier}}s, in descending order of
+        preference, that the [=[RP]=] is willing to accept for this [=authentication ceremony=]
+        and acts as a filter in selection of eligible credentials set.
+
+        This filter is only applicable if [=authenticator=] supports
+        [=multiple credentials per user account=].
+        If [=authenticator=] does not support [=multiple credentials per user account=],
+        this filter is ignored.
+
+        This filter is additive to {{PublicKeyCredentialRequestOptions/allowCredentials}} in
+        figuring out which credential to pick for this [=authentication ceremony=].
+
+        See [[#sctn-op-get-assertion]] for more details.
 
     :   <dfn>extensions</dfn>
     ::  The [=[RP]=] MAY use this OPTIONAL member to provide [=client extension inputs=]
@@ -5312,6 +5337,11 @@ This operation takes the following input parameters:
 : |extensions|
 :: A [=CBOR=] [=map=] from [=extension identifiers=] to their [=authenticator extension inputs=], created by the client based on
     the extensions requested by the [=[RP]=], if any.
+: |acceptedAlgs|
+:: An OPTIONAL [=list=] of {{COSEAlgorithmIdentifier}}s, in descending order of preference, that
+    restricts and orders the credentials eligible for this assertion.
+    Supplied by the client from
+    <code>|pkOptions|.{{PublicKeyCredentialRequestOptions/acceptedAlgs}}</code>, if any.
 
 When this method is invoked, the [=authenticator=] MUST perform the following procedure:
 
@@ -5326,6 +5356,22 @@ When this method is invoked, the [=authenticator=] MUST perform the following pr
     authenticator's [=credentials map=], [=set/append=] |credSource| to |credentialOptions|.
 1. [=list/Remove=] any items from |credentialOptions| whose [=public key credential source/rpId=] is not equal to
     |rpId|.
+1. If [=authenticator=] supports [=multiple credentials per user account=], group the credentials
+    in |credentialOptions| per [=user handle=].
+    Then for each group, if
+    <dl class="switch">
+        :   |acceptedAlgs| was supplied and [=list/is not empty=]
+        ::  [=list/Remove=] any items from |credentialOptions| whose
+            {{COSEAlgorithmIdentifier|COSE algorithm}} does not have an entry in |acceptedAlgs|.
+            Then, if multiple entries remains for this group, retain one entry whose
+            {{COSEAlgorithmIdentifier|COSE algorithm}} appear earliest in the |acceptedAlgs| and
+            [=list/Remove=] other entries, if any remaining, from |credentialOptions|.
+
+        :   Otherwise
+        ::  Retain one entry from the group chosen by an authenticator-defined preference,
+            for example the most recently created or used and [=list/Remove=] other entries,
+            if any remaining, from |credentialOptions|.
+    </dl>
 1. If |credentialOptions| is now empty, return an error code equivalent to "{{NotAllowedError}}" and terminate the operation.
 
 <!-- Note: this next step is actually a top-level step, but bikeshed wanted it indented this much in order to render it as
@@ -7757,6 +7803,249 @@ However, [=authenticators=] that do not utilize [[!FIDO-CTAP]] do not necessaril
 : Authenticator extension processing
 :: [=largeblob|This extension=] directs the user-agent to cause the large blob to be stored on, or retrieved from, the authenticator. It thus does not specify any direct authenticator interaction for [=[RPS]=].
 
+### Algorithm Policy extension (<dfn>algPolicy</dfn>) ### {#sctn-alg-policy-extension}
+
+This [=authentication extension=] lets a [=[RP]=] evaluate different {{COSEAlgorithmIdentifier}}s
+credentials and migrate its users between them during normal [=authentication ceremonies=],
+without an explicit re-registration ceremony and without putting accounts at risk of lockout while
+the transition is in progress.
+
+The extension depends on a authenticator supporting [=multiple credentials per user account=] and
+supporting this extension.
+An [=authenticator=] that supports [=algPolicy|this extension=] can store more than one
+[=discoverable credential=] for the same ([=RPID=], [=user handle=]) pair, subject to the invariant
+that no two such [=credentials=] use the same {{COSEAlgorithmIdentifier|COSE algorithm}}.
+Each such [=credential=] is otherwise a normal [=credential=] with its own [=credential id=], key
+pair, [=signature counter=], and [=backup state|backup eligibility and state=].
+
+: Extension identifier
+:: `algPolicy`
+
+: Operation applicability
+:: [=authentication extension|Authentication=]
+
+: Client extension input
+::  <xmp class="idl">
+    partial dictionary AuthenticationExtensionsClientInputs {
+        AuthenticationExtensionsAlgPolicyInputs algPolicy;
+    };
+    partial dictionary AuthenticationExtensionsClientInputsJSON {
+        AuthenticationExtensionsAlgPolicyInputsJSON algPolicy;
+    };
+
+    dictionary AuthenticationExtensionsAlgPolicyInputs {
+        required sequence<sequence<COSEAlgorithmIdentifier>> createAlgs;
+        AuthenticationExtensionsClientInputs createExtensions;
+        sequence<BufferSource> deleteCredentials;
+    };
+    dictionary AuthenticationExtensionsAlgPolicyInputsJSON {
+        required sequence<sequence<COSEAlgorithmIdentifier>> createAlgs;
+        AuthenticationExtensionsClientInputsJSON createExtensions;
+        sequence<Base64URLString> deleteCredentials;
+    };
+    </xmp>
+
+    <div dfn-type="dict-member" dfn-for="AuthenticationExtensionsAlgPolicyInputs">
+        :   <dfn>createAlgs</dfn>
+        ::  A list of algorithm groups where each algorithm group is a preference-ordered list of
+            COSE algorithms, most-preferred first.
+            RP wants authenticator to create best supported credential from each group.
+
+            For each group, the authenticator first identifies the BEST algorithm it supports.
+            Let's call that algorithm B.
+
+            A group is SATISFIED iff an authenticator has an existing B algorithm credential
+            for (rpId, user.id).
+            If no entry in the group is supported, then the group is UNSATISFIABLE
+            on this authenticator and is ignored (not a failure).
+
+            For each UNSATISFIED group, the authenticator MAY create one new
+            credential using algorithm B and return it in the extension output.
+
+            At most 3 groups may be listed.
+            The max number of algorithms per group is 32.
+            The [=client=] rejects a get() whose createAlgs has more than 3 groups or any group
+            having more than 32 algorithms with a {{TypeError}}.
+
+            The empty array (zero groups) is VALID entry: It is the
+            enumerate-only mode, where the RP wants the signed
+            existingCredentials (and any deletedCredentials) snapshot without
+            provisioning a new credential. Valid range is 0..3 groups inclusive.
+            The member is `required` so that presence of the algPolicy extension always carries
+            an explicit (possibly empty) group list rather than an undefined one.
+
+        :   <dfn>createExtensions</dfn>
+        ::  [=client extension inputs=] applied to every [=credential=] silently created in this
+            ceremony, processed by the [=authenticator=] identically to how a
+            {{CredentialsContainer/create()}} would process the corresponding
+            {{PublicKeyCredentialCreationOptions/extensions}}.
+
+            The corresponding [=client extension outputs=] are included in the matching
+            {{AuthenticationExtensionsAlgPolicyOutputs/createdCredentials}} entry.
+
+        :   <dfn>deleteCredentials</dfn>
+        ::  A list of [=credential ids=] the [=[RP]=] wants [=selected authenticator=] to delete
+            during this ceremony.
+
+            {{PublicKeyCredentialRequestOptions/allowCredentials}} must be specified by the [=[RP]=]
+            if this field is present in the extension.
+            If {{PublicKeyCredentialRequestOptions/allowCredentials}} is absent or empty and this field
+            is present, The [=client=] MUST return {{TypeError}}.
+
+            The [=authenticator=] MUST delete a listed [=credential id=] only when it resides on the
+            [=selected authenticator=] and is [=bound credential|bound=] to the same ([=RP ID=],
+            [=user handle=]) as the [=credential=] being asserted.
+
+            [=credential ids=] that are absent, or scoped to a different [=[RP]=] or [=user handle=],
+            are ignored.
+
+            The [=credential ids=] actually deleted are reported in the signed [=authenticator
+            extension output=].
+    </div>
+
+: Client extension processing
+::
+    1. If {{AuthenticationExtensionsAlgPolicyInputs/createAlgs}} contains more than 3
+        algorithm groups or any group contains more than 32 entries, throw a {{TypeError}}.
+
+    1. If {{AuthenticationExtensionsAlgPolicyInputs/deleteCredentials}} is present and
+        {{PublicKeyCredentialRequestOptions/allowCredentials}} is absent or empty,
+        throw a {{TypeError}}
+
+    1. Initialize the [=client extension output=],
+        {{AuthenticationExtensionsClientOutputs/algPolicy}}.
+
+    1. After a successful [[#sctn-getAssertion|assertion]] operation, set
+        {{AuthenticationExtensionsAlgPolicyOutputs/createdCredentials}} to the list of
+        [=credentials=] the [=authenticator=] created in this ceremony, conveyed in the [=unsigned
+        extension output=].
+
+        Each entry MUST be discarded unless its <var>credHash</var> (computed as defined below) is
+        a member of the signed `mintHashes` set algPolicy extension output in
+        {{AuthenticatorAssertionResponse/authenticatorData}}.
+
+: Authenticator extension input
+:: The [=authenticator extension input=] is a CBOR map with integer keys:
+
+    <pre>
+    algPolicy_input = {
+      1: [* [* int]],         ; createAlgs: list of groups, each a preference-
+                              ; ordered list of COSE algorithm identifiers.
+                              ; Empty array = enumerate-only / sweep-only. 0..3 groups.
+      ? 2: { * tstr =&gt; any }, ; createExtensions: a create()-time extensions map
+                              ; (text-keyed) applied to each created credential.
+      ? 3: [* bstr],          ; deleteCredentials: raw credential IDs to delete.
+    }
+    </pre>
+
+: Authenticator extension processing
+::
+    The [=authenticator=] performs the following while processing
+    [[#sctn-op-get-assertion|authenticatorGetAssertion]], after [=user verification=] has been
+    established and a [=credential=] (the <dfn>anchor</dfn>) has been selected for assertion, and
+    before computing the assertion signature:
+
+    1. If `deleteCredentials` (key `3`) is present, then for each listed [=credential id=] that
+        resides on this [=authenticator=] and is [=bound credential|bound=] to the same ([=RP
+        ID=], [=user handle=]) as the [=anchor=], delete that [=credential=].
+        Other [=credential ids=] are ignored.
+
+    1. If `createAlgs` (key `1`) is present and not empty, then for each group, in order:
+        1. Let <var>B</var> be the earliest entry in the group whose algorithm this
+            [=authenticator=] supports.
+            If there is none, skip the group.
+        1. If there is a existing [=credential=] that uses algorithm <var>B</var>, then this
+            group is satisfied and continue processing other remaining groups.
+        1. Otherwise the [=authenticator=] MAY create one new [=discoverable credential=] using
+            algorithm <var>B</var> for the same ([=RP ID=], [=user handle=], user name, and user
+            display name) as the [=anchor=] credential, applying any `createExtensions`
+            (key `2`) inputs as in [[#sctn-op-make-cred|authenticatorMakeCredential]].
+            1. The created [=credentials=] do not collect an additional [=test of user presence=] or
+                [=user verification=] gesture. The gesture and verification established for the assertion
+                authorize the new credential creation.
+
+: Authenticator extension output
+:: The [=authenticator extension output=] has two parts working as a pair.
+
+    The signed part is carried in {{AuthenticatorAssertionResponse/authenticatorData}} as a CBOR map
+    with integer keys:
+
+    <pre>
+    algPolicy = {
+      1: [* bstr],   ; existingCredentials: the full set of credential IDs this
+                     ; authenticator holds for (RP ID, user handle), after this
+                     ; ceremony's deletions and creations. Always present.
+      ? 2: [* bstr], ; mintHashes: one credHash per credential created in this ceremony.
+                     ; Omitted when nothing was created.
+      ? 3: [* bstr], ; deletedCredentials: the credential IDs actually deleted in this ceremony.
+                     ; Omitted when nothing was deleted.
+    }
+    </pre>
+
+    where each <var>credHash</var> is:
+
+    <pre>
+    credHash = SHA-256( credIdLen || credId || COSE_Key )
+    </pre>
+
+    The bytes hashed are exactly the portion of the created [=credential=]'s [=attested credential
+    data=] that follows the leading [=authData/attestedCredentialData/aaguid|AAGUID=].
+    That is, credIdLen is the credential's [=authData/attestedCredentialData/credentialIdLength=]
+    (the 2-byte, 16-bit unsigned big-endian length L),
+    credId is its [=authData/attestedCredentialData/credentialId=] (L bytes), and
+    COSE_Key is its [=authData/attestedCredentialData/credentialPublicKey=].
+
+    `existingCredentials` are emitted whenever [=algPolicy|this extension=] is present, including
+    when `createAlgs` is the empty array.
+    `existingCredentials` is a per-authenticator, unordered set scoped to the same ([=RP ID=],[=user
+    handle=]).
+
+    The unsigned part conveys the [=credentials=] created in this ceremony.
+    It is a CBOR array of [=authenticatorMakeCredential=] responses as per [[FIDO-CTAP]] spec.
+    For each created [=credential=], the [=client=] assembles a {{PublicKeyCredential}} exactly as it
+    would for a {{CredentialsContainer/create()}} of that credential — including its
+    [=attestation object=] and the [=client extension outputs=].
+    When the output is serialized via <code>{{PublicKeyCredential}}.{{PublicKeyCredential/toJSON()}}</code>,
+    each entry is represented as a {{RegistrationResponseJSON}} in the corresponding
+    `createdCredentials` member of {{AuthenticationExtensionsAlgPolicyOutputsJSON}}.
+
+: Client extension output
+:: <xmp class="idl">
+    partial dictionary AuthenticationExtensionsClientOutputs {
+        AuthenticationExtensionsAlgPolicyOutputs algPolicy;
+    };
+    partial dictionary AuthenticationExtensionsClientOutputsJSON {
+        AuthenticationExtensionsAlgPolicyOutputsJSON algPolicy;
+    };
+
+    dictionary AuthenticationExtensionsAlgPolicyOutputs {
+        sequence<PublicKeyCredential> createdCredentials;
+    };
+    dictionary AuthenticationExtensionsAlgPolicyOutputsJSON {
+        sequence<RegistrationResponseJSON> createdCredentials;
+    };
+    </xmp>
+
+    <div dfn-type="dict-member" dfn-for="AuthenticationExtensionsAlgPolicyOutputs">
+        :   <dfn>createdCredentials</dfn>
+        ::  Zero or more new [=credentials=] created during this ceremony, one entry per
+            {{AuthenticationExtensionsAlgPolicyInputs/createAlgs}} group the [=authenticator=] chose
+            to satisfy.
+
+            Each entry is a full registration response for the created [=credential=], as a
+            {{PublicKeyCredential}} (or a {{RegistrationResponseJSON}} in the JSON serialization),
+            carrying both the credential's [=attestation object=] and the [=client extension
+            outputs=] resulting from any {{AuthenticationExtensionsAlgPolicyInputs/createExtensions}}
+            inputs.
+
+            The [=[RP]=] MUST treat this list as opportunistic: a group not filled in this response
+            MAY be filled on a later ceremony.
+
+            Before persisting an entry the [=[RP]=] MUST verify its <var>credHash</var> against the
+            signed `mintHashes` set (see above).
+    </div>
+
+
 ### Remote Client Data JSON extension (<dfn>remoteClientDataJSON</dfn>) ### {#sctn-remote-client-data-json-extension}
 
 <dfn>Remote desktop web client</dfn> let users interact with the (native) desktop environment of a remote host from a local client (web) application.
@@ -8671,6 +8960,10 @@ This section registers the below-listed [=extension identifier=] values, newly d
 - WebAuthn Extension Identifier: largeBlob
 - Description: This [=client extension|client=] [=registration extension=] and [=authentication extension=] allows a [=[RP]=] to store opaque data associated with a credential.
 - Specification Document: Section [[#sctn-large-blob-extension]] of this specification
+    <br/><br/>
+- WebAuthn Extension Identifier: algPolicy
+- Description: This [=client extension|client=] [=authentication extension=] lets a [=[RP]=] migrate a [=user account=]'s [=credentials=] between {{COSEAlgorithmIdentifier}}s during ordinary [=authentication ceremonies=], by silently creating, enumerating, and deleting same-account [=credentials=].
+- Specification Document: Section [[#sctn-alg-policy-extension]] of this specification
 
 ## Well-Known URI Registration ## {#sctn-well-known-uri-registration}
 
