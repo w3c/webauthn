@@ -15,7 +15,7 @@ Akshay Kumar \<[akshayku@microsoft.com](mailto:akshayku@microsoft.com)\>
   - [Design goals](#design-goals)
   - [Proposal](#proposal)
     - [1. Multiple credentials per `(rpId, user.id)`](#1-multiple-credentials-per-rpid-userid)
-    - [2. The `acceptedAlgs` request option and the `algPolicy` extension on `get()`](#2-the-acceptedalgs-request-option-and-the-algpolicy-extension-on-get)
+    - [2. The `preferredAlgs` request option and the `algPolicy` extension on `get()`](#2-the-preferredalgs-request-option-and-the-algpolicy-extension-on-get)
       - [Behavior at `get()` time](#behavior-at-get-time)
     - [3. RP-side handling](#3-rp-side-handling)
   - [Security considerations](#security-considerations)
@@ -53,15 +53,15 @@ discoverable credential for the same `(rpId, user.id)` pair, **subject to the in
 no two such credentials use the same COSE algorithm**.
 That is, the unique key becomes `(rpId, user.id, alg)` rather than `(rpId, user.id)`.
 
-### 2. The `acceptedAlgs` request option and the `algPolicy` extension on `get()`
+### 2. The `preferredAlgs` request option and the `algPolicy` extension on `get()`
 
 The authentication-time policy is exposed at two layers, matching the things they actually do:
 
-* **`acceptedAlgs`**
+* **`preferredAlgs`**
   * This is a new top-level member on `PublicKeyCredentialRequestOptions` (and the JSON variant).
-  * This is a preference-ordered list of COSE algorithms that are valid for this authentication ceremony.
-  * This list is used to filter credentials and selecting which credential should be used to authenticate
-    and complete the authentication ceremony.
+  * This is a preference-ordered list of COSE algorithms for this authentication ceremony.
+  * It **orders** which credential is used when an account has more than one; it does not exclude
+    credentials. The RP still verifies the returned assertion's algorithm server-side.
 * **`algPolicy`** extension
   * **`createAlgs`**
     * A single preference-ordered list of COSE algorithms. The authenticator creates the
@@ -72,23 +72,25 @@ The authentication-time policy is exposed at two layers, matching the things the
     * Credential IDs that should be deleted from the authenticator in case of orphan credentials.
     * This is needed because `signalUnknownCredential` API cannot reach roamable authenticators.
 
-`createAlgs` governs which credentials **exist**; `acceptedAlgs` governs which are **accepted** for a
-ceremony. A classical credential that exists but is left out of `acceptedAlgs` is a dormant
-break-glass fallback: it adds no standing risk while the RP accepts only the strong algorithm, yet can
-be accepted immediately if that algorithm must be retired — without re-enrollment.
+`createAlgs` governs which credentials **exist**; `preferredAlgs` governs which is **preferred** for a
+ceremony. To retire an algorithm, the RP drops it from `preferredAlgs` (so a still-present credential of
+another algorithm is preferred instead) and rejects it server-side. A classical credential that exists
+but is left out of `preferredAlgs` is a dormant break-glass fallback: it adds no standing risk while the
+RP prefers and accepts only the strong algorithm, yet can be relied on immediately if that algorithm
+must be retired — without re-enrollment.
 
 ```webidl
 partial dictionary PublicKeyCredentialRequestOptions {
   //
-  // COSE algorithm identifiers the RP is willing to accept for this assertion,
-  // in RP's preference order (most preferred first).
-  // Used both to filter the discoverable-credential candidate set.
+  // COSE algorithm identifiers the RP prefers for this assertion, in RP's
+  // preference order (most preferred first). Orders, but does not restrict,
+  // the discoverable-credential candidate set.
   //
-  sequence<COSEAlgorithmIdentifier> acceptedAlgs;
+  sequence<COSEAlgorithmIdentifier> preferredAlgs;
 };
 
 partial dictionary PublicKeyCredentialRequestOptionsJSON {
-  sequence<COSEAlgorithmIdentifier> acceptedAlgs;
+  sequence<COSEAlgorithmIdentifier> preferredAlgs;
 };
 
 partial dictionary AuthenticationExtensionsClientInputs {
@@ -166,28 +168,26 @@ dictionary AuthenticationExtensionsAlgPolicyOutputs {
 
 #### Behavior at `get()` time
 
-When `acceptedAlgs` is present (with or without the `algPolicy` extension):
+When `preferredAlgs` is present (with or without the `algPolicy` extension):
 
 1. **Establish user verification first, then discover.** User verification
    is performed *before* the applicable-credential set is computed.
-   With UV established, the platform / authenticator performs the usual 
-   credential discovery for `rpId` and filters the candidate set to credentials
-   whose `alg` appears in the top-level `acceptedAlgs`.
-   * If `allowCredentials` is also present, it is intersected as today; the
-     `acceptedAlgs` filter is additive.
-   * If `acceptedAlgs` is absent, no algorithm filter is applied and the
-     candidate set is whatever discovery (and `allowCredentials`)
-     produces, exactly as today.
-   * `acceptedAlgs` filter is only applicable to authenticators which
+   With UV established, the platform / authenticator performs the usual
+   credential discovery for `rpId`.
+   * `preferredAlgs` does not remove any credential from the candidate set;
+     it only orders selection (below).
+   * `preferredAlgs` is only applicable to authenticators which
      support multi credential per RPID/UserID model.
 2. If the candidate set is empty the platform behaves as today (no
    credentials available → `NotAllowedError` after the normal UI timeout /
-   cancel).
+   cancel). An empty set never results from `preferredAlgs`.
 3. The platform / authenticator selects a credential for assertion, over
    the post-UV candidate set.
    * When multiple credentials are available for the same `(rpId, user.id)`, the
      platform/authenticator **collapses the account to a single representative** — the
-     one whose `alg` is **earliest in `acceptedAlgs`**
+     one whose `alg` is **earliest in `preferredAlgs`**. A credential whose `alg` is not in
+     `preferredAlgs` ranks below any that is; if none is listed, the authenticator picks by its
+     own preference.
 4. **Delete Credentials.**
    * If the request carries `algPolicy.deleteCredentials` and there is no allowlist, return `TypeError`.
    * The authenticator deletes each listed credential ID if it satisfies following conditions
@@ -242,9 +242,9 @@ const assertion = await navigator.credentials.get({
     challenge,
     rpId: "example.com",
     userVerification: "preferred",
-    // Top-level: RP currently accepts any ML-DSA variant (preferring -87), and ECC, and RSA
+    // Top-level: RP prefers any ML-DSA variant (preferring -87), then ECC, then RSA
     // in that preference order.
-    acceptedAlgs: [
+    preferredAlgs: [
       alg["ML-DSA-87"],
       alg["ML-DSA-65"],
       alg["ML-DSA-44"],
@@ -285,7 +285,7 @@ if (createdCredentialAuthData) {
 
 // Optional fallback: if the created credential is pure PQC and the authenticator also supports a
 // classical algorithm, provision a dormant classical credential in a follow-up ceremony. Kept out
-// of `acceptedAlgs` in steady state, it adds no standing risk but can be accepted if the PQC
+// of `preferredAlgs` in steady state, it adds no standing risk but can be relied on if the PQC
 // algorithm must be retired.
 const createdAlg = rp.algOf(createdCredentialAuthData);
 const classicalAlgs = [alg["ES384"], alg["ES256"], alg["RS256"]].filter(a => supportedAlgs.includes(a));
