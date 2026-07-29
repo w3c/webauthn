@@ -4,7 +4,7 @@
 
 Akshay Kumar \<[akshayku@microsoft.com](mailto:akshayku@microsoft.com)\>
 
-*Last updated: 7th July, 2026*
+*Last updated: 29th July, 2026*
 
 ## Contents
 
@@ -15,7 +15,7 @@ Akshay Kumar \<[akshayku@microsoft.com](mailto:akshayku@microsoft.com)\>
   - [Design goals](#design-goals)
   - [Proposal](#proposal)
     - [1. Multiple credentials per `(rpId, user.id)`](#1-multiple-credentials-per-rpid-userid)
-    - [2. The `acceptedAlgs` request option and the `algPolicy` extension on `get()`](#2-the-acceptedalgs-request-option-and-the-algpolicy-extension-on-get)
+    - [2. The `preferredAlgs` request option and the `algPolicy` extension on `get()`](#2-the-preferredalgs-request-option-and-the-algpolicy-extension-on-get)
       - [Behavior at `get()` time](#behavior-at-get-time)
     - [3. RP-side handling](#3-rp-side-handling)
   - [Security considerations](#security-considerations)
@@ -53,37 +53,44 @@ discoverable credential for the same `(rpId, user.id)` pair, **subject to the in
 no two such credentials use the same COSE algorithm**.
 That is, the unique key becomes `(rpId, user.id, alg)` rather than `(rpId, user.id)`.
 
-### 2. The `acceptedAlgs` request option and the `algPolicy` extension on `get()`
+### 2. The `preferredAlgs` request option and the `algPolicy` extension on `get()`
 
 The authentication-time policy is exposed at two layers, matching the things they actually do:
 
-* **`acceptedAlgs`**
+* **`preferredAlgs`**
   * This is a new top-level member on `PublicKeyCredentialRequestOptions` (and the JSON variant).
-  * This is a preference-ordered list of COSE algorithms that are valid for this authentication ceremony.
-  * This list is used to filter credentials and selecting which credential should be used to authenticate
-    and complete the authentication ceremony.
+  * This is a preference-ordered list of COSE algorithms for this authentication ceremony.
+  * It **orders** which credential is used when an account has more than one; it does not exclude
+    credentials. The RP still verifies the returned assertion's algorithm server-side.
 * **`algPolicy`** extension
   * **`createAlgs`**
-    * This contains COSEAlgorithmIdentifier for what kind of credentials authenticator
-      should hold.
+    * A single preference-ordered list of COSE algorithms. The authenticator creates the
+      best one it supports that the account does not already hold.
   * **`createExtensions`**
     * Extensions if new credentials are being created while evaluating the `createAlgs`
   * **`deleteCredentials`**
     * Credential IDs that should be deleted from the authenticator in case of orphan credentials.
     * This is needed because `signalUnknownCredential` API cannot reach roamable authenticators.
 
+`createAlgs` governs which credentials **exist**; `preferredAlgs` governs which is **preferred** for a
+ceremony. To retire an algorithm, the RP drops it from `preferredAlgs` (so a still-present credential of
+another algorithm is preferred instead) and rejects it server-side. A classical credential that exists
+but is left out of `preferredAlgs` is a dormant break-glass fallback: it adds no standing risk while the
+RP prefers and accepts only the strong algorithm, yet can be relied on immediately if that algorithm
+must be retired — without re-enrollment.
+
 ```webidl
 partial dictionary PublicKeyCredentialRequestOptions {
   //
-  // COSE algorithm identifiers the RP is willing to accept for this assertion,
-  // in RP's preference order (most preferred first).
-  // Used both to filter the discoverable-credential candidate set.
+  // COSE algorithm identifiers the RP prefers for this assertion, in RP's
+  // preference order (most preferred first). Orders, but does not restrict,
+  // the discoverable-credential candidate set.
   //
-  sequence<COSEAlgorithmIdentifier> acceptedAlgs;
+  sequence<COSEAlgorithmIdentifier> preferredAlgs;
 };
 
 partial dictionary PublicKeyCredentialRequestOptionsJSON {
-  sequence<COSEAlgorithmIdentifier> acceptedAlgs;
+  sequence<COSEAlgorithmIdentifier> preferredAlgs;
 };
 
 partial dictionary AuthenticationExtensionsClientInputs {
@@ -92,34 +99,23 @@ partial dictionary AuthenticationExtensionsClientInputs {
 
 dictionary AuthenticationExtensionsAlgPolicyInputs {
   //
-  // A list of algorithm groups where each algorithm group is a preference-ordered list of
-  // COSE algorithms, most-preferred first.
-  // RP wants authenticator to create best supported credential from each group.
+  // A single preference-ordered list of COSE algorithms, most-preferred first.
   //
-  // For each group, the authenticator first identifies the BEST algorithm it supports.
-  // Let's call that algorithm B.
+  // Let B be the earliest algorithm in this list the authenticator supports.
+  // If none is supported, nothing is created (not a failure).
+  // If a credential using B already exists for (rpId, user.id), nothing is created.
+  // Otherwise the authenticator MAY create exactly one new credential using B.
   //
-  // A group is SATISFIED iff an authenticator has an existing B algorithm credential
-  // for (rpId, user.id).
-  // If no entry in the group is supported, then the group is UNSATISFIABLE
-  // on this authenticator and is ignored (not a failure).
+  // At most one credential is created per ceremony. To also provision a fallback (or a
+  // second algorithm), the RP issues a follow-up get() whose createAlgs best-supported
+  // entry is the next algorithm it wants (see RP-side handling).
   //
-  // For each UNSATISFIED group, the authenticator MAY create one new
-  // credential using algorithm B and return it in the extension output.
+  // At most 32 algorithms may be listed; a longer list is rejected with a TypeError.
   //
-  // At most THREE groups may be listed.
-  // The max number of algorithms RP can specify each group is 32 algorithms.
-  // The client rejects a get() whose createAlgs has more than three groups or any group
-  // having more than 32 algorithms with a TypeError.
+  // The empty array is VALID: enumerate-only mode, where the RP wants the signed
+  // existingCredentials (and any deletedCredentials) snapshot without creating a credential.
   //
-  // The empty array (zero groups) is VALID entry: It is the
-  // enumerate-only mode, where the RP wants the signed
-  // existingCredentials (and any deletedCredentials) snapshot without
-  // provisioning a new credential. Valid range is 0..3 groups inclusive.
-  // The member is `required` so that presence of the algPolicy extension always carries
-  // an explicit (possibly empty) group list rather than an undefined one.
-  //
-  required sequence<sequence<COSEAlgorithmIdentifier>> createAlgs;
+  required sequence<COSEAlgorithmIdentifier> createAlgs;
 
   //
   // Extension inputs applied to every credential silently created in this ceremony.
@@ -147,10 +143,9 @@ dictionary AuthenticationExtensionsAlgPolicyInputs {
   // ceremony's user verification plus the anchor assertion (proof the RP
   // controls a co-resident credential for this account);
   //
-  // Processed BEFORE `createAlgs` creating in this same ceremony, so a
-  // group whose only credential was just deleted is re-opened and can be
-  // re-created in one gesture. The set of IDs actually deleted is reported
-  // back in the SIGNED `deletedCredentials` output.
+  // Processed BEFORE `createAlgs` creation in this same ceremony, so a credential just
+  // deleted can be re-created in one gesture. The set of IDs actually deleted is reported
+  // in the SIGNED `deletedCredentials` output.
   //
   sequence<BufferSource> deleteCredentials;
 };
@@ -161,100 +156,75 @@ partial dictionary AuthenticationExtensionsClientOutputs {
 
 dictionary AuthenticationExtensionsAlgPolicyOutputs {
   //
-  // Zero or more new credentials created during this ceremony, one entry
-  // per `createAlgs` group the authenticator chose to satisfy.
+  // The unsigned extension outputs (from createExtensions) of the credential created this
+  // ceremony, if any. The created credential's authenticatorData — carrying its credential ID
+  // and public key — is in the signed `createdCredentialAuthData` output, read from the
+  // assertion's authenticatorData.
   //
-  sequence<AuthenticatorAttestationResponseJSON> createdCredentials;
+  AuthenticationExtensionsClientOutputs createdCredentialExtensionOutputs;
 };
 ```
 
 
 #### Behavior at `get()` time
 
-When `acceptedAlgs` is present (with or without the `algPolicy` extension):
+When `preferredAlgs` is present (with or without the `algPolicy` extension):
 
 1. **Establish user verification first, then discover.** User verification
    is performed *before* the applicable-credential set is computed.
-   With UV established, the platform / authenticator performs the usual 
-   credential discovery for `rpId` and filters the candidate set to credentials
-   whose `alg` appears in the top-level `acceptedAlgs`.
-   * If `allowCredentials` is also present, it is intersected as today; the
-     `acceptedAlgs` filter is additive.
-   * If `acceptedAlgs` is absent, no algorithm filter is applied and the
-     candidate set is whatever discovery (and `allowCredentials`)
-     produces, exactly as today.
-   * `acceptedAlgs` filter is only applicable to authenticators which
+   With UV established, the platform / authenticator performs the usual
+   credential discovery for `rpId`.
+   * `preferredAlgs` does not remove any credential from the candidate set;
+     it only orders selection (below).
+   * `preferredAlgs` is only applicable to authenticators which
      support multi credential per RPID/UserID model.
 2. If the candidate set is empty the platform behaves as today (no
    credentials available → `NotAllowedError` after the normal UI timeout /
-   cancel).
+   cancel). An empty set never results from `preferredAlgs`.
 3. The platform / authenticator selects a credential for assertion, over
    the post-UV candidate set.
    * When multiple credentials are available for the same `(rpId, user.id)`, the
      platform/authenticator **collapses the account to a single representative** — the
-     one whose `alg` is **earliest in `acceptedAlgs`**
+     one whose `alg` is **earliest in `preferredAlgs`**. A credential whose `alg` is not in
+     `preferredAlgs` ranks below any that is; if none is listed, the authenticator picks by its
+     own preference.
 4. **Delete Credentials.**
    * If the request carries `algPolicy.deleteCredentials` and there is no allowlist, return `TypeError`.
    * The authenticator deletes each listed credential ID if it satisfies following conditions
      * Credential resides on **this** authenticator and
      * Credential is bound to the **same `(rpId, user.id)`** as the credential being asserted (the anchor).
    * Save the deleted credential IDs to be emitted in the signed `deletedCredentials` set.
-5. **Create Credentials.**
-   * If `createAlgs` is **empty**  (zero groups), skip this credential creation step.
-   * Authenticator iterates the groups in order. For each group `g`:
-     * Let `B` be the **earliest entry in `g` that this authenticator
-       supports**. If no entry in `g` is supported, the group is
-       **unsatisfiable** and is skipped (not a failure).
-     * If there exists a credential under `(rpId, user.id)` with algorithm
-       `B`, the group is **satisfied** and the authenticator does nothing
-       for it.
-     * Otherwise, the group is **unsatisfied**.
-       The authenticator MAY create a fresh **discoverable** credential using algorithm `B` for the same
-       `(rpId, user.id, user.name, user.displayName)` — copying the user entity stored with
-       the asserting credential
-       `algPolicy.createdCredentials`.
-       * Calculate `credHash` for this credential and save it to the `mintHashes` set
-          ```
-          credHash = SHA-256( credIdLen || credId || COSE_Key )
-          ```
-       * At most one credential is created per group per ceremony.
-       * Any `createExtensions` inputs are applied to the create as if they had been passed to
-       `navigator.credentials.create()`.
-       * Calculate the authenticatorMakeCredential response and save in `createdCredentials` set.
-     * The authenticator **MAY** leave any subset of unsatisfied groups unfilled (including all of them)
-       based on local resource constraints (storage, keygen latency, transport MTU, battery).
-       * It **MUST** prefer filling groups that appear earlier in `createAlgs` when filling
-         only a subset.
-       * It **MUST NOT** fail the assertion because it could not fill a group.
-   * The RP **MUST** treat `createdCredentials` as opportunistic.
-     Any group not filled in this response may be filled on a subsequent ceremony.
-     The RP must not depend on full coverage from a single response.
+5. **Create Credential.**
+   * If `createAlgs` is **empty**, skip this step.
+   * Let `B` be the **earliest entry in `createAlgs` this authenticator supports**. If none is
+     supported, create nothing (not a failure).
+   * If a credential using `B` already exists for `(rpId, user.id)`, create nothing.
+   * Otherwise the authenticator **MAY** create one fresh **discoverable** credential using `B` for the
+     same `(rpId, user.id, user.name, user.displayName)` as the anchor, applying any `createExtensions`
+     as if passed to `navigator.credentials.create()`.
+     * The created credential's `authenticatorData` is emitted in the signed `createdCredentialAuthData`
+       output; its unsigned extension outputs are emitted in the unsigned output.
+   * Creation is **opportunistic**: the authenticator MAY decline (resource constraints) and MUST NOT
+     fail the assertion for it. The RP may create it on a later ceremony.
 6. **Populate existingCredentials**
    * After deletion and creation step, enumerate all the credentials `(rpId, user.id)` and
      save their credential in `existingCredentials` set
-7. **Populate signed and unsigned algPolicy Extension output.**
-   * `"algPolicy"` Authenticator signed extension CTAP CBOR map output:
+7. **Populate the algPolicy extension output.**
+   * Signed output — a CTAP CBOR map in the assertion's `authenticatorData`:
    ```cddl
    algPolicy = {
-     1: [* bstr],   ; "existingCredentials" set — the full set of credential
-                    ; IDs the authenticator holds for (rpId, user.id).
-                    ; Always present (at minimum the asserting credential's ID).
-     2: [* bstr],   ; "mintHashes" set — one credHash per credential created.
-                    ; A signed SET whose membership authenticates each create.
-                    ; Omitted when nothing was created.
-     3: [* bstr],   ; "deletedCredentials" set — the credential IDs actually
-                    ; deleted as part of extension processing.
-                    ; Signed so that the RP can trust the delete completed.
-                    ; Omitted when nothing was deleted.
+     1: [* bstr],   ; existingCredentials — all credential IDs held for (rpId, user.id). Always present.
+     2: [* int],    ; supportedAlgs — COSE algorithms this authenticator supports. Always present.
+     ? 3: bstr,     ; createdCredentialAuthData — authenticatorData of the credential created this
+                    ;   ceremony. Omitted when nothing was created.
+     ? 4: [* bstr], ; deletedCredentials — credential IDs actually deleted. Omitted when none.
+     ? 5: uint,     ; maxCredentialsPerAccount — per-(rpId, user.id) cap, if the authenticator has one.
    }
    ```
-   * `"algPolicy"` Authenticator unsigned extension CTAP CBOR output:
-     * Authenticator Extension Output
-       * Authenticator emits `createdCredentials` set as CTAP array in `algPolicy` key identified
-         extension in unsignedExtensions (0x08).
-   * `"algPolicy"` Client Extension Output
-     * Client converts above CBOR array of `createdCredentials` to
-       `AuthenticatorAttestationResponseJSON` output.
+     Because the created credential's `authenticatorData` rides in this signed map, the asserting
+     credential's signature vouches for the new credential's ID and public key.
+   * Unsigned output: the created credential's unsigned extension outputs (e.g. PRF), surfaced to the
+     RP as `createdCredentialExtensionOutputs`.
 
 ### 3. RP-side handling
 
@@ -272,9 +242,9 @@ const assertion = await navigator.credentials.get({
     challenge,
     rpId: "example.com",
     userVerification: "preferred",
-    // Top-level: RP currently accepts any ML-DSA variant (preferring -87), and ECC, and RSA
+    // Top-level: RP prefers any ML-DSA variant (preferring -87), then ECC, then RSA
     // in that preference order.
-    acceptedAlgs: [
+    preferredAlgs: [
       alg["ML-DSA-87"],
       alg["ML-DSA-65"],
       alg["ML-DSA-44"],
@@ -284,20 +254,12 @@ const assertion = await navigator.credentials.get({
     ],
     extensions: {
       algPolicy: {
-        // RP wants every account to hold one PQC credential and one classical fallback.
-        // Each group is ordered strongest-first.
-        // The authenticator creates the best algorithm it supports in each group.
+        // Single preference list. The authenticator creates the best algorithm it supports
+        // that this account does not already hold — here a PQC credential.
         createAlgs: [
-          [
-            alg["ML-DSA-87"],
-            alg["ML-DSA-65"],
-            alg["ML-DSA-44"]
-          ],
-          [
-            alg["ES384"],
-            alg["ES256"],
-            alg["RS256"]
-          ],
+          alg["ML-DSA-87"],
+          alg["ML-DSA-65"],
+          alg["ML-DSA-44"],
         ],
         // Extension inputs applied to every silently-created credential.
         // Same shape as `extensions` on create().
@@ -309,34 +271,48 @@ const assertion = await navigator.credentials.get({
   },
 });
 
+// The signed algPolicy map is read from the assertion's authenticatorData.
+const { existingCredentials, supportedAlgs, createdCredentialAuthData, maxCredentialsPerAccount }
+  = rp.algPolicyFromAuthData(assertion);
 const ext = assertion.getClientExtensionResults().algPolicy;
 
-// Register any new credentials the authenticator just created in this ceremony,
-// after verifying the asserter-binding for each one.
-// `registerAdditionalCredential` parses the `algPolicy` authenticator-extension output
-// in `assertion.response.authenticatorData`, computes
-// credHash = SHA-256(credIdLen || credId || COSE_Key) from createdCredentials attested
-// credential data, and refuses to persist the createdCredential
-// unless that credHash is a member of the signed `mintHashes` set.
-for (const created of ext?.createdCredentials ?? []) {
-  await rp.registerAdditionalCredential(account, assertion, created);
+// Register the newly created credential. Its ID and public key come from the signed
+// createdCredentialAuthData, so trust is inherited from the assertion signature that covers it.
+if (createdCredentialAuthData) {
+  await rp.registerCreatedCredential(
+    account, createdCredentialAuthData, ext?.createdCredentialExtensionOutputs);
 }
 
-// Orphan delete: Any credential ID the authenticator holds for this account but that the RP does
-// not recognize is an orphan — typically from a prior `createdCredentials` upload that failed.
-// Deleting it re-opens the corresponding `createAlgs` group for a fresh create.
-// `existingCredentialsFromAuthData` parses key 1 of the `algPolicy` map in
-// `assertion.response.authenticatorData`.
-const existingIds = rp.existingCredentialsFromAuthData(assertion);
+// Optional fallback: if the created credential is pure PQC and the authenticator also supports a
+// classical algorithm, provision a dormant classical credential in a follow-up ceremony. Kept out
+// of `preferredAlgs` in steady state, it adds no standing risk but can be relied on if the PQC
+// algorithm must be retired.
+const createdAlg = rp.algOf(createdCredentialAuthData);
+const classicalAlgs = [alg["ES384"], alg["ES256"], alg["RS256"]].filter(a => supportedAlgs.includes(a));
+const hasHeadroom = maxCredentialsPerAccount === undefined
+  || existingCredentials.length < maxCredentialsPerAccount;
+if (createdAlg && !rp.isHybrid(createdAlg) && classicalAlgs.length && hasHeadroom) {
+  await navigator.credentials.get({
+    publicKey: {
+      challenge,
+      rpId: "example.com",
+      allowCredentials: [{ type: "public-key", id: assertion.rawId }],  // re-target THIS authenticator
+      userVerification: "required",
+      extensions: { algPolicy: { createAlgs: classicalAlgs } },
+    },
+  });
+  // Register the fallback credential as above.
+}
+
+// Orphan delete: any credential ID the authenticator holds for this account that the RP does not
+// recognize is an orphan — typically from a prior create whose upload failed. Deleting it lets a
+// fresh create take its place.
 const knownIds = new Set(await rp.getCredentialIds(account));
-const orphanIds = existingIds.filter(
+const orphanIds = existingCredentials.filter(
   (id) => id !== assertion.id && !knownIds.has(id));
 
-// Orphan Credential Cleanup.
 if (orphanIds.length > 0) {
-  // Find a credential that is recognizable to the RP.
-  const anchorId = existingIds.find((id) => knownIds.has(id));
-  // Is Authenticator reachable silently
+  const anchorId = existingCredentials.find((id) => knownIds.has(id));
   const isAuthenticatorReachable = assertion.authenticatorAttachment == "internal";
 
   if (isAuthenticatorReachable) {
@@ -348,9 +324,8 @@ if (orphanIds.length > 0) {
       });
     }
   } else if (anchorId !== undefined) {
-    // In-line deletion using recognized credential in allowlist and unrecognized credentials
-    // in deleteCredentials list.
-    const recovery = await navigator.credentials.get({
+    // In-line deletion: recognized anchor in allowlist, orphans in deleteCredentials.
+    await navigator.credentials.get({
       publicKey: {
         challenge,
         rpId: "example.com",
@@ -358,13 +333,13 @@ if (orphanIds.length > 0) {
         userVerification: "required",
         extensions: {
           algPolicy: {
-            deleteCredentials: orphanIds,   // pruned on this authenticator only
-            createAlgs,                     // re-create the reopened groups
+            deleteCredentials: orphanIds,  // pruned on this authenticator only
+            createAlgs: [alg["ML-DSA-87"], alg["ML-DSA-65"], alg["ML-DSA-44"]],  // re-create in place
           },
         },
       },
     });
-    // Persist any fresh `createdCredentials` as in the block above.
+    // Register any created credential as above.
   }
 }
 ```
@@ -375,22 +350,15 @@ if (orphanIds.length > 0) {
   * The UV gesture authorizes the whole ceremony's scope (this user, this RP, this moment)
     and newly created keys are explicitly vouched for by the existing registered user credential.
     Hence, reusing user verification is safe here.
-* **Asserter-binding of silently-created credentials.**
-  * For every entry the authenticator places in `createdCredentials`, it also places a
-    matching `credHash` in the signed `mintHashes` set in
-    `authData.extensions.algPolicy`, where
-  `credHash = SHA-256(credIdLen ‖ credId ‖ COSE_Key)`.
-  * The assertion signature covers `authData`, so these hashes are cryptographically
-    authenticated by the asserting credential — a credential the RP
+* **Asserter-binding of the created credential.**
+  * The created credential's `authenticatorData` — carrying its credential ID and public key — is
+    placed in the signed `createdCredentialAuthData` output, and the assertion signature covers
+    `authData`. So the new credential is authenticated by the asserting credential, one the RP
     already trusts in this ceremony.
-  * Any party that can mutate `createdCredentials` in transit (a compromised browser extension, a
-    compromised platform component, an unauthenticated authenticator-to-host transport,
-    a malicious script between the JS context and the RP) therefore cannot substitute
-    attacker-controlled public keys (or swap the credential ID or algorithm) into the upload
-    without also forging a matching `credHash`, which it cannot do without the asserting
-    credential's private key.
-  * The RP **MUST** discard any entry in `createdCredentials` whose `credHash` is not a member
-    of the signed set.
+  * Any party that can mutate the response in transit (a compromised extension or platform component,
+    an unauthenticated authenticator-to-host transport, a malicious script) cannot change the created
+    credential's ID or public key without breaking the assertion signature.
+  * The RP **MUST** read the created credential from the signed output, not from any unsigned data.
 * **Inline deletion (`deleteCredentials`) considerations**
   * **Inline deletion cannot delete a credential the RP did not point at.**.
     * A listed ID is deleted **only** when it 
@@ -418,28 +386,20 @@ if (orphanIds.length > 0) {
     * The worst outcome of tampering is a no-op or an incomplete delete (the orphan simply resurfaces
       and is deleted next time) — never the loss of a credential the RP still relies on.
 * **Attestation conveyance is fixed at `"none"`.**
-  * Any entry returned in  `createdCredentials` carries the same `AuthenticatorAttestationResponse`
-    shape as `navigator.credentials.create()` would have produced, but the
-    attestation statement is always none. Provenance against in-transit substitution is supplied
-    by the asserter-binding the newly created credential.
-    RPs that require attested statement for every credential can do so via explicit `create()`.
+  * The created credential carries no attestation statement; provenance against in-transit
+    substitution comes from the asserter-binding above. RPs that require an attested statement can
+    obtain one via an explicit `create()`.
 * **Counter and clone-detection.**
   * Each credential keeps its own signature counter. Counters of distinct credentials
     are unrelated and MUST NOT be compared.
 
 ## Privacy considerations
 
-* The extension does not introduce any new identifier visible to the RP
-  beyond what `create()` already returns: the RP learns one or more new
-  public keys and credential IDs, all of which are per-credential random
-  values.
-* The extension does not reveal which algorithms the authenticator
-  supports beyond the ones it actually mints. An authenticator that
-  cannot satisfy any entry in a `createAlgs` group simply omits an output
-  for that group; it does not enumerate its capabilities or report which
-  group entries it skipped or why.
-* As with the existing `excludeCredentials` discussion, an RP could
-  attempt to use distinct `acceptedAlgs` / `createAlgs` to probe what
-  algorithms an authenticator supports. The information leak is no
-  greater than the one already possible via successive `create()` calls
-  with varying `pubKeyCredParams`.
+* The extension introduces no new identifier beyond what `create()` already returns: new public
+  keys and per-credential random credential IDs.
+* `supportedAlgs` reports the algorithms the authenticator supports. This is already discoverable via
+  attestation plus the FIDO Metadata Service and via CTAP `authenticatorGetInfo`. It is returned to an
+  RP the user has already registered with, is low-entropy (shared across a product line), and does not
+  enable cross-RP correlation.
+* As with `excludeCredentials`, an RP could probe algorithm support via repeated `create()` calls;
+  `supportedAlgs` exposes no more than that.
