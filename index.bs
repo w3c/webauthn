@@ -2716,8 +2716,8 @@ The steps for [=issuing a credential request to an authenticator=] are as follow
 
             </dl>
 
-    1. Let |acceptedAlgs| be
-        <code>|pkOptions|.{{PublicKeyCredentialRequestOptions/acceptedAlgs}}</code>.
+    1. Let |preferredAlgs| be
+        <code>|pkOptions|.{{PublicKeyCredentialRequestOptions/preferredAlgs}}</code>.
 
     1. <span id="allowCredentialDescriptorListCreation"></span>
         If <code>|pkOptions|.{{PublicKeyCredentialRequestOptions/allowCredentials}}</code>
@@ -2756,20 +2756,20 @@ The steps for [=issuing a credential request to an authenticator=] are as follow
                             Then, using |transport|, invoke the [=authenticatorGetAssertion=] operation on
                             |authenticator|, with |rpId|, |clientDataHash|, |allowCredentialDescriptorList|,
                             |userVerification|, |authenticatorExtensions|,
-                            and |acceptedAlgs| as parameters.
+                            and |preferredAlgs| as parameters.
 
                         :   [=list/is empty=]
                         ::  Using local configuration knowledge of the appropriate transport to use with |authenticator|,
                             invoke the [=authenticatorGetAssertion=] operation on |authenticator| with |rpId|,
                             |clientDataHash|, |allowCredentialDescriptorList|, |userVerification|,
-                            |authenticatorExtensions|, and |acceptedAlgs| as parameters.
+                            |authenticatorExtensions|, and |preferredAlgs| as parameters.
                     </dl>
 
             :   [=list/is empty=]
             ::  Using local configuration knowledge of the appropriate transport to use with |authenticator|, invoke the
                 [=authenticatorGetAssertion=] operation on |authenticator| with |rpId|, |clientDataHash|,
                 |userVerification|, |authenticatorExtensions|,
-                and |acceptedAlgs| as parameters.
+                and |preferredAlgs| as parameters.
 
                 Note: In this case, the [=[RP]=] did not supply a list of acceptable credential descriptors. Thus, the
                     authenticator is being asked to exercise any credential it may possess that is [=scoped=] to
@@ -2998,7 +2998,7 @@ value and terminate the operation.
         sequence<PublicKeyCredentialDescriptorJSON>             allowCredentials = [];
         DOMString                                               userVerification = "preferred";
         sequence<DOMString>                                     hints = [];
-        sequence<COSEAlgorithmIdentifier>                       acceptedAlgs = [];
+        sequence<COSEAlgorithmIdentifier>                       preferredAlgs = [];
         AuthenticationExtensionsClientInputsJSON                extensions;
     };
 </xmp>
@@ -3877,7 +3877,7 @@ an assertion. Its {{PublicKeyCredentialRequestOptions/challenge}} member MUST be
         sequence<PublicKeyCredentialDescriptor> allowCredentials = [];
         DOMString                            userVerification = "preferred";
         sequence<DOMString>                  hints = [];
-        sequence<COSEAlgorithmIdentifier>    acceptedAlgs = [];
+        sequence<COSEAlgorithmIdentifier>    preferredAlgs = [];
         AuthenticationExtensionsClientInputs extensions;
     };
 </xmp>
@@ -3942,18 +3942,17 @@ an assertion. Its {{PublicKeyCredentialRequestOptions/challenge}} member MUST be
     :   <dfn>hints</dfn>
     ::  This OPTIONAL member contains zero or more elements from {{PublicKeyCredentialHint}} to guide the user agent in interacting with the user. Note that the elements have type `DOMString` despite being taken from that enumeration. See [[#sct-domstring-backwards-compatibility]].
 
-    :   <dfn>acceptedAlgs</dfn>
+    :   <dfn>preferredAlgs</dfn>
     ::  This OPTIONAL member lists the {{COSEAlgorithmIdentifier}}s, in descending order of
-        preference, that the [=[RP]=] is willing to accept for this [=authentication ceremony=]
-        and acts as a filter in selection of eligible credentials set.
+        preference, that the [=[RP]=] prefers for this [=authentication ceremony=]. It orders, but
+        does not restrict, the eligible credentials: a credential whose
+        {{COSEAlgorithmIdentifier|COSE algorithm}} is not listed remains eligible and is ranked
+        below any listed one.
 
-        This filter is only applicable if [=authenticator=] supports
+        This preference is only applicable if [=authenticator=] supports
         [=multiple credentials per user account=].
         If [=authenticator=] does not support [=multiple credentials per user account=],
-        this filter is ignored.
-
-        This filter is additive to {{PublicKeyCredentialRequestOptions/allowCredentials}} in
-        figuring out which credential to pick for this [=authentication ceremony=].
+        it is ignored.
 
         See [[#sctn-op-get-assertion]] for more details.
 
@@ -5337,11 +5336,11 @@ This operation takes the following input parameters:
 : |extensions|
 :: A [=CBOR=] [=map=] from [=extension identifiers=] to their [=authenticator extension inputs=], created by the client based on
     the extensions requested by the [=[RP]=], if any.
-: |acceptedAlgs|
+: |preferredAlgs|
 :: An OPTIONAL [=list=] of {{COSEAlgorithmIdentifier}}s, in descending order of preference, that
-    restricts and orders the credentials eligible for this assertion.
+    orders the credentials eligible for this assertion.
     Supplied by the client from
-    <code>|pkOptions|.{{PublicKeyCredentialRequestOptions/acceptedAlgs}}</code>, if any.
+    <code>|pkOptions|.{{PublicKeyCredentialRequestOptions/preferredAlgs}}</code>, if any.
 
 When this method is invoked, the [=authenticator=] MUST perform the following procedure:
 
@@ -5358,19 +5357,19 @@ When this method is invoked, the [=authenticator=] MUST perform the following pr
     |rpId|.
 1. If [=authenticator=] supports [=multiple credentials per user account=], group the credentials
     in |credentialOptions| per [=user handle=].
-    Then for each group, if
+    Then, for each group, retain one entry and [=list/Remove=] the others from |credentialOptions|,
+    selecting the retained entry as follows:
     <dl class="switch">
-        :   |acceptedAlgs| was supplied and [=list/is not empty=]
-        ::  [=list/Remove=] any items from |credentialOptions| whose
-            {{COSEAlgorithmIdentifier|COSE algorithm}} does not have an entry in |acceptedAlgs|.
-            Then, if multiple entries remains for this group, retain one entry whose
-            {{COSEAlgorithmIdentifier|COSE algorithm}} appear earliest in the |acceptedAlgs| and
-            [=list/Remove=] other entries, if any remaining, from |credentialOptions|.
+        :   |preferredAlgs| was supplied and [=list/is not empty=]
+        ::  Retain the entry whose {{COSEAlgorithmIdentifier|COSE algorithm}} appears earliest in
+            |preferredAlgs|. An entry whose {{COSEAlgorithmIdentifier|COSE algorithm}} is not in
+            |preferredAlgs| is ranked below every entry whose algorithm is in |preferredAlgs|;
+            if no entry's algorithm is in |preferredAlgs|, retain one entry chosen by an
+            authenticator-defined preference.
 
         :   Otherwise
         ::  Retain one entry from the group chosen by an authenticator-defined preference,
-            for example the most recently created or used and [=list/Remove=] other entries,
-            if any remaining, from |credentialOptions|.
+            for example the most recently created or used.
     </dl>
 1. If |credentialOptions| is now empty, return an error code equivalent to "{{NotAllowedError}}" and terminate the operation.
 
