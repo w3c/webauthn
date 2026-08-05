@@ -81,7 +81,7 @@ Markup Shorthands: css off, markdown on, macros-in-autolinks yes
 Implementation Report: https://www.w3.org/2020/12/webauthn-report.html
 </pre>
 
-<style type="text/css">
+<style>
 body {
     counter-reset: table;
 }
@@ -258,6 +258,7 @@ spec:url; type:dfn; for:url; text:host
 spec:url; type:dfn; text:valid domain;
 spec:webidl; type:dfn; text:DOMString
 spec:webidl; type:interface; text:Promise
+spec:fido-client-to-authenticator-protocol-v2.1; type:dfn; text:ctap2 canonical cbor encoding form
 </pre>
 
 
@@ -2057,10 +2058,7 @@ a numbered step. If outdented, it (today) is rendered as a bullet in the midst o
 
                     1. Otherwise, [=list/Append=] |C| to |excludeCredentialDescriptorList|.
 
-                <!-- Note: this next step is actually a step on the same level as the above, but bikeshed wanted it indented this much
-                in order to render it as a numbered step. If outdented, it (today) is rendered either as a bullet in the midst
-                of a numbered list or is mis-numbered -->
-                    <li id='CreateCred-InvokeAuthnrMakeCred'>
+                    1. <span id="CreateCred-InvokeAuthnrMakeCred">
                         <!-- @@EDITOR-ANCHOR-01: KEEP THIS LIST SYNC'D WITH OTHER LOCATIONS WITH THIS TAG -->
                         Invoke the [=authenticatorMakeCredential=] operation on |authenticator| with
                             |clientDataHash|,
@@ -2072,8 +2070,7 @@ a numbered step. If outdented, it (today) is rendered as a bullet in the midst o
                             |excludeCredentialDescriptorList|,
                             |enterpriseAttestationPossible|,
                             |attestationFormats|,
-                            and |authenticatorExtensions| as parameters.
-                    </li>
+                            and |authenticatorExtensions| as parameters.</span>
 
                 1. [=set/Append=] |authenticator| to |issuedRequests|.
 
@@ -8319,8 +8316,15 @@ The <dfn>Credential Parameters</dfn> is a JSON [=Object=] passed to the [=remote
             </tr>
             <tr>
                 <td>|signCount|</td>
-                <td>The initial value for a [=signature counter=] associated to the [=public key credential source=].</td>
-                <td>number</td>
+                <td>
+                    This property is required. It must be a 32-bit unsigned integer value
+                    in the range `0` to `4294967295`, inclusive, or `null`.
+                    When |signCount| is an unsigned integer value, a
+                    [=signature counter=] will be associated to the credential and will increment
+                    during [=authenticatorGetAssertion=] operations. When |signCount| is `null`,
+                    no [=signature counter=] will be associated to the credential.
+                </td>
+                <td>number or null</td>
             </tr>
             <tr>
                 <td>|largeBlob|</td>
@@ -8426,8 +8430,13 @@ The [=remote end steps=] are:
     :: Construct from |userName| and |userDisplayName|.
  1. Set the |credential|'s [=backup eligibility=] [=credential property=] to |backupEligibility|.
  1. Set the |credential|'s [=backup state=] [=credential property=] to |backupState|.
- 1. Associate a [=signature counter=] |counter| to the |credential| with a starting value equal to the |parameters|'
-     |signCount| or `0` if |signCount| is `null`.
+ 1. Let |signCount| be the |parameters|' |signCount| property.
+ 1. If |signCount| is not defined, return a [=WebDriver error=] with [=WebDriver error code=] [=invalid argument=].
+ 1. If |signCount| is set to a 32-bit unsigned integer value
+     in the range `0` to `4294967295`, inclusive, associate a [=signature counter=] |counter|
+     to the |credential| with a starting value equal to |signCount|.
+ 1. Otherwise, if |signCount| is `null`, do not associate a [=signature counter=] to the |credential|.
+ 1. Otherwise, return a [=WebDriver error=] with [=WebDriver error code=] [=invalid argument=].
  1. If |largeBlob| is not `null`, set the [=large, per-credential blob=] associated to the |credential| to |largeBlob|.
  1. Store the |credential| and |counter| in the database of the |authenticator|.
  1. Return <a spec="webdriver2">success</a>.
@@ -8577,6 +8586,8 @@ The [=remote end steps=] are:
 
  1. If |parameters| is not a JSON [=Object=], return a [=WebDriver error=] with [=WebDriver error code=]
      [=invalid argument=].
+    
+     Note: |parameters| is a [=Set User Verified Parameters=] object.
  1. If |authenticatorId| does not match any [=Virtual Authenticator=] stored in the [=Virtual Authenticator
      Database=], return a [=WebDriver error=] with [=WebDriver error code=] [=invalid argument=].
  1. If |isUserVerified| is not a defined property of |parameters|, return a [=WebDriver error=] with [=WebDriver error code=]
@@ -8587,7 +8598,7 @@ The [=remote end steps=] are:
 
 ## <dfn>Set Credential Properties</dfn> ## {#sctn-automation-set-credential-properties}
 
-The [=Set Credential Properties=] [=extension command=] allows setting the |backupEligibility| and |backupState| [=credential properties=] of
+The [=Set Credential Properties=] [=extension command=] allows setting several [=credential properties=] of
 a [=Virtual Authenticator=]'s [=public key credential source=]. It is defined as follows:
 
 <figure id="table-setFlags" class="table">
@@ -8630,6 +8641,18 @@ It contains the following |key| and |value| pairs:
                 <td>The [=backup state=] [=credential property=].</td>
                 <td>boolean</td>
             </tr>
+            <tr>
+                <td>|signCount|</td>
+                <td>
+                    This property is optional. When defined, it should be
+                    a 32-bit unsigned integer value in the range `0` to `4294967295`, inclusive,
+                    or `null`. When |signCount| is an unsigned integer value, the credential
+                    will be updated with a [=signature counter=] set to |signCount|.
+                    When |signCount| is `null`, any existing [=signature counter=] associated
+                    to the credential will be removed.
+                </td>
+                <td>number or null</td>
+            </tr>
         </tbody>
     </table>
 </figure>
@@ -8652,6 +8675,14 @@ The [=remote end steps=] are:
 
  1. Let |backupState| be the |parameters|' |backupState| property.
  1. If |backupState| is defined, set the [=backup state=] [=credential property=] of |credential| to the value of |backupState|.
+ 1. Let |signCount| be the |parameters|' |signCount| property.
+ 1. If |signCount| is defined:
+     1. If |signCount| is set to a 32-bit unsigned integer value in the range `0` to
+         `4294967295`, inclusive, set the existing [=signature counter=] of |credential|
+         to the value of |signCount|. If the |credential| has no [=signature counter=],
+         associate one to |credential| and set it to the value of |signCount|.
+     1. Otherwise, if |signCount| is `null`, remove any [=signature counter=] set to the |credential|.
+     1. Otherwise, return a [=WebDriver error=] with [=WebDriver error code=] [=invalid argument=].
  1. Return <a spec="webdriver2">success</a>.
 
 # IANA Considerations # {#sctn-IANA}
@@ -8730,7 +8761,7 @@ This section registers the below-listed [=extension identifier=] values, newly d
 - Description: This [=client extension|client=] [=registration extension=] and [=authentication extension=] allows a [=[RP]=] to store opaque data associated with a credential.
 - Specification Document: Section [[#sctn-large-blob-extension]] of this specification
 
-## Well-Known URI Registration
+## Well-Known URI Registration ## {#sctn-well-known-uri-registration}
 
 This section registers the following well-known URI in the
 IANA "Well-Known URIs" registry [[!IANA-Well-Known-URIs]].
