@@ -2828,8 +2828,8 @@ The following custom {{DOMException}} exceptions can be raised:
 
 <dl>
 
-    :   {{WebAuthnCrossDeviceFallbackException}}
-    ::  The WebAuthn ceremony did not produce a credential because no matching credential was found on the {{AuthenticatorTransport/hybrid}} device, and the user consented to opening the fallback URL provided in {{AuthenticationExtensionsClientInputs/crossDeviceFallbackUrl}}. This exception signals to the [=[RP]=] that the fallback flow was successfully initiated on the remote device and that the [=[RP]=] may proceed with handling the out-of-band fallback authentication.
+    :   {{WebAuthnOperationException}}
+    ::  The WebAuthn ceremony did not produce a credential because of an operational condition indicated by its {{WebAuthnOperationException/code}}.
 
 </dl>
 
@@ -4502,33 +4502,53 @@ Note: The {{PublicKeyCredentialHint}} enumeration is deliberately not referenced
 
 ## Custom DOM Exceptions ## {#sctn-custom-dom-exceptions}
 
-### Cross-Device Fallback Exception (interface {{WebAuthnCrossDeviceFallbackException}}) ### {#sctn-webauthn-cross-device-fallback-exception}
+### Web Authentication Operation Error Code (enum <dfn enum>WebAuthnOperationErrorCode</dfn>) ### {#enum-webauthn-operation-error-code}
+
+<xmp class="idl">
+    enum WebAuthnOperationErrorCode {
+        "cross-device-fallback"
+    };
+</xmp>
+
+<div dfn-type="enum-value" dfn-for="WebAuthnOperationErrorCode">
+    :   <dfn>cross-device-fallback</dfn>
+    ::  The WebAuthn ceremony did not produce a credential because no matching credential was found on the {{AuthenticatorTransport/hybrid}} device, and the user consented to opening the fallback URL provided in {{AuthenticationExtensionsClientInputs/crossDeviceFallbackUrl}}. This error code signals to the [=[RP]=] that the fallback flow was successfully initiated on the remote device and that the [=[RP]=] may proceed with handling the out-of-band fallback authentication.
+</div>
+
+### Web Authentication Operation Exception (interface <dfn interface>WebAuthnOperationException</dfn>) ### {#sctn-webauthn-operation-exception}
 
 The following custom {{DOMException}} can be raised:
 
 <xmp class="idl">
     [Exposed=Window, Serializable]
-    interface WebAuthnCrossDeviceFallbackException : DOMException {
-        constructor(optional DOMString message = "");
+    interface WebAuthnOperationException : DOMException {
+        constructor(WebAuthnOperationErrorCode code, optional DOMString message = "");
+        readonly attribute WebAuthnOperationErrorCode code;
     };
 </xmp>
 
-The <code>new WebAuthnCrossDeviceFallbackException(|message|)</code> constructor steps are:
+The <code>new WebAuthnOperationException(|code|, |message|)</code> constructor steps are:
 
-1. Set [=this=]'s {{DOMException/name}} to `"WebAuthnCrossDeviceFallbackException"`.
+1. Set [=this=]'s {{DOMException/name}} to `"WebAuthnOperationException"`.
 
 1. Set [=this=]'s {{DOMException/message}} to |message|.
 
+1. Set [=this=]'s {{WebAuthnOperationException/code}} to |code|.
 
-{{WebAuthnCrossDeviceFallbackException}} objects are [=serializable objects=].
+
+{{WebAuthnOperationException}} objects are [=serializable objects=].
 
 Their [=serialization steps=], given |value| and |serialized|, are:
 
 1. Run the {{DOMException}} [=serialization steps=] given |value| and |serialized|.
 
+1. Set |serialized|.\[[Code]] to |value|.{{WebAuthnOperationException/code}}.
+
 Their [=deserialization steps=], given |serialized| and |value|, are:
 
 1. Run the {{DOMException}} [=deserialization steps=] given |serialized| and |value|.
+
+1. Set |value|.{{WebAuthnOperationException/code}} to |serialized|.\[[Code]].
 
 
 ## Permissions Policy integration ## {#sctn-permissions-policy}
@@ -7996,7 +8016,7 @@ This extension MUST only be used with the {{AuthenticatorTransport/hybrid}} tran
     1. Construct a [=request=] with its URL set to |fallbackUrl| and execute the [=url policy violation=] procedure.
     1. If the response violates policy, ignore this extension and continue with normal processing.
     1. Pass the {{AuthenticationExtensionsClientInputs/crossDeviceFallbackUrl}} extension input to the [=authenticator=] and continue processing.
-    1. If the [=authenticator=] returns an error code indicating that a fallback URL is processed, throw a new {{WebAuthnCrossDeviceFallbackException}}.
+    1. If the [=authenticator=] returns an error code indicating that a fallback URL is processed, throw a new {{WebAuthnOperationException}} with {{WebAuthnOperationErrorCode/"cross-device-fallback"}}.
     1. Continue with normal processing.
 
 : Authenticator extension input
@@ -8018,42 +8038,18 @@ This extension MUST only be used with the {{AuthenticatorTransport/hybrid}} tran
         1. Invoke a user agent or equivalent system mechanism with the fallback URL specified by {{AuthenticationExtensionsClientInputs/crossDeviceFallbackUrl}}.
         1. Return an error code indicating that a fallback URL is processed to the [=client platform=] and terminates the operation.
 
-#### Security Properties #### {#sctn-cross-device-fallback-url-security-properties}
+#### Security Considerations #### {#sctn-cross-device-fallback-url-security-considerations}
 
-The following are some security properties of the {{AuthenticationExtensionsClientInputs/crossDeviceFallbackUrl}}:
+Using {{AuthenticationExtensionsClientInputs/crossDeviceFallbackUrl}} introduces security trade-offs compared to standard WebAuthn assertion flows because the fallback URL redirects the user away from phishing-resistant [=passkeys=] to alternate authentication mechanisms (e.g., passwords, one-time codes, or out-of-band links) that lack WebAuthn's origin binding and phishing protections.
 
-* This extension does not provide the same level of security as a WebAuthn credential and provides no protections against phishing. Additional mitigation systems (e.g., a "risk engine") are required to resist phishing attacks which may be enabled by this extension.
+General security considerations, threat models, attack patterns (such as URL exfiltration and session forwarding), and practical mitigations for cross-device flows are described in [[RFC10027]]. [=Relying Parties=] implementing this extension SHOULD consult [[RFC10027]] for guidance on securing cross-device flows.
 
-* The `crossDeviceFallbackUrl` is an improvement over custom QR-code-based out-of-band cross-device authorization flows (where a [=[RP]=] displays a proprietary login QR code directly on a web page). In those custom flows, attackers can easily exfiltrate or proxy the QR code to a remote victim, and [=[RPS]=] have limited means to detect or resist phishing. In contrast, `crossDeviceFallbackUrl` provides stronger defense:
-    * The flow always prioritizes strong, phishing-resistant [=passkeys=], and only falls back if no eligible credential exists on the user's device.
-    * The tight temporal coupling between receiving the {{WebAuthnCrossDeviceFallbackException}} and the user visiting the fallback URL enables the [=[RP]=] to apply strict short expiration windows and risk-engine checks (e.g., timestamp delta, IP address, and geolocation correlation) to detect and block relay or exfiltration attacks (see [[#sctn-cross-device-fallback-url-risk-mitigation]]).
+In the context of WebAuthn:
 
-#### Risk Scenarios #### {#sctn-cross-device-fallback-url-risk-scenarios}
+* The fallback URL is only invoked if no eligible [=passkey=] exists on the [=roaming authenticator=] and the user gives explicit consent on the remote device.
+* [=Relying Parties=] MUST NOT accept authentication assertions from a fallback URL unless the primary WebAuthn ceremony resulted in a {{WebAuthnOperationException}} with {{WebAuthnOperationErrorCode/"cross-device-fallback"}}, confirming that the fallback flow was triggered on the remote device.
+* [=Relying Parties=] SHOULD apply mitigations outlined in [[RFC10027]], such as short-lived time-bound session codes, single-use invalidation, and risk-engine anomaly analysis (e.g., correlating IP address, geolocation, and elapsed time between the {{WebAuthnOperationException}} and the fallback URL visit).
 
-Using this extension introduces security trade-offs compared to the primary WebAuthn assertion flow. This is because the `crossDeviceFallbackUrl` redirects the user to alternate authentication mechanisms (which typically rely on passwords, one-time codes, or out-of-band links) that lack the strong phishing resistance of [=passkeys=]. Attackers may attempt to exfiltrate or intercept the `crossDeviceFallbackUrl` either from the client or the authenticator device. Although `crossDeviceFallbackUrl` does not inherently contain user-specific information, it is typically assumed that the [=[RP]=] associates this URL with a pending authentication session on its backend. Under this assumption, an exfiltrated fallback URL could be used to trick a victim into authorizing an authentication session on the attacker's behalf.
-
-* *Client URL Exfiltration*: An assertion request can be extracted using JavaScript breakpoints on the client device (e.g., when showing a QR code) and can be forwarded to a victim to sign in. The victim, when signing in using the fallback URL on their device, may unknowingly authorize the authentication session on the attacker's device.
-
-* *Authenticator URL Exfiltration*: An attacker can extract the fallback URL on the authenticator device and pass it to a victim to sign in. The victim, when signing in using the fallback URL on their device, may unknowingly authorize the authentication session on the attacker's device.
-
-
-#### Risk Mitigation #### {#sctn-cross-device-fallback-url-risk-mitigation}
-
-[=Relying Parties=] are strongly recommended to implement the following mitigations to protect against these exfiltration risks:
-
-* **Primary Exception Requirement**: The fallback URL needs to be primed before usage by returning a {{WebAuthnCrossDeviceFallbackException}} to the [=[RP]=]. Only after receiving this exception should the [=[RP]=] start polling for the fallback URL's authentication results. It MUST be disregarded otherwise.
-
-* **Cross Device Fallback URL Expiration**: Invalidate the fallback URL's single-use authorization code (or session code) after a short duration. When configuring this expiration window, [=[RPS]=] need to weigh security against the time it takes for legitimate users to scan the hybrid QR code with an authenticator, complete the connection handshake, and consent to opening the fallback URL. While an overly tight timeout will disrupt legitimate users, an appropriately bounded expiration window helps ensure that an attacker attempting to exfiltrate and forward the URL to a victim will face delays that can be timed out or flagged as anomalous.
-
-* **Risk Engine Analysis**: The [=[RP]=] detecting a {{WebAuthnCrossDeviceFallbackException}} indicates that the fallback flow has been triggered, initiating the polling process. However, because signals can be captured whenever the `crossDeviceFallbackUrl` is visited, a risk engine can analyze these signals to detect anomalies. If anomalous signals are detected, the [=[RP]=] can choose to invalidate the `crossDeviceFallbackUrl` flow for the session.
-    * Potential signals to block invalid use of the fallback URL include:
-        * IP address
-        * Geolocation
-        * Time elapsed between when the {{WebAuthnCrossDeviceFallbackException}} was received and when the `crossDeviceFallbackUrl` was visited
-        * Proximate Wi-Fi networks
-        * Number of visits to the specific `crossDeviceFallbackUrl`. Ideally it should be just one visit for most cases.
-
-* **Single-Use Invalidation**: Alternatively, security-conscious [=Relying Parties=] can invalidate the fallback URL single-use code immediately after its first invocation. This increases user friction, as any interruption or page reload would require the user to re-trigger the hybrid connection ceremony to generate a new `crossDeviceFallbackUrl`.
 
 
 
@@ -10547,6 +10543,19 @@ The following changes were made to improve clarity, readability, navigability an
     "publisher": "IETF",
     "status": "IETF Proposed Standard",
     "title": "Registries for Web Authentication (WebAuthn)"
+  },
+
+  "RFC10027": {
+    "authors": [
+        "Pieter Kasselman",
+        "Daniel Fett",
+        "Filip Skokan"
+    ],
+    "date": "August 2026",
+    "href": "https://www.rfc-editor.org/rfc/rfc10027.html",
+    "publisher": "IETF",
+    "status": "Best Current Practice",
+    "title": "Best Current Practice for Security of Cross-Device Flows"
   },
 
   "IANA-WebAuthn-Registries": {
