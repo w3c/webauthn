@@ -31,8 +31,8 @@ We want the simplest solution that meets our goals, since new complexity will cu
 
 The problem can be reduced to two independent capabilities:
 
-* A relying party should be able to indicate that a previous migration was not successful and the authenticator needs to restore a previous credential.  
 * A relying party should be able to request a credential creation alongside an assertion.
+* A relying party should be able to identify that a previous migration was not successful and issue a request to recover the credential.
 
 We propose two independent additions to WebAuthn, one for each capability.
 
@@ -44,29 +44,46 @@ We propose having the `{ user id, RP ID }` tuple map to a list of credentials, s
 
 Whenever an allow-list request is received by an authenticator, the authenticator will find the most recent credential ID it has that matches the allow-list. Every other credential for that `{ user id, RP ID }` tuple will be erased. Additionally, authenticators will reserve the right to clean up old credentials if it becomes necessary to make space for new credentials.
 
-This capability should be advertised by the authenticator on both `create` and `get`, to inform relying parties whether they should bother trying an assertion with an allow list after receiving an unrecognized credential. We can do this in a new WebAuthn extension `restoreCredentials`[^1].
+This capability will be accompanied by an assertion authenticator extension reporting the list of currently backed up credential IDs.
 
 ```
 partial dictionary AuthenticationExtensionsClientInputs {
-    boolean restoreCredentials;
+  boolean restoreCredentials;
 };
 
 dictionary RestoreCredentialsOutput {
-    boolean supported;
+  sequence<ArrayBuffer> existingCredentials;
+}
+
+partial dictionary AuthenticationExtensionsClientOutputs {
+  RestoreCredentialsOutput restoreCredentials;
 };
+
+$$extensionInput //= (
+  restoreCredentials: true
+)
+
+// Signed extension outputs.
+$$extensionOutput //= (
+  restoreCredentials: {
+    existingCredentials: [* bstr],
+  }
+)
 ```
 
-The extension will only allow relying parties to check if the restore behaviour is supported. The behaviour will always be present for authenticators supporting it, with no way to opt out of it for relying parties.
+If an assertion fails to match a credential record on the relying party database, the relying party can find the intersection between `existingCredentials` and its list of credentials for the user, and issue a new allow-list request. `existingCredentials` will help the relying party distinguish between a passkey the user deleted on the server vs a passkey upgrade request that did not make it to the server.
+
+The behaviour to restore credentials with an allow-list request will always be present for authenticators supporting it independent of the relying party requesting the extension.
 
 ### CTAP authenticators
 
-This capability should be advertised on the CTAP [`authenticatorGetInfo` command](https://fidoalliance.org/specs/fido-v2.3-ps-20260226/fido-client-to-authenticator-protocol-v2.3-ps-20260226.html#authenticatorGetInfo). Whenever an authenticator with this capability is selected, the user agent can report that restoring credentials is supported if the capability is requested by the relying party.
+An interesting feature of stateless credentials is that they already behave as if having this capability today for every credential ever created. However, it's impossible for the authenticator to know the list of stateless credentials it has issued. Thus, `existingCredentials` will return `[]` for stateless credentials. This shouldn't matter much since the only way to get an assertion for a stateless credential is by providing an allow-list anyway.
 
 ## Algorithm upgrade extension
 
 Having multiple credentials per user is enough to have some form of upgrade path involving first getting an assertion, then issuing a new request to create a credential. However, it's not enough: the user could tap a different authenticator for the new credential. There's no blessing of the new credential by the existing one. And, it's bad UX to have every user sometimes have to go through the WebAuthn ceremony twice.
 
-Our proposal is that the relying party needs to be able to create a new credential as part of an assertion request. The user authorizes an authentication like normal, and the response may contain a new credential alongside the assertion. We will standardize a new `createCredential` WebAuthn extension to do this:
+Our proposal is that the relying party needs to be able to create a new credential as part of an assertion request. The user authorizes an authentication like normal, and the response may contain a new credential alongside the assertion. We will standardize a new `algUpgrade` WebAuthn extension to do this:
 
 ```
 dictionary AuthenticationExtensionsAlgUpgradeInputs {
@@ -81,7 +98,7 @@ dictionary AuthenticationExtensionsAlgUpgradeOutputs {
 
 // Signed extension outputs.
 $$extensionOutput //= (
-  webauthnAlgUpgrade: {
+  algUpgrade: {
     // Make credential authenticator data.
     authData: bstr,
   }
@@ -200,7 +217,14 @@ For a relying party to switch to a new algorithm, it should be enough to update 
 
 Suppose a relying party `bank.com` uses security keys as a second factor and would like to upgrade from algorithm A to algorithm B. The new credential B doesn't make it to the server, because the user lost their internet connection. Next time the user signs in, `bank.com` sends an allow-list that contains A but no B. The authenticator can return an assertion for A[^4] and clean up B. Notably, `bank.com` didn't have to do anything to be protected against this side effect.
 
-Usernameless flows are not quite so fortunate. Suppose `shrine.com` uses passkeys as a primary factor and is in the same situation. `shrine.com` sends an empty allow-list request and the passkey provider returns passkey B, which `shrine.com` does not recognize. `shrine.com` can obtain the `user id` from the assertion, see that the authenticator claims support for restoring credentials, query the list of passkeys for the user, and issue a new allow-list request. This unfortunately would require two ceremonies, but design alternatives that don't have this problem come with other less desirable trade-offs.
+Usernameless flows are not quite so fortunate. Suppose shrine.com uses passkeys as a primary factor and is in the same situation. shrine.com sends an empty allow-list request and the passkey provider returns passkey B, which shrine.com does not recognize. shrine.com can perform the following operations:
+
+* Check if the existingCredentials list is empty. If empty, there is no backed up credential. Offer the user some other way to sign in.
+* Find the intersection between existingCredentials and the user's credentials, using the returned user id from the assertion.
+* If the intersection is empty this most likely means that the user manually deleted the passkey from the relying party's account management UI. Call signalUnknownCredential for that passkey and let the user know they have to try to sign in some other way.
+* Else, the user tried to upgrade a credential but the upgrade never made it to the server. Issue a new allow-list request.
+
+This approach unfortunately would require two ceremonies, but design alternatives that don't have this problem come with other less desirable trade-offs.
 
 ### Dogfooding
 
@@ -221,8 +245,6 @@ The WebAuthn spec mandates that [user handles](https://w3c.github.io/webauthn/#u
 The signal API relies on each user being assigned a single user handle, and to some extent so does this proposal. However, it should still be possible to restore credentials even if a given user holds multiple user handles, by issuing a request with *all* credential IDs corresponding to a user identified by that user id.
 
 If a relying party were to repeat user handles between their users, their implementation would be fundamentally broken as they wouldn't support having more than one user credential on the same authenticator. Supporting such relying parties is a non-goal.
-
-[^1]:  `credProps` feels like the ideal place for this, but it is only available on `create`.
 
 [^2]:  As an alternative, we could include a hash of the `authenticatorData` or a hash of the credential ID \+ COSE key. However, it's not clear if this extra complexity is warranted.
 
