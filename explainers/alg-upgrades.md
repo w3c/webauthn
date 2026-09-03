@@ -75,7 +75,7 @@ If an assertion fails to match a credential record on the relying party database
 
 The behaviour to restore credentials with an allow-list request will always be present for authenticators supporting it independent of the relying party requesting the extension.
 
-### CTAP authenticators
+### Stateless credentials
 
 An interesting feature of stateless credentials is that they already behave as if having this capability today for every credential ever created. However, it's impossible for the authenticator to know the list of stateless credentials it has issued. Thus, `existingCredentials` will return `[]` for stateless credentials. This shouldn't matter much since the only way to get an assertion for a stateless credential is by providing an allow-list anyway.
 
@@ -171,6 +171,35 @@ We should specify a mirror of this extension on CTAP that only works for request
 
 In order to support this for empty allow-list requests, client platforms will use the [credential management commands to enumerate credentials for the RP ID](https://fidoalliance.org/specs/fido-v2.3-ps-20260226/fido-client-to-authenticator-protocol-v2.3-ps-20260226.html#enumeratingCredentials). First, the platform will request a tap for a new pin token. Then, it will enumerate the credentials to show the UI. Finally, the platform will issue a get assertion command with an allow list containing the selected credential. In some cases, like NFC security keys, this may result in needing another tap. For USB security keys, this should not result in an extra tap, as the user presence is consumed only after the get assertion request.
 
+### Interaction with the [signal API](https://w3c.github.io/webauthn/#sctn-signal-methods)
+
+Signal methods referring to the most recent credential will operate on all credentials as if they were one for backwards compatibility and ease of deployment.
+
+#### ***`signalCurrentUserDetails`***
+
+This method will be updated to operate on every credential, including shadowed ones.
+
+#### ***`signalUnknownCredential`***
+
+There is no valid use case for calling this method with shadowed credential IDs.
+
+* If the passed credential ID matches the back of the list, all the credentials in the list are hidden or erased.
+* Otherwise, this likely indicates a bug on the relying party or the authenticator. Don't do anything.
+
+#### ***`signalAllAcceptedCredentials`***
+
+`signalAllAcceptedCredentials` will provide a secondary recovery path for authenticators that support the signal API. For example, suppose a user visits a management screen that allows them to register a new passkey overriding an existing one, but the update doesn't make it to the server. At any point after, and before the user ever tries to sign in with that passkey, the relying party may call `signalAllAcceptedCredentials` with the credential ID for their previous passkey. This will recover the credential.
+
+There is no valid use case for calling this method with an allow list matching more than one credential per authenticator and user ID.
+
+The steps for processing this method should be updated to match the processing steps for allow-list requests:
+
+* The authenticator will attempt to find the most recent matching credential on the credential ID list.
+* If no credential is found, all credentials for the user are marked as hidden or erased.
+* Otherwise,
+  * The matching credential is revealed if previously hidden.
+  * Any other credentials are erased.
+
 ## Relying party actions
 
 Relying parties will pass the list of accepted algorithms, sorted by preference, on `get` requests. If they get a new credential in the `algUpgrade` extension, they'll replace the existing credential with the new one.
@@ -217,7 +246,7 @@ For a relying party to switch to a new algorithm, it should be enough to update 
 
 Suppose a relying party `bank.com` uses security keys as a second factor and would like to upgrade from algorithm A to algorithm B. The new credential B doesn't make it to the server, because the user lost their internet connection. Next time the user signs in, `bank.com` sends an allow-list that contains A but no B. The authenticator can return an assertion for A[^4] and clean up B. Notably, `bank.com` didn't have to do anything to be protected against this side effect.
 
-Usernameless flows are not quite so fortunate. Suppose shrine.com uses passkeys as a primary factor and is in the same situation. shrine.com sends an empty allow-list request and the passkey provider returns passkey B, which shrine.com does not recognize. shrine.com can perform the following operations:
+Usernameless flows are not quite so fortunate. Suppose `shrine.com` uses passkeys as a primary factor and is in the same situation. `shrine.com` sends an empty allow-list request and the passkey provider returns passkey B, which `shrine.com` does not recognize. `shrine.com` can perform the following operations:
 
 * Check if the existingCredentials list is empty. If empty, there is no backed up credential. Offer the user some other way to sign in.
 * Find the intersection between existingCredentials and the user's credentials, using the returned user id from the assertion.
