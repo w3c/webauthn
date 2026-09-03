@@ -1,4 +1,4 @@
-﻿<!--   ***********  Web Authentication - Level 3 - Spec source file ***********
+<!--   ***********  Web Authentication - Level 3 - Spec source file ***********
 Notes:
 * the h1 tag is spec title that is rendered within the document window. Wrapping
   may be controlled with break tags.  The spec 'Level' value is not appended.
@@ -45,6 +45,7 @@ Former Editor: Rolf Lindemann, w3cid 84447, Nok Nok Labs, rolf@noknok.com
 !Contributors: <a href="mailto:mkwst@google.com">Mike West</a> (Google)
 !Contributors: <a href="mailto:jyasskin@google.com">Jeffrey Yasskin</a> (Google)
 !Contributors: <a href="mailto:aaberg@bitwarden.com">Anders Åberg</a> (Bitwarden)
+!Contributors: <a href="mailto:harshlal@google.com">Harsh Lal</a> (Google)
 group: webauthn
 Issue Tracking: GitHub https://github.com/w3c/webauthn/issues
 !Tests: <a href=https://github.com/web-platform-tests/wpt/tree/master/webauthn>web-platform-tests webauthn/</a> (<a href=https://github.com/web-platform-tests/wpt/labels/webauthn>ongoing work</a>)
@@ -172,7 +173,15 @@ spec: url; urlPrefix: https://url.spec.whatwg.org
     type: dfn
         text: scheme; url: concept-url-scheme
         text: port; url: concept-url-port
+        text: absolute-URL string; url: absolute-url-string
 
+spec: fetch; urlPrefix: https://fetch.spec.whatwg.org/
+    type: dfn
+        text: request; url: concept-request
+
+spec: webappsec-csp; urlPrefix: https://w3c.github.io/webappsec-csp/
+    type: dfn
+        text: url policy violation; url: does-request-violate-policy
 
 spec: TokenBinding; urlPrefix: https://tools.ietf.org/html/rfc8471#
     type: dfn
@@ -182,11 +191,13 @@ spec: TokenBinding; urlPrefix: https://tools.ietf.org/html/rfc8471#
 spec: credential-management-1; urlPrefix: https://w3c.github.io/webappsec-credential-management/
     type: dfn
         text: same-origin with its ancestors; url: same-origin-with-its-ancestors
+        text: credential manager; url: credential-manager
 
-spec: FIDO-CTAP; urlPrefix: https://fidoalliance.org/specs/fido-v2.1-ps-20210615/fido-client-to-authenticator-protocol-v2.1-ps-errata-20220621.html
+spec: FIDO-CTAP; urlPrefix: https://fidoalliance.org/specs/fido-v2.3-ps-20260226/fido-client-to-authenticator-protocol-v2.3-ps-20260226.html
     type: dfn
         text: §6. Authenticator API; url: authenticator-api
         text: large, per-credential blobs; url: authenticatorLargeBlobs
+        text: credential manager hosting device; url: credential-manager-hosting-device
 
 spec: FIDO-APPID; urlPrefix: https://fidoalliance.org/specs/fido-v2.0-id-20180227/fido-appid-and-facets-v2.0-id-20180227.html
     type: dfn
@@ -250,6 +261,7 @@ spec:dom; type:dfn; for:/; text:document
 spec:html; type:dfn; text:allowed to use
 spec:html; type:dfn; for:environment settings object; text:global object
 spec:html; type:dfn; for:/; text:same site
+spec:html; type:dfn; text:parsing a URL
 spec:infra; type:dfn; for:/; text:set
 spec:infra; type:dfn; text:list
 spec:infra; type:dfn; text:user agent
@@ -2812,6 +2824,15 @@ The following [=simple exceptions=] can be raised:
 
 </dl>
 
+The following custom {{DOMException}} exceptions can be raised:
+
+<dl>
+
+    :   {{WebAuthnOperationException}}
+    ::  The WebAuthn ceremony did not produce a credential because of an operational condition indicated by its {{WebAuthnOperationException/code}}.
+
+</dl>
+
 ### Store an Existing Credential - PublicKeyCredential's `[[Store]](credential, sameOriginWithAncestors)` Internal Method ### {#sctn-storeCredential}
 
 <div link-for-hint="PublicKeyCredential/[[Store]](credential, sameOriginWithAncestors)">
@@ -4477,6 +4498,57 @@ Note: The {{PublicKeyCredentialHint}} enumeration is deliberately not referenced
         For compatibility with older user agents, when this hint is used in {{PublicKeyCredentialCreationOptions}}, the {{AuthenticatorSelectionCriteria/authenticatorAttachment}} SHOULD be set to {{AuthenticatorAttachment/cross-platform}}.
 
 </div>
+
+
+## Custom DOM Exceptions ## {#sctn-custom-dom-exceptions}
+
+### Web Authentication Operation Error Code (enum <dfn enum>WebAuthnOperationErrorCode</dfn>) ### {#enum-webauthn-operation-error-code}
+
+<xmp class="idl">
+    enum WebAuthnOperationErrorCode {
+        "cross-device-fallback"
+    };
+</xmp>
+
+<div dfn-type="enum-value" dfn-for="WebAuthnOperationErrorCode">
+    :   <dfn>cross-device-fallback</dfn>
+    ::  The WebAuthn ceremony did not produce a credential because no matching credential was found on the {{AuthenticatorTransport/hybrid}} device, and the user consented to opening the fallback URL provided in {{AuthenticationExtensionsClientInputs/crossDeviceFallbackUrl}}. This error code signals to the [=[RP]=] that the fallback flow was successfully initiated on the remote device and that the [=[RP]=] may proceed with handling the out-of-band fallback authentication.
+</div>
+
+### Web Authentication Operation Exception (interface <dfn interface>WebAuthnOperationException</dfn>) ### {#sctn-webauthn-operation-exception}
+
+The following custom {{DOMException}} can be raised:
+
+<xmp class="idl">
+    [Exposed=Window, Serializable]
+    interface WebAuthnOperationException : DOMException {
+        constructor(WebAuthnOperationErrorCode code, optional DOMString message = "");
+        readonly attribute WebAuthnOperationErrorCode code;
+    };
+</xmp>
+
+The <code>new WebAuthnOperationException(|code|, |message|)</code> constructor steps are:
+
+1. Set [=this=]'s {{DOMException/name}} to `"WebAuthnOperationException"`.
+
+1. Set [=this=]'s {{DOMException/message}} to |message|.
+
+1. Set [=this=]'s {{WebAuthnOperationException/code}} to |code|.
+
+
+{{WebAuthnOperationException}} objects are [=serializable objects=].
+
+Their [=serialization steps=], given |value| and |serialized|, are:
+
+1. Run the {{DOMException}} [=serialization steps=] given |value| and |serialized|.
+
+1. Set |serialized|.\[[Code]] to |value|.{{WebAuthnOperationException/code}}.
+
+Their [=deserialization steps=], given |serialized| and |value|, are:
+
+1. Run the {{DOMException}} [=deserialization steps=] given |serialized| and |value|.
+
+1. Set |value|.{{WebAuthnOperationException/code}} to |serialized|.\[[Code]].
 
 
 ## Permissions Policy integration ## {#sctn-permissions-policy}
@@ -7903,7 +7975,82 @@ This permission MUST be configured per-origin and MUST NOT offer the capability 
 
 This section defines extensions that are both [=client extensions=] and [=authenticator extensions=].
 
-This section is currently empty.
+### Cross Device Fallback URL extension (<dfn>crossDeviceFallbackUrl</dfn>) ### {#sctn-cross-device-fallback-url-extension}
+[=crossDeviceFallbackUrl|This=] [=client extension|client=] [=authentication extension=] allows a [=[RP]=] to include a fallback authentication URL for cases where a valid credential cannot be found on a [=roaming authenticator=] via {{AuthenticatorTransport/hybrid}}.
+
+This extension MUST only be used with the {{AuthenticatorTransport/hybrid}} transport.
+
+: Extension identifier
+:: `crossDeviceFallbackUrl`
+
+: Operation applicability
+:: [=authentication extension|Authentication=]
+
+: Client extension input
+:: A single {{DOMString}} specifying a fallback URL. The fallback URL MUST be an [=absolute-URL string=].
+    <xmp class="idl">
+    partial dictionary AuthenticationExtensionsClientInputs {
+      DOMString crossDeviceFallbackUrl;
+    };
+    partial dictionary AuthenticationExtensionsClientInputsJSON {
+      DOMString crossDeviceFallbackUrl;
+    };
+    </xmp>
+
+: Client extension processing
+:: 1. Let |fallbackUrl| be the result of [=parsing a URL=] the value of {{AuthenticationExtensionsClientInputs/crossDeviceFallbackUrl}}.
+    1. If |fallbackUrl| is a failure, or if |fallbackUrl|'s [=url/scheme=] is not "https",
+        then throw a "{{SecurityError}}" {{DOMException}}.
+    1. Let |effectiveDomain| be the [=effective domain=] of |fallbackUrl|.
+    1. If |effectiveDomain| is not a [=valid domain=], throw a "{{SecurityError}}" {{DOMException}}.
+    1. Let |rpId| be the [=Relying Party identifier=] for the current operation.
+    1. Let |fallbackUrlOrigin| be the [=origin=] of |fallbackUrl|.
+    1. If |rpId| [=is not a registrable domain suffix of and is not equal to=] |effectiveDomain|, and if the client:
+        <dl class="switch">
+            :   supports [[#sctn-related-origins|related origin requests]]
+            ::  1. Run the [$related origins validation procedure$] with arguments |fallbackUrlOrigin| and |rpId|.
+                    If the result is [FALSE], throw a "{{SecurityError}}" {{DOMException}}.
+            :   does not support [[#sctn-related-origins|related origin requests]]
+            ::  throw a "{{SecurityError}}" {{DOMException}}.
+        </dl>
+    1. Construct a [=request=] with its URL set to |fallbackUrl| and execute the [=url policy violation=] procedure.
+    1. If the response violates policy, throw a "{{SecurityError}}" {{DOMException}}.
+    1. Pass the {{AuthenticationExtensionsClientInputs/crossDeviceFallbackUrl}} extension input to the [=authenticator=] and continue processing.
+    1. If the [=authenticator=] returns an error code indicating that a fallback URL is processed, throw a new {{WebAuthnOperationException}} with {{WebAuthnOperationErrorCode/"cross-device-fallback"}}.
+    1. Continue with normal processing.
+
+: Authenticator extension input
+:: A single text string specifying a fallback URL.
+    <xmp class="example" highlight="cddl">
+    $$extensionInput //= (
+      crossDeviceFallbackUrl: tstr
+    )
+    </xmp>
+
+: Authenticator extension processing
+:: 1. Send the [[#sctn-getAssertion|sending an assertion request over <code>AuthenticatorTransport/hybrid</code>]]
+    1. The following steps are performed by the remote [=Credential Manager Hosting Device=]:
+        1. Remove the {{AuthenticationExtensionsClientInputs/crossDeviceFallbackUrl}} extension input, and pass the request to enabled [=credential managers=].
+        1. If a credential is found that can satisfy the request, ignore this extension and continue with normal processing.
+        1. Request explicit [=user consent=] to navigate to the fallback URL.
+            See [[#sctn-assertion-privacy]] for details on authentication ceremony privacy safeguards.
+        1. If the user does not consent, return an error code equivalent to "{{NotAllowedError}}" and terminate the operation.
+        1. Invoke a user agent or equivalent system mechanism with the fallback URL specified by {{AuthenticationExtensionsClientInputs/crossDeviceFallbackUrl}}.
+        1. Return an error code indicating that a fallback URL is processed to the [=client platform=] and terminates the operation.
+
+#### Security Considerations #### {#sctn-cross-device-fallback-url-security-considerations}
+
+Using {{AuthenticationExtensionsClientInputs/crossDeviceFallbackUrl}} introduces security trade-offs compared to standard WebAuthn assertion flows because the fallback URL redirects the user away from phishing-resistant [=passkeys=] to alternate authentication mechanisms (e.g., passwords, one-time codes, or out-of-band links) that lack WebAuthn's origin binding and phishing protections.
+
+General security considerations, threat models, attack patterns (such as URL exfiltration and session forwarding), and practical mitigations for cross-device flows are described in [[RFC10027]]. [=Relying Parties=] implementing this extension SHOULD consult [[RFC10027]] for guidance on securing cross-device flows.
+
+In the context of WebAuthn:
+
+* The fallback URL is only invoked if no eligible [=passkey=] exists on the [=roaming authenticator=] and the user gives explicit consent on the remote device.
+* [=Relying Parties=] MUST NOT accept authentication assertions from a fallback URL unless the primary WebAuthn ceremony resulted in a {{WebAuthnOperationException}} with {{WebAuthnOperationErrorCode/"cross-device-fallback"}}.
+* [=Relying Parties=] SHOULD apply mitigations outlined in [[RFC10027]], such as short-lived time-bound session codes, single-use invalidation, and risk-engine anomaly analysis (e.g., correlating IP address, geolocation, and elapsed time between the {{WebAuthnOperationException}} and the fallback URL visit).
+
+
 
 
 # User Agent Automation # {#sctn-automation}
@@ -10396,6 +10543,19 @@ The following changes were made to improve clarity, readability, navigability an
     "publisher": "IETF",
     "status": "IETF Proposed Standard",
     "title": "Registries for Web Authentication (WebAuthn)"
+  },
+
+  "RFC10027": {
+    "authors": [
+        "Pieter Kasselman",
+        "Daniel Fett",
+        "Filip Skokan"
+    ],
+    "date": "August 2026",
+    "href": "https://www.rfc-editor.org/rfc/rfc10027.html",
+    "publisher": "IETF",
+    "status": "Best Current Practice",
+    "title": "Best Current Practice for Security of Cross-Device Flows"
   },
 
   "IANA-WebAuthn-Registries": {
