@@ -1377,10 +1377,14 @@ BCP 14 [[!RFC2119]] [[!RFC8174]] when, and only when, they appear in all capital
     while the [=user handle=] is chosen by the [=[RP]=] and ought to be the same
     for all [=credentials=] registered to the same [=user account=].
 
-    [=Authenticators=] [=credentials map|map=] pairs of [=RP ID=] and [=user handle=] to [=public key credential sources=].
-    As a consequence, an authenticator will store at most one [=discoverable credential=] per [=user handle=] per [=[RP]=]. Therefore
-    a secondary use of the [=user handle=] is to allow [=authenticators=] to know when to replace an existing [=discoverable credential=]
-    with a new one during the [=registration ceremony=].
+    [=Authenticators=] [=credentials map|map=] pairs of [=RP ID=] and [=user handle=]
+    to a [=list=] of [=public key credential sources=],
+    ordered from oldest to newest by creation time.
+    Because new credentials are added to the end of this list
+    and older credentials may be evicted when the authenticator's [=maximum credential count=] is reached,
+    a secondary use of the [=user handle=] is to allow [=authenticators=]
+    to identify which existing [=discoverable credentials=] belong to the same [=user account=]
+    and manage their eviction during the [=registration ceremony=].
 
     A user handle is an opaque [=byte sequence=] with a maximum size of 64 bytes, and is not meant to be displayed to the user.
     It MUST NOT contain personally identifying information, see [[#sctn-user-handle-privacy]].
@@ -3100,16 +3104,24 @@ the [=client=] executes these steps:
 The <dfn for="signal method/authenticator action">unknownCredentialId</dfn>
 [=signal method/authenticator action=] takes an {{UnknownCredentialOptions}}
 |options| and is as follows:
-1. [=map/For each=] [=public key credential source=] |credential| in the
-    [=authenticator=]'s [=credential map=]:
-    1. If the |credential|'s [=public key credential source/rpId=] equals
-        <code>|options|.{{UnknownCredentialOptions/rpId}}</code> and the
-        |credential|'s [=public key credential source/id=] equals the result of
-        [=base64url encoding | base64url decoding=]
-        <code>|options|.{{UnknownCredentialOptions/credentialId}}</code>,
-        [=map/remove=] |credential| from the [=credentials map=] or employ an
-        [=authenticator=]-specific procedure to hide it from future
-        [=authentication ceremonies=].
+1. [=map/For each=] |key| → |credentialList| in the
+    [=authenticator=]'s [=credentials map=]:
+    1. If |credentialList| [=list/is empty=], [=iteration/continue=].
+    1. Let |mostRecentCred| be the last [=list/item=] of |credentialList|.
+    1. Let |decodedCredentialId| be the result of [=base64url encoding | base64url decoding=]
+        <code>|options|.{{UnknownCredentialOptions/credentialId}}</code>.
+    1. If |mostRecentCred|.[=public key credential source/rpId=] equals
+        <code>|options|.{{UnknownCredentialOptions/rpId}}</code> and
+        |mostRecentCred|.[=public key credential source/id=] equals |decodedCredentialId|:
+        1. [=map/Remove=] |key| from the [=credentials map=] or employ an
+            [=authenticator=]-specific procedure to hide all credentials in
+            |credentialList| from future [=authentication ceremonies=].
+
+Note: This algorithm intentionally does not delete or hide credentials
+other than the most recently created credential.
+If {{UnknownCredentialOptions/credentialId}} refers to an older credential in the [=list=],
+this likely indicates a bug on the [=[RP]=] or the [=authenticator=],
+and the [=authenticator=] takes no action.
 
 <div class="example">
 
@@ -3169,19 +3181,25 @@ follows:
 1. Let |userId| be result of [=base64url encoding | base64url decoding=]
     <code>|options|.{{AllAcceptedCredentialsOptions/userId}}</code>.
 1. Assertion: |userId| is not an error.
-1. Let |credential| be
-    <code>[=credentials map=][|options|.{{AllAcceptedCredentialsOptions/rpId}}, |userId|]</code>.
-1. If |credential| does not exist, abort these steps.
-1. If
-    <code>|options|.{{AllAcceptedCredentialsOptions/allAcceptedCredentialIds}}</code>
-    does NOT [=list/contain=] the result of [=base64url encoding=] the
-    |credential|'s [=public key credential source/id=], then [=map/remove=]
-    |credential| from the [=credentials map=] or employ an
-    [=authenticator=]-specific procedure to hide it from future [=authentication
-    ceremonies=].
-1. Else, if |credential| has been hidden by an [=authenticator=]-specific
-    procedure, reverse the action so that |credential| is present in future
-    [=authentication ceremonies=].
+1. Let |key| be (<code>|options|.{{AllAcceptedCredentialsOptions/rpId}}</code>, |userId|).
+1. If |authenticator|'s [=credentials map=][|key|] does not [=map/exist=], abort these steps.
+1. Let |credentialList| be |authenticator|'s [=credentials map=][|key|].
+1. Let |matchedCredential| be `null`.
+1. [=list/For each=] [=public key credential source=] |credential| in |credentialList|
+    in reverse order (from most recent to oldest):
+    1. If <code>|options|.{{AllAcceptedCredentialsOptions/allAcceptedCredentialIds}}</code> [=list/contains=]
+        the result of [=base64url encoding=] the |credential|'s [=public key credential source/id=]:
+        1. Set |matchedCredential| to |credential|.
+        1. [=iteration/break=].
+1. If |matchedCredential| is not `null`:
+    1. [=map/Set=] |authenticator|'s [=credentials map=][|key|] to a new [=list=]
+        containing only |matchedCredential|.
+    1. If |matchedCredential| has been hidden by an [=authenticator=]-specific procedure,
+        reverse the action so that |matchedCredential| is present in future [=authentication ceremonies=].
+1. Else:
+    1. [=map/Remove=] |authenticator|'s [=credentials map=][|key|] or employ an
+        [=authenticator=]-specific procedure to hide all credentials in |credentialList|
+        from future [=authentication ceremonies=].
 
 <div class="example">
 
@@ -3251,12 +3269,12 @@ The <dfn for="signal method/authenticator actions">currentUserDetails</dfn>
 1. Let |userId| be result of [=base64url encoding | base64url decoding=]
     <code>|options|.{{CurrentUserDetailsOptions/userId}}</code>.
 1. Assertion: |userId| is not an error.
-1. Let |credential| be
-    <code>[=credentials map=][|options|.{{CurrentUserDetailsOptions/rpId}}, |userId|]</code>.
-1. If |credential| does not exist, abort these steps.
-1. Update the |credential|'s [=public key credential source/otherUI=] to match
-    <code>|options|.{{CurrentUserDetailsOptions/name}}</code> and
-    <code>|options|.{{CurrentUserDetailsOptions/displayName}}</code>.
+1. Let |key| be (<code>|options|.{{CurrentUserDetailsOptions/rpId}}</code>, |userId|).
+1. If |authenticator|'s [=credentials map=][|key|] does not [=map/exist=], abort these steps.
+1. [=list/For each=] [=public key credential source=] |credential| in |authenticator|'s [=credentials map=][|key|]:
+    1. Update the |credential|'s [=public key credential source/otherUI=] to match
+        <code>|options|.{{CurrentUserDetailsOptions/name}}</code> and
+        <code>|options|.{{CurrentUserDetailsOptions/displayName}}</code>.
 
 <div class="example">
 
@@ -4603,8 +4621,31 @@ operates at a higher security level than the rest of the authenticator. This is 
 are embedded in the WebAuthn client, as in those cases this cryptographic module (which may, for example, be a TPM) could be
 considered more trustworthy than the rest of the authenticator.
 
-Each authenticator stores a <dfn for=authenticator>credentials map</dfn>, a [=map=] from ([=rpId=], [=public key credential source/userHandle=]) to
-[=public key credential source=].
+Each authenticator stores a <dfn for=authenticator>credentials map</dfn>,
+a [=map=] from ([=rpId=], [=public key credential source/userHandle=]) to
+a [=list=] of [=public key credential sources=],
+ordered by creation time from oldest to newest
+(with the most recently created credential at the end of the list).
+
+Each authenticator has a <dfn for=authenticator>maximum credential count</dfn>,
+which is a positive integer representing the maximum number of [=public key credential sources=]
+the authenticator can store for a given ([=rpId=], [=public key credential source/userHandle=]) tuple
+in its [=credentials map=].
+The [=maximum credential count=] SHOULD be at least two
+to support credential restoration and algorithm upgrades,
+but a value of one is also supported for backwards compatibility.
+
+Authenticators MAY remove credentials from the [=list=] associated with an
+([=rpId=], [=public key credential source/userHandle=]) key
+(other than the most recently created credential, which is the last item in the list)
+at any time, for example to free memory or reclaim storage when resources are constrained.
+
+Note: Authenticators with [=server-side credential storage modality=]
+do not store [=public key credential sources=] in a [=credentials map=]
+and instead delegate storage to the [=[RP]=]
+by encrypting the credential source into the [=credential ID=].
+Such authenticators can assert any valid [=credential ID=] supplied by the [=[RP]=] in an allow list,
+but cannot unilaterally erase previously issued credentials.
 
 Additionally, each authenticator has an Authenticator Attestation Globally Unique Identifier or <dfn>AAGUID</dfn>, which is a 128-bit identifier
 indicating the type (e.g. make and model) of the authenticator. The AAGUID MUST be chosen by its maker to be identical across all substantially identical
@@ -5132,8 +5173,9 @@ The result of <dfn for="credential id">looking up</dfn> a [=credential id=] |cre
 1. If |authenticator| can decrypt |credentialId| into a [=public key credential source=] |credSource|:
     1. Set |credSource|.[=public key credential source/id=] to |credentialId|.
     1. Return |credSource|.
-1. [=map/For each=] [=public key credential source=] |credSource| of |authenticator|'s [=credentials map=]:
-    1. If |credSource|.[=public key credential source/id=] is |credentialId|, return |credSource|.
+1. [=map/For each=] <var ignore>key</var> → |credentialList| of |authenticator|'s [=credentials map=]:
+    1. [=list/For each=] [=public key credential source=] |credSource| of |credentialList|:
+        1. If |credSource|.[=public key credential source/id=] is |credentialId|, return |credSource|.
 1. Return `null`.
 
 
@@ -5252,7 +5294,14 @@ a numbered step. If outdented, it (today) is rendered as a bullet in the midst o
         1. Let |credentialId| be a new [=credential id=].
         1. Set |credentialSource|.[=public key credential source/id=] to |credentialId|.
         1. Let |credentials| be this authenticator's [=credentials map=].
-        1. [=map/Set=] |credentials|[(<code>|rpEntity|.{{PublicKeyCredentialRpEntity/id}}</code>, |userHandle|)] to |credentialSource|.
+        1. Let |key| be (<code>|rpEntity|.{{PublicKeyCredentialRpEntity/id}}</code>, |userHandle|).
+        1. If |credentials|[|key|] does not [=map/exist=]:
+            1. [=map/Set=] |credentials|[|key|] to a new empty [=list=].
+        1. Let |credentialList| be |credentials|[|key|].
+        1. If the [=list/size=] of |credentialList| is greater than or equal to
+            this authenticator's [=maximum credential count=]:
+            1. [=list/Remove=] the first [=list/item=] (the oldest credential) from |credentialList|.
+        1. [=list/Append=] |credentialSource| to |credentialList|.
     1. Otherwise:
         1. Let |credentialId| be the result of serializing and encrypting |credentialSource| so that only this authenticator can
             decrypt it.
@@ -5318,12 +5367,25 @@ When this method is invoked, the [=authenticator=] MUST perform the following pr
 1. Check if all the supplied parameters are syntactically well-formed and of the correct length. If not, return an error code
     equivalent to "{{UnknownError}}" and terminate the operation.
 1. Let |credentialOptions| be a new empty [=set=] of [=public key credential sources=].
-1. If |allowCredentialDescriptorList| was supplied, then [=list/for each=] |descriptor| of |allowCredentialDescriptorList|:
-    1. Let |credSource| be the result of [=looking up=] <code>|descriptor|.{{PublicKeyCredentialDescriptor/id}}</code> in this
-        authenticator.
-    1. If |credSource| is not `null`, [=set/append=] it to |credentialOptions|.
-1. Otherwise (|allowCredentialDescriptorList| was not supplied), [=map/for each=] <var ignore>key</var> → |credSource| of this
-    authenticator's [=credentials map=], [=set/append=] |credSource| to |credentialOptions|.
+1. If |allowCredentialDescriptorList| was supplied:
+    1. [=list/For each=] |descriptor| of |allowCredentialDescriptorList|:
+        1. Let |credSource| be the result of [=looking up=] <code>|descriptor|.{{PublicKeyCredentialDescriptor/id}}</code> in this
+            authenticator.
+        1. If |credSource| is not `null`, [=set/append=] it to |credentialOptions|.
+    1. [=map/For each=] (|entryRpId|, |userHandle|) → |credentialList| of this authenticator's [=credentials map=]:
+        1. If |entryRpId| is not equal to |rpId|, [=iteration/continue=].
+        1. Let |foundNewestMatch| be [FALSE].
+        1. [=list/For each=] [=public key credential source=] |credSource| of |credentialList|
+            in reverse order (from most recent to oldest):
+            1. If |credentialOptions| [=set/contains=] |credSource|:
+                1. If |foundNewestMatch| is [FALSE]:
+                    1. Set |foundNewestMatch| to [TRUE].
+                1. Else:
+                    1. [=set/Remove=] |credSource| from |credentialOptions|.
+1. Otherwise (|allowCredentialDescriptorList| was not supplied):
+    1. [=map/For each=] (|entryRpId|, |userHandle|) → |credentialList| of this authenticator's [=credentials map=]:
+        1. If |entryRpId| is not equal to |rpId| or |credentialList| [=list/is empty=], [=iteration/continue=].
+        1. [=set/Append=] the last [=list/item=] of |credentialList| to |credentialOptions|.
 1. [=list/Remove=] any items from |credentialOptions| whose [=public key credential source/rpId=] is not equal to
     |rpId|.
 1. If |credentialOptions| is now empty, return an error code equivalent to "{{NotAllowedError}}" and terminate the operation.
@@ -5345,6 +5407,11 @@ a numbered step. If outdented, it (today) is rendered as a bullet in the midst o
         "{{NotAllowedError}}" and terminate the operation.
     </li>
 
+1. If |allowCredentialDescriptorList| was supplied:
+    1. Let |userHandle| be |selectedCredential|.[=public key credential source/userHandle=].
+    1. If |userHandle| is not `null` and this authenticator's [=credentials map=][(|rpId|, |userHandle|)] [=map/exists=]:
+        1. [=map/Set=] this authenticator's [=credentials map=][(|rpId|, |userHandle|)] to
+            a new [=list=] containing only |selectedCredential|.
 1. Let |processedExtensions| be the result of [=authenticator extension processing=] [=map/for each=] supported [=extension
     identifier=] → [=authenticator extension input=] in |extensions|.
 1. Increment the credential associated
@@ -5439,7 +5506,11 @@ When this operation is invoked, the [=authenticator=] MUST perform the following
         ::  Other information used by the [=authenticator=] to inform its UI.
     </dl>
 
-1. [=map/For each=] [=public key credential source=] |credSource| of |authenticator|'s [=credentials map=]:
+1. [=map/For each=] <var ignore>key</var> → |credentialList| of |authenticator|'s [=credentials map=]:
+
+    1. If |credentialList| [=list/is empty=], [=iteration/continue=].
+
+    1. Let |credSource| be the last [=list/item=] of |credentialList|.
 
     1. If |credSource| is not a [=client-side discoverable credential=], [=iteration/continue=].
 
