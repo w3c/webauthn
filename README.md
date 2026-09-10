@@ -37,6 +37,7 @@ You can use the following command to automatically regenerate the rendered docum
 mise serve
 ```
 
+
 # Continuous Integration & Branches
 
 https://w3c.github.io/webauthn/ is autopublished from the `gh-pages` branch on every push to the `main` branch, using https://github.com/w3c/webauthn/blob/main/.github/workflows/build-validate-publish.yml to configure the autopublishing behavior.
