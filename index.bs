@@ -7951,54 +7951,46 @@ The extension output includes the public key and a signature generated using the
 
 <div class="example">
 
-Here's what a WebAuthn registration ceremony with the `cmtgKey` extension
-might look like on the client side:
+On the client side, the `cmtgKey` extension requires only adding `cmtgKey: true`
+to the extensions in the request options.
+
+Registration example:
 
 ```javascript
-async function createPasskey() {
-  // 1. Fetch JSON options from your server.
-  // The server should return a JSON structure where buffers are Base64URL encoded strings.
-  const response = await fetch('/auth/register/options');
-  const optionsJSON = await response.json();
+// Add to the options JSON before calling parseCreationOptionsFromJSON():
+optionsJSON.extensions = { ...optionsJSON.extensions, cmtgKey: true };
+```
 
-  // 2. Add the CMTG extension request to the JSON object before parsing
-  // Note: This is illustrative. This would likely come from the server in the options response in a real implementation.
-  optionsJSON.extensions = {
-    ...optionsJSON.extensions,
-    cmtgKey: true
-  };
+Authentication example:
 
-  // 3. Convert the JSON into an object
-  const publicKeyCredentialCreationOptions =
-    PublicKeyCredential.parseCreationOptionsFromJSON(optionsJSON);
+```javascript
+// Add to the options JSON before calling parseRequestOptionsFromJSON():
+optionsJSON.extensions = { ...optionsJSON.extensions, cmtgKey: true };
+```
 
-  try {
-    // 4. Trigger the passkey creation
-    const credential = await navigator.credentials.create({
-      publicKey: publicKeyCredentialCreationOptions
-    });
+On the server side, the [=[RP]=] verifies the extension output
+and maintains a list of known [=Credential Manager Trust Group public keys=]
+per [=credential record=]:
 
-    // 5. Serialize the entire credential (including extension results)
-    const credentialJSON = credential.toJSON();
+```
+// After standard WebAuthn response verification:
 
-    // 6. Send the serialized object directly to the backend
-    const verificationResponse = await fetch('/auth/register/verify', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(credentialJSON)
-    });
+cmtgOutput = response.clientExtensionResults.cmtgKey
+if cmtgOutput is not present:
+    // RP policy determines what to do next
+    return
 
-    // The backend should verify both the passkey and the CMTG Key and update the credential record.
-    // If verification is successful, it should return a success response.
+// perform CMTG Key signature verification steps
 
-    if (verificationResponse.ok) {
-      establishSession();
-      console.log("Passkey and CMTG Key registered successfully!");
-    }
-  } catch (err) {
-    console.error("Registration failed:", err);
-  }
-}
+// Look up the key in the credential record's cmtgKeyRecords list.
+existing = cmtgKeyRecords.find(entry => entry.publicKey == cmtgKey)
+
+if existing:
+    // Known trust group. Update timestamp.
+    existing.lastUsed = now()
+else:
+    // New trust group — apply risk-analysis policy checks as needed.
+    cmtgKeyRecords.append({ publicKey: cmtgKey, lastUsed: now() })
 ```
 </div>
 
