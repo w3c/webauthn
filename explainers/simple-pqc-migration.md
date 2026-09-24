@@ -1,3 +1,5 @@
+# Superseded by [Web Authentication Algorithm Upgrades](alg-upgrades.md)
+
 ## Simplified Web Authentication PQC migration extension
 
 ### Authors

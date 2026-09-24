@@ -241,8 +241,22 @@ def gen_android_key_att_cert(ca_cert, ca_key, challenge, cred_private_key, rand_
         asn1_encoder.write(0, asn1.Numbers.Enumerated)
         asn1_encoder.write(challenge)
         asn1_encoder.write(b'')
-        asn1_encoder.write([])
-        asn1_encoder.write([])
+
+        # softwareEnforced  AuthorizationList
+        with asn1_encoder.construct(asn1.Numbers.Sequence):
+            pass
+
+        # hardwareEnforced  AuthorizationList
+        with asn1_encoder.construct(asn1.Numbers.Sequence):
+            # purpose   [1] EXPLICIT SET OF INTEGER OPTIONAL
+            with asn1_encoder.construct(1, asn1.Classes.Context):
+                with asn1_encoder.construct(asn1.Numbers.Set):
+                    asn1_encoder.write(2) # 2 = KM_PURPOSE_SIGN
+
+            # origin    [702] EXPLICIT INTEGER OPTIONAL
+            with asn1_encoder.construct(702, asn1.Classes.Context):
+                asn1_encoder.write(0) # 0 = KM_ORIGIN_GENERATED
+
     attestation_ext = asn1_encoder.output()
     att_cert = to_deterministic_cert(
         x509.CertificateBuilder().subject_name(subject)
