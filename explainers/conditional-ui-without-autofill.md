@@ -60,4 +60,4 @@ Requests for other credential types, such as [PasswordCredential](https://www.w3
 
 ### No web platform change
 
-User agents already have the ability to provide credentials in a dedicated non-autofill UI in response to a request with `mediation: "conditional"`. Since Conditional UI is an established and widely used feature, we are concerned it would be unwelcome and disruptive to change the way it works in browser UI for all RPs. Adding a new `uiMode` value enables RPs to opt in the alternative UI. 
+User agents already have the ability to provide credentials in a dedicated non-autofill UI in response to a request with `mediation: "conditional"`. Since Conditional UI is an established and widely used feature, we are concerned it would be unwelcome and disruptive to change the way it works in browser UI for all RPs. Adding a new `uiMode` value enables RPs to opt in to the alternative UI. 
