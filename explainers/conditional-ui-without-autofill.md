@@ -4,7 +4,7 @@
 
 Ken Buchanan \<kenrb@chromium.org\>
 
-_Last updated: 24-Sep-2026_
+_Last updated: 05-Oct-2026_
 
 ## Summary
 
