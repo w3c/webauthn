@@ -4,7 +4,7 @@
 
 Ken Buchanan \<kenrb@chromium.org\>
 
-_Last updated: 24-Sep-2026_
+_Last updated: 05-Oct-2026_
 
 ## Summary
 
@@ -16,7 +16,9 @@ User agents display the credentials to the user in a dedicated UI surface. Optio
 
 Conditional mediation allows WebAuthn to be integrated into the form autofill feature available on modern browsers. This allows RPs to provide WebAuthn-based sign-in on login pages that currently have username and passwords fields while avoiding modal WebAuthn dialogs for users who don’t have eligible credentials.
 
-The motivation for this feature is to improve the sign-in experience when a user navigates to an arbitrary page on a site where the user has an existing account, but not an active signed-in session. Conditional UI is not useable because there is not a sign-in form on the page. Prompting a passkey sign-in with a modal dialog is undesirable because the it is an obstruction if the user does not have a passkey for the site.
+The motivation for this feature is to improve the sign-in experience when a user navigates to an arbitrary page on a site where the user has an existing account, but not an active signed-in session. Conditional UI is not useable because there is not a sign-in form on the page. Prompting a passkey sign-in with a modal dialog is undesirable because it obstructs the user experience if the user does not have a passkey for the site.
+
+This feature can also be used on a sign-in page where Conditional UI is also available if the RP wants to provide a more prominent passkey sign-in option. Both UI surfaces can be available on the same page for a single request, but one displays immediately upon the request being made and the other depends on an autofill trigger.
 
 This differs from [Immediate Mode](https://github.com/w3c/webauthn/blob/main/explainers/immediate-mediation.md) in that the returned promise does not resolve if there are no credentials available, and also in that it does not require a user activation. This mode is therefore suitable to be activated on page load without the user having interacted with the page.
 
@@ -30,7 +32,7 @@ For a user with no eligible credentials for the site, no UI is shown. In this ca
 
 ## API
 
-Feature detection is provided by another enumeration value in ClientCapability: `conditionalPassive`.
+Feature detection is provided by another enumeration value in ClientCapability: `conditionalPassiveGet`.
 
 When the request contains `mediation: "conditional"` and the PublicKeyCredentialRequestOptions contains `uiMode: "passive"`, the user agent displays discoverable WebAuthn credentials immediately in an unobtrusive UI prompt.
 
