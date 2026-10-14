@@ -1068,15 +1068,15 @@ BCP 14 [[!RFC2119]] [[!RFC8174]] when, and only when, they appear in all capital
 : <dfn>Credential Manager Trust Group Public Key</dfn>
 : <dfn>Credential Manager Trust Group Key Pair</dfn>
 :: A [=Credential Manager Trust Group Key=] is a [=credential manager=]-, [=[RP]=]-, and [=user credential=]-specific
-    public key pair created upon a [=[RP]=]'s request via the [=cmtgKey=] [=WebAuthn extension=].
+    public key pair created upon a [=[RP]=]'s request via the [=cmtgKeys=] [=WebAuthn extension=].
 
     The [=Credential Manager Trust Group Public Key=] is conveyed to the [=[RP]=] during a
     [=registration ceremony|registration=] or [=authentication ceremony|authentication=] ceremony
-    as part of the [=cmtgKey=] extension output.
+    as part of the [=cmtgKeys=] extension output.
 
     The [=Credential Manager Trust Group Private Key=] is stored by the [=authenticator=] / [=credential manager=].
 
-    See [[#sctn-cmtg-key-extension]].
+    See [[#sctn-cmtg-keys-extension]].
 
 : <dfn>Credential Properties</dfn>
 :: A [=credential property=] is some characteristic property of a [=public key credential source=], such as whether it is a
@@ -7919,7 +7919,7 @@ This permission MUST be configured per-origin and MUST NOT offer the capability 
 
 This section defines extensions that are both [=client extensions=] and [=authenticator extensions=].
 
-### Credential Manager Trust Group Key extension (<dfn>cmtgKey</dfn>) ### {#sctn-cmtg-key-extension}
+### Credential Manager Trust Group Keys extension (<dfn>cmtgKeys</dfn>) ### {#sctn-cmtg-keys-extension}
 
 This [=authenticator extension|authenticator=] [=registration extension=] and [=authentication extension=]
 enables an [=authenticator=]/[=credential manager=] to provide a signal to a [=[RP]=]
@@ -7933,44 +7933,50 @@ in the [=authenticator=], if such a key pair needs to be created for the
 and returning one of the [=Credential Manager Trust Group public keys=]
 along with a signature by the [=Credential Manager Trust Group private key=] to the [=[RP]=].
 
-This is done each time this [=cmtgKey=] extension is requested in either a
+This is done each time this [=cmtgKeys=] extension is requested in either a
 {{CredentialsContainer/create()|navigator.credentials.create()}} or {{CredentialsContainer/get()|navigator.credentials.get()}} call.
 
-#### Relying Party Usage #### {#sctn-cmtg-key-extension-usage}
+#### Relying Party Usage #### {#sctn-cmtg-keys-extension-usage}
 
 This extension is intended for use by those [=[RPS]=] employing risk-analysis systems informing their sign-in decisions.
 
 This extension provides a "trust group" signal <i>when used consistently</i> with both
 {{CredentialsContainer/create()|navigator.credentials.create()}} and {{CredentialsContainer/get()|navigator.credentials.get()}} operations.
 
-When a [=[RP]=] uses the `cmtgKey` extension during a {{CredentialsContainer/create()|create()}} option on the first device (`dev1`)
+When a [=[RP]=] uses the `cmtgKeys` extension during a {{CredentialsContainer/create()|create()}} option on the first device (`dev1`)
 and the extension is supported by the [=WebAuthn client=] and at least one [=authenticator=]/[=credential manager=],
 the selected [=authenticator=]/[=credential manager=] (`cm1`) generates a new [=Credential Manager Trust Group Key=] pair.
 The extension output includes the public key and a signature generated using the
 [=Credential Manager Trust Group private key=] (`cmtgKey1`).
 
 <div class="example">
-On the client side, the `cmtgKey` extension requires only adding `cmtgKey: true`
+On the client side, the `cmtgKeys` extension requires only adding `cmtgKeys: true`
 to the extensions in the options. The extension output is then included automatically
 when the credential is serialized with `toJSON()`.
 
 ```javascript
 // Add to the options JSON before calling parseCreationOptionsFromJSON():
-optionsJSON.extensions = { ...optionsJSON.extensions, cmtgKey: true };
+optionsJSON.extensions = { ...optionsJSON.extensions, cmtgKeys: true };
 
 // The rest of the ceremony is unchanged. credential.toJSON() includes
-// the cmtgKey extension output automatically.
+// the cmtgKeys extension output automatically.
 ```
 
 On the server side, the [=[RP]=] verifies the extension output after completing
 standard [=registration=] verification:
 
 ```
-cmtgOutput = response.clientExtensionResults.cmtgKey
-if cmtgOutput is not present:
+cmtgOutputs = response.clientExtensionResults.cmtgKeys
+if cmtgOutputs is not present or is empty:
     // Extension was not processed by the client and/or authenticator.
     // RP policy decides what to do next.
     return
+
+if cmtgOutputs.length > 1:
+    // Only a single CMTG key is currently supported.
+    reject the extension output as invalid
+
+{ cmtgKey, signature } = cmtgOutputs[0]
 
 // perform CMTG Key signature verification steps
 
@@ -7979,7 +7985,7 @@ credentialRecord.cmtgKeyRecords.append({ publicKey: cmtgKey, lastUsed: now() })
 ```
 </div>
 
-A subsequent {{CredentialsContainer/get()|get()}} operation (with the `cmtgKey` extension) on `dev1`
+A subsequent {{CredentialsContainer/get()|get()}} operation (with the `cmtgKeys` extension) on `dev1`
 using the same credential and the same authenticator/credential manager (`cm1`),
 will include a signature from the same [=Credential Manager Trust Group private key=], `cmtgKey1`.
 
@@ -7996,11 +8002,11 @@ If `dev1` and `dev3` or `dev2` and `dev3` are later determined to have non-remot
 `cm1` may elect to use `cmtgKey1` for all three devices, signaling that they are now in the same trust group.
 
 <div class="example">
-As with registration, the client side only needs to add `cmtgKey: true` to the extensions:
+As with registration, the client side only needs to add `cmtgKeys: true` to the extensions:
 
 ```javascript
 // Add to the options JSON before calling parseRequestOptionsFromJSON():
-optionsJSON.extensions = { ...optionsJSON.extensions, cmtgKey: true };
+optionsJSON.extensions = { ...optionsJSON.extensions, cmtgKeys: true };
 
 // The rest of the ceremony is unchanged.
 ```
@@ -8009,11 +8015,16 @@ On the server side, the [=[RP]=] verifies the extension output after completing
 standard [=authentication=] verification:
 
 ```
-cmtgOutput = response.clientExtensionResults.cmtgKey
-if cmtgOutput is not present:
+cmtgOutputs = response.clientExtensionResults.cmtgKeys
+if cmtgOutputs is not present or is empty:
     // RP policy decides what to do next
     return
 
+if cmtgOutputs.length > 1:
+    // Only a single CMTG key is currently supported.
+    reject the extension output as invalid
+
+{ cmtgKey, signature } = cmtgOutputs[0]
 
 // perform CMTG Key signature verification steps
 
@@ -8029,7 +8040,7 @@ else:
 ```
 </div>
 
-#### Updating the RP's Credential Record #### {#sctn-cmtg-key-credential-record}
+#### Updating the RP's Credential Record #### {#sctn-cmtg-keys-credential-record}
 
 When this extension is used by a [=Relying Party=],
 the [=credential record=] structure SHOULD be augmented with the following field:
@@ -8050,10 +8061,10 @@ A <dfn>CMTG Key Record</dfn> is a [=struct=] with the following [=struct/items=]
 </dl>
 
 
-#### Extension Definition #### {#sctn-cmtg-key-extension-definition}
+#### Extension Definition #### {#sctn-cmtg-keys-extension-definition}
 
 : Extension identifier
-:: `cmtgKey`
+:: `cmtgKeys`
 
 : Operation applicability
 :: [=registration extension|Registration=] and [=authentication extension|authentication=]
@@ -8062,27 +8073,35 @@ A <dfn>CMTG Key Record</dfn> is a [=struct=] with the following [=struct/items=]
 :: The Boolean value [TRUE] to indicate that this extension is requested by the [=[RP]=].
     <xmp class="idl">
     partial dictionary AuthenticationExtensionsClientInputs {
-      boolean cmtgKey;
+      boolean cmtgKeys;
     };
     partial dictionary AuthenticationExtensionsClientInputsJSON {
-      boolean cmtgKey;
+      boolean cmtgKeys;
     };
     </xmp>
 
 : Client extension processing
 :: For both [=authenticatorMakeCredential=] and [=authenticatorGetAssertion=] operations:
     1. Create the authenticator extension input from the client extension input.
-    1. If the authenticator extension output is empty or indicates the extension was not processed,
+    1. If neither the authenticator extension output nor the [=unsigned extension output=] is present,
+        or the authenticator extension output indicates the extension was not processed,
         stop processing this extension and return no output.
-    1. Let |cmtgKeyOutput| be a new {{AuthenticationExtensionsCmtgKeyOutputs}} dictionary.
-    1. Set |cmtgKeyOutput|.{{AuthenticationExtensionsCmtgKeyOutputs/cmtgKey}} to the CBOR-decoded byte string from the [=authenticator extension output=].
-    1. Set |cmtgKeyOutput|.{{AuthenticationExtensionsCmtgKeyOutputs/signature}} to the CBOR-decoded byte string from the [=unsigned extension output=].
-    1. Return |cmtgKeyOutput| as the client extension output.
+    1. If either the authenticator extension output or the [=unsigned extension output=] is absent
+        or is not a non-empty CBOR array of byte strings,
+        or if they do not contain the same number of elements,
+        return a {{DOMException}} whose name is "{{UnknownError}}".
+    1. Let |cmtgKeyOutputs| be a new empty [=list=].
+    1. [=list/For each=] index |i| of the array in the [=authenticator extension output=]:
+        1. Let |cmtgKeyOutput| be a new {{AuthenticationExtensionsCmtgKeyOutputs}} dictionary.
+        1. Set |cmtgKeyOutput|.{{AuthenticationExtensionsCmtgKeyOutputs/cmtgKey}} to the CBOR-decoded byte string at index |i| of the [=authenticator extension output=].
+        1. Set |cmtgKeyOutput|.{{AuthenticationExtensionsCmtgKeyOutputs/signature}} to the CBOR-decoded byte string at index |i| of the [=unsigned extension output=].
+        1. [=list/Append=] |cmtgKeyOutput| to |cmtgKeyOutputs|.
+    1. Return |cmtgKeyOutputs| as the client extension output.
 
 : Client extension output
-:: An {{AuthenticationExtensionsCmtgKeyOutputs}} dictionary containing the COSE_Key-encoded [=Credential Manager Trust Group public key=]
+:: A sequence of {{AuthenticationExtensionsCmtgKeyOutputs}} dictionaries, each containing a COSE_Key-encoded [=Credential Manager Trust Group public key=]
     returned in the authenticator extension output,
-    and the signature returned as the [=unsigned extension output=].
+    and the corresponding signature returned in the [=unsigned extension output=].
     <xmp class="idl">
     dictionary AuthenticationExtensionsCmtgKeyOutputs {
         required ArrayBuffer cmtgKey;
@@ -8095,11 +8114,11 @@ A <dfn>CMTG Key Record</dfn> is a [=struct=] with the following [=struct/items=]
     };
 
     partial dictionary AuthenticationExtensionsClientOutputs {
-        AuthenticationExtensionsCmtgKeyOutputs cmtgKey;
+        sequence<AuthenticationExtensionsCmtgKeyOutputs> cmtgKeys;
     };
 
     partial dictionary AuthenticationExtensionsClientOutputsJSON {
-        AuthenticationExtensionsCmtgKeyOutputsJSON cmtgKey;
+        sequence<AuthenticationExtensionsCmtgKeyOutputsJSON> cmtgKeys;
     };
     </xmp>
 
@@ -8111,21 +8130,23 @@ A <dfn>CMTG Key Record</dfn> is a [=struct=] with the following [=struct/items=]
 
     ```
     $$extensionInput //= (
-      cmtgKey: true,
+      cmtgKeys: true,
     )
     ```
 
 : Authenticator extension output
-:: A byte string containing the COSE_Key-encoded [=Credential Manager Trust Group public key=]:
+:: A non-empty array of byte strings, each containing a COSE_Key-encoded [=Credential Manager Trust Group public key=]:
 
     ```
     $$extensionOutput //= (
-        cmtgKey: bstr .cbor COSE_Key,
+        cmtgKeys: [+ bstr .cbor COSE_Key],
     )
     ```
 
 : Unsigned extension output
-:: A CBOR byte string containing a signature generated with the Credential Manager Trust Group Key's private key.
+:: A non-empty CBOR array of byte strings, with the same number of elements as the [=authenticator extension output=].
+    Each byte string contains a signature generated with the private key of the [=Credential Manager Trust Group Key=]
+    at the same index in the [=authenticator extension output=].
 
 : Authenticator extension processing
 :: For both [=authenticatorMakeCredential=] and [=authenticatorGetAssertion=] operations:
@@ -8160,29 +8181,40 @@ A <dfn>CMTG Key Record</dfn> is a [=struct=] with the following [=struct/items=]
         Note: The [=assertion signature=] [input](#fig-signature) and |cmtgKeySig| covers the [=[RP]=]'s {{PublicKeyCredentialRequestOptions/challenge}}
           because it includes the [=hash of the serialized client data=]. Thus the [=[RP]=] knows that |cmtgKeySig| is a fresh signature.
 
-    1. Output |cmtgPublicKey| as the [=authenticator extension output=].
+    1. Output a CBOR array containing exactly one element, |cmtgPublicKey|, as the [=authenticator extension output=].
 
-    1. Output |cmtgKeySig| as the extension's [=unsigned extension output=].
+    1. Output a CBOR array containing exactly one element, |cmtgKeySig|, as the extension's [=unsigned extension output=].
 
         Note: |cmtgKeySig| cannot be included in the [=authenticator extension output=] because it is returned inside the [=authenticator data=]
          and that would imply that the signature signs over itself.
 
-#### `cmtgKey` Extension Output Verification Procedures #### {#sctn-cmtg-key-extension-verification}
+    Note: The extension outputs are arrays so that future extensions may return more than one
+    [=Credential Manager Trust Group Key=], for example to support algorithm transitions
+    (see <a href="https://github.com/w3c/webauthn/issues/2417">w3c/webauthn#2417</a>).
 
-Verifying the <code>[=cmtgKey=]</code> extension output is performed by the [=[RP]=] whenever a [=Credential Manager Trust Group Key=] is returned within the extension output.
+#### `cmtgKeys` Extension Output Verification Procedures #### {#sctn-cmtg-keys-extension-verification}
 
-##### Registration (`create()`) ##### {#sctn-cmtg-key-extension-verification-create}
+Verifying the <code>[=cmtgKeys=]</code> extension output is performed by the [=[RP]=] whenever a [=Credential Manager Trust Group Key=] is returned within the extension output.
 
-If a {{AuthenticationExtensionsClientOutputs/cmtgKey}} extension output is present in a {{CredentialsContainer/create()|navigator.credentials.create()}} call,
+##### Registration (`create()`) ##### {#sctn-cmtg-keys-extension-verification-create}
+
+If a {{AuthenticationExtensionsClientOutputs/cmtgKeys}} extension output is present in a {{CredentialsContainer/create()|navigator.credentials.create()}} call,
 the below verification steps are performed in the context of <a href=#reg-ceremony-verify-extension-outputs>this step</a> of [[#sctn-registering-a-new-credential]]
 using these variables established therein: |credential|, |clientExtensionResults|, |authData|, and |hash|.
 
 1. Let |credentialRecord| be the [=credential record=] for |credential|.
 
-1. Let |extensionOutput| be the value of <code>|clientExtensionResults|.{{AuthenticationExtensionsClientOutputs/cmtgKey}}</code>.
+1. Let |extensionOutputs| be the value of <code>|clientExtensionResults|.{{AuthenticationExtensionsClientOutputs/cmtgKeys}}</code>.
 
-1. If |extensionOutput| is not present or does not contain the required members of
-    {{AuthenticationExtensionsCmtgKeyOutputs}}, terminate this `cmtgKey` validation algorithm.
+1. If |extensionOutputs| is not present or [=list/is empty=], terminate this `cmtgKeys` validation algorithm.
+
+1. If the [=list/size=] of |extensionOutputs| is greater than 1, the extension output is invalid.
+    Terminate this `cmtgKeys` validation algorithm.
+
+1. Let |extensionOutput| be |extensionOutputs|[0].
+
+1. If |extensionOutput| does not contain the required members of
+    {{AuthenticationExtensionsCmtgKeyOutputs}}, terminate this `cmtgKeys` validation algorithm.
 
     [=[RPS]=] MUST ignore any keys in |extensionOutput| that are not defined in the {{AuthenticationExtensionsCmtgKeyOutputs}} dictionary.
 
@@ -8200,20 +8232,31 @@ using these variables established therein: |credential|, |clientExtensionResults
         and its [$CMTG Key Record/lastUsed$] is the [=[RP]=]'s current time.
     1. Append |newEntry| to |credentialRecord|.[$credential record/cmtgKeyRecords$].
 
-See also [[#sctn-cmtg-key-extension-usage]] for further details.
+See also [[#sctn-cmtg-keys-extension-usage]] for further details.
 
-##### Authentication (`get()`) ##### {#sctn-cmtg-key-extension-verification-get}
+##### Authentication (`get()`) ##### {#sctn-cmtg-keys-extension-verification-get}
 
-If a {{AuthenticationExtensionsClientOutputs/cmtgKey}} extension output is present in a {{CredentialsContainer/get()|navigator.credentials.get()}} call,
+If a {{AuthenticationExtensionsClientOutputs/cmtgKeys}} extension output is present in a {{CredentialsContainer/get()|navigator.credentials.get()}} call,
 then the below verification steps are performed in the context of <a href=#authn-ceremony-verify-extension-outputs>this step</a> of [[#sctn-verifying-assertion]]
 using these variables established therein: |credential|, |clientExtensionResults|, |authData|, and |hash|.
-[=[RP]=] policy may specify whether a response without a {{AuthenticationExtensionsClientOutputs/cmtgKey}} is acceptable.
+[=[RP]=] policy may specify whether a response without a {{AuthenticationExtensionsClientOutputs/cmtgKeys}} is acceptable.
 
 1. Let |credentialRecord| be the [=credential record=] for |credential|.
 
-1. Let |extensionOutput| be the value of <code>|clientExtensionResults|.{{AuthenticationExtensionsClientOutputs/cmtgKey}}</code>.
+1. Let |extensionOutputs| be the value of <code>|clientExtensionResults|.{{AuthenticationExtensionsClientOutputs/cmtgKeys}}</code>.
 
-1. If |extensionOutput| is not present or does not contain the required members of {{AuthenticationExtensionsCmtgKeyOutputs}}:
+1. If |extensionOutputs| is not present or [=list/is empty=]:
+
+    1. Optionally, perform additional policy checks.
+
+    1. Terminate these validation steps as inconclusive.
+
+1. If the [=list/size=] of |extensionOutputs| is greater than 1, the extension output is invalid.
+    Terminate these validation steps.
+
+1. Let |extensionOutput| be |extensionOutputs|[0].
+
+1. If |extensionOutput| does not contain the required members of {{AuthenticationExtensionsCmtgKeyOutputs}}:
 
     1. Optionally, perform additional policy checks.
 
@@ -8252,7 +8295,7 @@ using these variables established therein: |credential|, |clientExtensionResults
 
     1. Append |newEntry| to |credentialRecord|.[$credential record/cmtgKeyRecords$].
 
-See also [[#sctn-cmtg-key-extension-usage]].
+See also [[#sctn-cmtg-keys-extension-usage]].
 
 # User Agent Automation # {#sctn-automation}
 
