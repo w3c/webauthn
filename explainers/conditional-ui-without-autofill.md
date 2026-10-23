@@ -6,7 +6,7 @@ Ken Buchanan \<kenrb@chromium.org\>
 
 _Last updated: 23-Oct-2026_
 
-The last update introduced `uiMode: 'active'`.
+The most recent update introduced `uiMode: 'active'`.
 
 ## Summary
 
@@ -14,14 +14,15 @@ This explainer describes an augmentation to [WebAuthn Conditional Mediation](htt
 
 User agents display the credentials to the user in a dedicated UI surface. Optionally, they can integrate other [Credential Management API](https://www.w3.org/TR/credential-management-1/) credential types such as passwords or [FedCM](https://www.w3.org/TR/fedcm/) into the same surface.
 
-Two different variants are available. The RP can specify that the user agent should show credentials in a `passive` UI or an `active` UI, depending on whether the sign in
-option is intended to be a necessary step in the user flow or something that the user can ignore.
+Two different variants are available. The RP can specify that the user agent should show credentials in a `passive` UI or an `active` UI, depending on whether the sign in option is intended to be a necessary step in the user flow or something that the user can ignore.
 
 ## Background and Use Cases
 
 Conditional mediation allows WebAuthn to be integrated into the form autofill feature available on modern browsers. This allows RPs to provide WebAuthn-based sign-in on login pages that currently have username and passwords fields while avoiding modal WebAuthn dialogs for users who don’t have eligible credentials.
 
-The motivation for this feature is to improve the sign-in experience when a user navigates to an arbitrary page on a site where the user has an existing account, but not an active signed-in session. Conditional UI is not useable because there is not a sign-in form on the page. Prompting a passkey sign-in with a modal dialog is undesirable because it obstructs the user experience if the user does not have a passkey for the site.
+We have received feedback from RPs that there would be benefit in browsers being more proactive in initiating sign-in flows when those flows are easy and are very likely to result in success. In particular users can be reluctant to explicitly initiate sign-in flows because of expected difficulty in doing so (e.g. remembering passwords, retrieving an SMS OTP from a phone, figuring out what authentication modality they have set up for this site). On sites where signing in is optional but can enable an improved experience for the user, this can discourage sign-in.
+
+Consider when a user navigates to an arbitrary page on a site where the user has an existing account, but not an active signed-in session. Conditional UI is not useable because there is not a sign-in form on the page. Prompting a passkey sign-in with a modal dialog is undesirable because it obstructs the user experience if the user does not have a passkey for the site. A quiet prompt offering available credentials at this point provides a shortcut to the signed-in experience which the user might not have otherwise activated.
 
 This feature can also be used on a sign-in page where Conditional UI is also available if the RP wants to provide a more prominent passkey sign-in option. Both UI surfaces can be available on the same page for a single request, but one displays immediately upon the request being made and the other depends on an autofill trigger.
 
@@ -33,6 +34,10 @@ Examples:
 
 For a user with no eligible credentials for the site, no UI is shown. In this case, the returned Promise does not resolve, the same as is currently the case in Conditional UI.
 
+This proposal includes two different activation mechanisms that correspond to different UI experiences: 'passive' and 'active'. Passive conditional UI should initiate a quieter UI surface that is minimally disruptive to the user's current intention. Active conditional UI should initiate a louder surface, potentially modal and requiring user action to select a credential or dismiss it. RPs can specify the mode in the request, corresponding to which is more suited to the user's current point in their journey.
+
+Example of potential passive UI:
+
 ![Bubble in top-left of browser window showing a WebAuthn credential](assets/conditional_passive_concept.png)
 
 ## API
@@ -43,7 +48,7 @@ When the request contains `mediation: "conditional"` and the PublicKeyCredential
 
 If the site wants to offer the non-autofill Conditional UI prompt and also has a sign-in form on that page, the autofill behavior still works. That is, on a request with `uiMode: ‘passive’` if the user dismisses or ignores that UI but then clicks on a webauthn-tagged input field, the autofill UI will show the same as for any other `mediation: 'conditional'` request. Clicking a credential in the autofill UI behaves the same as clicking the same credential in the non-autofill UI.
 
-Example:
+Passive example:
 ```javascript
 const cred = await navigator.credentials.get({
   mediation: 'conditional',
@@ -57,9 +62,23 @@ const cred = await navigator.credentials.get({
 });
 ```
 
+Active example:
+```javascript
+const cred = await navigator.credentials.get({
+  mediation: 'conditional',
+  uiMode: 'active',
+  publicKey: {
+    challenge: ...,
+    rpId: 'example.com',
+    allowCredentials: {...},
+  },
+  password: true,
+});
+```
+
 ## Other Credential Types
 
-Non-autofill Conditional UI behaves similarly to [Federated Credential Management passive mode](https://w3c-fedid.github.io/FedCM/#dom-identitycredentialrequestoptionsmode-passive). Browsers that support both can offer them in integrated UI.
+Conditional UI passive mode behaves similarly to [Federated Credential Management passive mode](https://w3c-fedid.github.io/FedCM/#dom-identitycredentialrequestoptionsmode-passive). Browsers that support both can offer them in integrated UI.
 
 Requests for other credential types, such as [PasswordCredential](https://www.w3.org/TR/credential-management-1/#passwordcredential) can similarly be integrated into UI.
 
