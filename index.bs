@@ -1,4 +1,4 @@
-﻿<!--   ***********  Web Authentication - Level 3 - Spec source file ***********
+<!--   ***********  Web Authentication - Level 3 - Spec source file ***********
 Notes:
 * the h1 tag is spec title that is rendered within the document window. Wrapping
   may be controlled with break tags.  The spec 'Level' value is not appended.
@@ -214,6 +214,9 @@ spec: FIDO-U2F-Message-Formats; urlPrefix: https://fidoalliance.org/specs/fido-u
 
 spec: FIDO-Registry; urlPrefix: https://fidoalliance.org/specs/common-specs/fido-registry-v2.1-ps-20191217.html
     type: dfn; for: FIDO-Registry
+        text: Section 3.1 User Verification Methods; url: user-verification-methods
+        text: Section 3.2 Key Protection Types; url: key-protection-types
+        text: Section 3.3 Matcher Protection Types; url: matcher-protection-types
         text: Section 3.6.2 Public Key Representation Formats; url: public-key-representation-formats
 
 spec: RFC4949; urlPrefix: https://tools.ietf.org/html/rfc4949
@@ -1421,6 +1424,7 @@ BCP 14 [[!RFC2119]] [[!RFC8174]] when, and only when, they appear in all capital
     For example, some devices are intended to be used by a single individual,
     yet they may allow multiple natural persons to enroll fingerprints or know the same PIN
     and thus access the same [=user account=](s) using that device.
+    See also [[#sctn-uvi-extension]].
 
     NOTE: Invocation of the [=authenticatorMakeCredential=] and [=authenticatorGetAssertion=] operations
     implies use of key material managed by the authenticator.
@@ -7920,7 +7924,200 @@ This permission MUST be configured per-origin and MUST NOT offer the capability 
 
 This section defines extensions that are both [=client extensions=] and [=authenticator extensions=].
 
-This section is currently empty.
+### <dfn>User Verification Method</dfn> Extension (uvm) ### {#sctn-uvm-extension}
+
+This extension enables use of a user verification method.
+
+: Extension identifier
+:: `uvm`
+
+: Operation applicability
+:: [=registration extension|Registration=] and [=authentication extension|Authentication=]
+
+: Client extension input
+:: The Boolean value [TRUE] to indicate that this extension is requested by the [=[RP]=].
+    <xmp class="idl">
+    partial dictionary AuthenticationExtensionsClientInputs {
+      boolean uvm;
+    };
+    partial dictionary AuthenticationExtensionsClientInputsJSON {
+      boolean uvm;
+    };
+    </xmp>
+
+: Client extension processing
+:: None, except creating the authenticator extension input from the client extension input.
+
+: Client extension output
+:: Returns a JSON array of 3-element arrays of numbers that encodes the factors in the authenticator extension output.
+    <xmp class="idl">
+    typedef sequence<unsigned long> UvmEntry;
+    typedef sequence<UvmEntry> UvmEntries;
+
+    partial dictionary AuthenticationExtensionsClientOutputs {
+      UvmEntries uvm;
+    };
+    partial dictionary AuthenticationExtensionsClientOutputsJSON {
+      UvmEntries uvm;
+    };
+    </xmp>
+
+: Authenticator extension input
+:: The Boolean value [TRUE], encoded in CBOR (major type 7, value 21).
+
+    ```
+    $$extensionInput //= (
+      uvm: true,
+    )
+    ```
+
+: Authenticator extension processing
+:: The [=authenticator=] sets the [=authenticator extension output=] to be one or more user verification methods indicating the method(s) used
+    by the user to authorize the operation, as defined below. This extension can be added to attestation objects and assertions.
+
+: Authenticator extension output
+:: Authenticators can report up to 3 different user verification methods (factors) used in a single authentication instance,
+    using the CBOR syntax defined below:
+
+    ```
+    $$extensionOutput //= (
+      uvm: [ 1*3 uvmEntry ],
+    )
+
+    uvmEntry = [
+                   userVerificationMethod: uint .size 4,
+                   keyProtectionType: uint .size 2,
+                   matcherProtectionType: uint .size 2
+               ]
+    ```
+
+    The semantics of the fields in each `uvmEntry` are as follows:
+    : userVerificationMethod
+    :: The authentication method/factor used by the authenticator to verify the user. Available values are defined in
+        [=Section 3.1 User Verification Methods=] of [[!FIDO-Registry]].
+
+    : keyProtectionType
+    :: The method used by the authenticator to protect the FIDO registration private key material. Available values are defined
+        in [=Section 3.2 Key Protection Types=] of [[!FIDO-Registry]].
+
+    : matcherProtectionType
+    :: The method used by the authenticator to protect the matcher that performs user verification. Available values are defined
+        in [=Section 3.3 Matcher Protection Types=] of [[!FIDO-Registry]].
+
+    If >3 factors can be used in an authentication instance the authenticator vendor MUST select the 3 factors it believes
+    will be most relevant to the Server to include in the UVM.
+
+    Example for [=authenticator data=] containing one UVM extension for a multi-factor authentication instance where 2 factors
+    were used:
+    <pre>
+        ...                    -- RP ID hash (32 bytes)
+        81                     -- UP and ED set
+        00 00 00 01            -- (initial) signature counter
+        ...                    -- all public key alg etc.
+        A1                     -- extension: CBOR map of one element
+            63                 -- Key 1: CBOR text string of 3 bytes
+                75 76 6d       -- "uvm" [=UTF-8 encoded=] string
+            82                 -- Value 1: CBOR array of length 2 indicating two factor usage
+                83              -- Item 1: CBOR array of length 3
+                    02           -- Subitem 1: CBOR integer for User Verification Method Fingerprint
+                    04           -- Subitem 2: CBOR short for Key Protection Type TEE
+                    02           -- Subitem 3: CBOR short for Matcher Protection Type TEE
+                83              -- Item 2: CBOR array of length 3
+                    04           -- Subitem 1: CBOR integer for User Verification Method Passcode
+                    01           -- Subitem 2: CBOR short for Key Protection Type Software
+                    01           -- Subitem 3: CBOR short for Matcher Protection Type Software
+    </pre>
+
+
+### <dfn>User Verification Index</dfn> Extension (uvi) ### {#sctn-uvi-extension}
+
+This extension enables use of a user verification index.
+
+: Extension identifier
+:: `uvi`
+
+: Operation applicability
+:: [=registration extension|Registration=] and [=authentication extension|Authentication=]
+
+: Client extension input
+:: The Boolean value [TRUE] to indicate that this extension is requested by the [=[RP]=].
+    <xmp class="idl">
+    partial dictionary AuthenticationExtensionsClientInputs {
+      boolean uvi;
+    };
+    partial dictionary AuthenticationExtensionsClientInputsJSON {
+      boolean uvi;
+    };
+    </xmp>
+
+: Client extension processing
+:: None, except creating the authenticator extension input from the client extension input.
+
+: Client extension output
+:: Returns the authenticator extension output as an ArrayBuffer.
+    <xmp class="idl">
+    partial dictionary AuthenticationExtensionsClientOutputs {
+      ArrayBuffer uvi;
+    };
+    partial dictionary AuthenticationExtensionsClientOutputsJSON {
+      Base64URLString uvi;
+    };
+    </xmp>
+
+: Authenticator extension input
+:: The Boolean value [TRUE], encoded in CBOR (major type 7, value 21).
+
+    ```
+    $$extensionInput //= (
+      uvi: true,
+    )
+    ```
+
+: Authenticator extension processing
+:: The [=authenticator=] sets the [=authenticator extension output=] to be a user verification index identifying the user
+    verification data record used to verify the user, as defined below. This extension can be added to attestation objects and assertions.
+
+    If [=user verification=] was not performed during the operation, the [=authenticator=] MUST NOT include the `uvi`
+    [=authenticator extension output=].
+
+: Authenticator extension output
+:: The user verification index (UVI) is a value uniquely identifying a user verification data record. The UVI is encoded as CBOR
+    byte string (type 0x58). Each UVI value MUST be specific to the related key (in order to provide unlinkability). It also
+    MUST contain sufficient entropy that makes guessing impractical. UVI values MUST NOT be reused by the Authenticator (for
+    other biometric data or users).
+
+    ```
+    $$extensionOutput //= (
+      uvi: bstr,
+    )
+    ```
+
+    The UVI data can be used by servers to understand whether an authentication was authorized by the exact same biometric data
+    as the initial key generation. This allows the detection and prevention of "friendly fraud".
+
+    Note: [=[RPS]=] should verify that the [=authData/flags/UV=] [=flag=] is set in the [=authenticator data=]
+    before relying on a `uvi` [=authenticator extension output=].
+
+    As an example, the UVI could be computed as SHA256(KeyID || SHA256(rawUVI)), where `||` represents concatenation, and the
+    rawUVI reflects (a) the biometric reference data, (b) the related OS level user ID and (c) an identifier which changes
+    whenever a factory reset is performed for the [=authenticator=], e.g. rawUVI = biometricReferenceData || OSLevelUserID ||
+    FactoryResetCounter.
+
+    Example of [=authenticator data=] containing one UVI extension
+    <pre>
+        ...                                         -- RP ID hash (32 bytes)
+        81                                          -- UP and ED set
+        00 00 00 01                                 -- (initial) signature counter
+        ...                                         -- all public key alg etc.
+        A1                                          -- extension: CBOR map of one element
+            63                                      -- Key 1: CBOR text string of 3 bytes
+                75 76 69                            -- "uvi" [=UTF-8 encoded=] string
+            58 20                                   -- Value 1: CBOR byte string with 0x20 bytes
+                43 B8 E3 BE 27 95 8C 28             -- the UVI value itself
+                D5 74 BF 46 8A 85 CF 46
+                9A 14 F0 E5 16 69 31 DA
+                4B CF FF C1 BB 11 32 82
+    </pre>
 
 
 # User Agent Automation # {#sctn-automation}
@@ -7979,6 +8176,18 @@ Additionally, [=extension capabilities=] are defined for every [=authenticator e
             </tr>
         </thead>
         <tbody>
+            <tr>
+                <td>User Verification Method Extension Support</td>
+                <td>`"webauthn:extension:uvm"`</td>
+                <td>boolean</td>
+                <td>Indicates whether the [=endpoint node=] WebAuthn WebDriver implementation supports the [=User Verification Method=] extension.</td>
+            </tr>
+            <tr>
+                <td>User Verification Index Extension Support</td>
+                <td>`"webauthn:extension:uvi"`</td>
+                <td>boolean</td>
+                <td>Indicates whether the [=endpoint node=] WebAuthn WebDriver implementation supports the [=User Verification Index=] extension.</td>
+            </tr>
             <tr>
                 <td>Pseudo-Random Function Extension Support</td>
                 <td>`"webauthn:extension:prf"`</td>
@@ -8046,6 +8255,10 @@ Each stored [=virtual authenticator=] has the following properties:
 
     A [=Virtual authenticator=] MUST support all [=authenticator extensions=] present in its |extensions| array.
     It MUST NOT support any [=authenticator extension=] not present in its |extensions| array.
+: |uvm|
+:: A {{UvmEntries}} array to be set as the [=authenticator extension output=] when processing the [=User Verification Method=] extension.
+
+    Note: This property has no effect if the [=Virtual Authenticator=] does not support the [=User Verification Method=] extension.
 
 : |defaultBackupEligibility|
 :: Determines the default state of the [=backup eligibility=] [=credential property=] for any newly created [=Public Key Credential Source=].
@@ -8055,6 +8268,13 @@ Each stored [=virtual authenticator=] has the following properties:
 :: Determines the default state of the [=backup state=] [=credential property=] for any newly created [=Public Key Credential Source=].
     This value MUST be reflected by the [=BS=] [=authenticator data=] [=flag=] when performing an [=authenticatorMakeCredential=]
     operation with this [=virtual authenticator=].
+
+If a [=Virtual Authenticator=] supports the [=User Verification Index=] extension, it MUST generate, for each newly created
+[=Public Key Credential Source=], a user verification index that satisfies the requirements of that extension, and associate it
+with the [=Public Key Credential Source=]. When processing the [=User Verification Index=] extension, the
+[=Virtual Authenticator=] MUST set the [=authenticator extension output=] to the user verification index associated with the
+[=Public Key Credential Source=] being used. The user verification index of an individual credential can be set using
+[=Add Credential=] or [=Set Credential Properties=].
 
 ## <dfn>Add Virtual Authenticator</dfn> ## {#sctn-automation-add-virtual-authenticator}
 
@@ -8131,6 +8351,12 @@ The <dfn>Authenticator Configuration</dfn> is a JSON [=Object=] passed to the [=
                 <td>|extensions|</td>
                 <td>string array</td>
                 <td>An array containing [=extension identifiers=]</td>
+                <td>Empty array</td>
+            </tr>
+            <tr>
+                <td>|uvm|</td>
+                <td>{{UvmEntries}}</td>
+                <td>Up to 3 [=User Verification Method=] entries</td>
                 <td>Empty array</td>
             </tr>
             <tr>
@@ -8295,6 +8521,16 @@ The <dfn>Credential Parameters</dfn> is a JSON [=Object=] passed to the [=remote
                 <td>string</td>
             </tr>
             <tr>
+                <td>|uvi|</td>
+                <td>
+                    The user verification index associated to the [=public key credential source=] for the
+                    [=User Verification Index=] extension, encoded using [=Base64url Encoding=].
+                    If unset, a newly generated user verification index will be used.
+                    This property may not be defined.
+                </td>
+                <td>string</td>
+            </tr>
+            <tr>
                 <td>|backupEligibility|</td>
                 <td>
                     The simulated [=backup eligibility=] for the [=public key credential source=]. If unset, the value will default to the
@@ -8366,6 +8602,14 @@ The [=remote end steps=] are:
      1. If |largeBlob| is failure, return a [=WebDriver error=] with [=WebDriver error code=] [=invalid argument=].
  1. Otherwise:
      1. Let |largeBlob| be `null`.
+ 1. If the |authenticator| supports the [=User Verification Index=] extension:
+     1. If the |parameters|' |uvi| property is defined:
+         1. Let |uvi| be the result of decoding [=Base64url Encoding=] on the |parameters|' |uvi| property.
+         1. If |uvi| is failure or is empty, return a [=WebDriver error=] with [=WebDriver error code=] [=invalid argument=].
+     1. Otherwise, let |uvi| be a newly generated user verification index that satisfies the requirements of the
+         [=User Verification Index=] extension.
+ 1. Otherwise:
+     1. Let |uvi| be `null`.
  1. Let |backupEligibility| be the |parameters|' |backupEligibility| property.
  1. If |backupEligibility| is not defined, set |backupEligibility| to the value of the |authenticator|'s |defaultBackupEligibility|.
  1. Let |backupState| be the |parameters|' |backupState| property.
@@ -8398,6 +8642,7 @@ The [=remote end steps=] are:
  1. Otherwise, if |signCount| is `null`, do not associate a [=signature counter=] to the |credential|.
  1. Otherwise, return a [=WebDriver error=] with [=WebDriver error code=] [=invalid argument=].
  1. If |largeBlob| is not `null`, set the [=large, per-credential blob=] associated to the |credential| to |largeBlob|.
+ 1. If |uvi| is not `null`, set the user verification index associated to the |credential| to |uvi|.
  1. Store the |credential| and |counter| in the database of the |authenticator|.
  1. Return <a spec="webdriver2">success</a>.
 
@@ -8613,6 +8858,15 @@ It contains the following |key| and |value| pairs:
                 </td>
                 <td>number or null</td>
             </tr>
+            <tr>
+                <td>|uvi|</td>
+                <td>
+                    This property is optional. When defined, it MUST be a non-empty user verification index
+                    encoded using [=Base64url Encoding=], and the user verification index associated to the
+                    credential for the [=User Verification Index=] extension will be set to its decoded value.
+                </td>
+                <td>string</td>
+            </tr>
         </tbody>
     </table>
 </figure>
@@ -8625,6 +8879,7 @@ The [=remote end steps=] are:
      Note: |parameters| is a [=Set Credential Properties Parameters=] object.
  1. If |authenticatorId| does not match any [=Virtual Authenticator=] stored in the [=Virtual Authenticator
      Database=], return a [=WebDriver error=] with [=WebDriver error code=] [=invalid argument=].
+ 1. Let |authenticator| be the [=Virtual Authenticator=] identified by |authenticatorId|.
  1. Let |credential| be the [=public key credential source=] managed by |authenticator| matched by |credentialId|.
  1. If |credential| is empty, return a [=WebDriver error=] with [=WebDriver error code=] [=invalid argument=].
  1. Let |backupEligibility| be the |parameters|' |backupEligibility| property.
@@ -8643,6 +8898,15 @@ The [=remote end steps=] are:
          associate one to |credential| and set it to the value of |signCount|.
      1. Otherwise, if |signCount| is `null`, remove any [=signature counter=] set to the |credential|.
      1. Otherwise, return a [=WebDriver error=] with [=WebDriver error code=] [=invalid argument=].
+ 1. If the |parameters|' |uvi| property is defined:
+     1. If |authenticator| does not support the [=User Verification Index=] extension, return a [=WebDriver error=]
+         with [=WebDriver error code=] [=unsupported operation=].
+     1. Let |uvi| be the result of decoding [=Base64url Encoding=] on the |parameters|' |uvi| property.
+     1. If |uvi| is failure or is empty, return a [=WebDriver error=] with [=WebDriver error code=] [=invalid argument=].
+     1. Set the user verification index associated to the |credential| to |uvi|.
+
+     Note: This allows tests to simulate a change in the user verification data record, such as re-enrollment of
+     biometric data, for an existing [=public key credential source=].
  1. Return <a spec="webdriver2">success</a>.
 
 # IANA Considerations # {#sctn-IANA}
@@ -8702,6 +8966,18 @@ This section updates the below-listed [=extension identifier=] values defined in
     FIDO JavaScript APIs to request an assertion.
 - Specification Document: Section [[#sctn-appid-extension]] of this specification
     <br/><br/>
+- WebAuthn Extension Identifier: uvm
+- Description: This [=registration extension=] and [=authentication extension=] enables use of a user verification method.
+    The user verification method extension returns to the [=[WRP]=] which user verification methods (factors) were
+    used for the WebAuthn operation.
+- Specification Document: Section [[#sctn-uvm-extension]] of this specification
+    <br/><br/>
+- WebAuthn Extension Identifier: uvi
+- Description: This [=registration extension=] and [=authentication extension=] enables use of a user verification index. The
+    user verification index is a value uniquely identifying a user verification data record. The UVI data can be used by servers
+    to understand whether an authentication was authorized by the exact same biometric data as the initial key generation. This
+    allows the detection and prevention of "friendly fraud".
+- Specification Document: Section [[#sctn-uvi-extension]] of this specification
 
 
 ## WebAuthn Extension Identifier Registrations ## {#sctn-extensions-reg}
