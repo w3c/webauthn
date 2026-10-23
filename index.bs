@@ -7924,9 +7924,43 @@ This permission MUST be configured per-origin and MUST NOT offer the capability 
 
 This section defines extensions that are both [=client extensions=] and [=authenticator extensions=].
 
+### Enterprise-Restricted Extensions ### {#sctn-enterprise-restricted-extensions}
+
+Some [=authenticator extensions=] defined in this section are intended only for controlled deployments within an enterprise,
+and are only available to [=[RPS]=] permitted to request enterprise attestation (see {{AttestationConveyancePreference/enterprise}}).
+These are referred to as <dfn>enterprise-restricted extensions</dfn>.
+The [=authenticator extension input=] of each [=enterprise-restricted extension=] contains a `platformPermitted` member,
+a Boolean value set by the [=client=].
+
+The [=client=] MUST set `platformPermitted` to [TRUE] if the [=user agent=] configuration permits enterprise attestation
+for the [=RP ID=], and to [FALSE] otherwise.
+The [=client=] MUST NOT omit the [=authenticator extension input=] of an [=enterprise-restricted extension=]
+requested by the [=[RP]=] because `platformPermitted` is [FALSE],
+since the [=authenticator=] can be configured to permit the [=RP ID=] independently of the [=user agent=].
+
+An [=authenticator=] determines whether an [=RP ID=] is permitted using one or both of the following modes, as also defined for enterprise attestation in [[FIDO-CTAP]]:
+
+: <dfn>Platform-managed</dfn>
+:: The [=authenticator=] relies on the determination made by the [=user agent=], as conveyed by `platformPermitted`.
+: <dfn>Vendor-facilitated</dfn>
+:: The [=authenticator=] relies on its own configuration, for example a list of [=RP IDs=] provisioned by the authenticator vendor.
+
+An [=authenticator=] <dfn>permits enterprise-restricted extensions</dfn> for an [=RP ID=] if either of the following is true:
+
+- The [=authenticator=] supports the [=platform-managed=] mode and `platformPermitted` is [TRUE].
+- The [=authenticator=] supports the [=vendor-facilitated=] mode and its configuration permits the [=RP ID=].
+
+Note: As a consequence, an [=authenticator=] that only supports the [=platform-managed=] mode ignores its own configuration,
+and an [=authenticator=] that only supports the [=vendor-facilitated=] mode ignores `platformPermitted`.
+
+Note: An [=authenticator=] supporting the [=platform-managed=] mode trusts the value of `platformPermitted` provided by the [=client=].
+This mode is therefore intended to be enabled only where the enterprise controls the [=client platform=].
+
 ### <dfn>User Verification Method</dfn> Extension (uvm) ### {#sctn-uvm-extension}
 
 This extension enables use of a user verification method.
+
+This extension is an [=enterprise-restricted extension=]; see [[#sctn-enterprise-restricted-extensions]].
 
 : Extension identifier
 :: `uvm`
@@ -7946,7 +7980,8 @@ This extension enables use of a user verification method.
     </xmp>
 
 : Client extension processing
-:: None, except creating the authenticator extension input from the client extension input.
+:: Create the [=authenticator extension input=] from the client extension input, setting `platformPermitted`
+    as described in [[#sctn-enterprise-restricted-extensions]].
 
 : Client extension output
 :: Returns a JSON array of 3-element arrays of numbers that encodes the factors in the authenticator extension output.
@@ -7963,17 +7998,22 @@ This extension enables use of a user verification method.
     </xmp>
 
 : Authenticator extension input
-:: The Boolean value [TRUE], encoded in CBOR (major type 7, value 21).
+:: A CBOR map containing a `platformPermitted` member, as described in [[#sctn-enterprise-restricted-extensions]].
 
     ```
     $$extensionInput //= (
-      uvm: true,
+      uvm: {
+        platformPermitted: bool,
+      },
     )
     ```
 
 : Authenticator extension processing
 :: The [=authenticator=] sets the [=authenticator extension output=] to be one or more user verification methods indicating the method(s) used
     by the user to authorize the operation, as defined below. This extension can be added to attestation objects and assertions.
+
+    If the [=authenticator=] does not [=permit enterprise-restricted extensions=] for the [=RP ID=],
+    the [=authenticator=] MUST NOT include the `uvm` [=authenticator extension output=].
 
 : Authenticator extension output
 :: Authenticators can report up to 3 different user verification methods (factors) used in a single authentication instance,
@@ -8033,6 +8073,8 @@ This extension enables use of a user verification method.
 
 This extension enables use of a user verification index.
 
+This extension is an [=enterprise-restricted extension=]; see [[#sctn-enterprise-restricted-extensions]].
+
 : Extension identifier
 :: `uvi`
 
@@ -8051,7 +8093,8 @@ This extension enables use of a user verification index.
     </xmp>
 
 : Client extension processing
-:: None, except creating the authenticator extension input from the client extension input.
+:: Create the [=authenticator extension input=] from the client extension input, setting `platformPermitted`
+    as described in [[#sctn-enterprise-restricted-extensions]].
 
 : Client extension output
 :: Returns the authenticator extension output as an ArrayBuffer.
@@ -8065,11 +8108,13 @@ This extension enables use of a user verification index.
     </xmp>
 
 : Authenticator extension input
-:: The Boolean value [TRUE], encoded in CBOR (major type 7, value 21).
+:: A CBOR map containing a `platformPermitted` member, as described in [[#sctn-enterprise-restricted-extensions]].
 
     ```
     $$extensionInput //= (
-      uvi: true,
+      uvi: {
+        platformPermitted: bool,
+      },
     )
     ```
 
@@ -8079,6 +8124,9 @@ This extension enables use of a user verification index.
 
     If [=user verification=] was not performed during the operation, the [=authenticator=] MUST NOT include the `uvi`
     [=authenticator extension output=].
+
+    If the [=authenticator=] does not [=permit enterprise-restricted extensions=] for the [=RP ID=],
+    the [=authenticator=] MUST NOT include the `uvi` [=authenticator extension output=].
 
 : Authenticator extension output
 :: The user verification index (UVI) is a value uniquely identifying a user verification data record. The UVI is encoded as CBOR
@@ -8260,6 +8308,16 @@ Each stored [=virtual authenticator=] has the following properties:
 
     Note: This property has no effect if the [=Virtual Authenticator=] does not support the [=User Verification Method=] extension.
 
+: |platformManagedEnterpriseAttestation|
+:: If set to [TRUE], the [=Virtual Authenticator=] supports the [=platform-managed=] mode for [=enterprise-restricted extensions=].
+: |vendorFacilitatedEnterpriseAttestation|
+:: If set to [TRUE], the [=Virtual Authenticator=] supports the [=vendor-facilitated=] mode for [=enterprise-restricted extensions=].
+: |enterpriseRpIds|
+:: A string array containing the [=RP IDs=] permitted by the [=Virtual Authenticator=]'s own configuration
+    in the [=vendor-facilitated=] mode.
+
+    Note: This property has no effect if |vendorFacilitatedEnterpriseAttestation| is set to [FALSE].
+
 : |defaultBackupEligibility|
 :: Determines the default state of the [=backup eligibility=] [=credential property=] for any newly created [=Public Key Credential Source=].
     This value MUST be reflected by the [=BE=] [=authenticator data=] [=flag=] when performing an [=authenticatorMakeCredential=]
@@ -8275,6 +8333,14 @@ with the [=Public Key Credential Source=]. When processing the [=User Verificati
 [=Virtual Authenticator=] MUST set the [=authenticator extension output=] to the user verification index associated with the
 [=Public Key Credential Source=] being used. The user verification index of an individual credential can be set using
 [=Add Credential=] or [=Set Credential Properties=].
+
+A [=Virtual Authenticator=] determines whether it [=permits enterprise-restricted extensions=] for an [=RP ID=] using its
+|platformManagedEnterpriseAttestation|, |vendorFacilitatedEnterpriseAttestation| and |enterpriseRpIds| properties.
+In the [=vendor-facilitated=] mode, the [=Virtual Authenticator=]'s configuration permits an [=RP ID=] if and only if
+it is contained in |enterpriseRpIds|.
+
+Note: The value of `platformPermitted` is determined by the [=user agent=] configuration and cannot be set using these
+WebDriver [=extension commands=].
 
 ## <dfn>Add Virtual Authenticator</dfn> ## {#sctn-automation-add-virtual-authenticator}
 
@@ -8357,6 +8423,24 @@ The <dfn>Authenticator Configuration</dfn> is a JSON [=Object=] passed to the [=
                 <td>|uvm|</td>
                 <td>{{UvmEntries}}</td>
                 <td>Up to 3 [=User Verification Method=] entries</td>
+                <td>Empty array</td>
+            </tr>
+            <tr>
+                <td>|platformManagedEnterpriseAttestation|</td>
+                <td>boolean</td>
+                <td>[TRUE], [FALSE]</td>
+                <td>[FALSE]</td>
+            </tr>
+            <tr>
+                <td>|vendorFacilitatedEnterpriseAttestation|</td>
+                <td>boolean</td>
+                <td>[TRUE], [FALSE]</td>
+                <td>[FALSE]</td>
+            </tr>
+            <tr>
+                <td>|enterpriseRpIds|</td>
+                <td>string array</td>
+                <td>An array containing [=valid domain strings=]</td>
                 <td>Empty array</td>
             </tr>
             <tr>
