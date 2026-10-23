@@ -4,13 +4,18 @@
 
 Ken Buchanan \<kenrb@chromium.org\>
 
-_Last updated: 05-Oct-2026_
+_Last updated: 23-Oct-2026_
+
+The last update introduced `uiMode: 'active'`.
 
 ## Summary
 
 This explainer describes an augmentation to [WebAuthn Conditional Mediation](https://github.com/w3c/webauthn/blob/main/explainers/conditional-ui.md) that allows a Relying Party (RP) to trigger a WebAuthn sign-in flow when eligible discoverable credentials are available without a login form being present on the page.
 
 User agents display the credentials to the user in a dedicated UI surface. Optionally, they can integrate other [Credential Management API](https://www.w3.org/TR/credential-management-1/) credential types such as passwords or [FedCM](https://www.w3.org/TR/fedcm/) into the same surface.
+
+Two different variants are available. The RP can specify that the user agent should show credentials in a `passive` UI or an `active` UI, depending on whether the sign in
+option is intended to be a necessary step in the user flow or something that the user can ignore.
 
 ## Background and Use Cases
 
