@@ -117,11 +117,21 @@ Under `## Authenticator Extensions ## {#sctn-defined-authenticator-extensions}`,
       ArrayBuffer rootHash;
   };
 
+  dictionary MtcDebugExtensionOutputJSON {
+      required Base64URLString pubKey;
+      DOMString deviceSerial;
+      unsigned long long notBefore;
+      unsigned long long notAfter;
+      unsigned long firmwareVersion;
+      Base64URLString mtcProof;
+      Base64URLString rootHash;
+  };
+
   partial dictionary AuthenticationExtensionsClientOutputs {
       MtcDebugExtensionOutput mtcDebug;
   };
   partial dictionary AuthenticationExtensionsClientOutputsJSON {
-      MtcDebugExtensionOutput mtcDebug;
+      MtcDebugExtensionOutputJSON mtcDebug;
   };
   ```
 - **CDDL:**
