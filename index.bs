@@ -6994,14 +6994,22 @@ post-quantum attestation statements that fit within constrained authenticator tr
     mtcStmtFormat = {
                         alg: COSEAlgorithmIdentifier,
                         sig: bytes,
-                        chain: [ + bytes ],
-                        ? enterprise: enterpriseAttestationStmt
+                        mtcCert: mtcEntryDesc / mtcKeyRef
                     }
 
-    enterpriseAttestationStmt = {
-        deviceSerialNumber: text,
-        * text => any
-    }
+    mtcEntryDesc = {
+                       caId: bytes,                      ; 1-4 byte compact CA Log Identifier
+                       serial: uint,                     ; Log entry serial number = (logNumber << 48) | index
+                       notBefore: uint,                  ; Unix timestamp (seconds)
+                       notAfter: uint,                   ; Unix timestamp (seconds)
+                       ? fwVersion: uint,                ; Optional firmware version integer
+                       ? mtcProof: bytes                 ; Binary RFC 9162 Merkle inclusion proof
+                   }
+
+    mtcKeyRef = {
+                    caId: bytes,                      ; 1-4 byte compact CA Log Identifier
+                    serial: uint                      ; Log entry serial number for manifest lookup
+                }
     ```
 
     The semantics of the above fields are as follows:
@@ -7012,11 +7020,26 @@ post-quantum attestation statements that fit within constrained authenticator tr
     : sig
     :: A byte array containing the attestation signature over the attestation payload.
 
-    : chain
-    :: An array of byte arrays representing the Merkle tree certificate inclusion proof (audit path) from the leaf batch public key to the trust anchor root.
+    : mtcCert
+    :: A map conforming to either `mtcEntryDesc` (carrying the log entry descriptors and optional Merkle inclusion proof) or `mtcKeyRef` (proof-less key reference for manifest-assisted lookups).
 
-    : enterprise
-    :: An optional map containing enterprise attestation claims, present if and only if Enterprise Attestation was requested and granted.
+    : caId
+    :: A compact byte string identifying the MTC Certification Authority / log issuer.
+
+    : serial
+    :: An unsigned 64-bit integer representing the log entry serial number, formatted as `(logNumber << 48) | index`.
+
+    : notBefore
+    :: An unsigned integer Unix timestamp representing the earliest time at which the attestation key is valid.
+
+    : notAfter
+    :: An unsigned integer Unix timestamp representing the expiration time of the attestation key.
+
+    : fwVersion
+    :: An optional integer representing the authenticator firmware version.
+
+    : mtcProof
+    :: An optional byte array containing the binary Merkle inclusion proof formatted in accordance with [[!draft-ietf-plants-merkle-tree-certs]] and [[!RFC9162]].
 
 : Signing procedure
 ::
@@ -7024,12 +7047,11 @@ post-quantum attestation statements that fit within constrained authenticator tr
     2. Concatenate |authenticatorData| and |clientDataHash| to form |nonceToHash|.
     3. Perform SHA-256 hash of |nonceToHash| to produce |nonce|.
     4. Sign |nonce| using the authenticator's attestation private key according to |alg|, producing |sig|.
-    5. Let |chain| be the Merkle tree certificate inclusion path corresponding to the authenticator's batch leaf public key.
-    6. If Enterprise Attestation was requested and permitted for this Relying Party:
-        1. Let |enterprise| be a map containing `deviceSerialNumber` set to the device serial number string.
-        2. Set |attStmt| to the CBOR map `{ alg: alg, sig: sig, chain: chain, enterprise: enterprise }`.
-    7. Otherwise:
-        1. Set |attStmt| to the CBOR map `{ alg: alg, sig: sig, chain: chain }`.
+    5. If the authenticator is configured for proof-less operation (manifest-assisted key lookup where the Relying Party caches the full key table):
+        1. Let |mtcCert| be a map conforming to `mtcKeyRef` containing `caId` and `serial`.
+    6. Otherwise (standard operation with Merkle inclusion proof):
+        1. Let |mtcCert| be a map conforming to `mtcEntryDesc` containing `caId`, `serial`, `notBefore`, `notAfter`, optional `fwVersion`, and `mtcProof` (the binary Merkle inclusion proof).
+    7. Set |attStmt| to the CBOR map `{ alg: alg, sig: sig, mtcCert: mtcCert }`.
 
 : Verification procedure
 :: Given the [=verification procedure inputs=] |attStmt|, |authenticatorData| and |clientDataHash|, the [=verification procedure=] is as follows:
@@ -7037,16 +7059,29 @@ post-quantum attestation statements that fit within constrained authenticator tr
     2. Verify that |alg| is a COSE algorithm identifier acceptable to the [=[RP]=].
     3. Concatenate |authenticatorData| and |clientDataHash| to form |nonceToHash|.
     4. Perform SHA-256 hash of |nonceToHash| to produce |nonce|.
-    5. Resolve the batch attestation public key corresponding to the authenticator:
-        1. If known from metadata (such as FIDO Metadata Service [[FIDOMetadataService]]) or an out-of-band manufacturer manifest, obtain the batch public key |batchPubKey|.
-        2. Otherwise, if conveyed via an extension (such as {{AuthenticationExtensionsClientOutputs/mtcDebug}}), let |batchPubKey| be the provided public key.
+    5. Resolve the active attestation public key |batchPubKey|:
+        1. Extract `caId` and `serial` from `attStmt.mtcCert`.
+        2. In non-enterprise mode: query FIDO Metadata Service (MDS3) [[FIDOMetadataService]] or the MTC log for `(caId, serial)` to obtain the canonical CBOR-encoded {{COSEKey}} |batchPubKey|.
+        3. In enterprise mode: query the manufacturer's inventory manifest table for `(caId, serial)` to obtain |batchPubKey| and the associated device serial number.
+        4. Alternatively, if conveyed via an extension (such as {{AuthenticationExtensionsClientOutputs/mtcDebug}}), let |batchPubKey| be the public key decoded from `authenticatorData.extensions["mtc-debug"].pubKey`.
     6. Verify that |sig| is a valid signature over |nonce| with the key |batchPubKey| according to |alg|.
-    7. Recompute the Merkle tree root hash from |batchPubKey| and the sibling hashes in |chain| using the hash function specified by the MTC tree profile (e.g. SHA-256).
-    8. Verify that the recomputed root hash matches an acceptable [=attestation trust path|trust anchor=] root hash established for the authenticator model (e.g., published in FIDO MDS).
-    9. If the `enterprise` field is present:
-        1. Verify that the [=[RP]=] requested Enterprise Attestation and is authorized to receive it.
-        2. Verify that `deviceSerialNumber` matches an authorized device within the [=[RP]=]'s inventory.
-    10. If successful, return implementation-specific values representing attestation type [=Basic=] (or [=AttCA=] in enterprise mode) and the attestation trust path.
+    7. Verify the key validity period:
+        1. If |attStmt.mtcCert| contains `notBefore` and `notAfter`, verify that <code>|notBefore| &le; now &le; |notAfter|</code>.
+        2. Otherwise (if `mtcKeyRef` was used), verify that the current time falls within the validity interval published in the verified metadata or manifest entry for this `serial`.
+    8. Verify revocation status:
+        1. Verify that `serial` is not within any revoked serial range for `caId` in the Relying Party's metadata or manifest.
+    9. Verify Merkle tree commitment:
+        1. If |attStmt.mtcCert| conforms to `mtcEntryDesc` and contains `mtcProof`:
+            1. Compute `pubKeyHash = SHA-256(batchPubKey)`.
+            2. Reconstruct the leaf entry structure (`FidoMtcLogEntry`) binding `caId`, `serial`, `notBefore`, `notAfter`, `authenticatorData.aaguid`, optional `fwVersion`, `pubKeyHash`, and any leaf extensions (such as the enterprise device serial number if committed in the leaf).
+            3. Compute the leaf hash from the reconstructed entry according to [[!draft-ietf-plants-merkle-tree-certs]] and [[!RFC9162]]: <code>SHA-256(0x00 || FidoMtcLogEntry)</code>.
+            4. Evaluate the Merkle inclusion proof using the leaf hash and `mtcProof` to derive the calculated root hash.
+            5. Verify that the calculated root hash matches an acceptable [=attestation trust path|trust anchor=] root hash established for `caId` (e.g., published in FIDO MDS3 `mtcTrustAnchors`).
+        2. If |attStmt.mtcCert| conforms to `mtcKeyRef` (proof-less mode):
+            1. Verify that the [=[RP]=] has previously authenticated the complete manufacturer manifest table against the Root CA signature or published trust anchor root hash.
+    10. If Enterprise Attestation was requested and active:
+        1. Verify that the resolved device serial number matches an authorized device within the [=[RP]=]'s inventory.
+    11. If successful, return implementation-specific values representing attestation type [=Basic=] (or [=AttCA=] in enterprise mode) and the attestation trust path.
 
 
 # <dfn>WebAuthn Extensions</dfn> # {#sctn-extensions}

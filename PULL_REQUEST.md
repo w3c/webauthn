@@ -75,17 +75,25 @@ Adds `## Merkle Tree Certificate Attestation Statement Format ## {#sctn-mtc-atte
   mtcStmtFormat = {
                       alg: COSEAlgorithmIdentifier,
                       sig: bytes,
-                      chain: [ + bytes ],
-                      ? enterprise: enterpriseAttestationStmt
+                      mtcCert: mtcEntryDesc / mtcKeyRef
                   }
 
-  enterpriseAttestationStmt = {
-      deviceSerialNumber: text,
-      * text => any
-  }
+  mtcEntryDesc = {
+                     caId: bytes,                      ; 1-4 byte compact CA Log Identifier
+                     serial: uint,                     ; Log entry serial number = (logNumber << 48) | index
+                     notBefore: uint,                  ; Unix timestamp (seconds)
+                     notAfter: uint,                   ; Unix timestamp (seconds)
+                     ? fwVersion: uint,                ; Optional firmware version integer
+                     ? mtcProof: bytes                 ; Binary RFC 9162 Merkle inclusion proof
+                 }
+
+  mtcKeyRef = {
+                  caId: bytes,                      ; 1-4 byte compact CA Log Identifier
+                  serial: uint                      ; Log entry serial number for manifest lookup
+              }
   ```
-- **Signing procedure:** Normative 7-step algorithm defining nonce construction `SHA-256(authenticatorData || clientDataHash)`, signature generation, and inclusion path serialization.
-- **Verification procedure:** Normative 10-step algorithm defining algorithm validation, nonce reconstruction, signature verification via `batchPubKey`, Merkle root derivation, and trust anchor comparison against FIDO MDS3 or manufacturer manifests.
+- **Signing procedure:** Normative 7-step algorithm defining nonce construction `SHA-256(authenticatorData || clientDataHash)`, signature generation, and `mtcCert` serialization (either standard `mtcEntryDesc` with binary Merkle inclusion proof, or proof-less `mtcKeyRef` for manifest-assisted environments).
+- **Verification procedure:** Normative 11-step algorithm defining algorithm validation, nonce reconstruction, public key resolution via FIDO MDS3 / manufacturer manifest (or `mtcDebug`), signature verification, validity period and revocation checks, `FidoMtcLogEntry` leaf reconstruction with Merkle inclusion proof verification against the landmark `rootHash`, proof-less manifest verification, and enterprise serial validation.
 
 ### 3.2 Section 10: Authenticator Extensions
 Under `## Authenticator Extensions ## {#sctn-defined-authenticator-extensions}`, adds `### MTC Debug Extension (mtcDebug) ### {#sctn-mtc-debug-extension}`:
