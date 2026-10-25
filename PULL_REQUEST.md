@@ -83,7 +83,7 @@ Adds `## Merkle Tree Certificate Attestation Statement Format ## {#sctn-mtc-atte
                      serial: uint,                     ; Log entry serial number = (logNumber << 48) | index
                      notBefore: uint,                  ; Unix timestamp (seconds)
                      notAfter: uint,                   ; Unix timestamp (seconds)
-                     ? fwVersion: uint,                ; Optional firmware version integer
+                     ? firmwareVersion: uint,          ; Optional authenticator firmware version (CTAP 2.3 parameter 0x0E)
                      ? mtcProof: bytes                 ; Binary RFC 9162 Merkle inclusion proof
                  }
 
@@ -109,6 +109,11 @@ Under `## Authenticator Extensions ## {#sctn-defined-authenticator-extensions}`,
   dictionary MtcDebugExtensionOutput {
       required ArrayBuffer pubKey;
       DOMString deviceSerial;
+      unsigned long long notBefore;
+      unsigned long long notAfter;
+      unsigned long firmwareVersion;
+      ArrayBuffer mtcProof;
+      ArrayBuffer rootHash;
   };
 
   partial dictionary AuthenticationExtensionsClientOutputs {
@@ -130,10 +135,15 @@ Under `## Authenticator Extensions ## {#sctn-defined-authenticator-extensions}`,
 
   MtcDebugAuthOutput = {
       pubKey: bytes,
-      ? deviceSerial: text
+      ? deviceSerial: text,
+      ? notBefore: uint,
+      ? notAfter: uint,
+      ? firmwareVersion: uint,
+      ? mtcProof: bytes,
+      ? rootHash: bytes
   }
   ```
-- **Client & Authenticator Processing:** Includes strict privacy gating requiring authenticators to omit `deviceSerial` unless Enterprise Attestation was requested and permitted for that Relying Party.
+- **Client & Authenticator Processing:** Supports autonomous offline verification for proof-less `mtcKeyRef` environments, with `firmwareVersion` strictly formatted matching parameter `0x0E` in CTAP 2.3 `authenticatorGetInfo`. Includes strict privacy gating requiring authenticators to omit `deviceSerial` unless Enterprise Attestation was requested and permitted for that Relying Party.
 
 ### 3.3 Section 11: IANA Considerations
 - Registers `mtc` in `## WebAuthn Attestation Statement Format Identifier Registrations ##`.
