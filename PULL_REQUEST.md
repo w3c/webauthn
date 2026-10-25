@@ -94,6 +94,7 @@ Adds `## Merkle Tree Certificate Attestation Statement Format ## {#sctn-mtc-atte
   ```
 - **Signing procedure:** Normative 7-step algorithm defining nonce construction `SHA-256(authenticatorData || clientDataHash)`, signature generation, and `mtcCert` serialization (either standard `mtcEntryDesc` with binary Merkle inclusion proof, or proof-less `mtcKeyRef` for manifest-assisted environments).
 - **Verification procedure:** Normative 11-step algorithm defining algorithm validation, nonce reconstruction, public key resolution via FIDO MDS3 / manufacturer manifest (or `mtcDebug`), signature verification, validity period and revocation checks, `FidoMtcLogEntry` leaf reconstruction with Merkle inclusion proof verification against the landmark `rootHash`, proof-less manifest verification, and enterprise serial validation.
+- **Operational Note:** Notes that because `firmwareVersion` is cryptographically committed into the Merkle tree leaf entry (`FidoMtcLogEntry`), deploying a new firmware version requires issuing a new attestation batch key and corresponding leaf entry, even though the authenticator's AAGUID across minor firmware revisions may remain stable.
 
 ### 3.2 Section 10: Authenticator Extensions
 Under `## Authenticator Extensions ## {#sctn-defined-authenticator-extensions}`, adds `### MTC Debug Extension (mtcDebug) ### {#sctn-mtc-debug-extension}`:
