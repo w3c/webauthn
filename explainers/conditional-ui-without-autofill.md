@@ -42,9 +42,11 @@ Example of potential passive UI:
 
 ## API
 
-Feature detection is provided by another enumeration value in ClientCapability: `conditionalPassiveGet`.
+Feature detection is provided by two more enumeration values in ClientCapability: `conditionalPassiveGet` and `conditionalActiveGet`.
 
 When the request contains `mediation: 'conditional'` and the PublicKeyCredentialRequestOptions contains `uiMode: 'passive'`, the user agent displays discoverable WebAuthn credentials immediately in an unobtrusive UI prompt.
+
+When the request contains `mediation: 'conditional'` and the PublicKeyCredentialRequestOptions contains `uiMode: 'active'`, the user agent displays discoverable WebAuthn credentials immediately in a more forceful UI prompt, such as a modal dialog.
 
 If the site wants to offer the non-autofill Conditional UI prompt and also has a sign-in form on that page, the autofill behavior still works. That is, if the user dismisses or ignores the passive or active UI, but then clicks on a webauthn-tagged input field, the autofill UI will show the same as for any other `mediation: 'conditional'` request. Clicking a credential in the autofill UI behaves the same as clicking the same credential in the non-autofill UI.
 
