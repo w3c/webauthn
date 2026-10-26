@@ -20,7 +20,7 @@ Two different variants are available. The RP can specify that the user agent sho
 
 Conditional mediation allows WebAuthn to be integrated into the form autofill feature available on modern browsers. This allows RPs to provide WebAuthn-based sign-in on login pages that currently have username and passwords fields while avoiding modal WebAuthn dialogs for users who don’t have eligible credentials.
 
-We have received feedback from RPs that there would be benefit in browsers being more proactive in initiating sign-in flows when those flows are easy and are very likely to result in success. In particular users can be reluctant to explicitly initiate sign-in flows because of expected difficulty in doing so (e.g. remembering passwords, retrieving an SMS OTP from a phone, figuring out what authentication modality they have set up for this site). On sites where signing in is optional but can enable an improved experience for the user, this can discourage sign-in.
+We have received feedback from RPs that there would be benefit in browsers being more proactive in initiating sign-in flows when those flows are easy and are very likely to result in success. In particular, users can be reluctant to explicitly initiate sign-in flows because of expected difficulty in doing so (e.g. remembering passwords, retrieving an SMS OTP from a phone, figuring out what authentication modality they have set up for this site). On sites where signing in is optional but can enable an improved experience for the user, this can discourage sign-in.
 
 Consider when a user navigates to an arbitrary page on a site where the user has an existing account, but not an active signed-in session. Conditional UI is not useable because there is not a sign-in form on the page. Prompting a passkey sign-in with a modal dialog is undesirable because it obstructs the user experience if the user does not have a passkey for the site. A quiet prompt offering available credentials at this point provides a shortcut to the signed-in experience which the user might not have otherwise activated.
 
@@ -44,9 +44,9 @@ Example of potential passive UI:
 
 Feature detection is provided by another enumeration value in ClientCapability: `conditionalPassiveGet`.
 
-When the request contains `mediation: "conditional"` and the PublicKeyCredentialRequestOptions contains `uiMode: "passive"`, the user agent displays discoverable WebAuthn credentials immediately in an unobtrusive UI prompt.
+When the request contains `mediation: 'conditional'` and the PublicKeyCredentialRequestOptions contains `uiMode: 'passive'`, the user agent displays discoverable WebAuthn credentials immediately in an unobtrusive UI prompt.
 
-If the site wants to offer the non-autofill Conditional UI prompt and also has a sign-in form on that page, the autofill behavior still works. That is, on a request with `uiMode: ‘passive’` if the user dismisses or ignores that UI but then clicks on a webauthn-tagged input field, the autofill UI will show the same as for any other `mediation: 'conditional'` request. Clicking a credential in the autofill UI behaves the same as clicking the same credential in the non-autofill UI.
+If the site wants to offer the non-autofill Conditional UI prompt and also has a sign-in form on that page, the autofill behavior still works. That is, if the user dismisses or ignores the passive or active UI, but then clicks on a webauthn-tagged input field, the autofill UI will show the same as for any other `mediation: 'conditional'` request. Clicking a credential in the autofill UI behaves the same as clicking the same credential in the non-autofill UI.
 
 Passive example:
 ```javascript
@@ -90,4 +90,4 @@ Conditional UI is available in cross-origin iframes and the non-autofill modes s
 
 ### No web platform change
 
-User agents already have the ability to provide credentials in a dedicated non-autofill UI in response to a request with `mediation: "conditional"`. Since Conditional UI is an established and widely used feature, we are concerned it would be unwelcome and disruptive to change the way it works in browser UI for all RPs. Adding a new `uiMode` value enables RPs to opt in to the alternative UI. 
+User agents already have the ability to provide credentials in a dedicated non-autofill UI in response to a request with `mediation: 'conditional'`. Since Conditional UI is an established and widely used feature, we are concerned it would be unwelcome and disruptive to change the way it works in browser UI for all RPs. Adding a new `uiMode` value enables RPs to opt in to the alternative UI. 
