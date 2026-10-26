@@ -4,7 +4,7 @@
 
 Ken Buchanan \<kenrb@chromium.org\>
 
-_Last updated: 23-Oct-2026_
+_Last updated: 26-Oct-2026_
 
 The most recent update introduced `uiMode: 'active'`.
 
@@ -81,6 +81,10 @@ const cred = await navigator.credentials.get({
 Conditional UI passive mode behaves similarly to [Federated Credential Management passive mode](https://w3c-fedid.github.io/FedCM/#dom-identitycredentialrequestoptionsmode-passive). Browsers that support both can offer them in integrated UI.
 
 Requests for other credential types, such as [PasswordCredential](https://www.w3.org/TR/credential-management-1/#passwordcredential) can similarly be integrated into UI.
+
+## Cross-origin iframes
+
+Conditional UI is available in cross-origin iframes and the non-autofill modes should be available as well. User agents must take care to ensure that it is clear to the user what site the user is signing in to, exposing either the origin of the requesting frame or the RP ID of the request.
 
 ## Alternatives Considered
 
