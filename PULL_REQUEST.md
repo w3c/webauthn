@@ -75,26 +75,17 @@ Adds `## Merkle Tree Certificate Attestation Statement Format ## {#sctn-mtc-atte
   mtcStmtFormat = {
                       alg: COSEAlgorithmIdentifier,
                       sig: bytes,
-                      mtcCert: mtcEntryDesc / mtcKeyRef
+                      mtcCert: mtcKeyRef
                   }
-
-  mtcEntryDesc = {
-                     caId: bytes,                      ; 1-4 byte compact CA Log Identifier
-                     serial: uint,                     ; Log entry serial number = (logNumber << 48) | index
-                     notBefore: uint,                  ; Unix timestamp (seconds)
-                     notAfter: uint,                   ; Unix timestamp (seconds)
-                     ? firmwareVersion: uint,          ; Optional authenticator firmware version (CTAP 2.3 parameter 0x0E)
-                     ? mtcProof: bytes                 ; Binary RFC 9162 Merkle inclusion proof
-                 }
 
   mtcKeyRef = {
                   caId: bytes,                      ; 1-4 byte compact CA Log Identifier
-                  serial: uint                      ; Log entry serial number for manifest lookup
+                  serial: uint                      ; Log entry serial number = (logNumber << 48) | index
               }
   ```
-- **Signing procedure:** Normative 7-step algorithm defining nonce construction `SHA-256(authenticatorData || clientDataHash)`, signature generation, and `mtcCert` serialization (either standard `mtcEntryDesc` with binary Merkle inclusion proof, or proof-less `mtcKeyRef` for manifest-assisted environments).
-- **Verification procedure:** Normative 11-step algorithm defining algorithm validation, nonce reconstruction, public key resolution via FIDO MDS3 / manufacturer manifest (or `mtcDebug`), signature verification, validity period and revocation checks, `FidoMtcLogEntry` leaf reconstruction with Merkle inclusion proof verification against the landmark `rootHash`, proof-less manifest verification, and enterprise serial validation.
-- **Operational Note:** Notes that because `firmwareVersion` is cryptographically committed into the Merkle tree leaf entry (`FidoMtcLogEntry`), deploying a new firmware version requires issuing a new attestation batch key and corresponding leaf entry, even though the authenticator's AAGUID across minor firmware revisions may remain stable.
+- **Signing procedure:** Normative 5-step algorithm defining `verificationData = authenticatorData || clientDataHash`, signature generation according to `alg`, and `mtcCert` serialization using the 2-field `mtcKeyRef` (`{ caId, serial }`).
+- **Verification procedure:** Normative 10-step algorithm defining algorithm validation, `verificationData` construction, key entry resolution (`coseKey`/`pubKey`, `notBefore`, `notAfter`, optional `firmwareVersion`, optional `mtcProof`, and optional `deviceSerial`) via FIDO MDS3 `mtcTrustAnchors[].batchKeys[]`, manufacturer manifest, or `mtcDebug`, signature verification, validity period (`notAfter = 253402300799` for non-expiring device attestation per RFC 5280 §4.1.2.5) and revocation checks, `FidoMtcLogEntry` leaf reconstruction with Merkle inclusion proof verification against the landmark `rootHash`, pre-authenticated key table verification, and enterprise serial validation.
+- **Operational Note:** Notes the trade-offs of omitting vs. including `firmwareVersion` in the MTC leaf entry (`FidoMtcLogEntry`) and manifest, and notes that because `alg` (COSE label `3`) is encoded inside the canonical CBOR `COSE_Key` structure (`coseKey` / `pubKey`), a separate `alg` property on `batchKeys[]` is not required.
 
 ### 3.2 Section 10: Authenticator Extensions
 Under `## Authenticator Extensions ## {#sctn-defined-authenticator-extensions}`, adds `### MTC Debug Extension (mtcDebug) ### {#sctn-mtc-debug-extension}`:
