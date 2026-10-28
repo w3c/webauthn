@@ -6994,21 +6994,12 @@ post-quantum attestation statements that fit within constrained authenticator tr
     mtcStmtFormat = {
                         alg: COSEAlgorithmIdentifier,
                         sig: bytes,
-                        mtcCert: mtcEntryDesc / mtcKeyRef
+                        mtcCert: mtcKeyRef
                     }
-
-    mtcEntryDesc = {
-                       caId: bytes,                      ; 1-4 byte compact CA Log Identifier
-                       serial: uint,                     ; Log entry serial number = (logNumber << 48) | index
-                       notBefore: uint,                  ; Unix timestamp (seconds)
-                       notAfter: uint,                   ; Unix timestamp (seconds)
-                       ? firmwareVersion: uint,          ; Optional authenticator firmware version (CTAP 2.3 parameter 0x0E)
-                       ? mtcProof: bytes                 ; Binary RFC 9162 Merkle inclusion proof
-                   }
 
     mtcKeyRef = {
                     caId: bytes,                      ; 1-4 byte compact CA Log Identifier
-                    serial: uint                      ; Log entry serial number for manifest lookup
+                    serial: uint                      ; Log entry serial number = (logNumber << 48) | index
                 }
     ```
 
@@ -7021,13 +7012,18 @@ post-quantum attestation statements that fit within constrained authenticator tr
     :: A byte array containing the attestation signature over the attestation payload.
 
     : mtcCert
-    :: A map conforming to either `mtcEntryDesc` (carrying the log entry descriptors and optional Merkle inclusion proof) or `mtcKeyRef` (proof-less key reference for manifest-assisted lookups).
+    :: A map conforming to `mtcKeyRef` carrying the compact CA log identifier (`caId`) and log entry serial number (`serial`) used to resolve the attestation key entry from FIDO Metadata Service (MDS3) [[FIDOMetadataService]], a manufacturer inventory manifest, or the {{AuthenticationExtensionsClientOutputs/mtcDebug}} extension.
 
     : caId
     :: A compact byte string identifying the MTC Certification Authority / log issuer.
 
     : serial
     :: An unsigned 64-bit integer representing the log entry serial number, formatted as `(logNumber << 48) | index`.
+
+    The associated metadata or manifest entry for `(caId, serial)` in `mtcTrustAnchors[].batchKeys[]` (and, when requested, the {{AuthenticationExtensionsClientOutputs/mtcDebug}} extension output) provides the following leaf parameters:
+
+    : coseKey / pubKey
+    :: The canonical CBOR-encoded `COSE_Key` structure (per [[!RFC9052]] Section 7) representing the attestation public key, including its `kty` (`1`) and `alg` (`3`) parameters. Because `alg` is encoded inside the `COSE_Key` structure, a separate `alg` property in `batchKeys[]` is not required.
 
     : notBefore
     :: An unsigned integer Unix timestamp representing the earliest time at which the attestation key is valid.
@@ -7047,48 +7043,42 @@ post-quantum attestation statements that fit within constrained authenticator tr
 
 : Signing procedure
 ::
-    1. Let |authenticatorData| denote the authenticator data for the attestation, and let |clientDataHash| denote the [=hash of the serialized client data=].
-    2. Concatenate |authenticatorData| and |clientDataHash| to form |nonceToHash|.
-    3. Perform SHA-256 hash of |nonceToHash| to produce |nonce|.
-    4. Sign |nonce| using the authenticator's attestation private key according to |alg|, producing |sig|.
-    5. If the authenticator is configured for proof-less operation (manifest-assisted key lookup where the Relying Party caches the full key table):
-        1. Let |mtcCert| be a map conforming to `mtcKeyRef` containing `caId` and `serial`.
-    6. Otherwise (standard operation with Merkle inclusion proof):
-        1. Let |mtcCert| be a map conforming to `mtcEntryDesc` containing `caId`, `serial`, `notBefore`, `notAfter`, optional `firmwareVersion`, and `mtcProof` (the binary Merkle inclusion proof).
-    7. Set |attStmt| to the CBOR map `{ alg: alg, sig: sig, mtcCert: mtcCert }`.
+    1. Let |authenticatorData| denote the [=authenticator data for the attestation=], and let |clientDataHash| denote the [=hash of the serialized client data=].
+    2. Concatenate |authenticatorData| and |clientDataHash| to form |verificationData|.
+    3. Sign |verificationData| using the authenticator's [=attestation private key=] according to |alg|, producing |sig|.
+    4. Let |mtcCert| be a map conforming to `mtcKeyRef` containing `caId` and `serial`.
+    5. Set |attStmt| to the CBOR map `{ alg: alg, sig: sig, mtcCert: mtcCert }`.
 
 : Verification procedure
 :: Given the [=verification procedure inputs=] |attStmt|, |authenticatorData| and |clientDataHash|, the [=verification procedure=] is as follows:
     1. Verify that |attStmt| conforms to the CDDL syntax of `mtcStmtFormat`.
     2. Verify that |alg| is a COSE algorithm identifier acceptable to the [=[RP]=].
-    3. Concatenate |authenticatorData| and |clientDataHash| to form |nonceToHash|.
-    4. Perform SHA-256 hash of |nonceToHash| to produce |nonce|.
-    5. Resolve the active attestation public key |batchPubKey|:
+    3. Concatenate |authenticatorData| and |clientDataHash| to form |verificationData|.
+    4. Resolve the attestation key entry (|batchPubKey|, |notBefore|, |notAfter|, optional |firmwareVersion|, optional |mtcProof|, and optional |deviceSerial|):
         1. Extract `caId` and `serial` from `attStmt.mtcCert`.
-        2. In non-enterprise mode: query FIDO Metadata Service (MDS3) [[FIDOMetadataService]] or the MTC log for `(caId, serial)` to obtain the canonical CBOR-encoded `COSE_Key` |batchPubKey|.
-        3. In enterprise mode: query the manufacturer's inventory manifest table for `(caId, serial)` to obtain |batchPubKey| and the associated device serial number.
-        4. Alternatively, if conveyed via an extension (such as {{AuthenticationExtensionsClientOutputs/mtcDebug}}), let |batchPubKey| be the public key decoded from `authenticatorData.extensions["mtc-debug"].pubKey`.
-    6. Verify that |sig| is a valid signature over |nonce| with the key |batchPubKey| according to |alg|.
-    7. Verify the key validity period:
-        1. If |mtcCert| contains `notBefore` and `notAfter`, verify that <code>|notBefore| &le; now &le; |notAfter|</code>.
-        2. Otherwise (if `mtcKeyRef` was used), verify that the current time falls within the validity interval published in the verified metadata or manifest entry for this `serial`.
-    8. Verify revocation status:
+        2. In non-enterprise mode: query FIDO Metadata Service (MDS3) [[FIDOMetadataService]] `mtcTrustAnchors[].batchKeys[]` for `(caId, serial)` to obtain the canonical CBOR-encoded `COSE_Key` structure |batchPubKey| (`coseKey`), |notBefore|, |notAfter|, optional |firmwareVersion|, and optional |mtcProof|.
+        3. In enterprise mode: query the manufacturer's inventory manifest table for `(caId, serial)` to obtain the canonical CBOR-encoded `COSE_Key` structure |batchPubKey| (`coseKey`), |notBefore|, |notAfter|, optional |firmwareVersion|, optional |mtcProof|, and the associated |deviceSerial|.
+        4. Alternatively, if conveyed in-band via the {{AuthenticationExtensionsClientOutputs/mtcDebug}} extension, extract the canonical CBOR-encoded `COSE_Key` structure |batchPubKey| (`pubKey`), |notBefore|, |notAfter|, optional |firmwareVersion|, |mtcProof|, optional |rootHash|, and optional |deviceSerial| from `authenticatorData.extensions["mtc-debug"]`.
+    5. Verify that the `alg` parameter (`3`) in the decoded `COSE_Key` structure |batchPubKey| matches `attStmt.alg`, and verify that |sig| is a valid signature over |verificationData| with the key |batchPubKey| according to |alg|.
+    6. Verify the key validity period:
+        1. Verify that <code>|notBefore| &le; now &le; |notAfter|</code> using the |notBefore| and |notAfter| timestamps resolved in Step 4.
+    7. Verify revocation status:
         1. Verify that `serial` is not within any revoked serial range for `caId` in the Relying Party's metadata or manifest.
-    9. Verify Merkle tree commitment:
-        1. If |mtcCert| conforms to `mtcEntryDesc` and contains `mtcProof`:
-            1. Compute `pubKeyHash = SHA-256(batchPubKey)`.
+    8. Verify Merkle tree commitment:
+        1. If |mtcProof| is present (from the resolved metadata/manifest entry or `authenticatorData.extensions["mtc-debug"]`):
+            1. Compute `pubKeyHash = SHA-256(batchPubKey)` over the canonical CBOR-encoded `COSE_Key` bytes.
             2. Reconstruct the leaf entry structure (`FidoMtcLogEntry`) binding `caId`, `serial`, `notBefore`, `notAfter`, `authenticatorData.aaguid`, optional `firmwareVersion`, `pubKeyHash`, and any leaf extensions (such as the enterprise device serial number if committed in the leaf).
             3. Compute the leaf hash from the reconstructed entry according to [[!draft-ietf-plants-merkle-tree-certs]] and [[!RFC9162]]: <code>SHA-256(0x00 || FidoMtcLogEntry)</code>.
             4. Evaluate the Merkle inclusion proof using the leaf hash and `mtcProof` to derive the calculated root hash.
-            5. Verify that the calculated root hash matches an acceptable [=attestation trust path|trust anchor=] root hash established for `caId` (e.g., published in FIDO MDS3 `mtcTrustAnchors`).
-        2. If |mtcCert| conforms to `mtcKeyRef` (proof-less mode):
-            1. Verify that the [=[RP]=] has previously authenticated the complete manufacturer manifest table against the Root CA signature or published trust anchor root hash.
-    10. If Enterprise Attestation was requested and active:
+            5. Verify that the calculated root hash matches an acceptable [=attestation trust path|trust anchor=] root hash established for `caId` (e.g., published in FIDO MDS3 `mtcTrustAnchors`, or `authenticatorData.extensions["mtc-debug"].rootHash` in offline conformance mode).
+        2. Otherwise (when relying on a pre-distributed `batchKeys[]` or manifest entry without evaluating a per-registration `mtcProof`):
+            1. Verify that the [=[RP]=] has previously authenticated the complete manufacturer manifest or MDS `batchKeys[]` table against the Root CA checkpoint signature or published trust anchor root hash.
+    9. If Enterprise Attestation was requested and active:
         1. Verify that the resolved device serial number matches an authorized device within the [=[RP]=]'s inventory.
-    11. If successful, return implementation-specific values representing attestation type [=Basic=] (or [=AttCA=] in enterprise mode) and the attestation trust path.
+    10. If successful, return implementation-specific values representing attestation type [=Basic=] (or [=AttCA=] in enterprise mode) and the attestation trust path.
 
     <div class="example" id="example-mtc-attstmt">
-        An example `mtc` attestation statement using `ML-DSA-44` (`alg: -48`) for a hardware authenticator whose attestation never expires (`notAfter: 253402300799`, corresponding to `9999-12-31T23:59:59Z` per [[!RFC5280]] Section 4.1.2.5), represented in CBOR diagnostic notation:
+        An example `mtc` attestation statement using `ML-DSA-44` (`alg: -48`), represented in CBOR diagnostic notation:
 
         ```
         {
@@ -7098,11 +7088,7 @@ post-quantum attestation statements that fit within constrained authenticator tr
                 "sig": h'3a7f91c2... (2420-byte ML-DSA-44 signature)',
                 "mtcCert": {
                     "caId": h'83993f0101',
-                    "serial": 1970324836974592,
-                    "notBefore": 1767225600,
-                    "notAfter": 253402300799,
-                    "firmwareVersion": 332805,
-                    "mtcProof": h'000000000000000000000200000040... (binary RFC 9162 inclusion proof)'
+                    "serial": 1970324836974592
                 }
             }
         }
@@ -8093,15 +8079,15 @@ When developing automated test harnesses, verifying new authenticator implementa
 ::
     1. If `mtc-debug` is [TRUE] in the authenticator extension inputs:
         1. Let |output| be a new CBOR map.
-        2. Let |pubKey| be the canonical CBOR-encoded COSE_Key representation of the authenticator's active attestation public key. Set <code>|output|["pubKey"] = |pubKey|</code>.
+        2. Let |pubKey| be the canonical CBOR-encoded `COSE_Key` structure (per [[!RFC9052]] Section 7, matching the `coseKey` format in `mtcTrustAnchors[].batchKeys[]`) of the authenticator's active attestation public key. Set <code>|output|["pubKey"] = |pubKey|</code>.
         3. If Enterprise Attestation was requested and granted for this operation:
             1. Let |serial| be the device serial number text string. Set <code>|output|["deviceSerial"] = |serial|</code>.
         4. Otherwise:
             1. The authenticator MUST NOT include `deviceSerial` if Enterprise Attestation was not granted.
-        5. If the authenticator is configured to emit diagnostic manifest and inclusion proof data (e.g. to support autonomous offline verification in proof-less `mtcKeyRef` environments):
+        5. Populate the MTC leaf descriptor and Merkle inclusion proof fields (enabling autonomous offline verification of the 2-field `mtcKeyRef` in `attStmt.mtcCert`):
             1. If known to the authenticator, set <code>|output|["notBefore"]</code> to the earliest Unix timestamp at which the key is valid.
             2. If known to the authenticator, set <code>|output|["notAfter"]</code> to the Unix timestamp at which the key expires, or `253402300799` (`9999-12-31T23:59:59Z` per [[!RFC5280]] Section 4.1.2.5) if the attestation on the device never expires.
-            3. If the authenticator reports a firmware version in [[!FIDO-CTAP]] `authenticatorGetInfo` (parameter `0x0E`), set <code>|output|["firmwareVersion"]</code> to that unsigned integer.
+            3. If the authenticator commits a firmware version in the MTC leaf entry (matching [[!FIDO-CTAP]] `authenticatorGetInfo` parameter `0x0E`), set <code>|output|["firmwareVersion"]</code> to that unsigned integer.
             4. If the authenticator maintains the Merkle inclusion proof for `serial`, set <code>|output|["mtcProof"]</code> to the binary RFC 9162 inclusion proof byte array.
             5. If the authenticator maintains the trust anchor or landmark subtree root hash, set <code>|output|["rootHash"]</code> to that 32-byte root hash.
         6. Return |output| as the authenticator extension output.
