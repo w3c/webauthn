@@ -145,7 +145,7 @@ Under `## Authenticator Extensions ## {#sctn-defined-authenticator-extensions}`,
       ? rootHash: bytes
   }
   ```
-- **Client & Authenticator Processing:** Supports autonomous offline verification for proof-less `mtcKeyRef` environments, with `firmwareVersion` strictly formatted matching parameter `0x0E` in CTAP 2.3 `authenticatorGetInfo`. Includes strict privacy gating requiring authenticators to omit `deviceSerial` unless Enterprise Attestation was requested and permitted for that Relying Party.
+- **Client & Authenticator Processing:** Supports autonomous offline verification for proof-less `mtcKeyRef` environments, with `firmwareVersion` strictly formatted matching parameter `0x0E` in CTAP 2.3 `authenticatorGetInfo`. Explicitly restricts `mtc-debug` to `fmt: "mtc"` and disallows it when the attestation statement format or conveyance preference is `"none"` (or any format other than `"mtc"`): the platform MUST NOT pass `mtc-debug` to the authenticator if `attestation` is `"none"` or if `"mtc"` is excluded by `attestationFormats`, the authenticator MUST ignore `mtc-debug` if the selected `fmt` is not `"mtc"`, and the platform MUST reject any response containing `authenticatorData.extensions["mtc-debug"]` if `fmt !== "mtc"`. Also includes strict privacy gating requiring authenticators to omit `deviceSerial` unless Enterprise Attestation was requested and permitted for that Relying Party.
 
 ### 3.3 Section 11: IANA Considerations
 - Registers `mtc` in `## WebAuthn Attestation Statement Format Identifier Registrations ##`.

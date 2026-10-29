@@ -8078,22 +8078,24 @@ When developing automated test harnesses, verifying new authenticator implementa
 : Authenticator extension processing
 ::
     1. If `mtc-debug` is [TRUE] in the authenticator extension inputs:
-        1. Let |output| be a new CBOR map.
-        2. Let |pubKey| be the canonical CBOR-encoded `COSE_Key` structure (per [[!RFC9052]] Section 7, matching the `coseKey` format in `mtcTrustAnchors[].batchKeys[]`) of the authenticator's active attestation public key. Set <code>|output|["pubKey"] = |pubKey|</code>.
-        3. If Enterprise Attestation was requested and granted for this operation:
-            1. Let |serial| be the device serial number text string. Set <code>|output|["deviceSerial"] = |serial|</code>.
-        4. Otherwise:
-            1. The authenticator MUST NOT include `deviceSerial` if Enterprise Attestation was not granted.
-        5. Populate the MTC leaf descriptor and Merkle inclusion proof fields (enabling autonomous offline verification of the 2-field `mtcKeyRef` in `attStmt.mtcCert`):
-            1. If known to the authenticator, set <code>|output|["notBefore"]</code> to the earliest Unix timestamp at which the key is valid.
-            2. If known to the authenticator, set <code>|output|["notAfter"]</code> to the Unix timestamp at which the key expires, or `253402300799` (`9999-12-31T23:59:59Z` per [[!RFC5280]] Section 4.1.2.5) if the attestation on the device never expires.
-            3. If the authenticator commits a firmware version in the MTC leaf entry (matching [[!FIDO-CTAP]] `authenticatorGetInfo` parameter `0x0E`), set <code>|output|["firmwareVersion"]</code> to that unsigned integer.
-            4. If the authenticator maintains the Merkle inclusion proof for `serial`, set <code>|output|["mtcProof"]</code> to the binary RFC 9162 inclusion proof byte array.
-            5. If the authenticator maintains the trust anchor or landmark subtree root hash, set <code>|output|["rootHash"]</code> to that 32-byte root hash.
-        6. Return |output| as the authenticator extension output.
+        1. If the [=attestation statement format=] (`fmt`) selected by the authenticator for this registration operation is `"none"` or any format other than `"mtc"`, the authenticator MUST ignore this extension input and MUST NOT include `mtc-debug` in the [=authenticator extension outputs=] (`authenticatorData.extensions`).
+        2. Otherwise (when the selected [=attestation statement format=] `fmt` is `"mtc"`):
+            1. Let |output| be a new CBOR map.
+            2. Let |pubKey| be the canonical CBOR-encoded `COSE_Key` structure (per [[!RFC9052]] Section 7, matching the `coseKey` format in `mtcTrustAnchors[].batchKeys[]`) of the authenticator's active attestation public key. Set <code>|output|["pubKey"] = |pubKey|</code>.
+            3. If Enterprise Attestation was requested and granted for this operation:
+                1. Let |serial| be the device serial number text string. Set <code>|output|["deviceSerial"] = |serial|</code>.
+            4. Otherwise:
+                1. The authenticator MUST NOT include `deviceSerial` if Enterprise Attestation was not granted.
+            5. Populate the MTC leaf descriptor and Merkle inclusion proof fields (enabling autonomous offline verification of the 2-field `mtcKeyRef` in `attStmt.mtcCert`):
+                1. If known to the authenticator, set <code>|output|["notBefore"]</code> to the earliest Unix timestamp at which the key is valid.
+                2. If known to the authenticator, set <code>|output|["notAfter"]</code> to the Unix timestamp at which the key expires, or `253402300799` (`9999-12-31T23:59:59Z` per [[!RFC5280]] Section 4.1.2.5) if the attestation on the device never expires.
+                3. If the authenticator commits a firmware version in the MTC leaf entry (matching [[!FIDO-CTAP]] `authenticatorGetInfo` parameter `0x0E`), set <code>|output|["firmwareVersion"]</code> to that unsigned integer.
+                4. If the authenticator maintains the Merkle inclusion proof for `serial`, set <code>|output|["mtcProof"]</code> to the binary RFC 9162 inclusion proof byte array.
+                5. If the authenticator maintains the trust anchor or landmark subtree root hash, set <code>|output|["rootHash"]</code> to that 32-byte root hash.
+            6. Return |output| as the authenticator extension output.
 
 : Authenticator extension output
-:: A CBOR map conforming to the following CDDL:
+:: A CBOR map conforming to the following CDDL (permitted ONLY when the [=attestation statement format=] `fmt` is `"mtc"` and explicitly disallowed when `fmt` is `"none"` or any other format):
 
     ```
     $$extension-output //= (
@@ -8114,18 +8116,24 @@ When developing automated test harnesses, verifying new authenticator implementa
 : Client extension processing
 ::
     1. In {{CredentialsContainer/create()}}, if `options.publicKey.extensions.mtcDebug` is [TRUE]:
-        1. Include `mtc-debug: true` in the authenticator extension inputs when invoking the authenticator.
-        2. Upon receiving the authenticator response, if the authenticator data contains an extension output for `mtc-debug`:
-            1. Let |rawOutput| be the decoded map for `mtc-debug`.
-            2. Set `clientExtensionResults.mtcDebug` to a dictionary containing:
-                - `pubKey`: <code>|rawOutput|["pubKey"]</code>.
-                - `deviceSerial`: <code>|rawOutput|["deviceSerial"]</code>, if present.
-                - `notBefore`: <code>|rawOutput|["notBefore"]</code>, if present.
-                - `notAfter`: <code>|rawOutput|["notAfter"]</code>, if present.
-                - `firmwareVersion`: <code>|rawOutput|["firmwareVersion"]</code>, if present.
-                - `mtcProof`: <code>|rawOutput|["mtcProof"]</code>, if present.
-                - `rootHash`: <code>|rawOutput|["rootHash"]</code>, if present.
-        3. When {{PublicKeyCredential/toJSON()}} is invoked on a {{PublicKeyCredential}} containing an `mtcDebug` client extension output, serialize `clientExtensionResults.mtcDebug` into a {{MtcDebugExtensionOutputJSON}} dictionary by base64url encoding the {{ArrayBuffer}} members `pubKey`, `mtcProof` (if present), and `rootHash` (if present) into {{Base64URLString}} values per [[#sctn-json-types]].
+        1. If `options.publicKey.attestation` is `"none"` (including when omitted and defaulting to `"none"`), if the [=user agent=] replaces the attestation conveyance preference with `"none"` (e.g., due to user consent or policy), or if `options.publicKey.attestationFormats` is present, non-empty, and does not contain `"mtc"`:
+            1. The [=client=] MUST NOT include `mtc-debug` in the authenticator extension inputs when invoking the authenticator.
+        2. Otherwise, include `mtc-debug: true` in the authenticator extension inputs when invoking the authenticator.
+        3. Upon receiving the authenticator response, if the authenticator data (`authenticatorData.extensions`) contains an extension output for `mtc-debug`:
+            1. If the [=attestation statement format=] (`fmt`) in the returned `attestationObject` is `"none"` or is not `"mtc"`, or if the [=user agent=] replaces the [=attestation statement=] with a [=None=] [=attestation statement=] [[#sctn-none-attestation]], the [=client=] MUST NOT expose `clientExtensionResults.mtcDebug` and MUST treat the authenticator response as invalid (aborting the operation with a "{{NotAllowedError}}" {{DOMException}}), because `authenticatorData.extensions["mtc-debug"]` MUST NOT be conveyed to the [=[RP]=] unless the [=attestation statement format=] is `"mtc"`.
+            2. Otherwise (when `fmt` is `"mtc"`):
+                1. Let |rawOutput| be the decoded map for `mtc-debug`.
+                2. Set `clientExtensionResults.mtcDebug` to a dictionary containing:
+                    - `pubKey`: <code>|rawOutput|["pubKey"]</code>.
+                    - `deviceSerial`: <code>|rawOutput|["deviceSerial"]</code>, if present.
+                    - `notBefore`: <code>|rawOutput|["notBefore"]</code>, if present.
+                    - `notAfter`: <code>|rawOutput|["notAfter"]</code>, if present.
+                    - `firmwareVersion`: <code>|rawOutput|["firmwareVersion"]</code>, if present.
+                    - `mtcProof`: <code>|rawOutput|["mtcProof"]</code>, if present.
+                    - `rootHash`: <code>|rawOutput|["rootHash"]</code>, if present.
+        4. When {{PublicKeyCredential/toJSON()}} is invoked on a {{PublicKeyCredential}} containing an `mtcDebug` client extension output, serialize `clientExtensionResults.mtcDebug` into a {{MtcDebugExtensionOutputJSON}} dictionary by base64url encoding the {{ArrayBuffer}} members `pubKey`, `mtcProof` (if present), and `rootHash` (if present) into {{Base64URLString}} values per [[#sctn-json-types]].
+
+    Note: During [=registration=] verification, if `authenticatorData.extensions` contains `"mtc-debug"` (or `clientExtensionResults.mtcDebug` is present) when the [=attestation statement format=] `fmt` is `"none"` or any format other than `"mtc"`, the [=[RP]=] MUST fail the [=registration ceremony=].
 
 : Client extension output
 ::
