@@ -1,4 +1,4 @@
-﻿<!--   ***********  Web Authentication - Level 3 - Spec source file ***********
+<!--   ***********  Web Authentication - Level 3 - Spec source file ***********
 Notes:
 * the h1 tag is spec title that is rendered within the document window. Wrapping
   may be controlled with break tags.  The spec 'Level' value is not appended.
@@ -6,20 +6,17 @@ Notes:
   tags will be rendered. It also has the spec 'Level' value (gratuitously) appended.
 -->
 
-<h1>Web Authentication:<br>An API for accessing Public Key Credentials<br>Level 3</h1>
+<h1>Web Authentication:<br>An API for accessing Public Key Credentials<br>Level 4</h1>
 <pre class='metadata'>
-Title: Web Authentication: An API for accessing Public Key Credentials - Level 3
-Status: REC
-Local Boilerplate: status yes
-Prepare for TR: true
-Date: 2026-08-25
-TR: https://www.w3.org/TR/webauthn-3/
+Title: Web Authentication: An API for accessing Public Key Credentials - Level 4
+Status: ED
+Date: 2026-10-23
 ED: https://w3c.github.io/webauthn/
-Previous Version: https://www.w3.org/TR/2026/CR-webauthn-3-20260526/
+Previous Version: https://www.w3.org/TR/webauthn-3/
 Previous Version: https://www.w3.org/TR/2021/REC-webauthn-2-20210408/
 Previous Version: https://www.w3.org/TR/2019/REC-webauthn-1-20190304/
 Shortname: webauthn
-Level: 3
+Level: 4
 Include MDN Panels: maybe
 Editor: Tim Cappalli, w3cid 111190, Okta, tim.cappalli@okta.com
 Editor: Akshay Kumar, w3cid 99318, Microsoft, akshayku@microsoft.com
@@ -6974,6 +6971,131 @@ The "compound" attestation statement format is used to pass multiple, self-conta
         return implementation-specific values representing any combination of outputs from successful [=verification procedures=].
 
 
+## Merkle Tree Certificate Attestation Statement Format ## {#sctn-mtc-attestation}
+
+This attestation statement format uses Merkle Tree Certificates (MTC) [[!draft-ietf-plants-merkle-tree-certs]] to provide
+post-quantum attestation statements that fit within constrained authenticator transports, such as the USB HID single-message payload ceiling ($7,609\text{ bytes}$).
+
+: Attestation statement format identifier
+:: mtc
+
+: Attestation types supported
+:: [=Basic=], [=AttCA=]
+
+: Syntax
+:: The syntax of an MTC attestation statement is defined as follows:
+
+    ```
+    $$attStmtType //= (
+                          fmt: "mtc",
+                          attStmt: mtcStmtFormat
+                      )
+
+    mtcStmtFormat = {
+                        alg: COSEAlgorithmIdentifier,
+                        sig: bytes,
+                        mtcCert: mtcKeyRef
+                    }
+
+    mtcKeyRef = {
+                    caId: bytes,                      ; 1-4 byte compact CA Log Identifier
+                    serial: uint                      ; Log entry serial number = (logNumber << 48) | index
+                }
+    ```
+
+    The semantics of the above fields are as follows:
+
+    : alg
+    :: A {{COSEAlgorithmIdentifier}} containing the identifier of the algorithm used to generate the attestation signature (such as `ML-DSA-44`, `ML-DSA-65`, or `ML-DSA-87`).
+
+    : sig
+    :: A byte array containing the attestation signature over the attestation payload.
+
+    : mtcCert
+    :: A map conforming to `mtcKeyRef` carrying the compact CA log identifier (`caId`) and log entry serial number (`serial`) used to resolve the attestation key entry from FIDO Metadata Service (MDS3) [[FIDOMetadataService]], a manufacturer inventory manifest, or the {{AuthenticationExtensionsClientOutputs/mtcDebug}} extension.
+
+    : caId
+    :: A compact byte string identifying the MTC Certification Authority / log issuer.
+
+    : serial
+    :: An unsigned 64-bit integer representing the log entry serial number, formatted as `(logNumber << 48) | index`.
+
+    The associated metadata or manifest entry for `(caId, serial)` in `mtcTrustAnchors[].batchKeys[]` (and, when requested, the {{AuthenticationExtensionsClientOutputs/mtcDebug}} extension output) provides the following leaf parameters:
+
+    : coseKey / pubKey
+    :: The canonical CBOR-encoded `COSE_Key` structure (per [[!RFC9052]] Section 7) representing the attestation public key, including its `kty` (`1`) and `alg` (`3`) parameters. Because `alg` is encoded inside the `COSE_Key` structure, a separate `alg` property in `batchKeys[]` is not required.
+
+    : notBefore
+    :: An unsigned integer Unix timestamp representing the earliest time at which the attestation key is valid.
+
+    : notAfter
+    :: An unsigned integer Unix timestamp representing the expiration time of the attestation key. To indicate that the attestation key on the authenticator has no well-defined expiration date (i.e., never expires), `notAfter` MUST be set to `253402300799` (`0x3AFF44417F`), which corresponds to `99991231235959Z` (`9999-12-31T23:59:59Z`) per [[!RFC5280]] Section 4.1.2.5.
+
+        Note: Using `253402300799` (`9999-12-31T23:59:59Z`) aligns MTC leaf lifetime semantics with X.509 (`x5c`) and IEEE 802.1AR IDevID conventions while remaining well within the IEEE 754 exact integer range (`Number.MAX_SAFE_INTEGER = 9007199254740991`), preventing precision loss when serialized to JSON or processed in ECMAScript environments.
+
+    : firmwareVersion
+    :: An optional unsigned integer representing the authenticator firmware version, formatted in accordance with parameter `0x0E` (`firmwareVersion`) in CTAP 2.3 [[!FIDO-CTAP]].
+
+        Note: Manufacturers should carefully consider the operational and security trade-offs of including `firmwareVersion` in the MTC leaf entry (`FidoMtcLogEntry`) and manifest. If `firmwareVersion` is omitted, a single Merkle tree root hash (`rootHash`) and batch key can be reused across multiple firmware releases, avoiding the need to issue a new batch key or publish a new log checkpoint or `caId` when minor firmware updates are released under a stable [=/AAGUID=]. Conversely, if `firmwareVersion` is included in the leaf entry and manifest, each new firmware release requires a new attestation batch key and leaf entry, which in turn requires generating and publishing a new signed subtree checkpoint (`rootHash`) or `caId` in FIDO MDS or the manufacturer manifest. However, binding `firmwareVersion` to the batch key is more secure: it cryptographically proves the exact firmware revision that generated the credential and enables Relying Parties to selectively revoke or distrust a vulnerable firmware build via its `serial` range without invalidating patched authenticators that share the same [=/AAGUID=].
+
+    : mtcProof
+    :: An optional byte array containing the binary Merkle inclusion proof formatted in accordance with [[!draft-ietf-plants-merkle-tree-certs]] and [[!RFC9162]].
+
+: Signing procedure
+::
+    1. Let |authenticatorData| denote the [=authenticator data for the attestation=], and let |clientDataHash| denote the [=hash of the serialized client data=].
+    2. Concatenate |authenticatorData| and |clientDataHash| to form |verificationData|.
+    3. Sign |verificationData| using the authenticator's [=attestation private key=] according to |alg|, producing |sig|.
+    4. Let |mtcCert| be a map conforming to `mtcKeyRef` containing `caId` and `serial`.
+    5. Set |attStmt| to the CBOR map `{ alg: alg, sig: sig, mtcCert: mtcCert }`.
+
+: Verification procedure
+:: Given the [=verification procedure inputs=] |attStmt|, |authenticatorData| and |clientDataHash|, the [=verification procedure=] is as follows:
+    1. Verify that |attStmt| conforms to the CDDL syntax of `mtcStmtFormat`.
+    2. Verify that |alg| is a COSE algorithm identifier acceptable to the [=[RP]=].
+    3. Concatenate |authenticatorData| and |clientDataHash| to form |verificationData|.
+    4. Resolve the attestation key entry (|batchPubKey|, |notBefore|, |notAfter|, optional |firmwareVersion|, optional |mtcProof|, and optional |deviceSerial|):
+        1. Extract `caId` and `serial` from `attStmt.mtcCert`.
+        2. In non-enterprise mode: query FIDO Metadata Service (MDS3) [[FIDOMetadataService]] `mtcTrustAnchors[].batchKeys[]` for `(caId, serial)` to obtain the canonical CBOR-encoded `COSE_Key` structure |batchPubKey| (`coseKey`), |notBefore|, |notAfter|, optional |firmwareVersion|, and optional |mtcProof|.
+        3. In enterprise mode: query the manufacturer's inventory manifest table for `(caId, serial)` to obtain the canonical CBOR-encoded `COSE_Key` structure |batchPubKey| (`coseKey`), |notBefore|, |notAfter|, optional |firmwareVersion|, optional |mtcProof|, and the associated |deviceSerial|.
+        4. Alternatively, if conveyed in-band via the {{AuthenticationExtensionsClientOutputs/mtcDebug}} extension, extract the canonical CBOR-encoded `COSE_Key` structure |batchPubKey| (`pubKey`), |notBefore|, |notAfter|, optional |firmwareVersion|, |mtcProof|, optional |rootHash|, and optional |deviceSerial| from `authenticatorData.extensions["mtc-debug"]`.
+    5. Verify that the `alg` parameter (`3`) in the decoded `COSE_Key` structure |batchPubKey| matches `attStmt.alg`, and verify that |sig| is a valid signature over |verificationData| with the key |batchPubKey| according to |alg|.
+    6. Verify the key validity period:
+        1. Verify that <code>|notBefore| &le; now &le; |notAfter|</code> using the |notBefore| and |notAfter| timestamps resolved in Step 4.
+    7. Verify revocation status:
+        1. Verify that `serial` is not within any revoked serial range for `caId` in the Relying Party's metadata or manifest.
+    8. Verify Merkle tree commitment:
+        1. If |mtcProof| is present (from the resolved metadata/manifest entry or `authenticatorData.extensions["mtc-debug"]`):
+            1. Compute `pubKeyHash = SHA-256(batchPubKey)` over the canonical CBOR-encoded `COSE_Key` bytes.
+            2. Reconstruct the leaf entry structure (`FidoMtcLogEntry`) binding `caId`, `serial`, `notBefore`, `notAfter`, `authenticatorData.aaguid`, optional `firmwareVersion`, `pubKeyHash`, and any leaf extensions (such as the enterprise device serial number if committed in the leaf).
+            3. Compute the leaf hash from the reconstructed entry according to [[!draft-ietf-plants-merkle-tree-certs]] and [[!RFC9162]]: <code>SHA-256(0x00 || FidoMtcLogEntry)</code>.
+            4. Evaluate the Merkle inclusion proof using the leaf hash and `mtcProof` to derive the calculated root hash.
+            5. Verify that the calculated root hash matches an acceptable [=attestation trust path|trust anchor=] root hash established for `caId` (e.g., published in FIDO MDS3 `mtcTrustAnchors`, or `authenticatorData.extensions["mtc-debug"].rootHash` in offline conformance mode).
+        2. Otherwise (when relying on a pre-distributed `batchKeys[]` or manifest entry without evaluating a per-registration `mtcProof`):
+            1. Verify that the [=[RP]=] has previously authenticated the complete manufacturer manifest or MDS `batchKeys[]` table against the Root CA checkpoint signature or published trust anchor root hash.
+    9. If Enterprise Attestation was requested and active:
+        1. Verify that the resolved device serial number matches an authorized device within the [=[RP]=]'s inventory.
+    10. If successful, return implementation-specific values representing attestation type [=Basic=] (or [=AttCA=] in enterprise mode) and the attestation trust path.
+
+    <div class="example" id="example-mtc-attstmt">
+        An example `mtc` attestation statement using `ML-DSA-44` (`alg: -48`), represented in CBOR diagnostic notation:
+
+        ```
+        {
+            "fmt": "mtc",
+            "attStmt": {
+                "alg": -48,
+                "sig": h'3a7f91c2... (2420-byte ML-DSA-44 signature)',
+                "mtcCert": {
+                    "caId": h'83993f0101',
+                    "serial": 1970324836974592
+                }
+            }
+        }
+        ```
+    </div>
+
+
 # <dfn>WebAuthn Extensions</dfn> # {#sctn-extensions}
 
 The mechanism for generating [=public key credentials=], as well as requesting and generating Authentication assertions, as
@@ -7920,7 +8042,185 @@ This permission MUST be configured per-origin and MUST NOT offer the capability 
 
 This section defines extensions that are both [=client extensions=] and [=authenticator extensions=].
 
-This section is currently empty.
+### MTC Debug Extension (mtcDebug) ### {#sctn-mtc-debug-extension}
+
+This [=registration extension=] facilitates diagnostic and test fixture access to the authenticator's active Merkle Tree Certificate attestation public key and, in enterprise mode, the device serial number.
+
+When developing automated test harnesses, verifying new authenticator implementations, or performing isolated conformance testing, Relying Parties or test runners often need to cryptographically verify an `mtc` attestation statement without requiring live connectivity to an external Metadata Service (MDS) or public key distribution repository. This extension allows the [=[RP]=] to request the attestation public key in-band directly from the authenticator.
+
+: Extension identifier
+:: `mtcDebug`
+
+: Operation applicability
+:: [=registration extension|Registration=]
+
+: Client extension input
+:: The Boolean value [TRUE] to indicate that this extension is requested by the [=[RP]=].
+
+    <xmp class="idl">
+    partial dictionary AuthenticationExtensionsClientInputs {
+        boolean mtcDebug;
+    };
+    partial dictionary AuthenticationExtensionsClientInputsJSON {
+        boolean mtcDebug;
+    };
+    </xmp>
+
+: Authenticator extension input
+:: A boolean value indicating whether the authenticator should include MTC diagnostic data.
+
+    ```
+    $$extension-input //= (
+        mtc-debug: bool
+    )
+    ```
+
+: Authenticator extension processing
+::
+    1. If `mtc-debug` is [TRUE] in the authenticator extension inputs:
+        1. If the [=attestation statement format=] (`fmt`) selected by the authenticator for this registration operation is `"none"` or any format other than `"mtc"`, the authenticator MUST ignore this extension input and MUST NOT include `mtc-debug` in the [=authenticator extension outputs=] (`authenticatorData.extensions`).
+        2. Otherwise (when the selected [=attestation statement format=] `fmt` is `"mtc"`):
+            1. Let |output| be a new CBOR map.
+            2. Let |pubKey| be the canonical CBOR-encoded `COSE_Key` structure (per [[!RFC9052]] Section 7, matching the `coseKey` format in `mtcTrustAnchors[].batchKeys[]`) of the authenticator's active attestation public key. Set <code>|output|["pubKey"] = |pubKey|</code>.
+            3. If Enterprise Attestation was requested and granted for this operation:
+                1. Let |serial| be the device serial number text string. Set <code>|output|["deviceSerial"] = |serial|</code>.
+            4. Otherwise:
+                1. The authenticator MUST NOT include `deviceSerial` if Enterprise Attestation was not granted.
+            5. Populate the MTC leaf descriptor and Merkle inclusion proof fields (enabling autonomous offline verification of the 2-field `mtcKeyRef` in `attStmt.mtcCert`):
+                1. If known to the authenticator, set <code>|output|["notBefore"]</code> to the earliest Unix timestamp at which the key is valid.
+                2. If known to the authenticator, set <code>|output|["notAfter"]</code> to the Unix timestamp at which the key expires, or `253402300799` (`9999-12-31T23:59:59Z` per [[!RFC5280]] Section 4.1.2.5) if the attestation on the device never expires.
+                3. If the authenticator commits a firmware version in the MTC leaf entry (matching [[!FIDO-CTAP]] `authenticatorGetInfo` parameter `0x0E`), set <code>|output|["firmwareVersion"]</code> to that unsigned integer.
+                4. If the authenticator maintains the Merkle inclusion proof for `serial`, set <code>|output|["mtcProof"]</code> to the binary RFC 9162 inclusion proof byte array.
+                5. If the authenticator maintains the trust anchor or landmark subtree root hash, set <code>|output|["rootHash"]</code> to that 32-byte root hash.
+            6. Return |output| as the authenticator extension output.
+
+: Authenticator extension output
+:: A CBOR map conforming to the following CDDL (permitted ONLY when the [=attestation statement format=] `fmt` is `"mtc"` and explicitly disallowed when `fmt` is `"none"` or any other format):
+
+    ```
+    $$extension-output //= (
+        mtc-debug: MtcDebugAuthOutput
+    )
+
+    MtcDebugAuthOutput = {
+        pubKey: bytes,
+        ? deviceSerial: text,
+        ? notBefore: uint,
+        ? notAfter: uint,
+        ? firmwareVersion: uint,
+        ? mtcProof: bytes,
+        ? rootHash: bytes
+    }
+    ```
+
+: Client extension processing
+::
+    1. In {{CredentialsContainer/create()}}, if `options.publicKey.extensions.mtcDebug` is [TRUE]:
+        1. If `options.publicKey.attestation` is `"none"` (including when omitted and defaulting to `"none"`), if the [=user agent=] replaces the attestation conveyance preference with `"none"` (e.g., due to user consent or policy), or if `options.publicKey.attestationFormats` is present, non-empty, and does not contain `"mtc"`:
+            1. The [=client=] MUST NOT include `mtc-debug` in the authenticator extension inputs when invoking the authenticator.
+        2. Otherwise, include `mtc-debug: true` in the authenticator extension inputs when invoking the authenticator.
+        3. Upon receiving the authenticator response, if the authenticator data (`authenticatorData.extensions`) contains an extension output for `mtc-debug`:
+            1. If the [=attestation statement format=] (`fmt`) in the returned `attestationObject` is `"none"` or is not `"mtc"`, or if the [=user agent=] replaces the [=attestation statement=] with a [=None=] [=attestation statement=] [[#sctn-none-attestation]], the [=client=] MUST NOT expose `clientExtensionResults.mtcDebug` and MUST treat the authenticator response as invalid (aborting the operation with a "{{NotAllowedError}}" {{DOMException}}), because `authenticatorData.extensions["mtc-debug"]` MUST NOT be conveyed to the [=[RP]=] unless the [=attestation statement format=] is `"mtc"`.
+            2. Otherwise (when `fmt` is `"mtc"`):
+                1. Let |rawOutput| be the decoded map for `mtc-debug`.
+                2. Set `clientExtensionResults.mtcDebug` to a dictionary containing:
+                    - `pubKey`: <code>|rawOutput|["pubKey"]</code>.
+                    - `deviceSerial`: <code>|rawOutput|["deviceSerial"]</code>, if present.
+                    - `notBefore`: <code>|rawOutput|["notBefore"]</code>, if present.
+                    - `notAfter`: <code>|rawOutput|["notAfter"]</code>, if present.
+                    - `firmwareVersion`: <code>|rawOutput|["firmwareVersion"]</code>, if present.
+                    - `mtcProof`: <code>|rawOutput|["mtcProof"]</code>, if present.
+                    - `rootHash`: <code>|rawOutput|["rootHash"]</code>, if present.
+        4. When {{PublicKeyCredential/toJSON()}} is invoked on a {{PublicKeyCredential}} containing an `mtcDebug` client extension output, serialize `clientExtensionResults.mtcDebug` into a {{MtcDebugExtensionOutputJSON}} dictionary by base64url encoding the {{ArrayBuffer}} members `pubKey`, `mtcProof` (if present), and `rootHash` (if present) into {{Base64URLString}} values per [[#sctn-json-types]].
+
+    Note: During [=registration=] verification, if `authenticatorData.extensions` contains `"mtc-debug"` (or `clientExtensionResults.mtcDebug` is present) when the [=attestation statement format=] `fmt` is `"none"` or any format other than `"mtc"`, the [=[RP]=] MUST fail the [=registration ceremony=].
+
+: Client extension output
+::
+    <xmp class="idl">
+    dictionary MtcDebugExtensionOutput {
+        required ArrayBuffer pubKey;
+        DOMString deviceSerial;
+        unsigned long long notBefore;
+        unsigned long long notAfter;
+        unsigned long firmwareVersion;
+        ArrayBuffer mtcProof;
+        ArrayBuffer rootHash;
+    };
+
+    dictionary MtcDebugExtensionOutputJSON {
+        required Base64URLString pubKey;
+        DOMString deviceSerial;
+        unsigned long long notBefore;
+        unsigned long long notAfter;
+        unsigned long firmwareVersion;
+        Base64URLString mtcProof;
+        Base64URLString rootHash;
+    };
+
+    partial dictionary AuthenticationExtensionsClientOutputs {
+        MtcDebugExtensionOutput mtcDebug;
+    };
+    partial dictionary AuthenticationExtensionsClientOutputsJSON {
+        MtcDebugExtensionOutputJSON mtcDebug;
+    };
+    </xmp>
+
+    <div dfn-type="dict-member" dfn-for="MtcDebugExtensionOutput">
+        : <dfn>pubKey</dfn>
+        :: The canonical CBOR-encoded COSE_Key representation of the authenticator's active attestation public key.
+
+        : <dfn>deviceSerial</dfn>
+        :: An OPTIONAL text string representing the physical hardware serial number. This member MUST be present if and only if Enterprise Attestation was granted for the registration ceremony.
+
+        : <dfn>notBefore</dfn>
+        :: An OPTIONAL unsigned integer Unix timestamp representing the earliest time at which the attestation key is valid.
+
+        : <dfn>notAfter</dfn>
+        :: An OPTIONAL unsigned integer Unix timestamp representing the expiration time of the attestation key. When the attestation on the device has no well-defined expiration date (i.e., never expires), this value MUST be set to `253402300799` (`9999-12-31T23:59:59Z` per [[!RFC5280]] Section 4.1.2.5).
+
+        : <dfn>firmwareVersion</dfn>
+        :: An OPTIONAL unsigned integer representing the authenticator firmware version, formatted in accordance with parameter `0x0E` (`firmwareVersion`) in CTAP 2.3 `authenticatorGetInfo` [[!FIDO-CTAP]].
+
+        : <dfn>mtcProof</dfn>
+        :: An OPTIONAL byte array containing the binary Merkle inclusion proof formatted in accordance with [[!draft-ietf-plants-merkle-tree-certs]] and [[!RFC9162]].
+
+        : <dfn>rootHash</dfn>
+        :: An OPTIONAL 32-byte array containing the expected Landmark or Trust Anchor Merkle root hash.
+    </div>
+
+    <div class="example" id="example-mtc-debug-extension">
+        An example `mtc-debug` authenticator extension output in `authenticatorData.extensions` (CBOR diagnostic notation) and its corresponding {{PublicKeyCredential/toJSON()}} client extension output (`clientExtensionResults.mtcDebug`) for a non-expiring enterprise authenticator (`notAfter: 253402300799`):
+
+        ```
+        ; CBOR in authenticatorData.extensions["mtc-debug"]
+        {
+            "mtc-debug": {
+                "pubKey": h'a4010703382f205905206d1b... (1322-byte COSE_Key)',
+                "deviceSerial": "SN-00142857",
+                "notBefore": 1767225600,
+                "notAfter": 253402300799,
+                "firmwareVersion": 332805,
+                "mtcProof": h'000000000000000000000200000040...',
+                "rootHash": h'96b61c12341cf0fc6d47cb90b3cd2b095c9a81fa68f14abe845a28a39ec8fd4d'
+            }
+        }
+        ```
+
+        ```json
+        {
+            "mtcDebug": {
+                "pubKey": "pAEHAzgvIFkFIG0b...",
+                "deviceSerial": "SN-00142857",
+                "notBefore": 1767225600,
+                "notAfter": 253402300799,
+                "firmwareVersion": 332805,
+                "mtcProof": "AAAAAAAAAAAAAAACAAAAQA...",
+                "rootHash": "lrYcEjQc8PxtR8uQs80rCVyagfpo8Uq-hFooo57I_U0"
+            }
+        }
+        ```
+    </div>
 
 
 # User Agent Automation # {#sctn-automation}
@@ -8689,6 +8989,11 @@ This section registers the below-listed attestation statement formats, newly def
 - WebAuthn Attestation Statement Format Identifier: none
 - Description: Used to replace any authenticator-provided attestation statement when a [=[WRP]=] indicates it does not wish to receive attestation information.
 - Specification Document: Section [[#sctn-none-attestation]] of this specification
+    <br/><br/>
+- WebAuthn Attestation Statement Format Identifier: mtc
+- Description: Merkle Tree Certificate (MTC) attestation statement format using hash-based tree inclusion proofs [[!draft-ietf-plants-merkle-tree-certs]] for post-quantum attestation.
+- Specification Document: Section [[#sctn-mtc-attestation]] of this specification
+    <br/><br/>
 
 
 
@@ -8720,6 +9025,11 @@ This section registers the below-listed [=extension identifier=] values, newly d
 - WebAuthn Extension Identifier: largeBlob
 - Description: This [=client extension|client=] [=registration extension=] and [=authentication extension=] allows a [=[RP]=] to store opaque data associated with a credential.
 - Specification Document: Section [[#sctn-large-blob-extension]] of this specification
+    <br/><br/>
+- WebAuthn Extension Identifier: mtcDebug
+- Description: This [=registration extension=] allows Relying Parties to retrieve the authenticator's active attestation public key in-band and, if Enterprise Attestation was granted, the device serial number for diagnostic verification.
+- Specification Document: Section [[#sctn-mtc-debug-extension]] of this specification
+
 
 
 ## Well-Known URI Registration ## {#sctn-well-known-uri-reg}
