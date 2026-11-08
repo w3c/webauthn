@@ -7946,8 +7946,9 @@ This extension provides a "trust group" signal <i>when used consistently</i> wit
 When a [=[RP]=] uses the `cmtgKeys` extension during a {{CredentialsContainer/create()|create()}} option on the first device (`dev1`)
 and the extension is supported by the [=WebAuthn client=] and at least one [=authenticator=]/[=credential manager=],
 the selected [=authenticator=]/[=credential manager=] (`cm1`) generates a new [=Credential Manager Trust Group Key=] pair.
-The extension output includes the public key and a signature generated using the
-[=Credential Manager Trust Group private key=] (`cmtgKey1`).
+The authenticator extension output, included in [=authenticator data=],
+contains the public key.
+The client extension output includes the signature generated using the corresponding Credential Manager Trust Group private key (`cmtgKey1`).
 
 <div class="example">
 On the client side, the `cmtgKeys` extension requires only adding `cmtgKeys: true`
@@ -7966,22 +7967,29 @@ On the server side, the [=[RP]=] verifies the extension output after completing
 standard [=registration=] verification:
 
 ```
-cmtgOutputs = response.clientExtensionResults.cmtgKeys
-if cmtgOutputs is not present or is empty:
+// Extract the CMTG public key from the authenticated authData extensions
+// (covered by the credential signature).
+cmtgKeysAuthData = parseExtensions(authData).cmtgKeys
+
+if cmtgKeysAuthData is not present or is empty:
     // Extension was not processed by the client and/or authenticator.
     // RP policy decides what to do next.
     return
 
-if cmtgOutputs.length > 1:
-    // Only a single CMTG key is currently supported.
-    reject the extension output as invalid
+cmtgKey = parseCOSEKey(cmtgKeysAuthData[0])
 
-{ cmtgKey, signature } = cmtgOutputs[0]
+// Extract the CMTG extension outputs from the client extension results.
+cmtgOutputs = response.clientExtensionResults.cmtgKeys
+if cmtgOutputs is not present or is empty:
+    // RP policy decides what to do next
+    return
+
+signature = cmtgOutputs[0].signature
 
 // perform CMTG Key signature verification steps
 
 // Store the CMTG public key in the new credential record.
-credentialRecord.cmtgKeyRecords.append({ publicKey: cmtgKey, lastUsed: now() })
+credentialRecord.cmtgKeyRecords = [{ publicKey: cmtgKey, lastUsed: now() }]
 ```
 </div>
 
@@ -8015,16 +8023,22 @@ On the server side, the [=[RP]=] verifies the extension output after completing
 standard [=authentication=] verification:
 
 ```
+// Extract the CMTG public key from the authenticated authData extensions
+// (covered by the credential signature).
+cmtgKeysAuthData = parseExtensions(authData).cmtgKeys
+if cmtgKeysAuthData is not present or is empty:
+    // RP policy decides what to do next
+    return
+
+cmtgKey = parseCOSEKey(cmtgKeysAuthData[0])
+
+// Extract the CMTG signature from clientExtensionResults.
 cmtgOutputs = response.clientExtensionResults.cmtgKeys
 if cmtgOutputs is not present or is empty:
     // RP policy decides what to do next
     return
 
-if cmtgOutputs.length > 1:
-    // Only a single CMTG key is currently supported.
-    reject the extension output as invalid
-
-{ cmtgKey, signature } = cmtgOutputs[0]
+signature = cmtgOutputs[0].signature
 
 // perform CMTG Key signature verification steps
 
@@ -8086,39 +8100,34 @@ A <dfn>CMTG Key Record</dfn> is a [=struct=] with the following [=struct/items=]
     1. If neither the authenticator extension output nor the [=unsigned extension output=] is present,
         or the authenticator extension output indicates the extension was not processed,
         stop processing this extension and return no output.
-    1. If either the authenticator extension output or the [=unsigned extension output=] is absent
+    1. If the [=unsigned extension output=] is absent
         or is not a non-empty CBOR array of byte strings,
-        or if they do not contain the same number of elements,
         return a {{DOMException}} whose name is "{{UnknownError}}".
     1. Let |cmtgKeyOutputs| be a new empty [=list=].
-    1. [=list/For each=] index |i| of the array in the [=authenticator extension output=]:
-        1. Let |cmtgKeyOutput| be a new {{AuthenticationExtensionsCmtgKeyOutputs}} dictionary.
-        1. Set |cmtgKeyOutput|.{{AuthenticationExtensionsCmtgKeyOutputs/cmtgKey}} to the CBOR-decoded byte string at index |i| of the [=authenticator extension output=].
-        1. Set |cmtgKeyOutput|.{{AuthenticationExtensionsCmtgKeyOutputs/signature}} to the CBOR-decoded byte string at index |i| of the [=unsigned extension output=].
+    1. [=list/For each=] index |i| of the array in the [=unsigned extension output=]:
+        1. Let |cmtgKeyOutput| be a new {{AuthenticationExtensionsCmtgKeysOutputs}} dictionary.
+        1. Set |cmtgKeyOutput|.{{AuthenticationExtensionsCmtgKeysOutputs/signature}} to the CBOR-decoded byte string at index |i| of the [=unsigned extension output=].
         1. [=list/Append=] |cmtgKeyOutput| to |cmtgKeyOutputs|.
     1. Return |cmtgKeyOutputs| as the client extension output.
 
 : Client extension output
-:: A sequence of {{AuthenticationExtensionsCmtgKeyOutputs}} dictionaries, each containing a COSE_Key-encoded [=Credential Manager Trust Group public key=]
-    returned in the authenticator extension output,
-    and the corresponding signature returned in the [=unsigned extension output=].
+:: A sequence of {{AuthenticationExtensionsCmtgKeysOutputs}} dictionaries,
+    each containing a signature from the corresponding [=unsigned extension output=].
     <xmp class="idl">
     dictionary AuthenticationExtensionsCmtgKeysOutputs {
-        required ArrayBuffer cmtgKey;
         required ArrayBuffer signature;
     };
 
     dictionary AuthenticationExtensionsCmtgKeysOutputsJSON {
-        required Base64URLString cmtgKey;
         required Base64URLString signature;
     };
 
     partial dictionary AuthenticationExtensionsClientOutputs {
-        sequence<AuthenticationExtensionsCmtgKeyOutputs> cmtgKeys;
+        sequence<AuthenticationExtensionsCmtgKeysOutputs> cmtgKeys;
     };
 
     partial dictionary AuthenticationExtensionsClientOutputsJSON {
-        sequence<AuthenticationExtensionsCmtgKeyOutputsJSON> cmtgKeys;
+        sequence<AuthenticationExtensionsCmtgKeysOutputsJSON> cmtgKeys;
     };
     </xmp>
 
@@ -8204,31 +8213,45 @@ using these variables established therein: |credential|, |clientExtensionResults
 
 1. Let |credentialRecord| be the [=credential record=] for |credential|.
 
+1. Let |cmtgKeysAuthData| be the value of the `cmtgKeys` key in the [=extensions=] of |authData|.
+
+1. If |cmtgKeysAuthData| is not present or is not a non-empty array of byte strings,
+    terminate this `cmtgKeys` validation algorithm.
+
+1. If the [=list/size=] of |cmtgKeysAuthData| is greater than 1,
+    the extension output is invalid.
+    Terminate this `cmtgKeys` validation algorithm.
+
+1. Let |cmtgKey| be the result of parsing |cmtgKeysAuthData|[0] as a COSE_Key.
+
 1. Let |extensionOutputs| be the value of <code>|clientExtensionResults|.{{AuthenticationExtensionsClientOutputs/cmtgKeys}}</code>.
 
-1. If |extensionOutputs| is not present or [=list/is empty=], terminate this `cmtgKeys` validation algorithm.
+1. If |extensionOutputs| is not present or [=list/is empty=],
+    terminate this `cmtgKeys` validation algorithm.
 
-1. If the [=list/size=] of |extensionOutputs| is greater than 1, the extension output is invalid.
+1. If the [=list/size=] of |extensionOutputs| is greater than 1,
+    the extension output is invalid.
     Terminate this `cmtgKeys` validation algorithm.
 
 1. Let |extensionOutput| be |extensionOutputs|[0].
 
 1. If |extensionOutput| does not contain the required members of
-    {{AuthenticationExtensionsCmtgKeyOutputs}}, terminate this `cmtgKeys` validation algorithm.
+    {{AuthenticationExtensionsCmtgKeysOutputs}},
+    terminate this `cmtgKeys` validation algorithm.
 
-    [=[RPS]=] MUST ignore any keys in |extensionOutput| that are not defined in the {{AuthenticationExtensionsCmtgKeyOutputs}} dictionary.
+    [=[RPS]=] MUST ignore any keys in |extensionOutput| that are not defined in the {{AuthenticationExtensionsCmtgKeysOutputs}} dictionary.
 
-1. Parse <code>|extensionOutput|.{{AuthenticationExtensionsCmtgKeyOutputs/cmtgKey}}</code> as a COSE_Key.
+1. Let |signature| be <code>|extensionOutput|.{{AuthenticationExtensionsCmtgKeysOutputs/signature}}</code>.
 
-1. Verify that the algorithm used for <code>|extensionOutput|.{{AuthenticationExtensionsCmtgKeyOutputs/signature}}</code> matches the COSE algorithm identifier of the [=credentialPublicKey=]
+1. Verify that the algorithm of |cmtgKey| matches the COSE algorithm identifier of the [=credentialPublicKey=]
     within the [=attestedCredentialData=] of |authData|.
 
-1. Verify that <code>|extensionOutput|.{{AuthenticationExtensionsCmtgKeyOutputs/signature}}</code> is a valid signature over the [=assertion signature=] [input](#fig-signature)
-    (i.e. |authData| and |hash|) by the [=Credential Manager Trust Group Key=] <code>|extensionOutput|.{{AuthenticationExtensionsCmtgKeyOutputs/cmtgKey}}</code>.
+1. Verify that |signature| is a valid signature over the [=assertion signature=] [input](#fig-signature)
+    (i.e. |authData| and |hash|) by |cmtgKey|.
 
 1. If the remaining steps of [[#sctn-registering-a-new-credential]] are successful:
 
-    1. Let |newEntry| be a new [=CMTG Key Record=] where its [$CMTG Key Record/publicKey$] is <code>|extensionOutput|.{{AuthenticationExtensionsCmtgKeyOutputs/cmtgKey}}</code>
+    1. Let |newEntry| be a new [=CMTG Key Record=] where its [$CMTG Key Record/publicKey$] is |cmtgKey|
         and its [$CMTG Key Record/lastUsed$] is the [=[RP]=]'s current time.
     1. Append |newEntry| to |credentialRecord|.[$credential record/cmtgKeyRecords$].
 
@@ -8243,6 +8266,20 @@ using these variables established therein: |credential|, |clientExtensionResults
 
 1. Let |credentialRecord| be the [=credential record=] for |credential|.
 
+1. Let |cmtgKeysAuthData| be the value of the `cmtgKeys` key in the [=extensions=] of |authData|.
+
+1. If |cmtgKeysAuthData| is not present or is not a non-empty array of byte strings:
+
+    1. Optionally, perform additional policy checks.
+
+    1. Terminate these validation steps as inconclusive.
+
+1. If the [=list/size=] of |cmtgKeysAuthData| is greater than 1,
+    the extension output is invalid.
+    Terminate these validation steps.
+
+1. Let |cmtgKey| be the result of parsing |cmtgKeysAuthData|[0] as a COSE_Key.
+
 1. Let |extensionOutputs| be the value of <code>|clientExtensionResults|.{{AuthenticationExtensionsClientOutputs/cmtgKeys}}</code>.
 
 1. If |extensionOutputs| is not present or [=list/is empty=]:
@@ -8251,31 +8288,27 @@ using these variables established therein: |credential|, |clientExtensionResults
 
     1. Terminate these validation steps as inconclusive.
 
-1. If the [=list/size=] of |extensionOutputs| is greater than 1, the extension output is invalid.
+1. If the [=list/size=] of |extensionOutputs| is greater than 1,
+    the extension output is invalid.
     Terminate these validation steps.
 
 1. Let |extensionOutput| be |extensionOutputs|[0].
 
-1. If |extensionOutput| does not contain the required members of {{AuthenticationExtensionsCmtgKeyOutputs}}:
+1. If |extensionOutput| does not contain the required members of {{AuthenticationExtensionsCmtgKeysOutputs}}:
 
     1. Optionally, perform additional policy checks.
 
     1. Terminate these validation steps as inconclusive.
 
-    [=[RPS]=] MUST ignore any keys in |extensionOutput| that are not defined in the {{AuthenticationExtensionsCmtgKeyOutputs}} dictionary.
+    [=[RPS]=] MUST ignore any keys in |extensionOutput| that are not defined in the {{AuthenticationExtensionsCmtgKeysOutputs}} dictionary.
 
-1. Let |signature| be |extensionOutput|.{{AuthenticationExtensionsCmtgKeyOutputs/signature}}.
-    Verify that |signature| is a valid ArrayBuffer.
+1. Let |signature| be <code>|extensionOutput|.{{AuthenticationExtensionsCmtgKeysOutputs/signature}}</code>.
 
-1. Let |cmtgKey| be |extensionOutput|.{{AuthenticationExtensionsCmtgKeyOutputs/cmtgKey}}.
-    Verify that |cmtgKey| is a valid ArrayBuffer containing a COSE_Key object.
-
-1. Verify that the algorithm used for |signature| matches the algorithm of the public key
+1. Verify that the algorithm of |cmtgKey| matches the algorithm of the public key
     previously stored for the |credentialRecord|.
 
 1. Verify that |signature| is a valid signature over the [=assertion signature=] [input](#fig-signature)
-    (i.e. `authData` and `hash`) by the [=Credential Manager Trust Group public key=] |cmtgKey|.
-    (The signature algorithm is the same as for the [=user credential=].)
+    (i.e. |authData| and |hash|) by |cmtgKey|.
 
 1. If |credentialRecord|.[$credential record/cmtgKeyRecords$] contains an entry |e|
     where |e|.[$CMTG Key Record/publicKey$] equals |cmtgKey|:
