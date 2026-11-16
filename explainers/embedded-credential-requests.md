@@ -4,17 +4,17 @@
 
 Andrew Comminos <<acomminos@meta.com>>, Paul Wright <<paulwright@meta.com>>
 
-Last updated: 2026-10-26
+Last updated: 2026-11-11
 
 ## Summary
 
-We propose a way for apps that embed web content (for example in-app WebViews) to make WebAuthn requests on behalf of relying parties (RPs) they are not associated with, without treating every such app as a trusted browser.
+We propose a way for apps that embed web content (for example in-app WebViews) to make WebAuthn authentication requests (`get()`) on behalf of relying parties (RPs) they are not associated with, without treating every such app as a trusted browser. Creating credentials in embedded content is out of scope for now (see [Future work](#future-work-embedded-create)).
 
 RPs opt in with a policy at `https://{rpId}/.well-known/webauthn` that allows or denies host apps by default, with per-app exceptions. When a request is permitted, the platform includes a platform-verified host app identifier, `hostAppId`, in `CollectedClientData`, where the authenticator's signature covers it. Platforms show a consent prompt that names the host app and require user verification for every embedded request.
 
 ## Goals
 
-* Make passkeys usable inside embedded web content, which accounts for a large share of web traffic.
+* Let users sign in with passkeys inside embedded web content, which accounts for a large share of web traffic.
 * Let RPs control which host apps may make requests on their behalf: allow-by-default with a denylist, or deny-by-default with an allowlist.
 * Give RPs a verified signal identifying the host app, so they can apply their own risk decisions when they validate a response.
 * Make sure users know which app is requesting a credential, and confirm the request explicitly.
@@ -25,6 +25,7 @@ RPs opt in with a policy at `https://{rpId}/.well-known/webauthn` that allows or
 * System-provided browser views (Custom Tabs, `SFSafariViewController`, `ASWebAuthenticationSession`). These run in the context of the user's default browser and are already served by existing platform mechanisms.
 * Requests from native apps associated with the RP (for example via Digital Asset Links or `apple-app-site-association`). These are already handled by existing platform mechanisms.
 * Requests from apps the platform already recognizes as standalone browsers.
+* Creating credentials (`create()`) in embedded content. Users can still register passkeys in their default browser. See [Future work](#future-work-embedded-create).
 
 ## Background
 
@@ -42,6 +43,8 @@ We define an **embedded credential request** as a WebAuthn operation where both 
 * The requesting app is not recognized as a standalone browser by the platform.
 
 This covers in-app WebViews (for example Android `WebView` and `WKWebView`) and browser engines shipped inside apps.
+
+This proposal permits only embedded `get()` requests. Embedded `create()` requests are never permitted.
 
 The proposal has two parts:
 
@@ -92,13 +95,13 @@ Entries in `exceptions` use the same format as `hostAppId` (see [Example `hostAp
 
 #### When a host app is not permitted
 
-Whether a request is permitted depends on its RP ID, which is only known when `create()` or `get()` is called, and on a policy that is fetched asynchronously. Platforms that support embedded requests therefore expose the WebAuthn API to embedded content and enforce the policy per request.
+Whether a request is permitted depends on its RP ID, which is only known when `get()` is called, and on a policy that is fetched asynchronously. Platforms that support embedded requests therefore expose the WebAuthn API to embedded content and enforce the policy per request.
 
-When the policy does not permit the requesting host app, the platform client fails the operation without displaying any user-facing UI and without invoking an authenticator. That includes the cases where no policy exists, the policy can't be fetched, or it is invalid. Where a platform can determine ahead of time that no embedded request will be permitted (for example, because the host app has not enabled embedded requests), it MAY instead leave `create()` and `get()` unexposed, as embedded contexts behave today.
+When the policy does not permit the requesting host app, the platform client fails the operation without displaying any user-facing UI and without invoking an authenticator. That includes the cases where no policy exists, the policy can't be fetched, or it is invalid. Where a platform can determine ahead of time that no embedded request will be permitted (for example, because the host app has not enabled embedded requests), it MAY instead leave `PublicKeyCredential` unexposed, as Android WebView does by default today. `create()` and `get()` with a `publicKey` member then reject with `NotSupportedError`, which is what Credential Management's "[Request a `Credential`](https://w3c.github.io/webappsec-credential-management/)" algorithm produces when no credential type matches.
 
 Because the policy checks complete before any user-facing UI, an RP that doesn't support a given host app adds no friction for the user: the operation fails, and the page falls back the way it already does, for example by offering another sign-in method or by sending the user to their default browser. Which error the operation rejects with is an [open question](#open-questions).
 
-The policy applies to both `create()` and `get()`. When it permits the requesting app, both operations are supported and `hostAppId` is included in `clientDataJSON` for each.
+The policy applies only to `get()`. When it permits the requesting app, `get()` is supported and `hostAppId` is included in `clientDataJSON`. Embedded `create()` requests are never permitted, regardless of policy, and fail the same way as a `get()` request the policy does not permit. If a future version adds support for embedded `create()`, it will use a separate opt-in, so that existing policies never permit registration.
 
 ### `CollectedClientData` extension
 
@@ -134,7 +137,7 @@ The platform client (for example Android Credential Manager or iOS Authenticatio
 
 1. Determine whether the request is an embedded credential request.
 2. If it is not, proceed with the standard WebAuthn flow, and omit `hostAppId`.
-3. If it is, complete steps 4–7 before displaying any user-facing UI. If the host app is not permitted at any step, follow [When a host app is not permitted](#when-a-host-app-is-not-permitted).
+3. If it is, complete steps 4–7 before displaying any user-facing UI. If the request is a `create()` request, or the host app is not permitted at any step, follow [When a host app is not permitted](#when-a-host-app-is-not-permitted).
 4. Fetch the RP's policy from `https://{rpId}/.well-known/webauthn` over HTTPS, using the platform client's own networking stack.
 5. If the fetch fails, the policy has no `embedded` member, or `embedded.default` is neither `"allow"` nor `"deny"`, the host app is not permitted.
 6. Determine `hostAppId` from the calling app's verified identity (for example, its signing certificate). The platform client constructs or validates `clientDataJSON` and sets `hostAppId` to this value; host apps (including the platform WebView) supply the remaining client data. If a host app supplies a `hostAppId` that doesn't match its verified identity, reject with `SecurityError`.
@@ -158,7 +161,7 @@ After receiving a response, the RP:
     * If it is absent, the request was not an embedded request, or the client doesn't implement this proposal. No new validation is needed. Absence is not proof that the request came from a trusted browser.
     * If it is present, the request was made by a host app. The RP applies whatever allowlist or denylist logic it needs. RPs that specify `exceptions` should enforce the same policy here, because platform clients may cache the policy file.
 
-RPs MAY apply stricter risk policies to embedded requests. For example, an RP might accept embedded `get()` requests while declining to register new or replacement credentials through embedded `create()`.
+RPs MAY apply stricter risk policies to embedded requests.
 
 ### Example `hostAppId` formats
 
@@ -186,15 +189,11 @@ Platforms MUST also show consent UI identifying the host app, and MUST require u
 
 ### Integrity of `hostAppId`
 
-The platform client sets or validates `hostAppId` against the calling app's verified identity, and computes the client data hash itself, before forwarding the request to an authenticator. Because `hostAppId` is part of `clientDataJSON`, the authenticator's signature covers it, so a malicious host app can't forge it.
+The platform client sets or validates `hostAppId` against the calling app's verified identity, and computes the client data hash itself, before forwarding the request to an authenticator. Because `hostAppId` is part of `clientDataJSON`, and every assertion signs the hash of `clientDataJSON`, the authenticator's signature covers it, so a malicious host app can't forge it.
 
 `origin`, by contrast, is supplied by the host app in an embedded request, and the host app controls the page. RPs should rely on `hostAppId`, not `origin`, to identify the embedder.
 
 `hostAppId` is a claim made by the platform. Like `origin`, it may not hold if the device is rooted or compromised.
-
-### Registration assurance
-
-For `create()`, `hostAppId` is returned in `clientDataJSON`, but a response with `none` attestation carries no attestation signature over it. The assurance RPs can rely on for embedded registrations needs further discussion. See [Open questions](#open-questions).
 
 ### Policy staleness
 
@@ -234,7 +233,7 @@ We believe this tradeoff is necessary, because platforms have no scalable way to
 
 ### Per-app opt-in only
 
-RPs could list permitted apps only in the well-known policy, without `hostAppId` appearing in responses. That would avoid exposing platform-specific identifiers through WebAuthn. But RPs couldn't apply their own logic at response time, such as risk-based decisions, immediate revocation regardless of policy caching, or stricter handling of embedded `create()`.
+RPs could list permitted apps only in the well-known policy, without `hostAppId` appearing in responses. That would avoid exposing platform-specific identifiers through WebAuthn. But RPs couldn't apply their own logic at response time, such as risk-based decisions or immediate revocation regardless of policy caching.
 
 We instead offer both: a policy the platform enforces, and `hostAppId` in `clientDataJSON` for RPs that want to apply additional logic.
 
@@ -261,10 +260,27 @@ This could be built as a new authenticator extension instead of a `CollectedClie
 2. Existing authenticators don't need to change, so platforms can provide and scale this functionality themselves.
 3. It is simpler, and pairs naturally with the existing `origin` field.
 
+## Future work: embedded `create()`
+
+This proposal does not permit embedded `create()` requests, because `hostAppId` would give RPs no verifiable signal for them. An assertion always carries the authenticator's signature over the hash of `clientDataJSON`, but a registration response with `none` attestation carries no signature over it at all. A host app controls the page, so it could submit a registration response it built itself, with any `hostAppId`, and the RP could not tell.
+
+Users can still register passkeys in their default browser, and use them for embedded sign-in afterwards.
+
+Supporting embedded `create()` would require:
+
+* A way for RPs to verify `hostAppId` on registration, for example by requiring attestation for embedded registrations, and deciding which attestation types are acceptable.
+* A separate opt-in in the RP's `.well-known/webauthn` policy, so that policies published for embedded `get()` never permit registration.
+* Feature detection that lets pages tell whether embedded `create()` is supported, separately from `get()`.
+
 ## Open questions
 
-* **API behavior:** which error a non-permitted request rejects with: `NotAllowedError`, which is indistinguishable from user cancellation apart from timing, or a distinct error that lets RPs offer a better fallback (the RP already knows its own policy, so this reveals little). Also what feature detection (`PublicKeyCredential`, `getClientCapabilities()`, `isConditionalMediationAvailable()`) reports when support depends on the RP ID, and abort handling and navigation races while the policy is being fetched.
-* **Registration assurance:** what assurance `hostAppId` gives on `create()`, particularly with `none` attestation, and whether embedded registration needs additional constraints.
+* **API behavior:**
+    * Which error a non-permitted request rejects with. Options include:
+        * `NotSupportedError`, which is what embedded content sees today: Android WebView with WebAuthn disabled (its default) rejects `create()` and `get()` immediately with `NotSupportedError` and shows no UI. Reusing it would make a non-permitted request look exactly like today's behavior to the page, but WebAuthn already uses `NotSupportedError` to mean that no entry in `pubKeyCredParams` is supported.
+        * `NotAllowedError`, which is indistinguishable from user cancellation. WebAuthn only raises it for a missing authenticator once the request's timeout expires, so an immediate rejection would be non-standard and distinguishable by timing anyway.
+        * A distinct error that lets RPs offer a better fallback. The RP already knows its own policy, so this reveals little.
+    * What feature detection (`PublicKeyCredential`, `getClientCapabilities()`, `isConditionalMediationAvailable()`) reports when support depends on the RP ID. Android WebView doesn't expose `PublicKeyCredential` by default today; under this proposal it would be exposed even when the RP hasn't permitted the host app, and embedded `create()` would reject even when `get()` is permitted.
+    * Abort handling and navigation races while the policy is being fetched.
 * **Identifiers:** canonical encoding (base64 vs. base64url), publisher uniqueness, multiple signers and key rotation, app transfers, and how other platforms are namespaced.
 * **User experience:** how the app is displayed in consent UI, repeat consent, interaction with conditional and immediate mediation, authenticators without user verification, and existing iframe permission rules.
 
@@ -272,3 +288,120 @@ This could be built as a new authenticator extension instead of a `CollectedClie
 
 * [Web Authentication Level 3](https://www.w3.org/TR/webauthn-3/): §5.8.1 Client Data, §5.11.1 Related Origins, §7 RP operations, §8.7 None attestation
 * [FIDO AppID and Facets](https://fidoalliance.org/specs/fido-v2.0-id-20180227/fido-appid-and-facets-v2.0-id-20180227.html)
+
+## [Self-Review Questionnaire: Security and Privacy](https://w3c.github.io/security-questionnaire/)
+
+01.  What information does this feature expose,
+     and for what purposes?
+
+This feature exposes information to sites about which app is embedding them inside of a WebView (or other app-hosted browsing component) as part of WebAuthn assertion responses.
+
+The purpose of this information is to give Relying Parties control over which apps may sign users in with passkeys, and constrain their risk of phishing by malicious apps.
+
+02.  Do features in your specification expose the minimum amount of information
+     necessary to implement the intended functionality?
+
+Yes. App identifiers and certificate signing hashes comprise the minimal possible information required to identify a host app and define a trust relationship.
+
+03.  Do the features in your specification expose personal information,
+     personally-identifiable information (PII), or information derived from
+     either?
+
+No. The host app ID provided is not unique to users, and consistent across all installations of a given host app.
+
+04.  How do the features in your specification deal with sensitive information?
+
+This feature allows passkeys to be used for sign-in in contexts where the host app can observe the page and session. To limit this exposure:
+
+* Embedded requests are only permitted for `get()`, and only when the RP opts in via its `.well-known/webauthn` policy.
+* Platforms must show consent UI identifying the host app, and require user verification, for every embedded request.
+* Host apps never gain access to credential private keys, which remain with the authenticator as in any other WebAuthn ceremony.
+
+05.  Does data exposed by your specification carry related but distinct
+     information that may not be obvious to users?
+
+No.
+
+06.  Do the features in your specification introduce state
+     that persists across browsing sessions?
+
+No.
+
+07.  Do the features in your specification expose information about the
+     underlying platform to origins?
+
+Yes. In order to give Relying Parties transparency into the app that is making credential requests, platform-specific identifiers must be included as part of WebAuthn client data.
+
+In many cases, equivalent information (e.g. Android package names) is already exposed via features such as the `X-Requested-With` header.
+
+08.  Does this specification allow an origin to send data to the underlying
+     platform?
+
+Yes. RPs publish an embedded request policy at `https://{rpId}/.well-known/webauthn`, which the platform client fetches using its own networking stack and enforces before displaying any UI. The policy is a small JSON document with a constrained format; an absent, unfetchable, or invalid policy is treated as not permitting embedded requests. Platforms may cache the policy, subject to a bounded maximum TTL.
+
+09.  Do features in this specification enable access to device sensors?
+
+No.
+
+10.  Do features in this specification enable new script execution/loading
+     mechanisms?
+
+No.
+
+11.  Do features in this specification allow an origin to access other devices?
+
+No.
+
+12.  Do features in this specification allow an origin some measure of control over
+     a user agent's native UI?
+
+No.
+
+13.  What temporary identifiers do the features in this specification create or
+     expose to the web?
+
+None.
+
+14.  How does this specification distinguish between behavior in first-party and
+     third-party contexts?
+
+Existing WebAuthn behavior is unchanged. `crossOrigin` is `true` for requests from cross-origin iframes within embedded content, and existing `topOrigin` and Permissions Policy behavior still applies. The RP's policy is keyed on the RP ID, regardless of the top-level origin.
+
+15.  How do the features in this specification work in the context of a browser’s
+     Private Browsing or Incognito mode?
+
+No change.
+
+16.  Does this specification have both "Security Considerations" and "Privacy
+     Considerations" sections?
+
+Yes.
+
+17.  Do features in your specification enable origins to downgrade default
+     security protections?
+
+Yes. Platforms restrict WebAuthn in embedded contexts today; an RP that publishes an `embedded` policy opts in to allowing embedded sign-in (`get()`) requests from some or all host apps. Embedded registration (`create()`) remains blocked regardless of policy. This is mitigated by:
+
+* Requiring explicit RP opt-in, with allowlist or denylist control over host apps.
+* Requiring consent UI identifying the host app, and user verification, for every embedded request.
+* Including a platform-verified `hostAppId` in `clientDataJSON`, so RPs can apply their own policy when validating responses.
+
+18.  What happens when a document that uses your feature is kept alive in BFCache
+     (instead of getting destroyed) after navigation, and potentially gets reused
+     on future navigations back to the document?
+
+No change.
+
+19.  What happens when a document that uses your feature gets disconnected?
+
+No change.
+
+20.  Does your spec define when and how new kinds of errors should be raised?
+
+Yes. A host app supplying a `hostAppId` that doesn't match its verified identity raises `SecurityError`, and a user declining consent raises `NotAllowedError`.
+
+21.  Does your feature allow sites to learn about the user's use of assistive technology?
+
+No.
+
+22.  What should this questionnaire have asked?
