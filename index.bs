@@ -7920,8 +7920,103 @@ This permission MUST be configured per-origin and MUST NOT offer the capability 
 
 This section defines extensions that are both [=client extensions=] and [=authenticator extensions=].
 
-This section is currently empty.
+### Authenticator Properties Extension (<dfn>authProps</dfn>) ### {#sctn-authenticator-properties-extension}
 
+This extension lets a [=[RP]=] request the [=/AAGUID=] of the [=authenticator=] that generates an
+[=authentication assertion=].
+An [=[RP]=] can use this value to assertain the identity of the [=managing authenticator=].
+For example, this may be used to detect if the [=generating authenticator=] exchanged the [=passkey=] to a new [=managing authenticator=],
+the [=[RP]=] can use the reported AAGUID reported during a [=authentication ceremonies=] to detect this change.
+
+: Extension identifier
+:: `authProps`
+
+: Operation applicability
+:: [=authentication extension|Authentication=]
+
+: Client extension input
+:: The Boolean value [TRUE] indicates that the [=[RP]=] requests the AAGUID.
+    <xmp class="idl">
+    partial dictionary AuthenticationExtensionsClientInputs {
+        boolean authProps;
+    };
+    partial dictionary AuthenticationExtensionsClientInputsJSON {
+        boolean authProps;
+    };
+    </xmp>
+
+: Client extension processing
+:: When deriving the [=authenticator extension input=] for [=authenticatorGetAssertion=],
+    return the CBOR encoding of [TRUE] if {{AuthenticationExtensionsClientInputs/authProps}} is [TRUE].
+    Otherwise, return no input.
+
+    When processing the response for the [=authentication assertion=] being returned to the [=[RP]=]:
+
+    1. If {{AuthenticationExtensionsClientInputs/authProps}} is absent or [FALSE],
+        return without producing an {{AuthenticatorPropertiesOutput}}.
+    1. If the {{AuthenticatorAssertionResponse}} has no `authProps` entry in its [=authenticator extension outputs=],
+        return without producing an {{AuthenticatorPropertiesOutput}}.
+    1. Let |authProps| be the value of the `authProps` entry in the [=authenticator extension output=].
+    1. If |authProps| is not a CBOR map containing a `aaguid` field,
+        return withough producing an {{AuthenticatorPropertiesOutput}}.
+    1. Let |aaguid| be the value of the `aaguid` field in |authProps|.
+    1. If |aaguid| is not a CBOR byte string of length 16 or consists of 16 zero bytes,
+        return without producing an {{AuthenticatorPropertiesOutput}}.
+    1. Set {{AuthenticationExtensionsClientOutputs/authProps}} to an
+        {{AuthenticatorPropertiesOutput}} dictionary whose {{AuthenticatorPropertiesOutput/aaguid}} member
+        is a new {{ArrayBuffer}} containing |aaguid|.
+
+    The AAGUID discloses the type of [=authenticator=] used for the assertion.
+    Omitting the [=client extension output=] does not affect the success of the [=authentication ceremony=].
+
+: Client extension output
+:: The AAGUID of the [=authenticator=] that produced the returned [=authentication assertion=],
+    encoded as the 16 octets described in [[#sctn-attested-credential-data]].
+    In the result of {{PublicKeyCredential/toJSON()}}, the AAGUID is represented by the [=base64url encoding=] of those octets.
+
+    <xmp class="idl">
+    dictionary AuthenticatorPropertiesOutput {
+        required BufferSource aaguid;
+    };
+    dictionary AuthenticatorPropertiesOutputJSON {
+        required Base64URLString aaguid;
+    };
+    partial dictionary AuthenticationExtensionsClientOutputs {
+        AuthenticatorPropertiesOutput authProps;
+    };
+    partial dictionary AuthenticationExtensionsClientOutputsJSON {
+        AuthenticatorPropertiesOutputJSON authProps;
+    };
+    </xmp>
+
+: Authenticator extension input
+:: The CBOR Boolean value [TRUE].
+
+    <xmp highlight="cddl">
+    $$extensionInput //= (
+      authProps: true
+    )
+    </xmp>
+
+: Authenticator extension processing
+:: If the [=authenticator extension input=] is [TRUE] and the [=authenticator=] has a nonzero [=/AAGUID=] to disclose,
+    return its AAGUID as an [=extension output=] in the successful [=authentication assertion=].
+    Otherwise, omit the output.
+
+: Authenticator extension output
+:: A CBOR byte string containing the 16 octets of the AAGUID.
+
+    <xmp highlight="cddl">
+    authPropsOutput = (
+      authProps: bstr .size 16
+    )
+    </xmp>
+
+The AAGUID returned by this extension is a claim about the [=managing authenticator=] that generated the assertion.
+It can change between assertions made with the same [=credential=].
+[=[RPS]=] MUST NOT treat this value as [=attestation=] or use it to make authentication or authorization decisions.
+An [=[RP]=] that uses this value to update a displayed label SHOULD do so only after verifying the assertion and
+SHOULD retain any existing label when the extension output is absent.
 
 # User Agent Automation # {#sctn-automation}
 
@@ -8720,6 +8815,10 @@ This section registers the below-listed [=extension identifier=] values, newly d
 - WebAuthn Extension Identifier: largeBlob
 - Description: This [=client extension|client=] [=registration extension=] and [=authentication extension=] allows a [=[RP]=] to store opaque data associated with a credential.
 - Specification Document: Section [[#sctn-large-blob-extension]] of this specification
+    <br/><br/>
+- WebAuthn Extension Identifier: [=authProps=]
+- Description: This [=authentication extension=] reports the claimed [=/AAGUID=] of the authenticator that generated the assertion.
+- Specification Document: Section [[#sctn-authenticator-properties-extension]] of this specification
 
 
 ## Well-Known URI Registration ## {#sctn-well-known-uri-reg}
