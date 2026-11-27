@@ -458,10 +458,12 @@ Many thanks for valuable feedback and advice from:
 - John Bradley
 - Kostas Georgantas
 - Michael B. Jones
+- Akshay Kumar
 - Klas Lindfors
 - Ludvig Michaelsson
 - Nina Satragno
 - Orie Steele
+- Johan Verrept
 
 Thanks to the following proposals, projects, libraries, frameworks, and languages
 for their work on similar and related problems that influenced this proposal.
