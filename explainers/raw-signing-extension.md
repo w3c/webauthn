@@ -219,6 +219,9 @@ const assertion = await navigator.credentials.get({
                     [pkc.id]: {
                         keyHandle: extensionResults.previewSign5.generatedKey.keyHandle,
                         tbs: (
+                            // The ESP256-split signing algorithm expects the RP to hash the input data,
+                            // instead of the authenticator.
+                            // The verifier will verify the signed data unhashed in both cases.
                             extensionResults.previewSign5.generatedKey.algorithm === -300
                                 ? await crypto.subtle.digest('SHA-256', tbs)
                                 : tbs
