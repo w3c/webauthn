@@ -157,7 +157,7 @@ Specification progress:
 - Sources: https://github.com/yubicolabs/webauthn-sign-extension/
 - Pull request: https://github.com/w3c/webauthn/pull/2078
 
-Much like the `pubKeyCredParams` parameter in WebAuthn credential,
+Much like the top-level `pubKeyCredParams` parameter in WebAuthn,
 the extension has a `generateKey.algorithms` parameter for algorithm negotiation.
 The algorithm of the signing key pair MAY be different from the algorithm of the parent WebAuthn credential.
 
@@ -219,6 +219,9 @@ const assertion = await navigator.credentials.get({
                     [pkc.id]: {
                         keyHandle: extensionResults.previewSign5.generatedKey.keyHandle,
                         tbs: (
+                            // The ESP256-split signing algorithm expects the RP to hash the input data,
+                            // instead of the authenticator.
+                            // The verifier will verify the signed data unhashed in both cases.
                             extensionResults.previewSign5.generatedKey.algorithm === -300
                                 ? await crypto.subtle.digest('SHA-256', tbs)
                                 : tbs
@@ -236,28 +239,33 @@ const assertion = await navigator.credentials.get({
 
 const assertionExtensionResults = assertion.getClientExtensionResults();
 
-// Verify the signature using WebCrypto; this requires a few format conversions
-const signatureDer = new Uint8Array(assertionExtensionResults.previewSign5.signature);
-const signatureLen1 = signatureDer[3];
-const signatureLen2 = signatureDer[4 + signatureLen1 + 1];
-const signatureRaw = new Uint8Array([
-    // Convert signature from DER encoding to fixed-length raw encoding
-    // DER structure is: SEQUENCE tag (1+1 bytes), INTEGER (1+1+L1 bytes), INTEGER (1+1+L2 bytes)
-    ...signatureDer.slice(4, 4 + signatureLen1).slice(Math.max(0, signatureLen1 - 32)),
-    ...new Uint8Array(Math.max(0, 32 - signatureLen1)),
-    ...signatureDer.slice(4 + signatureLen1 + 2).slice(Math.max(0, signatureLen2 - 32)),
-    ...new Uint8Array(Math.max(0, 32 - signatureLen2)),
-]);
+function derSignatureToRaw(signatureDer) {
+    const len1 = signatureDer[3];
+    const len2 = signatureDer[4 + len1 + 1];
+    return new Uint8Array([
+        // Convert signature from DER encoding to fixed-length raw encoding
+        // DER structure is: SEQUENCE tag (1+1 bytes), INTEGER (1+1+L1 bytes), INTEGER (1+1+L2 bytes)
+        ...signatureDer.slice(4, 4 + len1).slice(Math.max(0, len1 - 32)),
+        ...new Uint8Array(Math.max(0, 32 - len1)),
+        ...signatureDer.slice(4 + len1 + 2).slice(Math.max(0, len2 - 32)),
+        ...new Uint8Array(Math.max(0, 32 - len2)),
+    ]);
+}
 
-const pkCose = new Uint8Array(extensionResults.previewSign5.generatedKey.publicKey);
-const pkRaw = new Uint8Array([
-    // Convert public key from COSE encoding to fixed-length raw encoding
-    // CTAP2 canonical CBOR guarantees entries are in the order:
-    // kty (1+1 bytes), alg (1+1 bytes), crv (1+1 bytes), x (1+2+32 bytes), y (1+2+32 bytes)
-    0x04,
-    ...pkCose.slice(10, 10 + 32),
-    ...pkCose.slice(10 + 32 + 1 + 2),
-]);
+function coseEc2PublicKeyToRaw(pkCose) {
+    const pkRaw = new Uint8Array([
+        // Convert public key from COSE encoding to fixed-length raw (uncompressed SEC 1) encoding
+        // CTAP2 canonical CBOR guarantees entries are in the order:
+        // kty (1+1 bytes), alg (1+1 bytes), crv (1+1 bytes), x (1+2+32 bytes), y (1+2+32 bytes)
+        0x04,
+        ...pkCose.slice(10, 10 + 32),
+        ...pkCose.slice(10 + 32 + 1 + 2),
+    ]);
+}
+
+// Verify the signature using WebCrypto; this requires a few format conversions
+const signatureRaw = derSignatureToRaw(new Uint8Array(assertionExtensionResults.previewSign5.signature));
+const pkRaw = coseEc2PublicKeyToRa2(new Uint8Array(extensionResults.previewSign5.generatedKey.publicKey));
 const publicKey = await crypto.subtle.importKey("raw", pkRaw, { name: "ECDSA", namedCurve: "P-256" }, false, ["verify"]);
 const signatureOk = await crypto.subtle.verify({ name: "ECDSA", hash: "SHA-256" }, publicKey, signatureRaw, tbs);
 console.log({ signatureOk });
@@ -353,7 +361,7 @@ the opposite approach would be to adapt protocols and verifier implementations t
 For example, [OpenSSH 8.2][openssh-8.2] introduced support for using FIDO U2F and CTAP2 security keys as SSH keys.
 
 This works, but the obvious drawback is that this requires implementation effort
-for each protocol and verified that needs to be adapted.
+for each protocol and verifier that needs to be adapted.
 The `sign` extension proposal is a drop-in replacement designed to be compatible with any existing cryptographic protocol
 without additional implementation effort on the verifier side.
 
@@ -394,7 +402,7 @@ and therefore the origin binding and user consent limitations of WebAuthn apply 
 
 The client-to-authenticator layer does allow for generating signing keys that can be used without a test of user presence (UP),
 but this option is not exposed through the WebAuthn layer.
-This mirrors how FIDO CTAP2 allows `authenticatorGetAssertion` (UP) while WebAuthn does not.
+This mirrors how FIDO CTAP2 allows `authenticatorGetAssertion` without UP while WebAuthn does not.
 Thus native client applications can create and use unattended signing keys,
 but web applications cannot bypass the prompt for user consent.
 
@@ -450,10 +458,12 @@ Many thanks for valuable feedback and advice from:
 - John Bradley
 - Kostas Georgantas
 - Michael B. Jones
+- Akshay Kumar
 - Klas Lindfors
 - Ludvig Michaelsson
 - Nina Satragno
 - Orie Steele
+- Johan Verrept
 
 Thanks to the following proposals, projects, libraries, frameworks, and languages
 for their work on similar and related problems that influenced this proposal.
@@ -462,9 +472,9 @@ for their work on similar and related problems that influenced this proposal.
 - [wwWallet][wwWallet]
 
 
-[arkg]: https://datatracker.ietf.org/doc/draft-bradleylundberg-cfrg-arkg/10/
+[arkg]: https://datatracker.ietf.org/doc/draft-bradleylundberg-cfrg-arkg/11/
 [bankid]: https://www.bankid.com/
-[cose-split-algs]: https://www.ietf.org/archive/id/draft-lundberg-cose-two-party-signing-algs-06.html
+[cose-split-algs]: https://datatracker.ietf.org/doc/draft-ietf-cose-split-signing-algs/02/
 [openpgp]: https://datatracker.ietf.org/doc/rfc9580/
 [openssh-8.2]: https://www.openssh.org/txt/release-8.2
 [openssh]: https://www.openssh.org/
