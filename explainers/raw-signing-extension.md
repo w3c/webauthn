@@ -236,28 +236,33 @@ const assertion = await navigator.credentials.get({
 
 const assertionExtensionResults = assertion.getClientExtensionResults();
 
-// Verify the signature using WebCrypto; this requires a few format conversions
-const signatureDer = new Uint8Array(assertionExtensionResults.previewSign5.signature);
-const signatureLen1 = signatureDer[3];
-const signatureLen2 = signatureDer[4 + signatureLen1 + 1];
-const signatureRaw = new Uint8Array([
-    // Convert signature from DER encoding to fixed-length raw encoding
-    // DER structure is: SEQUENCE tag (1+1 bytes), INTEGER (1+1+L1 bytes), INTEGER (1+1+L2 bytes)
-    ...signatureDer.slice(4, 4 + signatureLen1).slice(Math.max(0, signatureLen1 - 32)),
-    ...new Uint8Array(Math.max(0, 32 - signatureLen1)),
-    ...signatureDer.slice(4 + signatureLen1 + 2).slice(Math.max(0, signatureLen2 - 32)),
-    ...new Uint8Array(Math.max(0, 32 - signatureLen2)),
-]);
+function derSignatureToRaw(signatureDer) {
+    const len1 = signatureDer[3];
+    const len2 = signatureDer[4 + len1 + 1];
+    return new Uint8Array([
+        // Convert signature from DER encoding to fixed-length raw encoding
+        // DER structure is: SEQUENCE tag (1+1 bytes), INTEGER (1+1+L1 bytes), INTEGER (1+1+L2 bytes)
+        ...signatureDer.slice(4, 4 + len1).slice(Math.max(0, len1 - 32)),
+        ...new Uint8Array(Math.max(0, 32 - len1)),
+        ...signatureDer.slice(4 + len1 + 2).slice(Math.max(0, len2 - 32)),
+        ...new Uint8Array(Math.max(0, 32 - len2)),
+    ]);
+}
 
-const pkCose = new Uint8Array(extensionResults.previewSign5.generatedKey.publicKey);
-const pkRaw = new Uint8Array([
-    // Convert public key from COSE encoding to fixed-length raw encoding
-    // CTAP2 canonical CBOR guarantees entries are in the order:
-    // kty (1+1 bytes), alg (1+1 bytes), crv (1+1 bytes), x (1+2+32 bytes), y (1+2+32 bytes)
-    0x04,
-    ...pkCose.slice(10, 10 + 32),
-    ...pkCose.slice(10 + 32 + 1 + 2),
-]);
+function coseEc2PublicKeyToRaw(pkCose) {
+    const pkRaw = new Uint8Array([
+        // Convert public key from COSE encoding to fixed-length raw (uncompressed SEC 1) encoding
+        // CTAP2 canonical CBOR guarantees entries are in the order:
+        // kty (1+1 bytes), alg (1+1 bytes), crv (1+1 bytes), x (1+2+32 bytes), y (1+2+32 bytes)
+        0x04,
+        ...pkCose.slice(10, 10 + 32),
+        ...pkCose.slice(10 + 32 + 1 + 2),
+    ]);
+}
+
+// Verify the signature using WebCrypto; this requires a few format conversions
+const signatureRaw = derSignatureToRaw(new Uint8Array(assertionExtensionResults.previewSign5.signature));
+const pkRaw = coseEc2PublicKeyToRa2(new Uint8Array(extensionResults.previewSign5.generatedKey.publicKey));
 const publicKey = await crypto.subtle.importKey("raw", pkRaw, { name: "ECDSA", namedCurve: "P-256" }, false, ["verify"]);
 const signatureOk = await crypto.subtle.verify({ name: "ECDSA", hash: "SHA-256" }, publicKey, signatureRaw, tbs);
 console.log({ signatureOk });
