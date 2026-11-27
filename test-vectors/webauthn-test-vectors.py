@@ -6,7 +6,7 @@ import math
 from cryptography import x509
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import hashes, serialization
-from cryptography.hazmat.primitives.asymmetric import ec, ed25519, padding, rsa
+from cryptography.hazmat.primitives.asymmetric import ec, ed25519, ed448, padding, rsa
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 from cryptography.x509.oid import NameOID
 
@@ -26,13 +26,17 @@ CERT_NOT_VALID_BEFORE = datetime.datetime.fromisoformat("2024-01-01T00:00:00Z").
 CERT_NOT_VALID_AFTER = datetime.datetime.fromisoformat("3024-01-01T00:00:00Z").astimezone(datetime.timezone.utc)
 
 
+def b64enc(data: bytes) -> str:
+    return base64.urlsafe_b64encode(data).rstrip(b'=').decode('utf-8')
+
+
 def gen_rand_idx(info: str):
     for i in range(256):
         yield RAND_ROOT_SEED, info, bytes([i])
     raise ValueError("Index out of range: " + i)
 
 
-def next_prand(gen, name: str, length: int) -> bytes:
+def next_prand(gen, name: str, length: int, include_base64url: bool = False) -> bytes:
     ikm, info, salt = next(gen)
     hkdf = HKDF(
         algorithm=hashes.SHA256(),
@@ -42,7 +46,9 @@ def next_prand(gen, name: str, length: int) -> bytes:
         backend=default_backend(),
     )
     prnd = hkdf.derive(ikm.encode('utf-8'))
-    print(f"""{name} = h'{prnd.hex()}'   ; Derived by: HKDF-SHA-256(IKM='{ikm}', salt=h'{salt.hex()}', info='{info}', L={length})""")
+    as_hex = f""" = h'{prnd.hex()}'"""
+    as_base64 = f""" = b64'{b64enc(prnd)}'""" if include_base64url else ""
+    print(f"""{name}{as_hex}{as_base64}   ; Derived by: HKDF-SHA-256(IKM='{ikm}', salt=h'{salt.hex()}', info='{info}', L={length})""")
     return prnd
 
 
@@ -228,7 +234,29 @@ def gen_android_key_att_cert(ca_cert, ca_key, challenge, cred_private_key, rand_
 
     asn1_encoder = asn1.Encoder()
     asn1_encoder.start()
-    asn1_encoder.write([300, 0, 0, 0, challenge, b'', [], []])
+    with asn1_encoder.construct(asn1.Numbers.Sequence):
+        asn1_encoder.write(300)
+        asn1_encoder.write(0, asn1.Numbers.Enumerated)
+        asn1_encoder.write(0)
+        asn1_encoder.write(0, asn1.Numbers.Enumerated)
+        asn1_encoder.write(challenge)
+        asn1_encoder.write(b'')
+
+        # softwareEnforced  AuthorizationList
+        with asn1_encoder.construct(asn1.Numbers.Sequence):
+            pass
+
+        # hardwareEnforced  AuthorizationList
+        with asn1_encoder.construct(asn1.Numbers.Sequence):
+            # purpose   [1] EXPLICIT SET OF INTEGER OPTIONAL
+            with asn1_encoder.construct(1, asn1.Classes.Context):
+                with asn1_encoder.construct(asn1.Numbers.Set):
+                    asn1_encoder.write(2) # 2 = KM_PURPOSE_SIGN
+
+            # origin    [702] EXPLICIT INTEGER OPTIONAL
+            with asn1_encoder.construct(702, asn1.Classes.Context):
+                asn1_encoder.write(0) # 0 = KM_ORIGIN_GENERATED
+
     attestation_ext = asn1_encoder.output()
     att_cert = to_deterministic_cert(
         x509.CertificateBuilder().subject_name(subject)
@@ -356,10 +384,10 @@ def gen_client_data(gen_rand, type, challenge, origin=DEFAULT_ORIGIN, cross_orig
         assert cross_origin
         kwargs['topOrigin'] = "https://example.com"
 
-    print("; extra_client_data is included iff bit 0x01 of client_data_gen_flags is 1")
+    print("; extraData is added to clientDataJSON iff bit 0x01 of client_data_gen_flags is 1")
     if (client_data_gen_flags & 0x01) != 0:
-        extra_data = next_prand(gen_rand, "extra_client_data", length=16)
-        kwargs['extraData'] = f"clientDataJSON may be extended with additional fields in the future, such as this: {base64.urlsafe_b64encode(extra_data).decode('utf-8')}"
+        extraData_random = next_prand(gen_rand, "extraData_random", length=16, include_base64url=True)
+        kwargs['extraData'] = f"clientDataJSON may be extended with additional fields in the future, such as this: {b64enc(extraData_random)}"
 
     return CollectedClientData.create(type=type, challenge=challenge, origin=origin, cross_origin=cross_origin, **kwargs)
 
@@ -403,7 +431,7 @@ def gen_packed_self_attestation(gen_rand, challenge, credential_id_length, priva
     auth_data = gen_attestation_auth_data(gen_rand, RP_ID_HASH, 0x41, 0, att_cred_data, None)
 
     att_obj = AttestationObject.create("packed", auth_data, {
-        "alg": -7,
+        "alg": public_key.ALGORITHM,
         "sig": private_key.sign(auth_data + sha256(client_data), ec.ECDSA(hashes.SHA256(), deterministic_signing=True)),
     })
 
@@ -430,7 +458,7 @@ def gen_packed_attestation(gen_rand, challenge, credential_id_length, public_key
 
     att_cert, att_key = gen_att_cert(att_ca_cert, att_ca_key, gen_rand)
     att_obj = AttestationObject.create("packed", auth_data, {
-        "alg": -7,
+        "alg": cose.ES256.ALGORITHM,
         "sig": att_key.sign(auth_data + sha256(client_data), ec.ECDSA(hashes.SHA256(), deterministic_signing=True)),
         "x5c": [att_cert.public_bytes(serialization.Encoding.DER)]
     })
@@ -501,7 +529,7 @@ def gen_tpm_attestation_statement(gen_rand, auth_data: AuthenticatorData, client
     sig = att_key.sign(cert_info, ec.ECDSA(hashes.SHA256(), deterministic_signing=True))
     return {
         "ver": "2.0",
-        "alg": -7,
+        "alg": cose.ES256.ALGORITHM,
         "x5c": [att_cert.public_bytes(serialization.Encoding.DER)],
         "sig": sig,
         "certInfo": cert_info,
@@ -535,7 +563,7 @@ def gen_android_key_attestation(gen_rand, challenge, credential_id_length, priva
 
     att_cert, att_key = gen_android_key_att_cert(att_ca_cert, att_ca_key, sha256(client_data), private_key, gen_rand)
     att_obj = AttestationObject.create("android-key", auth_data, {
-        "alg": -7,
+        "alg": cose.ES256.ALGORITHM,
         "sig": att_key.sign(auth_data + sha256(client_data), ec.ECDSA(hashes.SHA256(), deterministic_signing=True)),
         "x5c": [att_cert.public_bytes(serialization.Encoding.DER)]
     })
@@ -792,6 +820,8 @@ def test_vectors_packed_eddsa(
         description,
         info,
         cose_class,
+        cryptography_prikey_class,
+        private_key_length,
         credential_id_length=32,
         challenge_length=32,
 ):
@@ -806,7 +836,7 @@ def test_vectors_packed_eddsa(
     challenge = next_prand(gen_rand, "challenge", challenge_length)
     print()
 
-    pri_key = ed25519.Ed25519PrivateKey.from_private_bytes(next_prand(gen_rand, "private_key", 32))
+    pri_key = cryptography_prikey_class.from_private_bytes(next_prand(gen_rand, "private_key", private_key_length))
     public_key = cose_class.from_cryptography_key(pri_key.public_key())
     att_obj, client_data = gen_packed_attestation(gen_rand, challenge, credential_id_length, public_key)
 
@@ -1081,9 +1111,18 @@ test_vectors_packed_rsa(
     cose.RS256,
 )
 test_vectors_packed_eddsa(
-    "## Packed Attestation with Ed25519 Credential ## {#sctn-test-vectors-packed-ed25519}",
-    'packed.Ed25519',
+    "## Packed Attestation with Ed25519 Credential ## {#sctn-test-vectors-packed-eddsa}",
+    'packed.EdDSA',
     cose.EdDSA,
+    ed25519.Ed25519PrivateKey,
+    32,
+)
+test_vectors_packed_eddsa(
+    "## Packed Attestation with Ed448 Credential ## {#sctn-test-vectors-packed-ed448}",
+    'packed.Ed448',
+    cose.Ed448,
+    ed448.Ed448PrivateKey,
+    57,
 )
 
 test_vectors_tpm_ecdsa(
