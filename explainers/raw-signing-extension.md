@@ -157,7 +157,7 @@ Specification progress:
 - Sources: https://github.com/yubicolabs/webauthn-sign-extension/
 - Pull request: https://github.com/w3c/webauthn/pull/2078
 
-Much like the `pubKeyCredParams` parameter in WebAuthn credential,
+Much like the top-level `pubKeyCredParams` parameter in WebAuthn,
 the extension has a `generateKey.algorithms` parameter for algorithm negotiation.
 The algorithm of the signing key pair MAY be different from the algorithm of the parent WebAuthn credential.
 
@@ -353,7 +353,7 @@ the opposite approach would be to adapt protocols and verifier implementations t
 For example, [OpenSSH 8.2][openssh-8.2] introduced support for using FIDO U2F and CTAP2 security keys as SSH keys.
 
 This works, but the obvious drawback is that this requires implementation effort
-for each protocol and verified that needs to be adapted.
+for each protocol and verifier that needs to be adapted.
 The `sign` extension proposal is a drop-in replacement designed to be compatible with any existing cryptographic protocol
 without additional implementation effort on the verifier side.
 
@@ -394,7 +394,7 @@ and therefore the origin binding and user consent limitations of WebAuthn apply 
 
 The client-to-authenticator layer does allow for generating signing keys that can be used without a test of user presence (UP),
 but this option is not exposed through the WebAuthn layer.
-This mirrors how FIDO CTAP2 allows `authenticatorGetAssertion` (UP) while WebAuthn does not.
+This mirrors how FIDO CTAP2 allows `authenticatorGetAssertion` without UP while WebAuthn does not.
 Thus native client applications can create and use unattended signing keys,
 but web applications cannot bypass the prompt for user consent.
 
