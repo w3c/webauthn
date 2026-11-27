@@ -472,7 +472,7 @@ for their work on similar and related problems that influenced this proposal.
 - [wwWallet][wwWallet]
 
 
-[arkg]: https://datatracker.ietf.org/doc/draft-bradleylundberg-cfrg-arkg/10/
+[arkg]: https://datatracker.ietf.org/doc/draft-bradleylundberg-cfrg-arkg/11/
 [bankid]: https://www.bankid.com/
 [cose-split-algs]: https://datatracker.ietf.org/doc/draft-ietf-cose-split-signing-algs/02/
 [openpgp]: https://datatracker.ietf.org/doc/rfc9580/
