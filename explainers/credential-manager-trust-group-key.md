@@ -50,20 +50,20 @@ When a relying party observes an CMTG Key they have not seen before, it indicate
 
 If the relying party has seen the same CMTG Key on a prior create or get call, it indicates that either the passkey is coming from the same device, or another device for which the credential manager has seen phishing-resistant signals linking it to the original device. This is a strong signal to the RP that trustworthiness of the original device can be considered when evaluating trust for the current device.
 
-Relying parties request an CMTG key by requesting the `cmtgKey` extension on either a create or a get call:
+Relying parties request an CMTG key by requesting the `cmtgKeys` extension on either a create or a get call:
 
 ```javascript
 const cred = await navigator.credentials.get({
   publicKey: {
     challenge: ...,
     extensions: {
-      cmtgKey: true  /* also works for .create */
+      cmtgKeys: true  /* also works for .create */
     }
   }
 });
 ```
 
-The `credentialManagerTrustGroupKey` extension is an [authenticator extension](https://www.w3.org/TR/webauthn-3/#authenticator-extension), and will have two outputs:
+The `cmtgKeys` extension is an [authenticator extension](https://www.w3.org/TR/webauthn-3/#authenticator-extension), and will have two outputs, each a list that currently always contains exactly one element:
 
 1. The public key of the CMTG will be present in the [authenticator extension outputs](https://www.w3.org/TR/webauthn-3/#authenticator-extension-output).  
 2. A signature proving possession of the CMTG private key will be In the [unsigned extension outputs](https://www.w3.org/TR/webauthn-3/#unsigned-extension-outputs).
@@ -89,3 +89,5 @@ CMTG Keys are optional, i.e. RPs that don't need the additional signal can simpl
 For relying parties that need more fine grained or stricter signals, e.g. for compliance purposes, we think other more targeted APIs are a better option.
 
 **Who sets the guidelines for admissible signals for determining non-remote relationships?**  This is left undecided in this proposal, but we expect a discussion in the relevant W3C WebAuthn and FIDO Alliance forums.
+
+**Why is the output a list if only one CMTG Key is returned?**  Returning a list leaves room for future changes where more than one CMTG Key may be returned in a single response, for example passkey algorithm upgrades ([#2417](https://github.com/w3c/webauthn/issues/2417)), where a CMTG Key the relying party already knows could vouch for a newly minted one. Until such a change is specified, authenticators return exactly one CMTG Key, and relying parties treat an output containing more than one as invalid.
